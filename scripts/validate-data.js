@@ -36,6 +36,55 @@ function checkTeams() {
   console.log('checkTeams: OK');
 }
 
+const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
+
+function checkPlayers() {
+  const players = playersModule.PLAYERS_2026;
+  const ids = players.map(function (p) { return p.id; });
+  assert.strictEqual(new Set(ids).size, ids.length, 'player ids must be unique');
+
+  const jerseyByTeam = {};
+
+  players.forEach(function (p) {
+    assert.ok(teams.getTeamById(p.teamId), 'unknown teamId: ' + p.teamId + ' on ' + p.id);
+    assert.ok(data.POSITIONS.includes(p.position), 'invalid position: ' + p.position + ' on ' + p.id);
+    assert.ok(p.age >= 18 && p.age <= 45, 'age out of range on ' + p.id);
+    assert.ok(p.jerseyNumber >= 0 && p.jerseyNumber <= 99, 'jersey number out of range on ' + p.id);
+
+    jerseyByTeam[p.teamId] = jerseyByTeam[p.teamId] || new Set();
+    assert.ok(!jerseyByTeam[p.teamId].has(p.jerseyNumber), 'duplicate jersey number ' + p.jerseyNumber + ' on team ' + p.teamId);
+    jerseyByTeam[p.teamId].add(p.jerseyNumber);
+
+    assert.ok(p.overall >= data.RATING_MIN && p.overall <= data.RATING_MAX, 'overall out of range on ' + p.id);
+    assert.ok(p.potential >= data.RATING_MIN && p.potential <= data.RATING_MAX, 'potential out of range on ' + p.id);
+    assert.ok(p.potential >= p.overall, 'potential must be >= overall on ' + p.id);
+
+    data.ATTRIBUTE_KEYS.forEach(function (key) {
+      const val = p.attributes[key];
+      assert.ok(val >= data.RATING_MIN && val <= data.RATING_MAX, 'attribute ' + key + ' out of range on ' + p.id);
+    });
+
+    assert.ok(p.contract.salary > 0, 'salary must be positive on ' + p.id);
+    assert.ok(p.contract.yearsRemaining >= 1 && p.contract.yearsRemaining <= 6, 'yearsRemaining out of range on ' + p.id);
+    assert.ok(!(p.contract.playerOption && p.contract.teamOption), 'playerOption and teamOption both true on ' + p.id);
+
+    assert.strictEqual(p.status.injury, null, 'injury must be null in Phase 1 on ' + p.id);
+    assert.deepStrictEqual(p.hiddenTraits, [], 'hiddenTraits must be empty stub in Phase 1 on ' + p.id);
+    assert.deepStrictEqual(p.hiddenPersonality, {}, 'hiddenPersonality must be empty stub in Phase 1 on ' + p.id);
+  });
+
+  // Every team should have a roster of 12-15 players once fully populated (skipped while empty).
+  if (players.length > 0) {
+    teams.TEAMS.forEach(function (t) {
+      const count = players.filter(function (p) { return p.teamId === t.id; }).length;
+      assert.ok(count >= 12 && count <= 15, t.id + ' roster size out of range: ' + count);
+    });
+  }
+
+  console.log('checkPlayers: OK (' + players.length + ' players)');
+}
+
 checkDataConstants();
 checkTeams();
+checkPlayers();
 console.log('All validations passed');
