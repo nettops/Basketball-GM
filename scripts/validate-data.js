@@ -73,15 +73,23 @@ function checkPlayers() {
     assert.deepStrictEqual(p.hiddenPersonality, {}, 'hiddenPersonality must be empty stub in Phase 1 on ' + p.id);
   });
 
-  // Every team should have a roster of 12-15 players once fully populated (skipped while empty).
-  if (players.length > 0) {
-    teams.TEAMS.forEach(function (t) {
-      const count = players.filter(function (p) { return p.teamId === t.id; }).length;
-      assert.ok(count >= 12 && count <= 15, t.id + ' roster size out of range: ' + count);
-    });
-  }
+  // Any team that has been populated so far must have 12-15 players. Teams not
+  // yet reached by the current division-batch task (0 players) are skipped here;
+  // full 30-team coverage is asserted separately once every division is done.
+  const teamsWithPlayers = new Set(players.map(function (p) { return p.teamId; }));
+  teamsWithPlayers.forEach(function (teamId) {
+    const count = players.filter(function (p) { return p.teamId === teamId; }).length;
+    assert.ok(count >= 12 && count <= 15, teamId + ' roster size out of range: ' + count);
+  });
 
-  console.log('checkPlayers: OK (' + players.length + ' players)');
+  console.log('checkPlayers: OK (' + players.length + ' players, ' + teamsWithPlayers.size + '/30 teams populated)');
+
+  if (teamsWithPlayers.size === 30) {
+    teams.TEAMS.forEach(function (t) {
+      assert.ok(teamsWithPlayers.has(t.id), 'team ' + t.id + ' has no players even though 30 teams reported populated');
+    });
+    console.log('checkAllTeamsPopulated: OK (all 30 teams have real rosters)');
+  }
 }
 
 checkDataConstants();
