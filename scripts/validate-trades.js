@@ -26,4 +26,22 @@ function checkWaivePlayer() {
 }
 
 checkWaivePlayer();
+
+function checkBasePlayerValue() {
+  const evaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
+
+  assert.ok(evaluatorModule.youthFactor(20) > evaluatorModule.youthFactor(33), 'younger players should weight potential more');
+  assert.ok(evaluatorModule.youthFactor(34) <= 0.1);
+
+  assert.strictEqual(evaluatorModule.contractBurden(1000000, 60), 0, 'a below-market salary should have no burden');
+  assert.ok(evaluatorModule.contractBurden(50000000, 60) > 0, 'a max contract on a 60-overall should carry burden');
+
+  const star = { overall: 95, potential: 96, age: 25, contract: { salary: 30000000 } };
+  const bustContract = { overall: 60, potential: 61, age: 30, contract: { salary: 45000000 } };
+  assert.ok(evaluatorModule.basePlayerValue(star) > evaluatorModule.basePlayerValue(bustContract), 'a star should be worth clearly more than an overpaid low-overall player');
+
+  console.log('checkBasePlayerValue: OK');
+}
+
+checkBasePlayerValue();
 console.log('All trade validations passed');
