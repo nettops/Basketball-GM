@@ -1,6 +1,6 @@
 function handlePropose(state, userTeamId, redraw) {
-  if (state.assignments.length === 0) {
-    document.getElementById('trade-result').innerHTML = '<p>Add at least one player to the trade first.</p>';
+  if (state.assignments.length === 0 && state.pickAssignments.length === 0) {
+    document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
     return;
   }
   const result = proposeTrade(state, userTeamId);
