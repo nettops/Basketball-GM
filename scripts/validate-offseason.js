@@ -250,4 +250,42 @@ function checkScoreOffer() {
 }
 
 checkScoreOffer();
+
+function checkAIOfferAndSigning() {
+  const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgency.js'));
+  const rosterMovesModule = require(path.join(__dirname, '..', 'rosterMoves.js'));
+  const rng = makeRng(700);
+
+  // Use a real waived player (already in PLAYERS_2026 with teamId null), not a
+  // standalone fixture — signPlayer only mutates an existing player record,
+  // it doesn't add anyone new to the league.
+  const donorRoster = leagueModule.getTeamRoster('ORL');
+  const testPlayer = donorRoster[donorRoster.length - 1];
+  rosterMovesModule.waivePlayer(testPlayer.id);
+  assert.strictEqual(testPlayer.teamId, null);
+
+  const team = teamsModule.getTeamById('MIA');
+  const offer = freeAgencyModule.generateAIOffer(team, testPlayer, rng);
+  if (offer) {
+    assert.strictEqual(offer.teamId, 'MIA');
+    assert.ok(offer.salary > 0);
+    assert.ok(offer.yearsRemaining >= 1 && offer.yearsRemaining <= 4);
+
+    freeAgencyModule.signPlayer(testPlayer, offer);
+    assert.strictEqual(testPlayer.teamId, 'MIA');
+    assert.strictEqual(testPlayer.contract.salary, offer.salary);
+    assert.ok(typeof testPlayer.jerseyNumber === 'number');
+
+    const roster = leagueModule.getTeamRoster('MIA');
+    assert.ok(roster.some(function (p) { return p.id === testPlayer.id; }), 'signed player must appear on the roster');
+  } else {
+    // No team had interest/room in this particular RNG draw — restore the
+    // player so this test doesn't leave a stray unsigned free agent behind.
+    testPlayer.teamId = 'ORL';
+  }
+
+  console.log('checkAIOfferAndSigning: OK');
+}
+
+checkAIOfferAndSigning();
 console.log('All offseason validations passed');

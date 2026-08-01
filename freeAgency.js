@@ -1,6 +1,11 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js') }
-  : { league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById }, teams: { TEAMS: TEAMS, getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS } };
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js') }
+  : {
+      league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
+      teams: { TEAMS: TEAMS, getTeamById: getTeamById },
+      data: { CAP_CONSTANTS: CAP_CONSTANTS },
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
+    };
 
 // Higher score = more playing-time opportunity: wide open at the position,
 // clearly the best there, or buried behind better players.
@@ -35,6 +40,38 @@ function scoreOffer(player, team, offer) {
   return salaryScore * moneyWeight + contentionScore * contentionWeight + ptScore * playingTimeWeight + marketScore * marketWeight + prestigeScore * prestigeWeight;
 }
 
+function estimateFairSalary(player) {
+  return Math.max(1200000, (player.overall - 45) * 900000);
+}
+
+function generateAIOffer(team, player, rng) {
+  if (_FA_DATA.league.getTeamRoster(team.id).length >= 15) return null;
+  const capSpace = _FA_DATA.data.CAP_CONSTANTS.SALARY_CAP - _FA_DATA.league.getTeamPayroll(team.id);
+  if (capSpace < 1200000) return null;
+  const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
+  if (interest < 40) return null;
+  const fair = estimateFairSalary(player);
+  const salary = Math.max(1200000, Math.min(capSpace, Math.round(fair * (0.85 + rng() * 0.3))));
+  const years = 1 + Math.floor(rng() * 4);
+  return { teamId: team.id, salary: salary, yearsRemaining: years };
+}
+
+function signPlayer(player, offer) {
+  const roster = _FA_DATA.league.getTeamRoster(offer.teamId);
+  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
+  let jersey = 0;
+  while (usedNumbers.has(jersey)) jersey++;
+  player.teamId = offer.teamId;
+  player.jerseyNumber = jersey;
+  player.contract = { salary: offer.salary, yearsRemaining: offer.yearsRemaining, playerOption: false, teamOption: false };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { playingTimeScore: playingTimeScore, scoreOffer: scoreOffer };
+  module.exports = {
+    playingTimeScore: playingTimeScore,
+    scoreOffer: scoreOffer,
+    estimateFairSalary: estimateFairSalary,
+    generateAIOffer: generateAIOffer,
+    signPlayer: signPlayer
+  };
 }
