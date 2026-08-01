@@ -260,4 +260,36 @@ function checkSimulateDate() {
 }
 
 checkSimulateDate();
+
+function checkSimControls() {
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const season = {
+    games: [
+      { id: 0, homeTeamId: 'BOS', awayTeamId: 'LAL', day: 0, played: false },
+      { id: 1, homeTeamId: 'BOS', awayTeamId: 'MIA', day: 3, played: false },
+      { id: 2, homeTeamId: 'DEN', awayTeamId: 'PHX', day: 1, played: false }
+    ]
+  };
+  const settings = { simEngine: 'boxscore' };
+  const rng = makeRng(11);
+
+  const nextGameDay = leagueModule.getNextGameDay(season, 'BOS', -1);
+  assert.strictEqual(nextGameDay, 0);
+
+  let currentDay = leagueModule.simulateNextDay(season, -1, settings, rng);
+  assert.strictEqual(currentDay, 0);
+  assert.strictEqual(season.games[0].played, true);
+
+  const nextBosGame = leagueModule.getNextGameDay(season, 'BOS', currentDay);
+  assert.strictEqual(nextBosGame, 3);
+
+  currentDay = leagueModule.simulateThroughDate(season, currentDay, nextBosGame, settings, rng);
+  assert.strictEqual(currentDay, 3);
+  assert.strictEqual(season.games[1].played, true, 'BOS game on day 3 should be simulated');
+  assert.strictEqual(season.games[2].played, true, 'DEN game on day 1 should also be simulated while passing through');
+
+  console.log('checkSimControls: OK');
+}
+
+checkSimControls();
 console.log('All sim validations passed');
