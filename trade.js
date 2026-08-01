@@ -43,11 +43,17 @@ function validateRosterSizes(proposal) {
   return errors;
 }
 
-function evaluateTrade(proposal, userTeamId) {
+// evaluateUserLeg: false (default) preserves today's behavior — the user's
+// own leg of a trade they built by hand is never second-guessed by the AI.
+// true is used by auto-generated proposals (autoGM.js's generateTradeOffer)
+// where the user's team is being decided FOR by the same logic every AI
+// team already uses, so its leg needs the same value/salary check as anyone
+// else's.
+function evaluateTrade(proposal, userTeamId, evaluateUserLeg) {
   const pickAssignments = proposal.pickAssignments || [];
   const legs = {};
   proposal.participants.forEach(function (teamId) {
-    if (teamId === userTeamId) {
+    if (teamId === userTeamId && !evaluateUserLeg) {
       legs[teamId] = { accepted: true, isUser: true };
       return;
     }
@@ -76,12 +82,12 @@ function executeTrade(proposal) {
   });
 }
 
-function proposeTrade(proposal, userTeamId) {
+function proposeTrade(proposal, userTeamId, evaluateUserLeg) {
   const rosterErrors = validateRosterSizes(proposal);
   if (rosterErrors.length > 0) {
     return { accepted: false, rosterErrors: rosterErrors, legs: {} };
   }
-  const evaluation = evaluateTrade(proposal, userTeamId);
+  const evaluation = evaluateTrade(proposal, userTeamId, evaluateUserLeg);
   if (evaluation.accepted) {
     executeTrade(proposal);
   }
