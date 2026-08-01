@@ -1,6 +1,6 @@
 var _DRAFT_DATA = (typeof require !== 'undefined')
-  ? { teams: require('./teams.js') }
-  : { teams: { TEAMS: TEAMS, getTeamById: getTeamById } };
+  ? { teams: require('./teams.js'), tradeEvaluator: require('./tradeEvaluator.js'), league: require('./league.js') }
+  : { teams: { TEAMS: TEAMS, getTeamById: getTeamById }, tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }, league: { getTeamRoster: getTeamRoster } };
 
 function weightedDrawWithoutReplacement(candidates, weightFn, count, rng) {
   let pool = candidates.map(function (c) { return { c: c, w: weightFn(c) }; });
@@ -59,11 +59,71 @@ function buildDraftOrder(bracket, rng) {
   return { firstRound: firstRound, secondRound: secondRound };
 }
 
+function selectAIPick(teamId, availableProspects) {
+  const team = _DRAFT_DATA.teams.getTeamById(teamId);
+  let best = availableProspects[0];
+  let bestValue = _DRAFT_DATA.tradeEvaluator.adjustedPlayerValue(best, team);
+  for (let i = 1; i < availableProspects.length; i++) {
+    const value = _DRAFT_DATA.tradeEvaluator.adjustedPlayerValue(availableProspects[i], team);
+    if (value > bestValue) { best = availableProspects[i]; bestValue = value; }
+  }
+  return best;
+}
+
+function rookieSalary(pickNumber) {
+  if (pickNumber <= 30) {
+    return Math.round(10000000 - (pickNumber - 1) * (7500000 / 29));
+  }
+  const secondRoundSlot = pickNumber - 30;
+  return Math.round(2200000 - (secondRoundSlot - 1) * (1100000 / 29));
+}
+
+function rookieYears(pickNumber) {
+  return pickNumber <= 30 ? 4 : 2;
+}
+
+function executePick(teamId, prospect, pickNumber) {
+  const roster = _DRAFT_DATA.league.getTeamRoster(teamId);
+  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
+  let jersey = 0;
+  while (usedNumbers.has(jersey)) jersey++;
+
+  prospect.teamId = teamId;
+  prospect.jerseyNumber = jersey;
+  prospect.yearsPro = 0;
+  prospect.contract = { salary: rookieSalary(pickNumber), yearsRemaining: rookieYears(pickNumber), playerOption: false, teamOption: false };
+}
+
+function runDraft(draftOrder, prospectPool) {
+  const results = [];
+  let available = prospectPool.slice();
+
+  function runRound(order, round, pickOffset) {
+    order.forEach(function (teamId, i) {
+      const pickNumber = pickOffset + i + 1;
+      const prospect = selectAIPick(teamId, available);
+      executePick(teamId, prospect, pickNumber);
+      available = available.filter(function (p) { return p.id !== prospect.id; });
+      results.push({ teamId: teamId, prospect: prospect, pickNumber: pickNumber, round: round });
+    });
+  }
+
+  runRound(draftOrder.firstRound, 1, 0);
+  runRound(draftOrder.secondRound, 2, 30);
+
+  return results;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     weightedDrawWithoutReplacement: weightedDrawWithoutReplacement,
     lotteryWeight: lotteryWeight,
     getPlayoffFinishOrder: getPlayoffFinishOrder,
-    buildDraftOrder: buildDraftOrder
+    buildDraftOrder: buildDraftOrder,
+    selectAIPick: selectAIPick,
+    rookieSalary: rookieSalary,
+    rookieYears: rookieYears,
+    executePick: executePick,
+    runDraft: runDraft
   };
 }

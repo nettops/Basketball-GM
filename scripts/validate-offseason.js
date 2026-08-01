@@ -153,4 +153,32 @@ function checkDraftOrder() {
 }
 
 checkDraftOrder();
+
+function checkRunDraft() {
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+  const prospectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+  const rng = makeRng(400);
+
+  const draftOrder = { firstRound: teamsModule.TEAMS.map(function (t) { return t.id; }), secondRound: teamsModule.TEAMS.slice().reverse().map(function (t) { return t.id; }) };
+  const pool = prospectsModule.generateProspectClass(rng, 60);
+
+  const results = draftModule.runDraft(draftOrder, pool);
+  assert.strictEqual(results.length, 60, 'a full draft should produce 60 picks');
+  const pickedIds = results.map(function (r) { return r.prospect.id; });
+  assert.strictEqual(new Set(pickedIds).size, 60, 'no prospect should be drafted twice');
+
+  results.forEach(function (r) {
+    assert.strictEqual(r.prospect.teamId, r.teamId, 'a drafted prospect must have its teamId set to the drafting team');
+    assert.ok(r.prospect.contract.salary > 0, 'a drafted prospect must have a rookie contract');
+    assert.ok(typeof r.prospect.jerseyNumber === 'number');
+  });
+
+  const firstPick = results[0];
+  const lastPick = results[59];
+  assert.ok(firstPick.prospect.contract.salary > lastPick.prospect.contract.salary, 'the #1 pick should earn more than the #60 pick');
+
+  console.log('checkRunDraft: OK');
+}
+
+checkRunDraft();
 console.log('All offseason validations passed');
