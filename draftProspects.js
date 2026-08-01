@@ -112,6 +112,23 @@ DRAFT_PROSPECTS_2026.push(mkProspect('Immanuel Sheppard', 19, 78, 200, 'SF', 62,
 DRAFT_PROSPECTS_2026.push(mkProspect('Elzie Harrington', 19, 83, 245, 'C', 62, 77, 'rim_protector', 0.40, 'Isaiah Hartenstein'));
 DRAFT_PROSPECTS_2026.push(mkProspect('Traylen Roberts', 19, 76, 190, 'SG', 61, 75, 'three_and_d', 0.42, 'Duncan Robinson'));
 
+// --- Real 2026 NBA Draft class, mock slots 31-45 (round 2, part 1) ---
+DRAFT_PROSPECTS_2026.push(mkProspect('Nique Clifford Jr.', 21, 78, 205, 'SG', 61, 72, 'three_and_d', 0.45, 'Josh Okogie'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Boogie Fland', 20, 74, 175, 'PG', 61, 74, 'playmaker', 0.42, 'Collin Sexton'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Tre Johnson Jr.', 20, 78, 195, 'SG', 60, 73, 'primary_scorer', 0.44, 'Norman Powell'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Milos Uzan', 21, 75, 190, 'PG', 60, 71, 'playmaker', 0.42, 'Monte Morris'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Chance Westry', 20, 78, 200, 'SG', 60, 72, 'slasher', 0.45, 'Jaden McDaniels'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Aday Mara', 20, 84, 245, 'C', 60, 74, 'rim_protector', 0.45, 'Walker Kessler'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Tounde Zogbo', 20, 82, 230, 'PF', 59, 71, 'rim_protector', 0.46, 'Jalen Smith'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Rob Wright III', 20, 74, 180, 'PG', 59, 71, 'playmaker', 0.45, 'Jose Alvarado'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Jayden Quaintance', 19, 82, 220, 'PF', 59, 76, 'rim_protector', 0.42, 'Jaren Jackson Jr.'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Alex Condon Jr.', 21, 82, 232, 'PF', 58, 69, 'rim_protector', 0.47, 'Kelly Olynyk'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Donovan Dent', 21, 73, 175, 'PG', 58, 70, 'playmaker', 0.46, 'Kris Dunn'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Elliot Cadeau', 20, 74, 185, 'PG', 58, 71, 'playmaker', 0.46, 'Delon Wright'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Nate Bittle', 21, 83, 235, 'C', 58, 70, 'rim_protector', 0.47, 'Brook Lopez'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Curtis Givens III', 20, 73, 175, 'PG', 57, 70, 'three_and_d', 0.47, 'Gary Payton II'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Isaiah Elohim', 19, 78, 195, 'SG', 57, 74, 'slasher', 0.46, 'Cam Thomas'));
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     mkProspect: mkProspect,
