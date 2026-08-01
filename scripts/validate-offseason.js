@@ -69,4 +69,30 @@ function checkDraftPickValue() {
 }
 
 checkDraftPickValue();
+
+function checkProspectGeneration() {
+  const prospectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+  const rng = makeRng(7);
+  const generatedClass = prospectsModule.generateProspectClass(rng, 60);
+
+  assert.strictEqual(generatedClass.length, 60);
+  const ids = generatedClass.map(function (p) { return p.id; });
+  assert.strictEqual(new Set(ids).size, 60, 'generated prospect ids must be unique');
+
+  generatedClass.forEach(function (p) {
+    assert.ok(p.overall >= dataModule.RATING_MIN && p.overall <= dataModule.RATING_MAX, 'generated prospect overall out of range');
+    assert.ok(p.potential >= p.overall, 'generated prospect potential must be >= overall');
+    dataModule.ATTRIBUTE_KEYS.forEach(function (k) {
+      assert.ok(p.attributes[k] >= dataModule.RATING_MIN && p.attributes[k] <= dataModule.RATING_MAX, 'generated prospect attribute ' + k + ' out of range');
+    });
+  });
+
+  const avgOverallTop10 = generatedClass.slice(0, 10).reduce(function (s, p) { return s + p.overall; }, 0) / 10;
+  const avgOverallBottom10 = generatedClass.slice(-10).reduce(function (s, p) { return s + p.overall; }, 0) / 10;
+  assert.ok(avgOverallTop10 > avgOverallBottom10, 'early-slot generated prospects should trend better than late-slot ones');
+
+  console.log('checkProspectGeneration: OK');
+}
+
+checkProspectGeneration();
 console.log('All offseason validations passed');
