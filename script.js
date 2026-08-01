@@ -16,8 +16,13 @@ const GameState = {
   }
 };
 
-function pushToFeed(text) {
-  GameState.feed.push({ day: GameState.season ? GameState.season.currentDay : null, leagueYear: GameState.leagueYear || 2026, text: text });
+function pushToFeed(text, dayIndex) {
+  // dayIndex is the day actually being processed by the onDayComplete
+  // callback this was called from — GameState.season.currentDay isn't
+  // updated until the ENTIRE simulateThroughDate call finishes, so during a
+  // multi-day bulk sim it's still whatever it was before the run started.
+  const day = dayIndex !== undefined ? dayIndex : (GameState.season ? GameState.season.currentDay : null);
+  GameState.feed.push({ day: day, leagueYear: GameState.leagueYear || 2026, text: text });
   if (GameState.feed.length > 200) GameState.feed.shift();
 }
 
@@ -71,16 +76,16 @@ function pushGameResultsToFeed(dayIndex, todaysGames) {
     if (GameState.playMode !== 'spectator' && !isUserGame) return;
     const home = getTeamById(g.homeTeamId);
     const away = getTeamById(g.awayTeamId);
-    pushToFeed(away.name + ' ' + g.awayScore + ', ' + home.name + ' ' + g.homeScore);
+    pushToFeed(away.name + ' ' + g.awayScore + ', ' + home.name + ' ' + g.homeScore, dayIndex);
   });
 }
 
-function pushInjuriesToFeed(newInjuries) {
+function pushInjuriesToFeed(newInjuries, dayIndex) {
   newInjuries.forEach(function (inj) {
     const player = getPlayerById(inj.playerId);
     const isUserPlayer = inj.teamId === GameState.userTeamId;
     if (GameState.playMode !== 'spectator' && !isUserPlayer && player.overall < 80) return;
-    pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity);
+    pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity, dayIndex);
     if (isUserPlayer && player.overall >= 80 && GameState.settings.pauseOn.keyInjury) {
       GameState.pauseRequested = true;
     }
@@ -101,7 +106,7 @@ function runWeeklyTradeGeneration(dayIndex) {
   if (GameState.automation.autoTrade) {
     executeTrade(offer.proposal);
     const partnerId = offer.proposal.participants.find(function (id) { return id !== team.id; });
-    pushToFeed('Auto-traded with ' + getTeamById(partnerId).name);
+    pushToFeed('Auto-traded with ' + getTeamById(partnerId).name, dayIndex);
   } else {
     GameState.tradeOffers.push(offer);
     if (GameState.settings.pauseOn.tradeOfferReceived) GameState.pauseRequested = true;
@@ -111,7 +116,7 @@ function runWeeklyTradeGeneration(dayIndex) {
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
-  pushInjuriesToFeed(newInjuries || []);
+  pushInjuriesToFeed(newInjuries || [], dayIndex);
   runWeeklyTradeGeneration(dayIndex);
 }
 
