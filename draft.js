@@ -128,6 +128,40 @@ function runDraft(draftOrder, prospectPool) {
   return results;
 }
 
+function startDraftSession(draftOrder, prospectPool) {
+  const picks = draftOrder.firstRound.map(function (teamId, i) { return { teamId: teamId, round: 1, pickNumber: i + 1 }; })
+    .concat(draftOrder.secondRound.map(function (teamId, i) { return { teamId: teamId, round: 2, pickNumber: 30 + i + 1 }; }));
+  return { picks: picks, index: 0, available: prospectPool.slice(), results: [] };
+}
+
+function currentPick(session) {
+  return session.index < session.picks.length ? session.picks[session.index] : null;
+}
+
+function resolveCurrentPick(session, prospect) {
+  const pick = currentPick(session);
+  if (!pick) return null;
+  executePick(pick.teamId, prospect, pick.pickNumber);
+  session.available = session.available.filter(function (p) { return p.id !== prospect.id; });
+  const result = { teamId: pick.teamId, prospect: prospect, pickNumber: pick.pickNumber, round: pick.round };
+  session.results.push(result);
+  session.index += 1;
+  return result;
+}
+
+// Advances through AI-controlled picks until either the draft ends or it's
+// the user's turn to choose by hand — mirrors the manual/automatic split
+// freeAgencyBidding.js already uses for FA bidding: no promises, driven step
+// by step by the UI (call this again after resolveCurrentPick to continue).
+function advanceDraftUntilUserTurn(session, userTeamId, autoDraftOn) {
+  let pick = currentPick(session);
+  while (pick && (autoDraftOn || pick.teamId !== userTeamId)) {
+    resolveCurrentPick(session, selectAIPick(pick.teamId, session.available));
+    pick = currentPick(session);
+  }
+  return session;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     weightedDrawWithoutReplacement: weightedDrawWithoutReplacement,
@@ -139,6 +173,10 @@ if (typeof module !== 'undefined' && module.exports) {
     rookieSalary: rookieSalary,
     rookieYears: rookieYears,
     executePick: executePick,
-    runDraft: runDraft
+    runDraft: runDraft,
+    startDraftSession: startDraftSession,
+    currentPick: currentPick,
+    resolveCurrentPick: resolveCurrentPick,
+    advanceDraftUntilUserTurn: advanceDraftUntilUserTurn
   };
 }
