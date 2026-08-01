@@ -60,7 +60,8 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
     status: { morale: opts.morale || 70, fatigue: 0, injury: null },
     attributes: makeAttributes(overall, archetype),
     hiddenTraits: [],
-    hiddenPersonality: {}
+    hiddenPersonality: {},
+    hiddenTendencies: {}
   };
 }
 

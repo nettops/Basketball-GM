@@ -189,6 +189,27 @@ function generateTendencies(player, rng) {
   };
 }
 
+// Cheap deterministic string->uint32 hash so ensureHiddenPlayerData can seed a
+// per-player rng purely from the player's stable id — no external rng needed,
+// and re-running it twice on the same roster always produces the same result.
+function hashId(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
+  }
+  return h >>> 0;
+}
+
+function ensureHiddenPlayerData(players) {
+  players.forEach(function (p) {
+    if (p.hiddenTraits && p.hiddenTraits.length > 0) return;
+    const playerRng = _TRAITS_DATA.rng.makeRng(hashId(p.id));
+    p.hiddenTraits = generateHiddenTraits(p, playerRng);
+    p.hiddenPersonality = generatePersonality(p, playerRng);
+    p.hiddenTendencies = generateTendencies(p, playerRng);
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     TRAIT_TAXONOMY: TRAIT_TAXONOMY,
@@ -197,6 +218,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getTraitBonus: getTraitBonus,
     generateHiddenTraits: generateHiddenTraits,
     generatePersonality: generatePersonality,
-    generateTendencies: generateTendencies
+    generateTendencies: generateTendencies,
+    ensureHiddenPlayerData: ensureHiddenPlayerData
   };
 }

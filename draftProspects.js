@@ -46,6 +46,7 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
     attributes: makeProspectAttributes(overall, archetype),
     hiddenTraits: [],
     hiddenPersonality: {},
+    hiddenTendencies: {},
     bustChance: bustChance,
     nbaComparison: nbaComparison
   };
