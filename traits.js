@@ -85,11 +85,118 @@ function getTraitBonus(player, system, stat) {
   }, 0);
 }
 
+function weightedSampleWithoutReplacement(items, weightFn, count, rng) {
+  const pool = items.slice();
+  const result = [];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const weights = pool.map(weightFn);
+    const total = weights.reduce(function (a, b) { return a + b; }, 0);
+    if (total <= 0) break;
+    let r = rng() * total;
+    let idx = 0;
+    for (; idx < weights.length; idx++) { r -= weights[idx]; if (r <= 0) break; }
+    if (idx >= pool.length) idx = pool.length - 1;
+    result.push(pool[idx]);
+    pool.splice(idx, 1);
+  }
+  return result;
+}
+
+function traitWeight(player, def) {
+  if (def.category === 'superstar') {
+    return (player.overall >= 85 || player.potential >= 88) ? 1 : 0;
+  }
+  let w = 1;
+  if (def.affinity) {
+    const attr = player.attributes[def.affinity] || 50;
+    w = Math.max(0.1, (attr - 40) / 20);
+  }
+  if (def.category === 'negative') {
+    const flawProxy = 100 - (player.attributes.workEthic + player.attributes.basketballIQ) / 2;
+    w *= Math.max(0.3, flawProxy / 50);
+  }
+  return w;
+}
+
+function pickPositiveTier(player, rng) {
+  const skill = (player.overall + player.potential) / 2;
+  const roll = rng() * 100 + (skill - 60);
+  if (roll < 30) return 'bronze';
+  if (roll < 55) return 'silver';
+  if (roll < 78) return 'gold';
+  if (roll < 92) return 'hof';
+  return 'legendary';
+}
+
+function pickNegativeTier(rng) {
+  const roll = rng() * 100;
+  if (roll < 45) return 'bronze';
+  if (roll < 75) return 'silver';
+  if (roll < 92) return 'gold';
+  if (roll < 98) return 'hof';
+  return 'legendary';
+}
+
+// Trait count scales with overall: ~1 at bench-level (45 OVR), ~2 at a solid
+// rotation player (60 OVR), up to 5-6 for a top-tier star (95+ OVR). Superstar
+// traits are only reachable via traitWeight's overall/potential gate above,
+// and even then a candidate has to win the weighted draw against everything else.
+function generateHiddenTraits(player, rng) {
+  const traitCount = Math.max(1, Math.min(6, Math.round((player.overall - 45) / 9)));
+  const candidates = TRAIT_TAXONOMY.filter(function (def) { return traitWeight(player, def) > 0; });
+  const selected = weightedSampleWithoutReplacement(candidates, function (def) { return traitWeight(player, def); }, Math.min(traitCount, candidates.length), rng);
+  return selected.map(function (def) {
+    const tier = def.category === 'negative' ? pickNegativeTier(rng) : pickPositiveTier(player, rng);
+    return { key: def.key, tier: tier };
+  });
+}
+
+function personalityAxis(base, spread, rng) {
+  return Math.max(0, Math.min(100, Math.round(base + (rng() - 0.5) * spread)));
+}
+
+function generatePersonality(player, rng) {
+  const a = player.attributes;
+  return {
+    loyalty: personalityAxis(50, 90, rng),
+    ambition: personalityAxis(50, 90, rng),
+    ego: personalityAxis(30 + player.overall * 0.4, 50, rng),
+    coachability: personalityAxis((a.workEthic + a.basketballIQ) / 2, 60, rng),
+    durabilityMindset: personalityAxis((a.strength + a.workEthic) / 2, 60, rng)
+  };
+}
+
+// Shot-mix values are an approximate normalized split (they won't sum to
+// exactly 100 after independent rounding — that's fine, they're a bias input
+// to simEngineBoxScore.js, not a precise possession accounting).
+function generateTendencies(player, rng) {
+  const a = player.attributes;
+  const rawThree = a.threePoint;
+  const rawMid = a.midRange;
+  const rawInside = a.insideScoring + a.postScoring / 2;
+  const shotTotal = rawThree + rawMid + rawInside;
+  return {
+    threeTendency: Math.round((rawThree / shotTotal) * 100),
+    midTendency: Math.round((rawMid / shotTotal) * 100),
+    insideTendency: Math.round((rawInside / shotTotal) * 100),
+    isoTendency: personalityAxis(a.ballHandling, 60, rng),
+    catchAndShootTendency: personalityAxis(a.threePoint, 60, rng),
+    postTendency: personalityAxis(a.postScoring, 60, rng),
+    transitionTendency: personalityAxis(a.speed, 60, rng),
+    clutchUsage: personalityAxis(a.basketballIQ, 70, rng),
+    gambleTendency: personalityAxis(a.steal, 70, rng),
+    reboundAggression: personalityAxis((a.offReb + a.defReb) / 2, 70, rng)
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     TRAIT_TAXONOMY: TRAIT_TAXONOMY,
     TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY,
     TRAIT_TIERS: TRAIT_TIERS,
-    getTraitBonus: getTraitBonus
+    getTraitBonus: getTraitBonus,
+    generateHiddenTraits: generateHiddenTraits,
+    generatePersonality: generatePersonality,
+    generateTendencies: generateTendencies
   };
 }
