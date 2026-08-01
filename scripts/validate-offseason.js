@@ -51,4 +51,22 @@ function checkProgression() {
 }
 
 checkProgression();
+
+function checkDraftPickValue() {
+  const pickValueModule = require(path.join(__dirname, '..', 'draftPickValue.js'));
+  assert.ok(pickValueModule.pickBaseValue(1) > pickValueModule.pickBaseValue(30), 'pick 1 must be worth more than pick 30');
+  assert.ok(pickValueModule.pickBaseValue(30) > pickValueModule.pickBaseValue(31), 'a late first-rounder must be worth more than an early second-rounder');
+  assert.ok(pickValueModule.pickBaseValue(31) > pickValueModule.pickBaseValue(60), 'pick 31 must be worth more than pick 60');
+
+  const rebuilding = { timeline: 'rebuilding' };
+  const winNow = { timeline: 'win-now' };
+  assert.ok(
+    pickValueModule.estimateFuturePickValue(15, rebuilding) > pickValueModule.estimateFuturePickValue(15, winNow),
+    'the same future pick should be worth more owned by a rebuilding team than a win-now team'
+  );
+
+  console.log('checkDraftPickValue: OK');
+}
+
+checkDraftPickValue();
 console.log('All offseason validations passed');
