@@ -65,4 +65,27 @@ function checkAdjustedPlayerValue() {
 }
 
 checkAdjustedPlayerValue();
+
+function checkEvaluateTeamLeg() {
+  const evaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
+
+  // A star-for-scrub swap should be rejected for the team giving up the star.
+  const bosRoster = leagueModule.getTeamRoster('BOS');
+  const star = bosRoster.slice().sort(function (a, b) { return b.overall - a.overall; })[0];
+  const scrub = bosRoster.slice().sort(function (a, b) { return a.overall - b.overall; })[0];
+
+  const badLeg = evaluatorModule.evaluateTeamLeg('BOS', [star.id], [scrub.id]);
+  assert.strictEqual(badLeg.accepted, false, 'giving up a star for a scrub should be rejected');
+  assert.ok(badLeg.suggestion, 'a rejected leg should include a suggestion');
+
+  // A player traded for themself is a trivial exact value/salary match.
+  const sortedByOverall = bosRoster.slice().sort(function (a, b) { return b.overall - a.overall; });
+  const mid1 = sortedByOverall[Math.floor(sortedByOverall.length / 2)];
+  const evenLeg = evaluatorModule.evaluateTeamLeg('BOS', [mid1.id], [mid1.id]);
+  assert.strictEqual(evenLeg.accepted, true, 'a player traded for themself must be an exact value/salary match');
+
+  console.log('checkEvaluateTeamLeg: OK');
+}
+
+checkEvaluateTeamLeg();
 console.log('All trade validations passed');

@@ -20,8 +20,8 @@ function basePlayerValue(player) {
 }
 
 var _EVAL_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js') }
-  : { league: { getTeamRoster: getTeamRoster } };
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js') }
+  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll }, teams: { getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS } };
 
 function directionMultiplier(player, timeline) {
   if (timeline === 'rebuilding') {
@@ -53,6 +53,46 @@ function adjustedPlayerValue(player, team) {
   return basePlayerValue(player) * directionMultiplier(player, team.timeline) * needMultiplier(player.position, team);
 }
 
+function generateSuggestion(team, outgoing, valueOk, salaryOk) {
+  if (!valueOk) {
+    const worst = outgoing.slice().sort(function (a, b) { return adjustedPlayerValue(b, team) - adjustedPlayerValue(a, team); })[0];
+    return worst
+      ? 'Not enough value coming back for ' + team.name + '. Consider removing ' + worst.name + ' from the outgoing side, or adding another player to the incoming side.'
+      : 'Not enough value coming back for ' + team.name + '. Add another player to the incoming side.';
+  }
+  if (!salaryOk) {
+    return 'Salaries do not match closely enough for ' + team.name + ' and it lacks the cap space to absorb the difference. Add a lower-salaried player to balance the deal.';
+  }
+  return null;
+}
+
+function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds) {
+  const team = _EVAL_DATA.teams.getTeamById(teamId);
+  const outgoing = outgoingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
+  const incoming = incomingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
+
+  const outgoingValue = outgoing.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0);
+  const incomingValue = incoming.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0);
+  const valueOk = incomingValue >= 0.9 * outgoingValue;
+
+  const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);
+  const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
+  const payroll = _EVAL_DATA.league.getTeamPayroll(teamId);
+  const capSpace = _EVAL_DATA.data.CAP_CONSTANTS.SALARY_CAP - payroll;
+  const salaryIncrease = incomingSalary - outgoingSalary;
+  const salaryOk = salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;
+
+  const accepted = valueOk && salaryOk;
+  return {
+    accepted: accepted,
+    valueOk: valueOk,
+    salaryOk: salaryOk,
+    outgoingValue: outgoingValue,
+    incomingValue: incomingValue,
+    suggestion: accepted ? null : generateSuggestion(team, outgoing, valueOk, salaryOk)
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     youthFactor: youthFactor,
@@ -60,6 +100,7 @@ if (typeof module !== 'undefined' && module.exports) {
     basePlayerValue: basePlayerValue,
     directionMultiplier: directionMultiplier,
     needMultiplier: needMultiplier,
-    adjustedPlayerValue: adjustedPlayerValue
+    adjustedPlayerValue: adjustedPlayerValue,
+    evaluateTeamLeg: evaluateTeamLeg
   };
 }
