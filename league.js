@@ -1,6 +1,22 @@
+// players.js/teams.js don't require league.js back, so these are safe to load eagerly.
 var _LEAGUE_DATA = (typeof require !== 'undefined')
   ? { players: require('./players-2026.js'), teams: require('./teams.js') }
-  : { players: { PLAYERS_2026: PLAYERS_2026 }, teams: { getTeamById: getTeamById } };
+  : { players: { PLAYERS_2026: PLAYERS_2026 }, teams: { getTeamById: getTeamById, TEAMS: TEAMS } };
+
+// simEngine.js/fatigue.js/injuries.js all require league.js back (for getTeamRoster),
+// so eagerly requiring them here at module-load time would deadlock on the cycle —
+// whichever side loads first gets an incomplete, still-empty module.exports from the
+// other. Resolving them lazily, only when simulateDate() actually runs, sidesteps the
+// cycle entirely: by call time every module has finished loading.
+function _simDeps() {
+  return (typeof require !== 'undefined')
+    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js') }
+    : {
+        simEngine: { getActiveEngine: getActiveEngine },
+        fatigue: { applyFatigueForGame: applyFatigueForGame, decayFatigueForRest: decayFatigueForRest },
+        injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame }
+      };
+}
 
 function getTeamRoster(teamId) {
   return _LEAGUE_DATA.players.PLAYERS_2026.filter(function (p) { return p.teamId === teamId; });
@@ -60,6 +76,50 @@ function getPlayerAverages(player) {
   };
 }
 
+function simulateDate(season, dayIndex, settings, rng) {
+  const deps = _simDeps();
+  const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
+  const playingTeamIds = {};
+
+  todaysGames.forEach(function (game) {
+    const engine = deps.simEngine.getActiveEngine(settings);
+    const result = engine.simulateGame(game.homeTeamId, game.awayTeamId, rng);
+
+    game.played = true;
+    game.homeScore = result.homeScore;
+    game.awayScore = result.awayScore;
+    game.boxScore = result.boxScore;
+
+    recordGameResult(game);
+
+    if (result.boxScore) {
+      Object.keys(result.boxScore).forEach(function (playerId) {
+        accumulateSeasonStats(playerId, result.boxScore[playerId]);
+      });
+      const minutesByPlayerId = {};
+      Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
+      const isBackToBackHome = season.games.some(function (g) { return g.played && (g.homeTeamId === game.homeTeamId || g.awayTeamId === game.homeTeamId) && g.day === dayIndex - 1; });
+      const isBackToBackAway = season.games.some(function (g) { return g.played && (g.homeTeamId === game.awayTeamId || g.awayTeamId === game.awayTeamId) && g.day === dayIndex - 1; });
+      deps.fatigue.applyFatigueForGame(game.homeTeamId, minutesByPlayerId, isBackToBackHome);
+      deps.fatigue.applyFatigueForGame(game.awayTeamId, minutesByPlayerId, isBackToBackAway);
+    }
+
+    [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {
+      deps.injuries.decrementInjuriesForTeamGame(teamId);
+      getTeamRoster(teamId).forEach(function (p) { deps.injuries.rollInjury(p, rng); });
+      playingTeamIds[teamId] = true;
+    });
+  });
+
+  _LEAGUE_DATA.teams.TEAMS.forEach(function (team) {
+    if (!playingTeamIds[team.id]) {
+      deps.fatigue.decayFatigueForRest(team.id, 1);
+    }
+  });
+
+  return todaysGames;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getTeamRoster: getTeamRoster,
@@ -67,6 +127,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getPlayerById: getPlayerById,
     recordGameResult: recordGameResult,
     accumulateSeasonStats: accumulateSeasonStats,
-    getPlayerAverages: getPlayerAverages
+    getPlayerAverages: getPlayerAverages,
+    simulateDate: simulateDate
   };
 }

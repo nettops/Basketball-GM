@@ -231,4 +231,33 @@ function checkStandingsAndStats() {
 }
 
 checkStandingsAndStats();
+
+function checkSimulateDate() {
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js')); // registers the boxscore engine as a side effect
+
+  const season = {
+    games: [
+      { id: 0, homeTeamId: 'BOS', awayTeamId: 'LAL', day: 0, played: false },
+      { id: 1, homeTeamId: 'MIA', awayTeamId: 'DEN', day: 0, played: false },
+      { id: 2, homeTeamId: 'CHI', awayTeamId: 'DAL', day: 5, played: false }
+    ]
+  };
+  const settings = { simEngine: 'boxscore' };
+  const rng = makeRng(55);
+
+  const simulatedToday = leagueModule.simulateDate(season, 0, settings, rng);
+  assert.strictEqual(simulatedToday.length, 2, 'should simulate both games scheduled on day 0');
+  assert.strictEqual(season.games[0].played, true);
+  assert.strictEqual(season.games[1].played, true);
+  assert.strictEqual(season.games[2].played, false, 'day 5 game should not simulate on day 0');
+  assert.ok(typeof season.games[0].homeScore === 'number');
+
+  const simulatedAgain = leagueModule.simulateDate(season, 0, settings, rng);
+  assert.strictEqual(simulatedAgain.length, 0, 'already-played games should not simulate again');
+
+  console.log('checkSimulateDate: OK');
+}
+
+checkSimulateDate();
 console.log('All sim validations passed');
