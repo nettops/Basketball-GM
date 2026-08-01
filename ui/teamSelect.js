@@ -1,5 +1,14 @@
-function renderTeamSelect(container, onSelect, onLoadGame) {
-  container.innerHTML = '<h1 style="text-align:center;">Choose Your Team</h1><div id="team-grid" style="text-align:center;"></div><div id="load-game-section"></div>';
+function renderTeamSelect(container, onSelect, onLoadGame, onSpectate) {
+  container.innerHTML =
+    '<h1 style="text-align:center;">Choose Your Team</h1>' +
+    '<p style="text-align:center;">' +
+    '<label><input type="radio" name="play-mode" value="gm" checked> GM (manual control)</label> ' +
+    '<label><input type="radio" name="play-mode" value="commissioner"> Commissioner (manual control + sandbox tools)</label>' +
+    '</p>' +
+    '<div id="team-grid" style="text-align:center;"></div>' +
+    '<p style="text-align:center;"><button id="spectate-league-btn">Spectate League (fully automated)</button></p>' +
+    '<div id="load-game-section"></div>';
+
   const grid = container.querySelector('#team-grid');
   TEAMS.forEach(function (team) {
     const card = document.createElement('div');
@@ -7,9 +16,15 @@ function renderTeamSelect(container, onSelect, onLoadGame) {
     card.style.backgroundColor = team.colors.primary;
     card.style.border = '3px solid ' + team.colors.secondary;
     card.textContent = team.name;
-    card.addEventListener('click', function () { onSelect(team.id); });
+    card.addEventListener('click', function () {
+      const mode = container.querySelector('input[name="play-mode"]:checked').value;
+      onSelect(team.id, mode);
+    });
     grid.appendChild(card);
   });
+
+  document.getElementById('spectate-league-btn').addEventListener('click', onSpectate);
+
   renderSaveList(container.querySelector('#load-game-section'), onLoadGame);
 }
 
