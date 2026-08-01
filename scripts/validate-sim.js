@@ -292,4 +292,28 @@ function checkSimControls() {
 }
 
 checkSimControls();
+
+function checkPlayoffSeeding() {
+  const playoffsModule = require(path.join(__dirname, '..', 'playoffs.js'));
+  teamsModule.TEAMS.forEach(function (t) { t.record = { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+  // Deterministic standings for this test: rank Eastern teams by array order.
+  const eastern = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Eastern'; });
+  eastern.forEach(function (t, i) { t.record.wins = eastern.length - i; });
+
+  const seeds = playoffsModule.getPlayoffSeeds('Eastern');
+  assert.strictEqual(seeds.length, 8);
+  assert.strictEqual(seeds[0].id, eastern[0].id, 'highest win total should be the 1-seed');
+
+  const bracket = playoffsModule.generateBracket();
+  assert.strictEqual(bracket.first.length, 8, '4 series per conference x 2 conferences');
+  assert.strictEqual(bracket.semis.length, 0, 'later rounds do not exist until earlier rounds complete');
+  bracket.first.forEach(function (series) {
+    assert.strictEqual(series.winsHigher, 0);
+    assert.strictEqual(series.complete, false);
+  });
+
+  console.log('checkPlayoffSeeding: OK');
+}
+
+checkPlayoffSeeding();
 console.log('All sim validations passed');
