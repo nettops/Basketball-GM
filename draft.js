@@ -47,16 +47,30 @@ function buildDraftOrder(bracket, rng) {
   const remainingLottery = lotteryTeams.filter(function (t) { return !top4Ids.has(t.id); })
     .sort(function (a, b) { return a.record.wins - b.record.wins; });
 
-  const firstRound = top4.map(function (t) { return t.id; })
+  const rawFirstRound = top4.map(function (t) { return t.id; })
     .concat(remainingLottery.map(function (t) { return t.id; }))
     .concat(getPlayoffFinishOrder(bracket));
 
   // Second round: straight reverse full-season record for all 30 teams, no lottery.
-  const secondRound = _DRAFT_DATA.teams.TEAMS.slice()
+  const rawSecondRound = _DRAFT_DATA.teams.TEAMS.slice()
     .sort(function (a, b) { return a.record.wins - b.record.wins; })
     .map(function (t) { return t.id; });
 
-  return { firstRound: firstRound, secondRound: secondRound };
+  return {
+    firstRound: remapForPickOwnership(rawFirstRound, 1),
+    secondRound: remapForPickOwnership(rawSecondRound, 2)
+  };
+}
+
+// Standings determine WHICH SLOT each original team's pick lands in; this
+// remaps each slot to whoever currently owns that original team's pick, so a
+// traded pick actually gets drafted by the team that acquired it.
+function remapForPickOwnership(order, round) {
+  return order.map(function (originalTeamId) {
+    const originalTeam = _DRAFT_DATA.teams.getTeamById(originalTeamId);
+    const pick = originalTeam.draftPicks.find(function (p) { return p.round === round; });
+    return pick ? pick.currentOwnerId : originalTeamId;
+  });
 }
 
 function selectAIPick(teamId, availableProspects) {
@@ -120,6 +134,7 @@ if (typeof module !== 'undefined' && module.exports) {
     lotteryWeight: lotteryWeight,
     getPlayoffFinishOrder: getPlayoffFinishOrder,
     buildDraftOrder: buildDraftOrder,
+    remapForPickOwnership: remapForPickOwnership,
     selectAIPick: selectAIPick,
     rookieSalary: rookieSalary,
     rookieYears: rookieYears,

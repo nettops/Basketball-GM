@@ -360,4 +360,24 @@ function checkBiddingWar() {
 }
 
 checkBiddingWar();
+
+function checkDraftOrderRespectsTradedPicks() {
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+
+  // Give SAS's next first-round pick to LAL, then confirm whichever slot the
+  // draft order would have given SAS instead goes to LAL.
+  const sasPick = teamsModule.getTeamById('SAS').draftPicks.find(function (p) { return p.round === 1; });
+  const originalOwner = sasPick.currentOwnerId;
+  sasPick.currentOwnerId = 'LAL';
+
+  const rawOrder = ['SAS', 'BOS', 'MIA']; // a fake raw order; only SAS's slot should remap
+  const remapped = draftModule.remapForPickOwnership(rawOrder, 1);
+  assert.deepStrictEqual(remapped, ['LAL', 'BOS', 'MIA'], 'SAS\'s slot should now belong to LAL, others unchanged');
+
+  sasPick.currentOwnerId = originalOwner; // restore
+
+  console.log('checkDraftOrderRespectsTradedPicks: OK');
+}
+
+checkDraftOrderRespectsTradedPicks();
 console.log('All offseason validations passed');
