@@ -208,7 +208,8 @@ function checkOffseasonThroughDraft() {
   const totalPlayersBefore = require(path.join(__dirname, '..', 'players-2026.js')).PLAYERS_2026.length;
 
   const rng = makeRng(600);
-  const result = transitionModule.runOffseasonThroughDraft(bracket, rng, true);
+  const prospectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+  const result = transitionModule.runOffseasonThroughDraft(bracket, rng, prospectsModule.DRAFT_PROSPECTS_2026);
 
   assert.ok(result.draftResults.length === 60, 'the first draft should use the real 60-prospect class');
 
@@ -389,9 +390,10 @@ function checkGenerateNewSeason() {
   player.seasonStats = { gamesPlayed: 82, points: 2000 };
 
   const rng = makeRng(1000);
-  const games = transitionModule.generateNewSeason(rng);
+  const result = transitionModule.generateNewSeason(rng);
 
-  assert.strictEqual(games.length, 1230, 'a new season should have exactly 1230 games');
+  assert.strictEqual(result.games.length, 1230, 'a new season should have exactly 1230 games');
+  assert.strictEqual(result.nextDraftClass.length, 60, 'generateNewSeason should also produce next year\'s 60-prospect draft class');
   assert.strictEqual(team.record.wins, 0, 'records should reset for the new season');
   assert.strictEqual(player.seasonStats, undefined, 'season stats should clear for the new season');
   assert.strictEqual(teamsModule.getTeamById('BOS').draftPicks.length, 2, 'every team should have fresh draft picks after generating a new season');
