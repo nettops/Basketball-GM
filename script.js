@@ -16,6 +16,34 @@ function initSeason() {
     };
   });
   GameState.season = { games: games, currentDay: -1 };
+
+  ensureHiddenPlayerData(PLAYERS_2026);
+  ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
+  GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
+  GameState.scouting = initScoutingState();
+}
+
+// Ticked once per real day advanced (see league.js's onDayComplete hook,
+// threaded through simulateNextDay/simulateThroughDate). Playoff series don't
+// advance GameState.season.currentDay, so scouting doesn't tick during
+// playoffs — a deliberate simplification, since rosters are effectively
+// locked in by then anyway.
+function tickScoutingForDay(dayIndex) {
+  if (!GameState.scouting) return;
+  const team = getTeamById(GameState.userTeamId);
+  const ownRosterIds = getTeamRoster(GameState.userTeamId).map(function (p) { return p.id; });
+  const todaysGames = GameState.season.games.filter(function (g) {
+    return g.day === dayIndex && g.played && (g.homeTeamId === GameState.userTeamId || g.awayTeamId === GameState.userTeamId);
+  });
+  let playedOpponentIds = [];
+  todaysGames.forEach(function (g) {
+    const oppId = g.homeTeamId === GameState.userTeamId ? g.awayTeamId : g.homeTeamId;
+    playedOpponentIds = playedOpponentIds.concat(getTeamRoster(oppId).map(function (p) { return p.id; }));
+  });
+  const prospectIds = (GameState.upcomingDraftClass || []).map(function (p) { return p.id; });
+  const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
+  const daysUntilDraft = lastDay - dayIndex;
+  tickPassiveScouting(GameState.scouting, team, dayIndex, ownRosterIds, playedOpponentIds, prospectIds, daysUntilDraft);
 }
 
 // Views with a real renderer this phase. Anything else in NAV_ITEMS (ui/nav.js)
@@ -37,17 +65,17 @@ function isRegularSeasonAndPlayoffsComplete() {
 }
 
 function handleAdvanceToOffseason() {
-  const isFirstDraft = GameState.leagueYear === undefined;
   GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
-  const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, isFirstDraft);
+  const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass);
   GameState.lastDraftResults = result.draftResults;
   GameState.offseasonStage = 'draft';
   renderView('draft');
 }
 
 function handleAdvanceToNewSeason() {
-  const games = generateNewSeason(GameState.rng);
-  GameState.season = { games: games, currentDay: -1 };
+  const result = generateNewSeason(GameState.rng);
+  GameState.season = { games: result.games, currentDay: -1 };
+  GameState.upcomingDraftClass = result.nextDraftClass;
   GameState.playoffBracket = null;
   GameState.offseasonStage = null;
   renderView('dashboard');

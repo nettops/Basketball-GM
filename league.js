@@ -76,7 +76,7 @@ function getPlayerAverages(player) {
   };
 }
 
-function simulateDate(season, dayIndex, settings, rng) {
+function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
   const deps = _simDeps();
   const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
   const playingTeamIds = {};
@@ -117,6 +117,7 @@ function simulateDate(season, dayIndex, settings, rng) {
     }
   });
 
+  if (onDayComplete) onDayComplete(dayIndex);
   return todaysGames;
 }
 
@@ -127,17 +128,17 @@ function getNextGameDay(season, teamId, afterDay) {
   return upcoming.length > 0 ? upcoming[0].day : null;
 }
 
-function simulateNextDay(season, currentDay, settings, rng) {
+function simulateNextDay(season, currentDay, settings, rng, onDayComplete) {
   const nextDay = currentDay + 1;
-  simulateDate(season, nextDay, settings, rng);
+  simulateDate(season, nextDay, settings, rng, onDayComplete);
   return nextDay;
 }
 
-function simulateThroughDate(season, currentDay, targetDay, settings, rng) {
+function simulateThroughDate(season, currentDay, targetDay, settings, rng, onDayComplete) {
   let day = currentDay;
   while (day < targetDay) {
     day += 1;
-    simulateDate(season, day, settings, rng);
+    simulateDate(season, day, settings, rng, onDayComplete);
   }
   return day;
 }

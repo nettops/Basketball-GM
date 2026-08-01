@@ -29,7 +29,7 @@ async function handleNextGame() {
     const targetDay = getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay);
     if (targetDay === null) return;
     await runWithDelay(container, function () {
-      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, targetDay, GameState.settings, GameState.rng);
+      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, targetDay, GameState.settings, GameState.rng, tickScoutingForDay);
     }, 1);
   } else {
     await runWithDelay(container, function () {
@@ -41,7 +41,7 @@ async function handleNextGame() {
 async function handleNextDay() {
   const container = document.getElementById('sim-controls');
   await runWithDelay(container, function () {
-    GameState.season.currentDay = simulateNextDay(GameState.season, GameState.season.currentDay, GameState.settings, GameState.rng);
+    GameState.season.currentDay = simulateNextDay(GameState.season, GameState.season.currentDay, GameState.settings, GameState.rng, tickScoutingForDay);
   }, 1);
 }
 
@@ -50,7 +50,7 @@ async function handleSimToEnd() {
   if (!GameState.playoffBracket) {
     const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
     await runWithDelay(container, function () {
-      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng);
+      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng, tickScoutingForDay);
     }, 1);
     if (isRegularSeasonComplete(GameState.season)) {
       GameState.playoffBracket = generateBracket();

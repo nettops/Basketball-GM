@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: 'trade', label: 'Trade Center' },
   { id: 'freeagency', label: 'Free Agency' },
   { id: 'draft', label: 'Draft' },
+  { id: 'scouting', label: 'Scouting' },
   { id: 'salarycap', label: 'Salary Cap' },
   { id: 'news', label: 'League News' },
   { id: 'awards', label: 'Awards' },
