@@ -3,7 +3,7 @@ function handlePropose(state, userTeamId, redraw) {
     document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
     return;
   }
-  const result = proposeTrade(state, userTeamId);
+  const result = proposeTrade(state, userTeamId, false); // the user always controls their own accept/reject when building a trade by hand
   const resultEl = document.getElementById('trade-result');
 
   if (result.rosterErrors.length > 0) {
@@ -15,6 +15,7 @@ function handlePropose(state, userTeamId, redraw) {
     resultEl.innerHTML = '<p>Trade accepted and executed!</p>';
     state.assignments = [];
     state.pickAssignments = [];
+    if (GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
     redraw();
     return;
   }
@@ -39,6 +40,25 @@ function renderTradeCenter(container, userTeamId) {
 
   function draw() {
     let html = '<h2>Trade Center</h2>';
+
+    if (GameState.playMode === 'spectator') {
+      html += '<p>Spectator mode — teams manage themselves.</p>';
+      container.innerHTML = html;
+      return;
+    }
+
+    if (GameState.tradeOffers.length > 0) {
+      html += '<h3>Trade Offers</h3><ul>';
+      GameState.tradeOffers.forEach(function (offer, i) {
+        const partnerId = offer.proposal.participants.find(function (id) { return id !== userTeamId; });
+        const partner = getTeamById(partnerId);
+        const mine = offer.proposal.assignments.find(function (a) { return a.fromTeamId === userTeamId; });
+        const theirs = offer.proposal.assignments.find(function (a) { return a.fromTeamId === partnerId; });
+        html += '<li>' + partner.name + ' offers ' + getPlayerById(theirs.playerId).name + ' for your ' + getPlayerById(mine.playerId).name +
+          ' <button data-accept-offer="' + i + '">Accept</button> <button data-decline-offer="' + i + '">Decline</button></li>';
+      });
+      html += '</ul>';
+    }
 
     html += '<h3>Participants</h3><select id="add-team-select"><option value="">Add a team...</option>';
     TEAMS.forEach(function (t) {
@@ -164,6 +184,21 @@ function renderTradeCenter(container, userTeamId) {
 
     document.getElementById('propose-trade-btn').addEventListener('click', function () {
       handlePropose(state, userTeamId, draw);
+    });
+
+    container.querySelectorAll('button[data-accept-offer]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const i = Number(btn.getAttribute('data-accept-offer'));
+        executeTrade(GameState.tradeOffers[i].proposal);
+        GameState.tradeOffers.splice(i, 1);
+        draw();
+      });
+    });
+    container.querySelectorAll('button[data-decline-offer]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        GameState.tradeOffers.splice(Number(btn.getAttribute('data-decline-offer')), 1);
+        draw();
+      });
     });
   }
 
