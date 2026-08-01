@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { id: 'scouting', label: 'Scouting' },
   { id: 'saveload', label: 'Save/Load' },
   { id: 'feed', label: 'Live Feed' },
+  { id: 'commissioner', label: 'Commissioner' },
   { id: 'salarycap', label: 'Salary Cap' },
   { id: 'news', label: 'League News' },
   { id: 'awards', label: 'Awards' },
@@ -16,9 +17,10 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Settings' }
 ];
 
-function renderNav(container, activeView, onNavigate) {
+function renderNav(container, activeView, onNavigate, playMode) {
   container.innerHTML = '';
   NAV_ITEMS.forEach(function (item) {
+    if (item.id === 'commissioner' && playMode !== 'commissioner') return;
     const btn = document.createElement('button');
     btn.textContent = item.label;
     if (item.id === activeView) {
