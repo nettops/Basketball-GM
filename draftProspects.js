@@ -78,6 +78,23 @@ function generateProspectClass(rng, count) {
 
 const DRAFT_PROSPECTS_2026 = [];
 
+// --- Real 2026 NBA Draft class, mock slots 1-15 ---
+DRAFT_PROSPECTS_2026.push(mkProspect('A.J. Dybantsa', 19, 80, 210, 'SF', 74, 92, 'primary_scorer', 0.20, 'Kevin Durant'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Cameron Boozer', 19, 81, 235, 'PF', 73, 89, 'primary_scorer', 0.20, 'Chris Bosh'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Darryn Peterson', 19, 77, 200, 'SG', 73, 90, 'primary_scorer', 0.22, 'Anthony Edwards'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Chris Cenac Jr.', 19, 82, 240, 'C', 71, 87, 'rim_protector', 0.25, 'Jarrett Allen'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Nate Ament', 19, 81, 195, 'SF', 71, 86, 'three_and_d', 0.25, 'Michael Porter Jr.'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Caleb Wilson', 19, 81, 210, 'PF', 70, 86, 'rim_protector', 0.27, 'Jaren Jackson Jr.'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Koa Peat', 19, 80, 235, 'PF', 70, 85, 'slasher', 0.27, 'Julius Randle'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Tounde Yessoufou', 19, 78, 215, 'SG', 69, 85, 'slasher', 0.28, 'Dyson Daniels'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Cayden Boozer', 19, 75, 190, 'PG', 68, 83, 'playmaker', 0.28, 'Tre Jones'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Jasper Johnson', 19, 76, 190, 'SG', 68, 84, 'three_and_d', 0.30, 'Malik Monk'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Alijah Arenas', 19, 77, 205, 'SG', 68, 85, 'primary_scorer', 0.32, 'Devin Booker'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Meleek Thomas', 19, 75, 185, 'PG', 67, 83, 'playmaker', 0.30, 'Ja Morant'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Isiah Harwell', 19, 78, 200, 'SG', 67, 82, 'slasher', 0.32, 'Jalen Green'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Braylon Mullins', 20, 77, 195, 'SG', 67, 81, 'three_and_d', 0.32, 'Grayson Allen'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Mikel Brown Jr.', 19, 74, 175, 'PG', 66, 82, 'playmaker', 0.33, 'Tyus Jones'));
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     mkProspect: mkProspect,
