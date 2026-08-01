@@ -29,6 +29,13 @@ function checkTeams() {
       assert.ok(t[field] >= 1 && t[field] <= 100, field + ' out of range on ' + t.id);
     });
     assert.ok(['rebuilding', 'retooling', 'win-now'].includes(t.timeline), 'invalid timeline on ' + t.id);
+    assert.ok(t.marketSize >= 1 && t.marketSize <= 100, 'invalid marketSize on ' + t.id);
+    assert.strictEqual(t.draftPicks.length, 2, t.id + ' should start with exactly 2 owned picks');
+    assert.deepStrictEqual(t.draftPicks.map(function (p) { return p.round; }), [1, 2]);
+    t.draftPicks.forEach(function (p) {
+      assert.strictEqual(p.originalTeamId, t.id);
+      assert.strictEqual(p.currentOwnerId, t.id);
+    });
     assert.strictEqual(t.record.wins, 0);
     assert.strictEqual(t.record.losses, 0);
   });
