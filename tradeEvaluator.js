@@ -66,13 +66,16 @@ function generateSuggestion(team, outgoing, valueOk, salaryOk) {
   return null;
 }
 
-function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds) {
+function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingPickValue, incomingPickValue) {
+  outgoingPickValue = outgoingPickValue || 0;
+  incomingPickValue = incomingPickValue || 0;
+
   const team = _EVAL_DATA.teams.getTeamById(teamId);
   const outgoing = outgoingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
   const incoming = incomingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
 
-  const outgoingValue = outgoing.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0);
-  const incomingValue = incoming.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0);
+  const outgoingValue = outgoing.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0) + outgoingPickValue;
+  const incomingValue = incoming.reduce(function (s, p) { return s + adjustedPlayerValue(p, team); }, 0) + incomingPickValue;
   const valueOk = incomingValue >= 0.9 * outgoingValue;
 
   const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);

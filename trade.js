@@ -1,6 +1,33 @@
 var _TRADE_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), tradeEvaluator: require('./tradeEvaluator.js') }
-  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById }, tradeEvaluator: { evaluateTeamLeg: evaluateTeamLeg } };
+  ? { league: require('./league.js'), tradeEvaluator: require('./tradeEvaluator.js'), teams: require('./teams.js'), draftPickValue: require('./draftPickValue.js') }
+  : {
+      league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById },
+      tradeEvaluator: { evaluateTeamLeg: evaluateTeamLeg },
+      teams: { getTeamById: getTeamById },
+      draftPickValue: { estimateFuturePickValue: estimateFuturePickValue }
+    };
+
+function findPick(teamId, round) {
+  const team = _TRADE_DATA.teams.getTeamById(teamId);
+  return team.draftPicks.find(function (p) { return p.round === round && p.currentOwnerId === teamId; });
+}
+
+// Value is based on the pick's ORIGINAL team's timeline (whose roster/record
+// the pick actually reflects), not whoever currently holds it going into this
+// trade — a pick doesn't get more or less valuable just by changing hands.
+function pickValueForLeg(teamId, pickAssignments) {
+  let outgoing = 0;
+  let incoming = 0;
+  pickAssignments.forEach(function (pa) {
+    const pick = findPick(pa.fromTeamId, pa.round);
+    if (!pick) return;
+    const originalTeam = _TRADE_DATA.teams.getTeamById(pick.originalTeamId);
+    const value = _TRADE_DATA.draftPickValue.estimateFuturePickValue(pa.round, originalTeam);
+    if (pa.fromTeamId === teamId) outgoing += value;
+    if (pa.toTeamId === teamId) incoming += value;
+  });
+  return { outgoing: outgoing, incoming: incoming };
+}
 
 function validateRosterSizes(proposal) {
   const errors = [];
@@ -17,6 +44,7 @@ function validateRosterSizes(proposal) {
 }
 
 function evaluateTrade(proposal, userTeamId) {
+  const pickAssignments = proposal.pickAssignments || [];
   const legs = {};
   proposal.participants.forEach(function (teamId) {
     if (teamId === userTeamId) {
@@ -25,7 +53,8 @@ function evaluateTrade(proposal, userTeamId) {
     }
     const outgoing = proposal.assignments.filter(function (a) { return a.fromTeamId === teamId; }).map(function (a) { return a.playerId; });
     const incoming = proposal.assignments.filter(function (a) { return a.toTeamId === teamId; }).map(function (a) { return a.playerId; });
-    legs[teamId] = _TRADE_DATA.tradeEvaluator.evaluateTeamLeg(teamId, outgoing, incoming);
+    const pickValue = pickValueForLeg(teamId, pickAssignments);
+    legs[teamId] = _TRADE_DATA.tradeEvaluator.evaluateTeamLeg(teamId, outgoing, incoming, pickValue.outgoing, pickValue.incoming);
   });
   const accepted = Object.keys(legs).every(function (teamId) { return legs[teamId].accepted; });
   return { accepted: accepted, legs: legs };
@@ -35,6 +64,10 @@ function executeTrade(proposal) {
   proposal.assignments.forEach(function (a) {
     const player = _TRADE_DATA.league.getPlayerById(a.playerId);
     player.teamId = a.toTeamId;
+  });
+  (proposal.pickAssignments || []).forEach(function (pa) {
+    const pick = findPick(pa.fromTeamId, pa.round);
+    if (pick) pick.currentOwnerId = pa.toTeamId;
   });
 }
 
@@ -55,6 +88,8 @@ if (typeof module !== 'undefined' && module.exports) {
     validateRosterSizes: validateRosterSizes,
     evaluateTrade: evaluateTrade,
     executeTrade: executeTrade,
-    proposeTrade: proposeTrade
+    proposeTrade: proposeTrade,
+    findPick: findPick,
+    pickValueForLeg: pickValueForLeg
   };
 }

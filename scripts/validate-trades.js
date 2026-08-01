@@ -152,4 +152,41 @@ function checkProposeTrade() {
 }
 
 checkProposeTrade();
+
+function checkPickTrading() {
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+
+  const proposal = {
+    participants: ['SAS', 'LAL'],
+    assignments: [],
+    pickAssignments: [
+      { round: 1, fromTeamId: 'SAS', toTeamId: 'LAL' }
+    ]
+  };
+
+  const beforeOwner = tradeModule.findPick('SAS', 1).currentOwnerId;
+  assert.strictEqual(beforeOwner, 'SAS');
+
+  const result = tradeModule.proposeTrade(proposal, 'LAL');
+  assert.strictEqual(typeof result.accepted, 'boolean');
+
+  if (result.accepted) {
+    assert.strictEqual(tradeModule.findPick('SAS', 1), undefined, 'the pick is no longer owned by SAS once traded');
+    const nowOwnedByLal = teamsModule.getTeamById('SAS').draftPicks.find(function (p) { return p.round === 1; });
+    assert.strictEqual(nowOwnedByLal.currentOwnerId, 'LAL');
+    // restore state for any later checks in this file
+    nowOwnedByLal.currentOwnerId = 'SAS';
+  }
+
+  // Existing 3-argument evaluateTeamLeg calls (Phase 3 style) must still work unchanged.
+  const evaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
+  const bosRoster = leagueModule.getTeamRoster('BOS');
+  const anyPlayer = bosRoster[0];
+  const backwardCompatLeg = evaluatorModule.evaluateTeamLeg('BOS', [anyPlayer.id], [anyPlayer.id]);
+  assert.strictEqual(backwardCompatLeg.accepted, true, 'a player traded for themself with no pick args must still be an exact match');
+
+  console.log('checkPickTrading: OK');
+}
+
+checkPickTrading();
 console.log('All trade validations passed');
