@@ -95,6 +95,23 @@ DRAFT_PROSPECTS_2026.push(mkProspect('Isiah Harwell', 19, 78, 200, 'SG', 67, 82,
 DRAFT_PROSPECTS_2026.push(mkProspect('Braylon Mullins', 20, 77, 195, 'SG', 67, 81, 'three_and_d', 0.32, 'Grayson Allen'));
 DRAFT_PROSPECTS_2026.push(mkProspect('Mikel Brown Jr.', 19, 74, 175, 'PG', 66, 82, 'playmaker', 0.33, 'Tyus Jones'));
 
+// --- Real 2026 NBA Draft class, mock slots 16-30 (round 1 complete) ---
+DRAFT_PROSPECTS_2026.push(mkProspect('Kiyan Anthony', 19, 77, 190, 'SG', 66, 80, 'primary_scorer', 0.35, 'Bradley Beal'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Labaron Philon', 20, 75, 195, 'PG', 67, 81, 'playmaker', 0.32, 'Marcus Smart'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Dwayne Aristode', 19, 80, 210, 'SF', 65, 80, 'three_and_d', 0.35, 'OG Anunoby'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Jerry Easter II', 19, 76, 185, 'SG', 65, 79, 'slasher', 0.36, 'Terrance Mann'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Sadiq White Jr.', 19, 79, 200, 'SF', 65, 79, 'three_and_d', 0.36, 'Kelly Oubre Jr.'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Karim Lopez', 19, 79, 205, 'SG', 64, 80, 'slasher', 0.38, 'Josh Giddey'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Christian Anderson', 20, 74, 180, 'PG', 64, 77, 'playmaker', 0.35, 'Immanuel Quickley'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Roman Hall', 19, 79, 205, 'SF', 64, 78, 'slasher', 0.37, 'Franz Wagner'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Jamier Jones', 19, 82, 225, 'PF', 63, 78, 'rim_protector', 0.38, 'Bobby Portis'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Sebastian Wilkins', 19, 76, 190, 'SG', 63, 77, 'three_and_d', 0.38, 'Josh Hart'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Vertrail Vaughns', 20, 77, 195, 'SG', 63, 76, 'primary_scorer', 0.40, 'Malik Beasley'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Bryson Stiggers', 19, 75, 180, 'PG', 62, 77, 'playmaker', 0.40, 'Payton Pritchard'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Immanuel Sheppard', 19, 78, 200, 'SF', 62, 76, 'slasher', 0.40, 'Herbert Jones'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Elzie Harrington', 19, 83, 245, 'C', 62, 77, 'rim_protector', 0.40, 'Isaiah Hartenstein'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Traylen Roberts', 19, 76, 190, 'SG', 61, 75, 'three_and_d', 0.42, 'Duncan Robinson'));
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     mkProspect: mkProspect,
