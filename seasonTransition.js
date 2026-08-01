@@ -33,7 +33,10 @@ function decrementContracts() {
 function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass) {
   // 1. Progression — mutate in place, then filter out retirees.
   const rosterPlayers = _TRANSITION_DATA.players.PLAYERS_2026.filter(function (p) { return p.teamId; });
-  rosterPlayers.forEach(function (p) { _TRANSITION_DATA.progression.progressPlayer(p, rng); });
+  rosterPlayers.forEach(function (p) {
+    const teammates = rosterPlayers.filter(function (tp) { return tp.teamId === p.teamId && tp.id !== p.id; });
+    _TRANSITION_DATA.progression.progressPlayer(p, rng, teammates);
+  });
 
   const retirees = rosterPlayers.filter(function (p) { return rollRetirement(p, rng); });
   retirees.forEach(function (p) {

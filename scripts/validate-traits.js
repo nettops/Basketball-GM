@@ -218,4 +218,55 @@ function checkWeightFunctionTraitBias() {
 
 checkWeightFunctionTraitBias();
 
+function checkProgressionTraitIntegration() {
+  const progressionModule = require(path.join(__dirname, '..', 'progression.js'));
+  const dataModule = require(path.join(__dirname, '..', 'data.js'));
+  const rng = makeRng(33);
+
+  function freshPlayer(overrides) {
+    const p = { age: 22, yearsPro: 2, overall: 70, potential: 80, attributes: {} };
+    dataModule.ATTRIBUTE_KEYS.forEach(function (k) { p.attributes[k] = 70; });
+    return Object.assign(p, overrides || {});
+  }
+
+  const coachable = freshPlayer({ hiddenTraits: [{ key: 'coachable', tier: 'legendary' }], hiddenPersonality: { coachability: 100 } });
+  const stubborn = freshPlayer({ hiddenTraits: [{ key: 'stubborn', tier: 'legendary' }], hiddenPersonality: { coachability: 0 } });
+
+  let coachableTotal = 0;
+  let stubbornTotal = 0;
+  const TRIALS = 200;
+  for (let i = 0; i < TRIALS; i++) {
+    const c = freshPlayer({ hiddenTraits: coachable.hiddenTraits, hiddenPersonality: coachable.hiddenPersonality });
+    const s = freshPlayer({ hiddenTraits: stubborn.hiddenTraits, hiddenPersonality: stubborn.hiddenPersonality });
+    const cBefore = c.overall;
+    const sBefore = s.overall;
+    progressionModule.progressPlayer(c, rng, []);
+    progressionModule.progressPlayer(s, rng, []);
+    coachableTotal += c.overall - cBefore;
+    stubbornTotal += s.overall - sBefore;
+  }
+  assert.ok(coachableTotal > stubbornTotal, 'a legendary-Coachable/high-coachability player should out-develop a legendary-Stubborn/low-coachability player on average');
+
+  // Mentor: a young player with a Mentor teammate should progress at least as
+  // well on average as one without, all else equal.
+  let withMentorTotal = 0;
+  let withoutMentorTotal = 0;
+  const mentorTeammate = freshPlayer({ hiddenTraits: [{ key: 'mentor', tier: 'legendary' }] });
+  for (let i = 0; i < TRIALS; i++) {
+    const young = freshPlayer({ age: 21, hiddenTraits: [], hiddenPersonality: undefined });
+    const youngAlone = freshPlayer({ age: 21, hiddenTraits: [], hiddenPersonality: undefined });
+    const beforeWith = young.overall;
+    const beforeWithout = youngAlone.overall;
+    progressionModule.progressPlayer(young, rng, [mentorTeammate]);
+    progressionModule.progressPlayer(youngAlone, rng, []);
+    withMentorTotal += young.overall - beforeWith;
+    withoutMentorTotal += youngAlone.overall - beforeWithout;
+  }
+  assert.ok(withMentorTotal >= withoutMentorTotal, 'a legendary Mentor teammate should never hurt a young player\'s average development');
+
+  console.log('checkProgressionTraitIntegration: OK');
+}
+
+checkProgressionTraitIntegration();
+
 console.log('All trait/scouting validations passed');

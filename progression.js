@@ -1,15 +1,17 @@
 var _PROGRESSION_DATA = (typeof require !== 'undefined')
-  ? require('./data.js')
-  : { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX };
+  ? { data: require('./data.js'), traits: require('./traits.js') }
+  : { data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX }, traits: { getTraitBonus: getTraitBonus } };
 
 function clampRating(v) {
-  return Math.max(_PROGRESSION_DATA.RATING_MIN, Math.min(_PROGRESSION_DATA.RATING_MAX, Math.round(v)));
+  return Math.max(_PROGRESSION_DATA.data.RATING_MIN, Math.min(_PROGRESSION_DATA.data.RATING_MAX, Math.round(v)));
 }
 
 // Formula-driven with randomness: young players trend toward their potential,
 // veterans decline, and a small league-wide breakout/bust roll adds emergent
-// variance on top of the age curve.
-function progressPlayer(player, rng) {
+// variance on top of the age curve. `teammates` (optional) lets a Mentor on
+// the roster nudge development for players 25 and under.
+function progressPlayer(player, rng, teammates) {
+  teammates = teammates || [];
   player.age += 1;
   player.yearsPro += 1;
   const potentialGap = player.potential - player.overall;
@@ -31,11 +33,24 @@ function progressPlayer(player, rng) {
     change -= 8;
   }
 
+  // Trait/personality modifiers. No coach entities exist yet, so Coachable/
+  // Stubborn apply unconditionally rather than being gated by coach fit.
+  change += _PROGRESSION_DATA.traits.getTraitBonus(player, 'progression', 'self') * 0.3;
+  if (player.hiddenPersonality && player.hiddenPersonality.coachability !== undefined) {
+    change += (player.hiddenPersonality.coachability - 50) / 50 * 1.5;
+  }
+  if (player.age <= 25) {
+    const mentorBonus = teammates.reduce(function (sum, tm) {
+      return sum + _PROGRESSION_DATA.traits.getTraitBonus(tm, 'progression', 'teammate');
+    }, 0);
+    change += Math.min(3, mentorBonus * 0.2);
+  }
+
   const newOverall = clampRating(player.overall + change);
   player.overall = newOverall;
   player.potential = Math.max(player.potential, newOverall); // invariant: potential >= overall
 
-  _PROGRESSION_DATA.ATTRIBUTE_KEYS.forEach(function (key) {
+  _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     player.attributes[key] = clampRating(player.attributes[key] + change);
   });
 }
