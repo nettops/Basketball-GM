@@ -1,3 +1,32 @@
+function renderCommissioner(container, userTeamId) {
+  if (GameState.playMode !== 'commissioner') {
+    container.innerHTML = '<p>Commissioner tools are only available in Commissioner mode.</p>';
+    return;
+  }
+
+  const state = {
+    editPlayerId: null,
+    deletePlayerId: null,
+    deleteConfirming: false,
+    expansionResult: null
+  };
+
+  function draw() {
+    let html = '<h2>Commissioner Tools</h2>';
+    html += renderEditPlayerSection(state);
+    html += renderDeletePlayerSection(state);
+    html += renderCreatePlayerSection(state);
+    html += renderExpansionTeamSection(state);
+    container.innerHTML = html;
+    wireEditPlayerEvents(state, draw);
+    wireDeletePlayerEvents(state, draw);
+    wireCreatePlayerEvents(state, draw);
+    wireExpansionTeamEvents(state, draw);
+  }
+
+  draw();
+}
+
 function renderEditPlayerSection(state) {
   let html = '<section><h3>Edit Player</h3>';
   html += '<select id="commissioner-edit-select"><option value="">Choose a player...</option>';
@@ -106,4 +135,79 @@ function wireDeletePlayerEvents(state, redraw) {
       redraw();
     });
   }
+}
+
+function renderCreatePlayerSection(state) {
+  let html = '<section><h3>Create Player</h3>';
+  html += '<label>Name <input type="text" id="commissioner-create-name"></label><br>';
+  html += '<label>Position <select id="commissioner-create-position">' + POSITIONS.map(function (pos) { return '<option value="' + pos + '">' + pos + '</option>'; }).join('') + '</select></label><br>';
+  html += '<label>Age <input type="number" id="commissioner-create-age" min="18" max="45" value="22"></label><br>';
+  html += '<label>Overall <input type="number" id="commissioner-create-overall" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="60"></label><br>';
+  html += '<label>Potential <input type="number" id="commissioner-create-potential" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="70"></label><br>';
+  html += '<label>Archetype <select id="commissioner-create-archetype">' + CREATE_PLAYER_ARCHETYPES.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('') + '</select></label><br>';
+  html += '<label>Team <select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select></label><br>';
+  html += '<button id="commissioner-create-btn">Create Player</button>';
+  html += ' <span id="commissioner-create-result"></span>';
+  html += '</section>';
+  return html;
+}
+
+function wireCreatePlayerEvents(state, redraw) {
+  const btn = document.getElementById('commissioner-create-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    const name = document.getElementById('commissioner-create-name').value.trim();
+    if (!name) {
+      document.getElementById('commissioner-create-result').textContent = 'Name is required.';
+      return;
+    }
+    const details = {
+      name: name,
+      position: document.getElementById('commissioner-create-position').value,
+      age: Number(document.getElementById('commissioner-create-age').value),
+      overall: Number(document.getElementById('commissioner-create-overall').value),
+      potential: Number(document.getElementById('commissioner-create-potential').value),
+      archetype: document.getElementById('commissioner-create-archetype').value,
+      teamId: document.getElementById('commissioner-create-team').value || null
+    };
+    const player = createPlayer(details);
+    document.getElementById('commissioner-create-result').textContent = 'Created ' + player.name + '.';
+    redraw();
+  });
+}
+
+function renderExpansionTeamSection(state) {
+  let html = '<section><h3>Create Expansion Team</h3>';
+  html += '<label>Name <input type="text" id="commissioner-expansion-name"></label><br>';
+  html += '<label>Primary Color <input type="color" id="commissioner-expansion-primary" value="#1D1160"></label><br>';
+  html += '<label>Secondary Color <input type="color" id="commissioner-expansion-secondary" value="#FFFFFF"></label><br>';
+  html += '<label>Market Size (1-100) <input type="number" id="commissioner-expansion-market" min="1" max="100" value="50"></label><br>';
+  html += '<button id="commissioner-expansion-btn">Create Expansion Team</button>';
+  if (state.expansionResult) {
+    html += '<p>Created ' + state.expansionResult.name + ' (' + state.expansionResult.conference + ' — ' + state.expansionResult.division + '), roster of ' +
+      getTeamRoster(state.expansionResult.id).length + ' via expansion draft. Takes effect next season.</p>';
+  }
+  html += '</section>';
+  return html;
+}
+
+function wireExpansionTeamEvents(state, redraw) {
+  const btn = document.getElementById('commissioner-expansion-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    const name = document.getElementById('commissioner-expansion-name').value.trim();
+    if (!name) return;
+    const details = {
+      name: name,
+      primaryColor: document.getElementById('commissioner-expansion-primary').value,
+      secondaryColor: document.getElementById('commissioner-expansion-secondary').value,
+      marketSize: Number(document.getElementById('commissioner-expansion-market').value)
+    };
+    state.expansionResult = createExpansionTeam(details, GameState.rng);
+    redraw();
+  });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { renderCommissioner: renderCommissioner };
 }
