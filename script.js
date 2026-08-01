@@ -1,7 +1,22 @@
 const GameState = {
   userTeamId: null,
-  currentView: 'dashboard'
+  currentView: 'dashboard',
+  season: null,
+  playoffBracket: null,
+  settings: { simEngine: 'boxscore', simSpeed: 'normal' }
 };
+
+function initSeason() {
+  const rng = makeRng(Date.now());
+  const games = generateSeasonGames(rng, TEAMS).map(function (g) {
+    return {
+      id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day,
+      played: false, homeScore: null, awayScore: null, boxScore: null,
+      isPlayoff: false, seriesId: null
+    };
+  });
+  GameState.season = { games: games, currentDay: -1 };
+}
 
 // Views with a real renderer this phase. Anything else in NAV_ITEMS (ui/nav.js)
 // falls back to the placeholder view.
@@ -29,6 +44,7 @@ function renderView(viewName) {
 
 function selectTeam(teamId) {
   GameState.userTeamId = teamId;
+  initSeason();
   document.getElementById('team-select-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';
   renderView('dashboard');
