@@ -174,4 +174,34 @@ function checkFatigue() {
 }
 
 checkFatigue();
+
+function checkInjuries() {
+  const injuriesModule = require(path.join(__dirname, '..', 'injuries.js'));
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const roster = leagueModule.getTeamRoster('BOS');
+  const player = roster[0];
+  player.status.injury = null;
+  player.status.fatigue = 0;
+
+  const rng = makeRng(123);
+  let injuredCount = 0;
+  const TRIALS = 2000;
+  for (let i = 0; i < TRIALS; i++) {
+    player.status.injury = null;
+    injuriesModule.rollInjury(player, rng);
+    if (player.status.injury) injuredCount++;
+  }
+  const rate = injuredCount / TRIALS;
+  assert.ok(rate > 0.001 && rate < 0.02, 'injury rate should be low but nonzero, got ' + rate);
+
+  player.status.injury = { severity: 'Two Weeks', gamesRemaining: 2 };
+  injuriesModule.decrementInjuriesForTeamGame('BOS');
+  assert.strictEqual(player.status.injury.gamesRemaining, 1);
+  injuriesModule.decrementInjuriesForTeamGame('BOS');
+  assert.strictEqual(player.status.injury, null, 'injury should clear once gamesRemaining hits 0');
+
+  console.log('checkInjuries: OK');
+}
+
+checkInjuries();
 console.log('All sim validations passed');
