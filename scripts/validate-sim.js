@@ -204,4 +204,31 @@ function checkInjuries() {
 }
 
 checkInjuries();
+
+function checkStandingsAndStats() {
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const team = teamsModule.getTeamById('BOS');
+  const oppTeam = teamsModule.getTeamById('LAL');
+  team.record = { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 };
+  oppTeam.record = { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 };
+
+  leagueModule.recordGameResult({ homeTeamId: 'BOS', awayTeamId: 'LAL', homeScore: 110, awayScore: 100 });
+  assert.strictEqual(team.record.wins, 1);
+  assert.strictEqual(oppTeam.record.losses, 1);
+  assert.strictEqual(team.record.pointsFor, 110);
+  assert.strictEqual(oppTeam.record.pointsAgainst, 110);
+
+  const player = leagueModule.getTeamRoster('BOS')[0];
+  player.seasonStats = undefined;
+  leagueModule.accumulateSeasonStats(player.id, { points: 20, rebounds: 5, assists: 3, steals: 1, blocks: 0, fgm: 8, fga: 15, tpm: 2, tpa: 5, ftm: 2, fta: 2, minutes: 32 });
+  leagueModule.accumulateSeasonStats(player.id, { points: 30, rebounds: 7, assists: 5, steals: 2, blocks: 1, fgm: 11, fga: 20, tpm: 3, tpa: 6, ftm: 5, fta: 6, minutes: 36 });
+  const avg = leagueModule.getPlayerAverages(player);
+  assert.strictEqual(player.seasonStats.gamesPlayed, 2);
+  assert.strictEqual(avg.ppg, 25);
+  assert.strictEqual(player.seasonStats.points, 50);
+
+  console.log('checkStandingsAndStats: OK');
+}
+
+checkStandingsAndStats();
 console.log('All sim validations passed');
