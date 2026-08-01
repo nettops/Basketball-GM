@@ -28,6 +28,7 @@ function checkTeams() {
     ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry'].forEach(function (field) {
       assert.ok(t[field] >= 1 && t[field] <= 100, field + ' out of range on ' + t.id);
     });
+    assert.ok(['rebuilding', 'retooling', 'win-now'].includes(t.timeline), 'invalid timeline on ' + t.id);
     assert.strictEqual(t.record.wins, 0);
     assert.strictEqual(t.record.losses, 0);
   });
