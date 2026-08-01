@@ -1,10 +1,11 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS },
-      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
+      rosterMoves: { getFreeAgents: getFreeAgents }
     };
 
 // Higher score = more playing-time opportunity: wide open at the position,
@@ -66,12 +67,41 @@ function signPlayer(player, offer) {
   player.contract = { salary: offer.salary, yearsRemaining: offer.yearsRemaining, playerOption: false, teamOption: false };
 }
 
+function resolveFreeAgentSilently(player, rng) {
+  const offers = _FA_DATA.teams.TEAMS.map(function (t) { return generateAIOffer(t, player, rng); }).filter(Boolean);
+  if (offers.length === 0) return null;
+  let best = offers[0];
+  let bestScore = scoreOffer(player, _FA_DATA.teams.getTeamById(best.teamId), best);
+  for (let i = 1; i < offers.length; i++) {
+    const score = scoreOffer(player, _FA_DATA.teams.getTeamById(offers[i].teamId), offers[i]);
+    if (score > bestScore) { best = offers[i]; bestScore = score; }
+  }
+  signPlayer(player, best);
+  return best;
+}
+
+// Resolves every current free agent, best (highest base value) first — so
+// stars sign before the depth-piece market resolves against whatever cap
+// space is left, same as how real free agency tends to play out.
+function runFreeAgencySilently(rng) {
+  const pool = _FA_DATA.rosterMoves.getFreeAgents().slice()
+    .sort(function (a, b) { return _FA_DATA.tradeEvaluator.basePlayerValue(b) - _FA_DATA.tradeEvaluator.basePlayerValue(a); });
+  const results = [];
+  pool.forEach(function (player) {
+    const offer = resolveFreeAgentSilently(player, rng);
+    if (offer) results.push({ playerId: player.id, teamId: offer.teamId, salary: offer.salary });
+  });
+  return results;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     playingTimeScore: playingTimeScore,
     scoreOffer: scoreOffer,
     estimateFairSalary: estimateFairSalary,
     generateAIOffer: generateAIOffer,
-    signPlayer: signPlayer
+    signPlayer: signPlayer,
+    resolveFreeAgentSilently: resolveFreeAgentSilently,
+    runFreeAgencySilently: runFreeAgencySilently
   };
 }

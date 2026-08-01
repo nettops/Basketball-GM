@@ -288,4 +288,34 @@ function checkAIOfferAndSigning() {
 }
 
 checkAIOfferAndSigning();
+
+function checkSilentFreeAgencyResolution() {
+  const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgency.js'));
+  const rosterMovesModule = require(path.join(__dirname, '..', 'rosterMoves.js'));
+  const rng = makeRng(800);
+
+  // Manufacture a small, deterministic free agent pool via waiving.
+  const roster = leagueModule.getTeamRoster('BOS');
+  const waivedIds = [];
+  for (let i = 0; i < 2 && roster.length - waivedIds.length > 12; i++) {
+    const target = roster[i];
+    rosterMovesModule.waivePlayer(target.id);
+    waivedIds.push(target.id);
+  }
+
+  const before = rosterMovesModule.getFreeAgents().length;
+  const results = freeAgencyModule.runFreeAgencySilently(rng);
+  const after = rosterMovesModule.getFreeAgents().length;
+
+  assert.ok(results.length >= 0, 'should return an array of signings (possibly empty if no team had room)');
+  assert.ok(after <= before, 'free agent pool should shrink or stay the same, never grow, after resolution');
+  results.forEach(function (r) {
+    const player = leagueModule.getPlayerById(r.playerId);
+    assert.strictEqual(player.teamId, r.teamId, 'a resolved signing must actually be reflected on the player record');
+  });
+
+  console.log('checkSilentFreeAgencyResolution: OK (' + results.length + ' signed of ' + before + ' free agents)');
+}
+
+checkSilentFreeAgencyResolution();
 console.log('All offseason validations passed');
