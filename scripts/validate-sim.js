@@ -98,4 +98,22 @@ function checkEngineRegistry() {
 }
 
 checkEngineRegistry();
+
+function checkScoreSimulation() {
+  const engineModule = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const rng = makeRng(99);
+  let homeWins = 0;
+  const TRIALS = 500;
+  for (let i = 0; i < TRIALS; i++) {
+    const result = engineModule.simulateScore(95, 80, rng); // clear home rating edge
+    assert.ok(result.homeScore >= 70 && result.homeScore <= 160, 'home score out of realistic range');
+    assert.ok(result.awayScore >= 70 && result.awayScore <= 160, 'away score out of realistic range');
+    assert.notStrictEqual(result.homeScore, result.awayScore, 'games must not end in a tie');
+    if (result.homeScore > result.awayScore) homeWins++;
+  }
+  assert.ok(homeWins / TRIALS > 0.7, 'a 15-point rating edge plus home court should win clearly more than 70% of the time, got ' + (homeWins / TRIALS));
+  console.log('checkScoreSimulation: OK');
+}
+
+checkScoreSimulation();
 console.log('All sim validations passed');
