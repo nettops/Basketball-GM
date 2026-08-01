@@ -22,12 +22,9 @@ const CAP_CONSTANTS = {
 const RATING_MIN = 25;
 const RATING_MAX = 99;
 
-// Populated in Phase 5 (hidden traits & personality system). Empty here by design.
-const TRAIT_TAXONOMY_STUB = [];
-
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ATTRIBUTE_KEYS, POSITIONS, CONFERENCES, DIVISIONS,
-    CAP_CONSTANTS, RATING_MIN, RATING_MAX, TRAIT_TAXONOMY_STUB
+    CAP_CONSTANTS, RATING_MIN, RATING_MAX
   };
 }
