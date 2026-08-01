@@ -372,6 +372,79 @@ PLAYERS_2026.push(mkPlayer('UTA', 'John Collins', 28, 81, 226, 'PF', 20, 8, 73, 
 PLAYERS_2026.push(mkPlayer('UTA', 'Kyle Filipowski', 21, 83, 248, 'C', 22, 1, 68, 78, 'stretch_big', 3200000, 2));
 PLAYERS_2026.push(mkPlayer('UTA', 'Cody Williams', 21, 80, 190, 'SF', 12, 1, 65, 78, 'raw_prospect', 4900000, 3));
 
+// --- Pacific Division ---
+
+// Golden State Warriors
+PLAYERS_2026.push(mkPlayer('GSW', 'Stephen Curry', 37, 75, 185, 'PG', 30, 16, 92, 92, 'primary_scorer', 55000000, 1));
+PLAYERS_2026.push(mkPlayer('GSW', 'Jimmy Butler', 36, 79, 230, 'SF', 10, 14, 87, 87, 'slasher', 48000000, 1));
+PLAYERS_2026.push(mkPlayer('GSW', 'Draymond Green', 35, 79, 230, 'PF', 23, 13, 79, 79, 'playmaker', 24000000, 2));
+PLAYERS_2026.push(mkPlayer('GSW', 'Jonathan Kuminga', 23, 80, 210, 'PF', 0, 3, 79, 87, 'slasher', 7900000, 1));
+PLAYERS_2026.push(mkPlayer('GSW', 'Brandin Podziemski', 22, 76, 205, 'SG', 2, 2, 76, 83, 'playmaker', 3300000, 2));
+PLAYERS_2026.push(mkPlayer('GSW', 'Moses Moody', 23, 78, 215, 'SG', 4, 4, 76, 81, 'three_and_d', 12700000, 3));
+PLAYERS_2026.push(mkPlayer('GSW', 'Buddy Hield', 32, 76, 214, 'SG', 7, 9, 76, 76, 'three_and_d', 8200000, 1));
+PLAYERS_2026.push(mkPlayer('GSW', 'Quinten Post', 23, 84, 245, 'C', 21, 1, 68, 76, 'stretch_big', 1900000, 2));
+PLAYERS_2026.push(mkPlayer('GSW', 'Gui Santos', 23, 79, 200, 'SF', 20, 2, 65, 72, 'slasher', 1900000, 2));
+PLAYERS_2026.push(mkPlayer('GSW', 'De\'Anthony Melton', 27, 74, 200, 'PG', 8, 6, 73, 74, 'three_and_d', 8000000, 1));
+PLAYERS_2026.push(mkPlayer('GSW', 'Will Richard', 22, 76, 195, 'SG', 43, 0, 65, 74, 'three_and_d', 1900000, 3));
+PLAYERS_2026.push(mkPlayer('GSW', 'Pat Spencer', 27, 74, 185, 'PG', 55, 1, 62, 65, 'playmaker', 1900000, 1));
+
+// LA Clippers
+PLAYERS_2026.push(mkPlayer('LAC', 'Kawhi Leonard', 34, 79, 225, 'SF', 2, 13, 87, 87, 'three_and_d', 49000000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'James Harden', 36, 77, 220, 'PG', 1, 16, 85, 85, 'playmaker', 36000000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Ivica Zubac', 28, 84, 240, 'C', 40, 8, 82, 82, 'rim_protector', 21000000, 3));
+PLAYERS_2026.push(mkPlayer('LAC', 'Brook Lopez', 37, 84, 282, 'C', 11, 17, 74, 74, 'rim_protector', 6900000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Derrick Jones Jr.', 28, 78, 210, 'SF', 55, 6, 76, 76, 'three_and_d', 12500000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Kris Dunn', 31, 76, 205, 'PG', 3, 9, 74, 74, 'three_and_d', 5300000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Bogdan Bogdanovic', 33, 78, 225, 'SG', 8, 9, 75, 75, 'three_and_d', 6900000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Nicolas Batum', 36, 80, 230, 'SF', 33, 17, 68, 68, 'veteran_glue', 3300000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Chris Paul', 40, 73, 175, 'PG', 21, 20, 70, 70, 'playmaker', 3600000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Kobe Sanders', 24, 79, 190, 'SG', 20, 0, 64, 74, 'raw_prospect', 2000000, 2));
+PLAYERS_2026.push(mkPlayer('LAC', 'Brandon Boston Jr.', 24, 78, 188, 'SG', 25, 3, 68, 74, 'slasher', 2100000, 1));
+PLAYERS_2026.push(mkPlayer('LAC', 'Yanic Konan Niederhauser', 24, 84, 245, 'C', 26, 0, 63, 72, 'rim_protector', 1900000, 2));
+
+// Los Angeles Lakers
+PLAYERS_2026.push(mkPlayer('LAL', 'Luka Doncic', 26, 79, 230, 'PG', 77, 7, 96, 96, 'playmaker', 43000000, 3));
+PLAYERS_2026.push(mkPlayer('LAL', 'LeBron James', 41, 81, 250, 'SF', 23, 22, 91, 91, 'playmaker', 52000000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Austin Reaves', 27, 77, 197, 'SG', 15, 4, 84, 86, 'playmaker', 14000000, 2));
+PLAYERS_2026.push(mkPlayer('LAL', 'Deandre Ayton', 27, 83, 250, 'C', 5, 7, 79, 80, 'stretch_big', 16600000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Rui Hachimura', 27, 80, 230, 'PF', 28, 6, 78, 78, 'slasher', 17000000, 3));
+PLAYERS_2026.push(mkPlayer('LAL', 'Marcus Smart', 31, 76, 220, 'PG', 36, 11, 76, 76, 'three_and_d', 12000000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Jarred Vanderbilt', 26, 79, 214, 'PF', 2, 7, 73, 74, 'rim_protector', 10700000, 2));
+PLAYERS_2026.push(mkPlayer('LAL', 'Gabe Vincent', 29, 74, 200, 'PG', 7, 6, 72, 72, 'three_and_d', 7600000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Jaxson Hayes', 25, 83, 220, 'C', 11, 6, 71, 74, 'rim_protector', 4300000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Jake LaRavia', 23, 79, 235, 'SF', 12, 3, 71, 78, 'slasher', 6200000, 3));
+PLAYERS_2026.push(mkPlayer('LAL', 'Maxi Kleber', 33, 82, 240, 'PF', 42, 8, 68, 68, 'stretch_big', 3300000, 1));
+PLAYERS_2026.push(mkPlayer('LAL', 'Dalton Knecht', 24, 78, 213, 'SG', 4, 1, 73, 80, 'three_and_d', 3300000, 2));
+PLAYERS_2026.push(mkPlayer('LAL', 'Bronny James', 21, 75, 210, 'PG', 9, 1, 64, 72, 'slasher', 2100000, 2));
+
+// Phoenix Suns
+PLAYERS_2026.push(mkPlayer('PHX', 'Devin Booker', 29, 77, 206, 'SG', 1, 10, 90, 90, 'primary_scorer', 49000000, 3));
+PLAYERS_2026.push(mkPlayer('PHX', 'Jalen Green', 23, 77, 186, 'SG', 23, 4, 80, 85, 'slasher', 30000000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Dillon Brooks', 29, 77, 225, 'SF', 9, 8, 78, 78, 'three_and_d', 22500000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Mark Williams', 24, 84, 242, 'C', 5, 3, 78, 84, 'rim_protector', 8900000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Grayson Allen', 30, 76, 198, 'SG', 8, 7, 78, 78, 'three_and_d', 15800000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Royce O\'Neale', 32, 78, 226, 'SF', 44, 9, 74, 74, 'three_and_d', 9600000, 1));
+PLAYERS_2026.push(mkPlayer('PHX', 'Collin Gillespie', 25, 74, 185, 'PG', 2, 2, 70, 74, 'playmaker', 2100000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Ryan Dunn', 21, 79, 210, 'SF', 28, 1, 71, 82, 'three_and_d', 3200000, 3));
+PLAYERS_2026.push(mkPlayer('PHX', 'Oso Ighodaro', 22, 82, 235, 'C', 25, 1, 68, 76, 'rim_protector', 2200000, 2));
+PLAYERS_2026.push(mkPlayer('PHX', 'Jordan Goodwin', 26, 75, 195, 'PG', 3, 3, 68, 71, 'slasher', 2100000, 1));
+PLAYERS_2026.push(mkPlayer('PHX', 'Rasheer Fleming', 21, 81, 225, 'PF', 32, 0, 65, 78, 'raw_prospect', 3800000, 4));
+PLAYERS_2026.push(mkPlayer('PHX', 'Koby Brea', 23, 78, 200, 'SG', 4, 0, 64, 71, 'three_and_d', 1900000, 2));
+
+// Sacramento Kings
+PLAYERS_2026.push(mkPlayer('SAC', 'Zach LaVine', 30, 77, 200, 'SG', 8, 11, 82, 82, 'primary_scorer', 43000000, 2));
+PLAYERS_2026.push(mkPlayer('SAC', 'Domantas Sabonis', 29, 83, 240, 'C', 10, 9, 87, 87, 'rim_protector', 42000000, 3));
+PLAYERS_2026.push(mkPlayer('SAC', 'Malik Monk', 27, 75, 200, 'SG', 0, 8, 79, 79, 'primary_scorer', 19800000, 2));
+PLAYERS_2026.push(mkPlayer('SAC', 'Keegan Murray', 25, 80, 224, 'SF', 13, 3, 78, 82, 'three_and_d', 7300000, 2));
+PLAYERS_2026.push(mkPlayer('SAC', 'Devin Carter', 23, 75, 195, 'SG', 2, 1, 71, 82, 'three_and_d', 4400000, 3));
+PLAYERS_2026.push(mkPlayer('SAC', 'Maxime Raynaud', 22, 84, 235, 'C', 30, 0, 66, 78, 'stretch_big', 2000000, 3));
+PLAYERS_2026.push(mkPlayer('SAC', 'Nique Clifford', 23, 78, 210, 'SG', 5, 0, 65, 76, 'slasher', 2000000, 2));
+PLAYERS_2026.push(mkPlayer('SAC', 'Trey Lyles', 29, 81, 234, 'PF', 41, 10, 68, 68, 'stretch_big', 2400000, 1));
+PLAYERS_2026.push(mkPlayer('SAC', 'Isaac Jones', 23, 80, 220, 'PF', 15, 1, 65, 73, 'raw_prospect', 1900000, 2));
+PLAYERS_2026.push(mkPlayer('SAC', 'Precious Achiuwa', 26, 80, 243, 'PF', 55, 6, 71, 73, 'rim_protector', 6000000, 1));
+PLAYERS_2026.push(mkPlayer('SAC', 'DeMar DeRozan', 36, 79, 220, 'SF', 6, 16, 79, 79, 'primary_scorer', 24000000, 1));
+PLAYERS_2026.push(mkPlayer('SAC', 'Doug McDermott', 33, 80, 225, 'SF', 17, 11, 71, 71, 'three_and_d', 3300000, 1));
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { PLAYERS_2026: PLAYERS_2026 };
 }
