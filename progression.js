@@ -11,6 +11,7 @@ function clampRating(v) {
 // variance on top of the age curve.
 function progressPlayer(player, rng) {
   player.age += 1;
+  player.yearsPro += 1;
   const potentialGap = player.potential - player.overall;
 
   let change;
