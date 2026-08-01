@@ -53,7 +53,7 @@ function renderRoster(container, teamId) {
         '<td>' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
         '<td>$' + p.contract.salary.toLocaleString() + '</td>' +
         '<td>' + p.contract.yearsRemaining + '</td>' +
-        '<td><button data-waive-id="' + p.id + '">Waive</button></td>' +
+        '<td><button data-waive-id="' + p.id + '">Waive</button> <button data-scout-id="' + p.id + '">Scout</button></td>' +
         '</tr>';
     });
     html += '</tbody></table>';
@@ -82,6 +82,13 @@ function renderRoster(container, teamId) {
         }
         roster = getTeamRoster(teamId).slice();
         draw();
+      });
+    });
+
+    container.querySelectorAll('button[data-scout-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        GameState.pendingScoutReportId = btn.getAttribute('data-scout-id');
+        renderView('scouting');
       });
     });
   }

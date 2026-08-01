@@ -56,7 +56,8 @@ const BUILT_VIEWS = {
   settings: renderSettings,
   trade: renderTradeCenter,
   freeagency: renderFreeAgency,
-  draft: function (container) { renderDraftResults(container, GameState.lastDraftResults || []); }
+  draft: function (container) { renderDraftResults(container, GameState.lastDraftResults || []); },
+  scouting: renderScouting
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
