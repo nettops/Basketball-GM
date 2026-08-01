@@ -113,4 +113,44 @@ function checkReal2026Class() {
 }
 
 checkReal2026Class();
+
+function checkDraftOrder() {
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+  const playoffsModule = require(path.join(__dirname, '..', 'playoffs.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+
+  // Realistic 82-game-season win spread (12-68), not a compressed 1-15 range —
+  // the lottery weight formula's differentiation depends on realistic win gaps
+  // between the worst and best lottery teams.
+  const eastern = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Eastern'; });
+  eastern.forEach(function (t, i) { t.record = { wins: 12 + (eastern.length - 1 - i) * 4, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+  const western = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Western'; });
+  western.forEach(function (t, i) { t.record = { wins: 12 + (western.length - 1 - i) * 4, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+
+  const bracket = playoffsModule.generateBracket();
+  const settings = { simEngine: 'boxscore' };
+  const rng = makeRng(300);
+  let g = playoffsModule.simulateNextPlayoffGame(bracket, settings, rng);
+  while (g !== null) { g = playoffsModule.simulateNextPlayoffGame(bracket, settings, rng); }
+
+  const order = draftModule.buildDraftOrder(bracket, rng);
+  assert.strictEqual(order.firstRound.length, 30, 'first round must have exactly 30 picks');
+  assert.strictEqual(new Set(order.firstRound).size, 30, 'first round picks must be unique teams');
+  assert.strictEqual(order.secondRound.length, 30, 'second round must have exactly 30 picks');
+  assert.strictEqual(new Set(order.secondRound).size, 30, 'second round picks must be unique teams');
+
+  // Statistical check on the lottery weighting itself (the part most likely to have a sign error).
+  const worstTeam = teamsModule.TEAMS.slice().sort(function (a, b) { return a.record.wins - b.record.wins; })[0];
+  let worstTeamFirstPickCount = 0;
+  const TRIALS = 300;
+  for (let i = 0; i < TRIALS; i++) {
+    const trialOrder = draftModule.buildDraftOrder(bracket, rng);
+    if (trialOrder.firstRound[0] === worstTeam.id) worstTeamFirstPickCount++;
+  }
+  assert.ok(worstTeamFirstPickCount / TRIALS > 0.15, 'the worst team should win the #1 pick a meaningfully large share of the time, got ' + (worstTeamFirstPickCount / TRIALS));
+
+  console.log('checkDraftOrder: OK');
+}
+
+checkDraftOrder();
 console.log('All offseason validations passed');
