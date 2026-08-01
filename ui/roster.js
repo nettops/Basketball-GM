@@ -37,6 +37,7 @@ function renderRoster(container, teamId) {
     ROSTER_COLUMNS.forEach(function (col) {
       html += '<th data-key="' + col.key + '">' + col.label + (sortKey === col.key ? (sortDir === 1 ? ' ▲' : ' ▼') : '') + '</th>';
     });
+    html += '<th>Action</th>';
     html += '</tr></thead><tbody>';
     roster.forEach(function (p) {
       const avg = getPlayerAverages(p);
@@ -52,12 +53,13 @@ function renderRoster(container, teamId) {
         '<td>' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
         '<td>$' + p.contract.salary.toLocaleString() + '</td>' +
         '<td>' + p.contract.yearsRemaining + '</td>' +
+        '<td><button data-waive-id="' + p.id + '">Waive</button></td>' +
         '</tr>';
     });
     html += '</tbody></table>';
     container.innerHTML = html;
 
-    container.querySelectorAll('th').forEach(function (th) {
+    container.querySelectorAll('th[data-key]').forEach(function (th) {
       th.addEventListener('click', function () {
         const key = th.getAttribute('data-key');
         if (key === sortKey) {
@@ -66,6 +68,19 @@ function renderRoster(container, teamId) {
           sortKey = key;
           sortDir = -1;
         }
+        draw();
+      });
+    });
+
+    container.querySelectorAll('button[data-waive-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const playerId = btn.getAttribute('data-waive-id');
+        const result = waivePlayer(playerId);
+        if (!result.success) {
+          alert(result.reason);
+          return;
+        }
+        roster = getTeamRoster(teamId).slice();
         draw();
       });
     });
