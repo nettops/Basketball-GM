@@ -7,8 +7,8 @@ const GameState = {
 };
 
 function initSeason() {
-  const rng = makeRng(Date.now());
-  const games = generateSeasonGames(rng, TEAMS).map(function (g) {
+  GameState.rng = makeRng(Date.now());
+  const games = generateSeasonGames(GameState.rng, TEAMS).map(function (g) {
     return {
       id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day,
       played: false, homeScore: null, awayScore: null, boxScore: null,
@@ -23,7 +23,9 @@ function initSeason() {
 const BUILT_VIEWS = {
   dashboard: renderDashboard,
   roster: renderRoster,
-  standings: renderStandings
+  standings: renderStandings,
+  schedule: renderSchedule,
+  settings: renderSettings
 };
 
 function renderPlaceholder(container) {
@@ -40,6 +42,9 @@ function renderView(viewName) {
     renderPlaceholder(container);
   }
   renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView);
+  if (GameState.season) {
+    renderSimControls(document.getElementById('sim-controls'));
+  }
 }
 
 function selectTeam(teamId) {
