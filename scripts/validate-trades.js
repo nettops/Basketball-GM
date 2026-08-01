@@ -88,4 +88,68 @@ function checkEvaluateTeamLeg() {
 }
 
 checkEvaluateTeamLeg();
+
+function checkProposeTrade() {
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+
+  // 2-team trade: plumbing runs end to end without throwing, and a rejected
+  // trade must not mutate any player.
+  const gswRoster = leagueModule.getTeamRoster('GSW');
+  const lacRoster = leagueModule.getTeamRoster('LAC');
+  const gswPlayer = gswRoster[gswRoster.length - 1];
+  const lacPlayer = lacRoster[lacRoster.length - 1];
+
+  const twoTeamProposal = {
+    participants: ['GSW', 'LAC'],
+    assignments: [
+      { playerId: gswPlayer.id, fromTeamId: 'GSW', toTeamId: 'LAC' },
+      { playerId: lacPlayer.id, fromTeamId: 'LAC', toTeamId: 'GSW' }
+    ]
+  };
+  const result = tradeModule.proposeTrade(twoTeamProposal, 'GSW');
+  assert.strictEqual(typeof result.accepted, 'boolean');
+  if (!result.accepted) {
+    assert.strictEqual(gswPlayer.teamId, 'GSW', 'a rejected trade must not move any player');
+    assert.strictEqual(lacPlayer.teamId, 'LAC', 'a rejected trade must not move any player');
+  } else {
+    assert.strictEqual(gswPlayer.teamId, 'LAC');
+    assert.strictEqual(lacPlayer.teamId, 'GSW');
+    // restore state for later checks
+    gswPlayer.teamId = 'GSW';
+    lacPlayer.teamId = 'LAC';
+  }
+
+  // Roster-size guard: sending most of a roster away with nothing back must
+  // never be allowed to push a team below 12.
+  const smallTeam = 'CHA';
+  const chaRoster = leagueModule.getTeamRoster(smallTeam);
+  const oneWayProposal = {
+    participants: [smallTeam, 'LAL'],
+    assignments: chaRoster.slice(0, chaRoster.length - 11).map(function (p) {
+      return { playerId: p.id, fromTeamId: smallTeam, toTeamId: 'LAL' };
+    })
+  };
+  const rosterErrors = tradeModule.validateRosterSizes(oneWayProposal);
+  assert.ok(rosterErrors.length > 0, 'sending most of a roster away with nothing back should fail the roster-size check');
+
+  // 3-team trade: plumbing must handle 3 participants without special-casing.
+  const denPlayer = leagueModule.getTeamRoster('DEN')[leagueModule.getTeamRoster('DEN').length - 1];
+  const minPlayer = leagueModule.getTeamRoster('MIN')[leagueModule.getTeamRoster('MIN').length - 1];
+  const okcPlayer = leagueModule.getTeamRoster('OKC')[leagueModule.getTeamRoster('OKC').length - 1];
+  const threeTeamProposal = {
+    participants: ['DEN', 'MIN', 'OKC'],
+    assignments: [
+      { playerId: denPlayer.id, fromTeamId: 'DEN', toTeamId: 'MIN' },
+      { playerId: minPlayer.id, fromTeamId: 'MIN', toTeamId: 'OKC' },
+      { playerId: okcPlayer.id, fromTeamId: 'OKC', toTeamId: 'DEN' }
+    ]
+  };
+  const threeTeamResult = tradeModule.proposeTrade(threeTeamProposal, 'DEN');
+  assert.strictEqual(typeof threeTeamResult.accepted, 'boolean');
+  assert.strictEqual(Object.keys(threeTeamResult.legs).length, 3, 'a 3-team trade should evaluate all 3 legs');
+
+  console.log('checkProposeTrade: OK');
+}
+
+checkProposeTrade();
 console.log('All trade validations passed');
