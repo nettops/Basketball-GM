@@ -318,4 +318,42 @@ function checkSilentFreeAgencyResolution() {
 }
 
 checkSilentFreeAgencyResolution();
+
+function checkBiddingWar() {
+  const biddingModule = require(path.join(__dirname, '..', 'freeAgencyBidding.js'));
+  const rosterMovesModule = require(path.join(__dirname, '..', 'rosterMoves.js'));
+  const rng = makeRng(900);
+
+  // Find any team with roster room to spare so the waive is guaranteed to
+  // succeed regardless of how earlier tests in this cumulative file left
+  // team rosters sized.
+  const donorTeam = teamsModule.TEAMS.find(function (t) { return leagueModule.getTeamRoster(t.id).length > 12; });
+  const roster = leagueModule.getTeamRoster(donorTeam.id);
+  const target = roster[roster.length - 1];
+  const waiveResult = rosterMovesModule.waivePlayer(target.id);
+  assert.strictEqual(waiveResult.success, true, 'test setup: waive should succeed on a team above the roster minimum');
+  assert.strictEqual(target.teamId, null);
+
+  const userTeamId = donorTeam.id;
+  const state = biddingModule.startBidding(target.id, userTeamId, rng);
+  assert.strictEqual(state.playerId, target.id);
+  assert.strictEqual(state.userTeamId, userTeamId);
+
+  // A lowball offer should not obviously beat every competing AI bid.
+  const lowResult = biddingModule.evaluateBiddingRound(state, 1300000, 1);
+  assert.ok(typeof lowResult.userWinning === 'boolean');
+
+  // A near-max offer should win outright against any remaining competition.
+  const highResult = biddingModule.evaluateBiddingRound(state, 45000000, 4);
+  assert.strictEqual(highResult.userWinning, true, 'a near-max offer should beat any remaining AI bid');
+
+  const outcome = biddingModule.finalizeBidding(state, true);
+  assert.strictEqual(outcome.signed, true);
+  assert.strictEqual(outcome.teamId, userTeamId);
+  assert.strictEqual(target.teamId, userTeamId);
+
+  console.log('checkBiddingWar: OK');
+}
+
+checkBiddingWar();
 console.log('All offseason validations passed');
