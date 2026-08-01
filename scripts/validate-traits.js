@@ -333,4 +333,44 @@ function checkInjuryFatigueTraitIntegration() {
 
 checkInjuryFatigueTraitIntegration();
 
+function checkFreeAgencyTradeTraitIntegration() {
+  const faModule = require(path.join(__dirname, '..', 'freeAgency.js'));
+  const teamsModule = require(path.join(__dirname, '..', 'teams.js'));
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+
+  const offer = { teamId: 'BOS', salary: 10000000, yearsRemaining: 3 };
+
+  const roster = leagueModule.getTeamRoster('BOS');
+  const proxyForPlayingTime = Object.assign({}, roster[0], { position: 'SF' });
+
+  const ambitiousOnLosingTeam = Object.assign({}, proxyForPlayingTime, { hiddenPersonality: { loyalty: 50, ambition: 100, ego: 50, coachability: 50, durabilityMindset: 50 } });
+  const apatheticOnLosingTeam = Object.assign({}, proxyForPlayingTime, { hiddenPersonality: { loyalty: 50, ambition: 0, ego: 50, coachability: 50, durabilityMindset: 50 } });
+  const losingTeam = Object.assign({}, teamsModule.getTeamById('BKN'), { timeline: 'rebuilding' });
+
+  const ambitiousScore = faModule.scoreOffer(ambitiousOnLosingTeam, losingTeam, offer);
+  const apatheticScore = faModule.scoreOffer(apatheticOnLosingTeam, losingTeam, offer);
+  assert.ok(ambitiousScore < apatheticScore, 'a highly ambitious player should score a rebuilding-team offer lower than an unambitious player, all else equal');
+
+  // Trade morale hit: high-ego/high-loyalty player should lose more morale than baseline.
+  const highEgoPlayer = leagueModule.getPlayerById(roster[0].id);
+  const savedPersonality = highEgoPlayer.hiddenPersonality;
+  const savedStatus = highEgoPlayer.status;
+  const savedTeamId = highEgoPlayer.teamId;
+
+  highEgoPlayer.hiddenPersonality = { loyalty: 100, ambition: 50, ego: 100, coachability: 50, durabilityMindset: 50 };
+  highEgoPlayer.status = { morale: 70, fatigue: 0, injury: null };
+  const destTeamId = highEgoPlayer.teamId === 'BOS' ? 'MIA' : 'BOS';
+  tradeModule.executeTrade({ assignments: [{ playerId: highEgoPlayer.id, fromTeamId: savedTeamId, toTeamId: destTeamId }], pickAssignments: [] });
+  assert.ok(highEgoPlayer.status.morale < 70, 'trading a high-ego/high-loyalty player should reduce morale');
+
+  highEgoPlayer.teamId = savedTeamId;
+  highEgoPlayer.hiddenPersonality = savedPersonality;
+  highEgoPlayer.status = savedStatus;
+
+  console.log('checkFreeAgencyTradeTraitIntegration: OK');
+}
+
+checkFreeAgencyTradeTraitIntegration();
+
 console.log('All trait/scouting validations passed');

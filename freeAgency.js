@@ -20,9 +20,12 @@ function playingTimeScore(player, team) {
   return 0.5;
 }
 
-// Master-spec factors: money, contention, playing time, market size, prestige.
-// Coach quality is dropped (no coach entities exist). Weights shift with age:
-// veterans care relatively more about contention, young players about minutes.
+// Master-spec factors: money, contention, playing time, market size, prestige,
+// plus hidden personality. There's no tracked "previous team" once a contract
+// expires (teamId is wiped in decrementContracts), so Loyalty is modeled as
+// "doesn't need max money to be satisfied" rather than an incumbent-team
+// discount; Ambition amplifies how much contention matters; Ego penalizes
+// offers implying a diminished role.
 function scoreOffer(player, team, offer) {
   const salaryScore = Math.min(1, offer.salary / 45000000);
   const contentionScore = team.timeline === 'win-now' ? 1 : (team.timeline === 'retooling' ? 0.6 : 0.3);
@@ -38,7 +41,18 @@ function scoreOffer(player, team, offer) {
   const contentionWeight = remaining * (0.3 + ageFactor * 0.4);
   const playingTimeWeight = remaining - contentionWeight;
 
-  return salaryScore * moneyWeight + contentionScore * contentionWeight + ptScore * playingTimeWeight + marketScore * marketWeight + prestigeScore * prestigeWeight;
+  let score = salaryScore * moneyWeight + contentionScore * contentionWeight + ptScore * playingTimeWeight + marketScore * marketWeight + prestigeScore * prestigeWeight;
+
+  const personality = player.hiddenPersonality;
+  if (personality && personality.loyalty !== undefined) {
+    score += (1 - salaryScore) * (personality.loyalty - 50) / 100 * 0.06;
+    score += (contentionScore - 0.5) * (personality.ambition - 50) / 100 * 0.16;
+    if (ptScore < 0.5) {
+      score -= Math.max(0, (personality.ego - 50) / 100) * 0.10;
+    }
+  }
+
+  return score;
 }
 
 function estimateFairSalary(player) {

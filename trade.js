@@ -64,6 +64,11 @@ function executeTrade(proposal) {
   proposal.assignments.forEach(function (a) {
     const player = _TRADE_DATA.league.getPlayerById(a.playerId);
     player.teamId = a.toTeamId;
+    // High-ego, high-loyalty players take being traded harder.
+    if (player.hiddenPersonality && player.hiddenPersonality.ego !== undefined && player.status) {
+      const moraleHit = 3 + (player.hiddenPersonality.ego + player.hiddenPersonality.loyalty) / 20;
+      player.status.morale = Math.max(0, player.status.morale - Math.round(moraleHit));
+    }
   });
   (proposal.pickAssignments || []).forEach(function (pa) {
     const pick = findPick(pa.fromTeamId, pa.round);
