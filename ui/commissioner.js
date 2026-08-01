@@ -6,8 +6,11 @@ function renderCommissioner(container, userTeamId) {
 
   const state = {
     editPlayerId: null,
+    editMessage: null,
     deletePlayerId: null,
     deleteConfirming: false,
+    deleteMessage: null,
+    createMessage: null,
     expansionResult: null
   };
 
@@ -47,7 +50,9 @@ function renderEditPlayerSection(state) {
     });
     html += '</tbody></table>';
     html += '<button id="commissioner-edit-save-btn">Save Changes</button>';
-    html += ' <span id="commissioner-edit-result"></span>';
+    if (state.editMessage) {
+      html += ' <span>' + state.editMessage + '</span>';
+    }
   }
   html += '</section>';
   return html;
@@ -58,6 +63,7 @@ function wireEditPlayerEvents(state, redraw) {
   if (select) {
     select.addEventListener('change', function (e) {
       state.editPlayerId = e.target.value || null;
+      state.editMessage = null;
       redraw();
     });
   }
@@ -73,7 +79,7 @@ function wireEditPlayerEvents(state, redraw) {
         changes.attributes[input.getAttribute('data-edit-attribute')] = Number(input.value);
       });
       editPlayerRatings(state.editPlayerId, changes);
-      document.getElementById('commissioner-edit-result').textContent = 'Saved.';
+      state.editMessage = 'Saved.';
       redraw();
     });
   }
@@ -97,7 +103,9 @@ function renderDeletePlayerSection(state) {
   } else {
     html += ' <button id="commissioner-delete-btn"' + (state.deletePlayerId ? '' : ' disabled') + '>Delete Player</button>';
   }
-  html += ' <span id="commissioner-delete-result"></span>';
+  if (state.deleteMessage) {
+    html += ' <span>' + state.deleteMessage + '</span>';
+  }
   html += '</section>';
   return html;
 }
@@ -108,6 +116,7 @@ function wireDeletePlayerEvents(state, redraw) {
     select.addEventListener('change', function (e) {
       state.deletePlayerId = e.target.value || null;
       state.deleteConfirming = false;
+      state.deleteMessage = null;
       redraw();
     });
   }
@@ -124,7 +133,7 @@ function wireDeletePlayerEvents(state, redraw) {
       deletePlayer(state.deletePlayerId);
       state.deletePlayerId = null;
       state.deleteConfirming = false;
-      document.getElementById('commissioner-delete-result').textContent = 'Deleted.';
+      state.deleteMessage = 'Deleted.';
       redraw();
     });
   }
@@ -147,7 +156,9 @@ function renderCreatePlayerSection(state) {
   html += '<label>Archetype <select id="commissioner-create-archetype">' + CREATE_PLAYER_ARCHETYPES.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('') + '</select></label><br>';
   html += '<label>Team <select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select></label><br>';
   html += '<button id="commissioner-create-btn">Create Player</button>';
-  html += ' <span id="commissioner-create-result"></span>';
+  if (state.createMessage) {
+    html += ' <span>' + state.createMessage + '</span>';
+  }
   html += '</section>';
   return html;
 }
@@ -158,7 +169,8 @@ function wireCreatePlayerEvents(state, redraw) {
   btn.addEventListener('click', function () {
     const name = document.getElementById('commissioner-create-name').value.trim();
     if (!name) {
-      document.getElementById('commissioner-create-result').textContent = 'Name is required.';
+      state.createMessage = 'Name is required.';
+      redraw();
       return;
     }
     const details = {
@@ -171,7 +183,7 @@ function wireCreatePlayerEvents(state, redraw) {
       teamId: document.getElementById('commissioner-create-team').value || null
     };
     const player = createPlayer(details);
-    document.getElementById('commissioner-create-result').textContent = 'Created ' + player.name + '.';
+    state.createMessage = 'Created ' + player.name + '.';
     redraw();
   });
 }

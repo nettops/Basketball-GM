@@ -12,7 +12,11 @@ function handlePropose(state, userTeamId, redraw) {
   }
 
   if (result.accepted) {
-    resultEl.innerHTML = '<p>Trade accepted and executed!</p>';
+    // A message written directly to #trade-result would be wiped instantly —
+    // redraw() below replaces the whole container's innerHTML synchronously.
+    // Route it through state.resultMessage instead (draw() renders it once,
+    // then clears it, so it survives exactly one redraw).
+    state.resultMessage = '<p>Trade accepted and executed!</p>';
     state.assignments = [];
     state.pickAssignments = [];
     if (GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
@@ -42,7 +46,9 @@ function handleForceTrade(state, redraw) {
     resultEl.innerHTML = '<p>Force trade blocked: ' + result.rosterErrors.join('; ') + '</p>';
     return;
   }
-  resultEl.innerHTML = '<p>Trade forced through — no value/salary checks applied.</p>';
+  // Same redraw-wipes-the-message issue as handlePropose's accepted branch
+  // above — route through state.resultMessage rather than a direct DOM write.
+  state.resultMessage = '<p>Trade forced through — no value/salary checks applied.</p>';
   state.assignments = [];
   state.pickAssignments = [];
   redraw();
@@ -52,7 +58,8 @@ function renderTradeCenter(container, userTeamId) {
   const state = {
     participants: [userTeamId],
     assignments: [], // { playerId, fromTeamId, toTeamId }
-    pickAssignments: [] // { round, fromTeamId, toTeamId }
+    pickAssignments: [], // { round, fromTeamId, toTeamId }
+    resultMessage: null // one-shot: rendered into #trade-result once, then cleared
   };
 
   function draw() {
@@ -137,7 +144,8 @@ function renderTradeCenter(container, userTeamId) {
       html += '</div>';
     });
 
-    html += '<div id="trade-result"></div>';
+    html += '<div id="trade-result">' + (state.resultMessage || '') + '</div>';
+    state.resultMessage = null;
     html += '<button id="propose-trade-btn">Propose Trade</button>';
     if (GameState.playMode === 'commissioner') {
       html += ' <button id="force-trade-btn">Force Trade</button>';
