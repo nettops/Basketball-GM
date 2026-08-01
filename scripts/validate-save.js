@@ -181,4 +181,25 @@ function checkQuotaExceededHandledGracefully() {
 
 checkQuotaExceededHandledGracefully();
 
+function checkPhase7FieldsRoundTrip() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gameState = makeFakeGameState({
+    playMode: 'commissioner',
+    automation: { autoFreeAgency: true, autoDraft: false, autoTrade: true, autoCap: false, autoScout: true },
+    feed: [{ day: 5, leagueYear: 2026, text: 'Test entry' }],
+    draftSession: null,
+    settings: { simEngine: 'boxscore', simSpeed: 'fast', pauseOn: { madePlayoffs: true, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: true }, capDisabled: false }
+  });
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gameState, 'Round Trip Test')));
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+  assert.strictEqual(restored.playMode, 'commissioner', 'playMode should round-trip');
+  assert.deepStrictEqual(restored.automation, gameState.automation, 'automation toggles should round-trip');
+  assert.strictEqual(restored.feed.length, 1, 'feed should round-trip');
+  assert.strictEqual(restored.settings.pauseOn.keyInjury, true, 'settings.pauseOn should round-trip as part of the existing settings blob');
+  console.log('checkPhase7FieldsRoundTrip: OK');
+}
+
+checkPhase7FieldsRoundTrip();
+
 console.log('All save/load validations passed');

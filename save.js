@@ -80,7 +80,11 @@ function serializeGameState(gameState, name) {
     leagueYear: gameState.leagueYear,
     offseasonStage: gameState.offseasonStage,
     settings: gameState.settings,
-    rngState: gameState.rng ? gameState.rng.getState() : null
+    rngState: gameState.rng ? gameState.rng.getState() : null,
+    playMode: gameState.playMode,
+    automation: gameState.automation,
+    feed: gameState.feed || [],
+    draftSession: gameState.draftSession || null
   };
 }
 
@@ -113,6 +117,10 @@ function applySavedState(payload, gameState) {
   gameState.leagueYear = payload.leagueYear;
   gameState.offseasonStage = payload.offseasonStage;
   gameState.settings = payload.settings;
+  gameState.playMode = payload.playMode || 'gm';
+  gameState.automation = payload.automation || { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: false, autoScout: false };
+  gameState.feed = payload.feed || [];
+  gameState.draftSession = payload.draftSession || null;
 
   gameState.rng = _SAVE_DATA.rng.makeRng(0);
   if (payload.rngState !== null && payload.rngState !== undefined) {
