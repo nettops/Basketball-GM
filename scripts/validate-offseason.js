@@ -64,8 +64,12 @@ function checkDraftPickValue() {
   const rebuilding = { timeline: 'rebuilding' };
   const winNow = { timeline: 'win-now' };
   assert.ok(
-    pickValueModule.estimateFuturePickValue(15, rebuilding) > pickValueModule.estimateFuturePickValue(15, winNow),
-    'the same future pick should be worth more owned by a rebuilding team than a win-now team'
+    pickValueModule.estimateFuturePickValue(1, rebuilding) > pickValueModule.estimateFuturePickValue(1, winNow),
+    'the same future first-round pick should be worth more owned by a rebuilding team than a win-now team'
+  );
+  assert.ok(
+    pickValueModule.estimateFuturePickValue(1, rebuilding) > pickValueModule.estimateFuturePickValue(2, rebuilding),
+    'a future first-round pick should be worth more than a future second-round pick from the same team'
   );
 
   console.log('checkDraftPickValue: OK');
