@@ -14,6 +14,7 @@ function handlePropose(state, userTeamId, redraw) {
   if (result.accepted) {
     resultEl.innerHTML = '<p>Trade accepted and executed!</p>';
     state.assignments = [];
+    state.pickAssignments = [];
     redraw();
     return;
   }
@@ -32,7 +33,8 @@ function handlePropose(state, userTeamId, redraw) {
 function renderTradeCenter(container, userTeamId) {
   const state = {
     participants: [userTeamId],
-    assignments: [] // { playerId, fromTeamId, toTeamId }
+    assignments: [], // { playerId, fromTeamId, toTeamId }
+    pickAssignments: [] // { round, fromTeamId, toTeamId }
   };
 
   function draw() {
@@ -56,9 +58,16 @@ function renderTradeCenter(container, userTeamId) {
       const outgoingSalary = outgoing.reduce(function (s, a) { return s + getPlayerById(a.playerId).contract.salary; }, 0);
       const incomingSalary = incoming.reduce(function (s, a) { return s + getPlayerById(a.playerId).contract.salary; }, 0);
 
+      const outgoingPickValue = state.pickAssignments
+        .filter(function (pa) { return pa.fromTeamId === teamId; })
+        .reduce(function (s, pa) { const pick = findPick(pa.fromTeamId, pa.round); return s + (pick ? estimateFuturePickValue(pa.round, getTeamById(pick.originalTeamId)) : 0); }, 0);
+      const incomingPickValue = state.pickAssignments
+        .filter(function (pa) { return pa.toTeamId === teamId; })
+        .reduce(function (s, pa) { const pick = findPick(pa.fromTeamId, pa.round); return s + (pick ? estimateFuturePickValue(pa.round, getTeamById(pick.originalTeamId)) : 0); }, 0);
+
       html += '<div class="trade-team-panel" data-team-id="' + teamId + '">';
       html += '<h3>' + team.name + (teamId === userTeamId ? ' (You)' : '') + '</h3>';
-      html += '<p>Outgoing value: ' + outgoingValue.toFixed(1) + ' / Incoming value: ' + incomingValue.toFixed(1) + '</p>';
+      html += '<p>Outgoing value: ' + (outgoingValue + outgoingPickValue).toFixed(1) + ' / Incoming value: ' + (incomingValue + incomingPickValue).toFixed(1) + '</p>';
       html += '<p>Outgoing salary: $' + outgoingSalary.toLocaleString() + ' / Incoming salary: $' + incomingSalary.toLocaleString() + '</p>';
 
       html += '<table><thead><tr><th>Player</th><th>In trade?</th><th>Send to</th></tr></thead><tbody>';
@@ -73,7 +82,22 @@ function renderTradeCenter(container, userTeamId) {
         });
         html += '</select></td></tr>';
       });
-      html += '</tbody></table></div>';
+      html += '</tbody></table>';
+
+      html += '<p>Draft Picks:</p>';
+      [1, 2].forEach(function (round) {
+        const pick = findPick(teamId, round);
+        if (!pick) return; // already traded away earlier in this same proposal
+        const pickAssignment = state.pickAssignments.find(function (pa) { return pa.fromTeamId === teamId && pa.round === round; });
+        html += '<label><input type="checkbox" data-pick-round="' + round + '" data-pick-from="' + teamId + '"' + (pickAssignment ? ' checked' : '') + '> Round ' + round + ' pick</label> ';
+        html += '<select data-pick-dest-round="' + round + '" data-pick-dest-from="' + teamId + '"' + (pickAssignment ? '' : ' disabled') + '>';
+        state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
+          const selected = pickAssignment && pickAssignment.toTeamId === destId ? ' selected' : '';
+          html += '<option value="' + destId + '"' + selected + '>' + getTeamById(destId).name + '</option>';
+        });
+        html += '</select><br>';
+      });
+      html += '</div>';
     });
 
     html += '<div id="trade-result"></div>';
@@ -110,6 +134,30 @@ function renderTradeCenter(container, userTeamId) {
       sel.addEventListener('change', function () {
         const playerId = sel.getAttribute('data-dest-for');
         const assignment = state.assignments.find(function (a) { return a.playerId === playerId; });
+        if (assignment) assignment.toTeamId = sel.value;
+      });
+    });
+
+    container.querySelectorAll('input[type="checkbox"][data-pick-round]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        const round = Number(cb.getAttribute('data-pick-round'));
+        const fromTeam = cb.getAttribute('data-pick-from');
+        if (cb.checked) {
+          const destSelect = container.querySelector('select[data-pick-dest-round="' + round + '"][data-pick-dest-from="' + fromTeam + '"]');
+          const toTeam = destSelect.value || state.participants.filter(function (t) { return t !== fromTeam; })[0];
+          state.pickAssignments.push({ round: round, fromTeamId: fromTeam, toTeamId: toTeam });
+        } else {
+          state.pickAssignments = state.pickAssignments.filter(function (pa) { return !(pa.fromTeamId === fromTeam && pa.round === round); });
+        }
+        draw();
+      });
+    });
+
+    container.querySelectorAll('select[data-pick-dest-round]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        const round = Number(sel.getAttribute('data-pick-dest-round'));
+        const fromTeam = sel.getAttribute('data-pick-dest-from');
+        const assignment = state.pickAssignments.find(function (pa) { return pa.fromTeamId === fromTeam && pa.round === round; });
         if (assignment) assignment.toTeamId = sel.value;
       });
     });
