@@ -3,14 +3,6 @@ const GameState = {
   currentView: 'dashboard'
 };
 
-function getTeamRoster(teamId) {
-  return PLAYERS_2026.filter(function (p) { return p.teamId === teamId; });
-}
-
-function getTeamPayroll(teamId) {
-  return getTeamRoster(teamId).reduce(function (sum, p) { return sum + p.contract.salary; }, 0);
-}
-
 // Views with a real renderer this phase. Anything else in NAV_ITEMS (ui/nav.js)
 // falls back to the placeholder view.
 const BUILT_VIEWS = {
