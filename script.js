@@ -163,7 +163,8 @@ const BUILT_VIEWS = {
   },
   scouting: renderScouting,
   saveload: renderSaveLoad,
-  feed: renderLiveFeed
+  feed: renderLiveFeed,
+  commissioner: renderCommissioner
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -230,7 +231,7 @@ function renderView(viewName) {
   } else {
     renderPlaceholder(container);
   }
-  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView);
+  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode);
   if (GameState.season) {
     renderSimControls(document.getElementById('sim-controls'));
   }
