@@ -80,6 +80,7 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
   const deps = _simDeps();
   const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
   const playingTeamIds = {};
+  const newInjuries = [];
 
   todaysGames.forEach(function (game) {
     const engine = deps.simEngine.getActiveEngine(settings);
@@ -106,7 +107,13 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
 
     [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {
       deps.injuries.decrementInjuriesForTeamGame(teamId);
-      getTeamRoster(teamId).forEach(function (p) { deps.injuries.rollInjury(p, rng); });
+      getTeamRoster(teamId).forEach(function (p) {
+        const wasInjured = !!p.status.injury;
+        deps.injuries.rollInjury(p, rng);
+        if (!wasInjured && p.status.injury) {
+          newInjuries.push({ playerId: p.id, teamId: teamId, severity: p.status.injury.severity });
+        }
+      });
       playingTeamIds[teamId] = true;
     });
   });
@@ -117,7 +124,7 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
     }
   });
 
-  if (onDayComplete) onDayComplete(dayIndex);
+  if (onDayComplete) onDayComplete(dayIndex, todaysGames, newInjuries);
   return todaysGames;
 }
 
