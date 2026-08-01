@@ -25,7 +25,8 @@ const BUILT_VIEWS = {
   roster: renderRoster,
   standings: renderStandings,
   schedule: renderSchedule,
-  settings: renderSettings
+  settings: renderSettings,
+  trade: renderTradeCenter
 };
 
 function renderPlaceholder(container) {

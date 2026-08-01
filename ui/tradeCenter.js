@@ -1,3 +1,34 @@
+function handlePropose(state, userTeamId, redraw) {
+  if (state.assignments.length === 0) {
+    document.getElementById('trade-result').innerHTML = '<p>Add at least one player to the trade first.</p>';
+    return;
+  }
+  const result = proposeTrade(state, userTeamId);
+  const resultEl = document.getElementById('trade-result');
+
+  if (result.rosterErrors.length > 0) {
+    resultEl.innerHTML = '<p>Trade invalid: ' + result.rosterErrors.join('; ') + '</p>';
+    return;
+  }
+
+  if (result.accepted) {
+    resultEl.innerHTML = '<p>Trade accepted and executed!</p>';
+    state.assignments = [];
+    redraw();
+    return;
+  }
+
+  let html = '<h4>Trade rejected</h4><ul>';
+  Object.keys(result.legs).forEach(function (teamId) {
+    const leg = result.legs[teamId];
+    if (!leg.accepted && !leg.isUser) {
+      html += '<li>' + getTeamById(teamId).name + ': ' + (leg.suggestion || 'not enough value or salary mismatch') + '</li>';
+    }
+  });
+  html += '</ul><p>Adjust the proposal above and propose again.</p>';
+  resultEl.innerHTML = html;
+}
+
 function renderTradeCenter(container, userTeamId) {
   const state = {
     participants: [userTeamId],
