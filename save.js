@@ -39,11 +39,18 @@ function saveSlotKey(slotId) {
   return slotId === 'autosave' ? 'nba-gm-save-autosave' : 'nba-gm-save-' + slotId;
 }
 
+// Only used by applySavedState below, for teams it doesn't already have a
+// live object for (i.e. an expansion team created in a prior session).
+// Original teams' identity fields are still never round-tripped onto an
+// existing object — teams.js's hardcoded values remain authoritative there,
+// same as before this fix.
+const TEAM_IDENTITY_FIELDS = ['id', 'name', 'conference', 'division', 'colors'];
+
 function serializeGameState(gameState, name) {
   const teamsOut = {};
   _SAVE_DATA.teams.TEAMS.forEach(function (t) {
     const out = {};
-    TEAM_SAVE_FIELDS.forEach(function (key) { out[key] = t[key]; });
+    TEAM_IDENTITY_FIELDS.concat(TEAM_SAVE_FIELDS).forEach(function (key) { out[key] = t[key]; });
     teamsOut[t.id] = out;
   });
 
@@ -89,12 +96,19 @@ function serializeGameState(gameState, name) {
 }
 
 function applySavedState(payload, gameState) {
-  // TEAMS is a fixed 30-team array — restore mutable fields in place so any
-  // code already holding a team object reference (e.g. via getTeamById)
-  // sees the restored values rather than a stale object.
-  _SAVE_DATA.teams.TEAMS.forEach(function (t) {
-    const saved = payload.teams[t.id];
-    if (!saved) return;
+  // TEAMS starts as the fixed 30-team array from teams.js on every fresh
+  // page load. Iterate the SAVED teams (not the live array) so an expansion
+  // team (Phase 7B) that doesn't have a matching object yet gets created,
+  // not silently dropped — then restore mutable fields in place either way,
+  // so any code already holding a team object reference (e.g. via
+  // getTeamById) sees the restored values rather than a stale object.
+  Object.keys(payload.teams).forEach(function (teamId) {
+    const saved = payload.teams[teamId];
+    let t = _SAVE_DATA.teams.TEAMS.find(function (team) { return team.id === teamId; });
+    if (!t) {
+      t = { id: saved.id, name: saved.name, conference: saved.conference, division: saved.division, colors: saved.colors };
+      _SAVE_DATA.teams.TEAMS.push(t);
+    }
     TEAM_SAVE_FIELDS.forEach(function (key) { t[key] = saved[key]; });
   });
 
