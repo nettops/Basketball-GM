@@ -49,4 +49,39 @@ function checkMatchupCounts() {
 }
 
 checkMatchupCounts();
+
+function checkSeasonGames() {
+  const rng = makeRng(42);
+  const games = require(path.join(__dirname, '..', 'schedule.js')).generateSeasonGames(rng, teamsModule.TEAMS);
+
+  assert.strictEqual(games.length, 1230, 'expected exactly 1230 games');
+
+  const perTeamCount = {};
+  teamsModule.TEAMS.forEach(function (t) { perTeamCount[t.id] = 0; });
+  games.forEach(function (g) {
+    perTeamCount[g.home]++;
+    perTeamCount[g.away]++;
+  });
+  teamsModule.TEAMS.forEach(function (t) {
+    assert.strictEqual(perTeamCount[t.id], 82, t.id + ' should have 82 games, got ' + perTeamCount[t.id]);
+  });
+
+  // No team plays 3+ games within any 3-day window.
+  const daysByTeam = {};
+  teamsModule.TEAMS.forEach(function (t) { daysByTeam[t.id] = []; });
+  games.forEach(function (g) {
+    daysByTeam[g.home].push(g.day);
+    daysByTeam[g.away].push(g.day);
+  });
+  Object.keys(daysByTeam).forEach(function (teamId) {
+    const days = daysByTeam[teamId].slice().sort(function (a, b) { return a - b; });
+    for (let i = 0; i + 2 < days.length; i++) {
+      assert.ok(days[i + 2] - days[i] > 2, teamId + ' has 3 games within a 3-day window around day ' + days[i]);
+    }
+  });
+
+  console.log('checkSeasonGames: OK');
+}
+
+checkSeasonGames();
 console.log('All sim validations passed');

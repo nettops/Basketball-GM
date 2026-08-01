@@ -59,6 +59,79 @@ function generateMatchupCounts(rng) {
   return gamesCount;
 }
 
+const SEASON_DAYS = 175; // late-Oct to mid-Apr, generously bounds the ~127 days the
+                          // verified prototype actually needed to fit all 1,230 games
+
+function shuffle(arr, rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+}
+
+function expandToGameList(gamesCount, teamsList, rng) {
+  const gameList = [];
+  let gid = 0;
+  teamsList.forEach(function (a) {
+    teamsList.forEach(function (b) {
+      if (a.id < b.id) {
+        const n = gamesCount[a.id][b.id];
+        const aHome = Math.floor(n / 2) + (n % 2 === 1 ? Math.round(rng()) : 0);
+        const bHome = n - aHome;
+        for (let i = 0; i < aHome; i++) gameList.push({ id: gid++, home: a.id, away: b.id });
+        for (let i = 0; i < bHome; i++) gameList.push({ id: gid++, home: b.id, away: a.id });
+      }
+    });
+  });
+  return gameList;
+}
+
+// Greedily assigns each game to the earliest day where neither team would end up
+// with 2 games in the trailing 3-day window (i.e. no team plays 3 games in 3 days).
+function assignDates(gameList, teamsList, rng) {
+  shuffle(gameList, rng);
+  const teamIdx = {};
+  teamsList.forEach(function (t, i) { teamIdx[t.id] = i; });
+  const lastGameDays = teamsList.map(function () { return []; });
+
+  function eligible(teamId, day) {
+    const recent = lastGameDays[teamIdx[teamId]].filter(function (d) { return d >= day - 2; });
+    return recent.length < 2;
+  }
+
+  let pending = gameList.slice();
+  const assigned = [];
+
+  for (let day = 0; day < SEASON_DAYS && pending.length > 0; day++) {
+    const scheduledToday = {};
+    const stillPending = [];
+    pending.forEach(function (g) {
+      if (!scheduledToday[g.home] && !scheduledToday[g.away] && eligible(g.home, day) && eligible(g.away, day)) {
+        assigned.push({ id: g.id, home: g.home, away: g.away, day: day });
+        scheduledToday[g.home] = true;
+        scheduledToday[g.away] = true;
+        [g.home, g.away].forEach(function (teamId) {
+          lastGameDays[teamIdx[teamId]] = lastGameDays[teamIdx[teamId]].filter(function (d) { return d >= day - 2; }).concat([day]);
+        });
+      } else {
+        stillPending.push(g);
+      }
+    });
+    pending = stillPending;
+  }
+
+  if (pending.length > 0) {
+    throw new Error('assignDates: ' + pending.length + ' games could not be scheduled within ' + SEASON_DAYS + ' days');
+  }
+  return assigned;
+}
+
+function generateSeasonGames(rng, teamsList) {
+  const gamesCount = generateMatchupCounts(rng);
+  const gameList = expandToGameList(gamesCount, teamsList, rng);
+  return assignDates(gameList, teamsList, rng);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { generateMatchupCounts: generateMatchupCounts };
+  module.exports = { generateMatchupCounts: generateMatchupCounts, generateSeasonGames: generateSeasonGames };
 }
