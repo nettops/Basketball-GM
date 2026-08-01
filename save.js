@@ -126,6 +126,81 @@ function applySavedState(payload, gameState) {
   return gameState;
 }
 
+function readSaveIndex() {
+  try {
+    const raw = _SAVE_DATA.storage.getItem(SAVE_INDEX_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeSaveIndex(index) {
+  _SAVE_DATA.storage.setItem(SAVE_INDEX_KEY, JSON.stringify(index));
+}
+
+function slotMetadata(slotId, payload) {
+  const team = _SAVE_DATA.teams.TEAMS.find(function (t) { return t.id === payload.userTeamId; });
+  return {
+    slotId: slotId,
+    name: payload.name,
+    teamId: payload.userTeamId,
+    teamName: team ? team.name : 'Unknown',
+    leagueYear: payload.leagueYear,
+    day: payload.season ? payload.season.currentDay : null,
+    wins: team ? team.record.wins : 0,
+    losses: team ? team.record.losses : 0,
+    savedAt: payload.savedAt
+  };
+}
+
+function saveToSlot(slotId, name, gameState) {
+  const payload = serializeGameState(gameState, name);
+  try {
+    _SAVE_DATA.storage.setItem(saveSlotKey(slotId), JSON.stringify(payload));
+  } catch (e) {
+    return { success: false, reason: 'Save failed: storage is full. Delete an old save and try again.' };
+  }
+  const index = readSaveIndex().filter(function (entry) { return entry.slotId !== slotId; });
+  index.push(slotMetadata(slotId, payload));
+  writeSaveIndex(index);
+  return { success: true };
+}
+
+function loadFromSlot(slotId, gameState) {
+  const raw = _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
+  if (!raw) return { success: false, reason: 'No save found in that slot.' };
+  const payload = JSON.parse(raw);
+  applySavedState(payload, gameState);
+  return { success: true };
+}
+
+function deleteSlot(slotId) {
+  _SAVE_DATA.storage.removeItem(saveSlotKey(slotId));
+  const index = readSaveIndex().filter(function (entry) { return entry.slotId !== slotId; });
+  writeSaveIndex(index);
+}
+
+function listSaves() {
+  const bySlot = {};
+  readSaveIndex().forEach(function (entry) { bySlot[entry.slotId] = entry; });
+  const slots = [];
+  for (let i = 1; i <= SAVE_SLOT_COUNT; i++) {
+    slots.push(bySlot[i] || { slotId: i, empty: true });
+  }
+  slots.push(bySlot.autosave || { slotId: 'autosave', empty: true });
+  return slots;
+}
+
+// Fires once per user-triggered sim action / offseason transition (wired up
+// in the UI tasks below) — never once per individual simulated day inside a
+// bulk sim, which would mean ~170 synchronous multi-hundred-KB writes during
+// a single "Sim to End of Season" click.
+function autosave(gameState) {
+  if (!gameState.season) return;
+  saveToSlot('autosave', 'Autosave', gameState);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SAVE_SLOT_COUNT: SAVE_SLOT_COUNT,
@@ -133,6 +208,11 @@ if (typeof module !== 'undefined' && module.exports) {
     TEAM_SAVE_FIELDS: TEAM_SAVE_FIELDS,
     saveSlotKey: saveSlotKey,
     serializeGameState: serializeGameState,
-    applySavedState: applySavedState
+    applySavedState: applySavedState,
+    saveToSlot: saveToSlot,
+    loadFromSlot: loadFromSlot,
+    deleteSlot: deleteSlot,
+    listSaves: listSaves,
+    autosave: autosave
   };
 }
