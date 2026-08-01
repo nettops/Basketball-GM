@@ -269,4 +269,68 @@ function checkProgressionTraitIntegration() {
 
 checkProgressionTraitIntegration();
 
+function checkInjuryFatigueTraitIntegration() {
+  const injuriesModule = require(path.join(__dirname, '..', 'injuries.js'));
+  const fatigueModule = require(path.join(__dirname, '..', 'fatigue.js'));
+  const teamsModule = require(path.join(__dirname, '..', 'teams.js'));
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+
+  const roster = leagueModule.getTeamRoster('BOS');
+  const target = roster[0];
+  const originalTraits = target.hiddenTraits;
+  const originalPersonality = target.hiddenPersonality;
+  const originalStatus = target.status;
+
+  // Iron Man + max durabilityMindset should roll injuries less often than
+  // Injury Prone + min durabilityMindset, over many trials.
+  const rng = makeRng(44);
+  let ironManInjuries = 0;
+  let injuryProneInjuries = 0;
+  const TRIALS = 3000;
+  for (let i = 0; i < TRIALS; i++) {
+    target.status = { morale: 70, fatigue: 80, injury: null };
+    target.hiddenTraits = [{ key: 'ironMan', tier: 'legendary' }];
+    target.hiddenPersonality = { durabilityMindset: 100 };
+    injuriesModule.rollInjury(target, rng);
+    if (target.status.injury) ironManInjuries++;
+
+    target.status = { morale: 70, fatigue: 80, injury: null };
+    target.hiddenTraits = [{ key: 'injuryProne', tier: 'legendary' }];
+    target.hiddenPersonality = { durabilityMindset: 0 };
+    injuriesModule.rollInjury(target, rng);
+    if (target.status.injury) injuryProneInjuries++;
+  }
+  assert.ok(injuryProneInjuries > ironManInjuries, 'Injury Prone + low durabilityMindset should roll more injuries than Iron Man + high durabilityMindset over ' + TRIALS + ' trials');
+
+  target.hiddenTraits = originalTraits;
+  target.hiddenPersonality = originalPersonality;
+  target.status = originalStatus;
+
+  // High Motor should accumulate less fatigue per game than Poor Conditioning.
+  assert.ok(teamsModule.getTeamById('BOS'));
+
+  const realA = roster[0];
+  const realB = roster[1];
+  const savedA = { traits: realA.hiddenTraits, status: realA.status };
+  const savedB = { traits: realB.hiddenTraits, status: realB.status };
+  realA.hiddenTraits = [{ key: 'highMotor', tier: 'legendary' }];
+  realA.status = { fatigue: 0 };
+  realB.hiddenTraits = [{ key: 'poorConditioning', tier: 'legendary' }];
+  realB.status = { fatigue: 0 };
+
+  const minutesByPlayerId = {};
+  minutesByPlayerId[realA.id] = 36;
+  minutesByPlayerId[realB.id] = 36;
+  fatigueModule.applyFatigueForGame('BOS', minutesByPlayerId, false);
+
+  assert.ok(realA.status.fatigue < realB.status.fatigue, 'High Motor should accumulate less fatigue than Poor Conditioning for the same minutes');
+
+  realA.hiddenTraits = savedA.traits; realA.status = savedA.status;
+  realB.hiddenTraits = savedB.traits; realB.status = savedB.status;
+
+  console.log('checkInjuryFatigueTraitIntegration: OK');
+}
+
+checkInjuryFatigueTraitIntegration();
+
 console.log('All trait/scouting validations passed');
