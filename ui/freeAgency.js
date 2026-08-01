@@ -2,6 +2,11 @@ function renderFreeAgency(container, userTeamId) {
   const signingLog = [];
 
   function draw() {
+    if (GameState.playMode === 'spectator') {
+      container.innerHTML = '<h2>Free Agency</h2><p>Spectator mode — teams manage themselves.</p>';
+      return;
+    }
+
     const pool = getFreeAgents().slice().sort(function (a, b) { return b.overall - a.overall; });
 
     let html = '<h2>Free Agency</h2>';
@@ -62,6 +67,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
     document.getElementById('accept-bid-btn').addEventListener('click', function () {
       const outcome = finalizeBidding(state, true);
       if (outcome.signed) signingLog.push(getTeamById(outcome.teamId).name + ' signed ' + player.name);
+      if (outcome.signed && GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
       container.innerHTML = '';
       redrawParent();
     });

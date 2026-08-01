@@ -82,8 +82,9 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
   const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
   const payroll = _EVAL_DATA.league.getTeamPayroll(teamId);
   const capSpace = _EVAL_DATA.data.CAP_CONSTANTS.SALARY_CAP - payroll;
+  const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
   const salaryIncrease = incomingSalary - outgoingSalary;
-  const salaryOk = salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;
+  const salaryOk = capDisabled || salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;
 
   const accepted = valueOk && salaryOk;
   return {
