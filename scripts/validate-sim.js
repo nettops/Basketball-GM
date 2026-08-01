@@ -316,4 +316,39 @@ function checkPlayoffSeeding() {
 }
 
 checkPlayoffSeeding();
+
+function checkPlayoffProgression() {
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js')); // registers boxscore engine
+  const playoffsModule = require(path.join(__dirname, '..', 'playoffs.js'));
+  const eastern = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Eastern'; });
+  eastern.forEach(function (t, i) { t.record = { wins: eastern.length - i, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+  const western = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Western'; });
+  western.forEach(function (t, i) { t.record = { wins: western.length - i, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+
+  const bracket = playoffsModule.generateBracket();
+  const settings = { simEngine: 'boxscore' };
+  const rng = makeRng(200);
+
+  let gamesSimulated = 0;
+  let game = playoffsModule.simulateNextPlayoffGame(bracket, settings, rng);
+  while (game !== null && gamesSimulated < 500) {
+    gamesSimulated += 1;
+    game = playoffsModule.simulateNextPlayoffGame(bracket, settings, rng);
+  }
+
+  // A full bracket is 15 series total (8 in round 1, 4 in semis, 2 in conf finals, 1 in
+  // the finals); each series needs at least 4 games (a sweep), so the true minimum is
+  // 15 * 4 = 60 games for the whole bracket to complete.
+  assert.ok(gamesSimulated >= 60, 'a full bracket needs at least 60 games (15 series x 4-game minimum), got ' + gamesSimulated);
+  assert.strictEqual(bracket.first.every(function (s) { return s.complete; }), true);
+  assert.strictEqual(bracket.semis.length, 4);
+  assert.strictEqual(bracket.confFinals.length, 2);
+  assert.strictEqual(bracket.finals.length, 1);
+  assert.ok(bracket.finals[0].complete, 'finals series should be complete once the loop exits');
+  assert.ok(bracket.finals[0].winner, 'a champion should be crowned');
+
+  console.log('checkPlayoffProgression: OK (champion: ' + bracket.finals[0].winner + ', ' + gamesSimulated + ' games)');
+}
+
+checkPlayoffProgression();
 console.log('All sim validations passed');
