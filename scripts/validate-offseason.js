@@ -95,4 +95,22 @@ function checkProspectGeneration() {
 }
 
 checkProspectGeneration();
+
+function checkReal2026Class() {
+  const prospectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+  assert.strictEqual(prospectsModule.DRAFT_PROSPECTS_2026.length, 60, 'the real 2026 class must have exactly 60 prospects');
+  const ids = prospectsModule.DRAFT_PROSPECTS_2026.map(function (p) { return p.id; });
+  assert.strictEqual(new Set(ids).size, 60, 'real prospect ids must be unique');
+  prospectsModule.DRAFT_PROSPECTS_2026.forEach(function (p) {
+    assert.ok(p.overall >= dataModule.RATING_MIN && p.overall <= dataModule.RATING_MAX);
+    assert.ok(p.potential >= p.overall);
+    assert.strictEqual(p.teamId, null);
+  });
+  const first15Avg = prospectsModule.DRAFT_PROSPECTS_2026.slice(0, 15).reduce(function (s, p) { return s + p.overall; }, 0) / 15;
+  const last15Avg = prospectsModule.DRAFT_PROSPECTS_2026.slice(-15).reduce(function (s, p) { return s + p.overall; }, 0) / 15;
+  assert.ok(first15Avg > last15Avg, 'the top of the class should rate better than the bottom on average');
+  console.log('checkReal2026Class: OK (' + prospectsModule.DRAFT_PROSPECTS_2026.length + ' prospects)');
+}
+
+checkReal2026Class();
 console.log('All offseason validations passed');

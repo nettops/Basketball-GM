@@ -129,6 +129,23 @@ DRAFT_PROSPECTS_2026.push(mkProspect('Nate Bittle', 21, 83, 235, 'C', 58, 70, 'r
 DRAFT_PROSPECTS_2026.push(mkProspect('Curtis Givens III', 20, 73, 175, 'PG', 57, 70, 'three_and_d', 0.47, 'Gary Payton II'));
 DRAFT_PROSPECTS_2026.push(mkProspect('Isaiah Elohim', 19, 78, 195, 'SG', 57, 74, 'slasher', 0.46, 'Cam Thomas'));
 
+// --- Real 2026 NBA Draft class, mock slots 46-60 (round 2, part 2 — class complete) ---
+DRAFT_PROSPECTS_2026.push(mkProspect('Grant Nelson Jr.', 22, 82, 230, 'PF', 57, 66, 'rim_protector', 0.48, 'PJ Tucker'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Chaz Lanier', 22, 77, 200, 'SG', 57, 65, 'three_and_d', 0.48, 'Duncan Robinson'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Javon Small Jr.', 22, 74, 185, 'PG', 56, 65, 'playmaker', 0.49, 'Monte Morris'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Rasheer Fleming Jr.', 21, 81, 225, 'PF', 56, 67, 'three_and_d', 0.48, 'PJ Washington'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Yaxel Lendeborg', 22, 80, 220, 'PF', 56, 66, 'rim_protector', 0.49, 'Nic Claxton'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Kobe Sanders Jr.', 23, 79, 195, 'SG', 55, 63, 'slasher', 0.50, 'Josh Okogie'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Kam Williams', 20, 76, 190, 'SG', 55, 68, 'three_and_d', 0.48, 'Sam Hauser'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Jamie Kaiser Jr.', 21, 78, 205, 'SF', 55, 65, 'three_and_d', 0.50, 'Corey Kispert'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Enrique Freeman Jr.', 23, 80, 220, 'PF', 55, 62, 'rim_protector', 0.51, 'Bruce Brown'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Adou Thiero', 21, 79, 210, 'SF', 54, 66, 'slasher', 0.50, 'Herbert Jones'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Silas Demary Jr.', 20, 76, 190, 'SG', 54, 67, 'primary_scorer', 0.50, 'Anfernee Simons'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Bennett Stirtz', 22, 74, 180, 'PG', 54, 63, 'playmaker', 0.51, 'T.J. McConnell'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Zvonimir Ivisic Jr.', 22, 85, 235, 'C', 53, 63, 'rim_protector', 0.52, 'Walker Kessler'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Otega Oweh', 22, 77, 205, 'SG', 53, 61, 'slasher', 0.52, 'Josh Okogie'));
+DRAFT_PROSPECTS_2026.push(mkProspect('Great Osobor', 22, 80, 245, 'PF', 52, 60, 'rim_protector', 0.53, 'Steven Adams'));
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     mkProspect: mkProspect,
