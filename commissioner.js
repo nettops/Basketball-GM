@@ -5,7 +5,8 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       players: require('./players-2026.js'),
       teams: require('./teams.js'),
       prospects: require('./draftProspects.js'),
-      traits: require('./traits.js')
+      traits: require('./traits.js'),
+      trade: require('./trade.js')
     }
   : {
       league: { getPlayerById: getPlayerById, getTeamRoster: getTeamRoster },
@@ -13,7 +14,8 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       players: { PLAYERS_2026: PLAYERS_2026 },
       teams: { TEAMS: TEAMS },
       prospects: { mkProspect: mkProspect },
-      traits: { ensureHiddenPlayerData: ensureHiddenPlayerData }
+      traits: { ensureHiddenPlayerData: ensureHiddenPlayerData },
+      trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade }
     };
 
 function clampRating(v) {
@@ -87,11 +89,26 @@ function createPlayer(details) {
   return player;
 }
 
+// Skips evaluateTrade's value/salary check entirely (Commissioner sandbox is
+// explicitly consequence-free on trade fairness) but still enforces the same
+// 12-15 roster-size band every other trade path enforces — an unchecked
+// Force Trade could otherwise drop a team below the floor other systems
+// (box-score sim, waivePlayer) assume always holds.
+function forceTrade(proposal) {
+  const rosterErrors = _COMMISSIONER_DATA.trade.validateRosterSizes(proposal);
+  if (rosterErrors.length > 0) {
+    return { success: false, rosterErrors: rosterErrors };
+  }
+  _COMMISSIONER_DATA.trade.executeTrade(proposal);
+  return { success: true, rosterErrors: [] };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     editPlayerRatings: editPlayerRatings,
     deletePlayer: deletePlayer,
     createPlayer: createPlayer,
-    CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES
+    CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES,
+    forceTrade: forceTrade
   };
 }
