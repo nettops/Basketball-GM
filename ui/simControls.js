@@ -21,6 +21,7 @@ async function runWithDelay(container, stepFn, stepsToRun) {
 
   if (statusEl) statusEl.textContent = '';
   renderView(GameState.currentView);
+  autosave(GameState);
 }
 
 async function handleNextGame() {

@@ -57,7 +57,8 @@ const BUILT_VIEWS = {
   trade: renderTradeCenter,
   freeagency: renderFreeAgency,
   draft: function (container) { renderDraftResults(container, GameState.lastDraftResults || []); },
-  scouting: renderScouting
+  scouting: renderScouting,
+  saveload: renderSaveLoad
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -71,6 +72,7 @@ function handleAdvanceToOffseason() {
   GameState.lastDraftResults = result.draftResults;
   GameState.offseasonStage = 'draft';
   renderView('draft');
+  autosave(GameState);
 }
 
 function handleAdvanceToNewSeason() {
@@ -80,6 +82,7 @@ function handleAdvanceToNewSeason() {
   GameState.playoffBracket = null;
   GameState.offseasonStage = null;
   renderView('dashboard');
+  autosave(GameState);
 }
 
 function renderPlaceholder(container) {
@@ -106,7 +109,7 @@ function renderView(viewName) {
     document.getElementById('advance-offseason-btn').addEventListener('click', handleAdvanceToOffseason);
   } else if (GameState.offseasonStage === 'draft') {
     simControlsEl.innerHTML += '<button id="advance-to-fa-btn">Go to Free Agency</button>';
-    document.getElementById('advance-to-fa-btn').addEventListener('click', function () { GameState.offseasonStage = 'freeagency'; renderView('freeagency'); });
+    document.getElementById('advance-to-fa-btn').addEventListener('click', function () { GameState.offseasonStage = 'freeagency'; renderView('freeagency'); autosave(GameState); });
   } else if (GameState.offseasonStage === 'freeagency') {
     simControlsEl.innerHTML += '<button id="start-new-season-btn">Start New Season</button>';
     document.getElementById('start-new-season-btn').addEventListener('click', handleAdvanceToNewSeason);
@@ -121,8 +124,19 @@ function selectTeam(teamId) {
   renderView('dashboard');
 }
 
+function loadGame(slotId) {
+  const result = loadFromSlot(slotId, GameState);
+  if (!result.success) {
+    alert(result.reason);
+    return;
+  }
+  document.getElementById('team-select-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'block';
+  renderView(GameState.currentView || 'dashboard');
+}
+
 function init() {
-  renderTeamSelect(document.getElementById('team-select-view'), selectTeam);
+  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame);
 }
 
 document.addEventListener('DOMContentLoaded', init);
