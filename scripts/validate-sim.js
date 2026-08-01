@@ -116,4 +116,42 @@ function checkScoreSimulation() {
 }
 
 checkScoreSimulation();
+
+function checkDistributeInt() {
+  const engineModule = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const result = engineModule.distributeInt(100, [1, 2, 3, 4]);
+  assert.strictEqual(result.reduce(function (a, b) { return a + b; }, 0), 100);
+  assert.strictEqual(result.length, 4);
+  result.forEach(function (v) { assert.ok(v >= 0); });
+  console.log('checkDistributeInt: OK');
+}
+
+function checkBoxScoreGeneration() {
+  const engineModule = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const rng = makeRng(7);
+  const result = engineModule.simulateGame('BOS', 'LAL', rng);
+
+  assert.ok(result.homeScore > 0 && result.awayScore > 0);
+
+  const homeRoster = new Set(require(path.join(__dirname, '..', 'league.js')).getTeamRoster('BOS').map(function (p) { return p.id; }));
+  let homePointsSum = 0;
+  let homeMinutesSum = 0;
+  Object.keys(result.boxScore).forEach(function (playerId) {
+    if (homeRoster.has(playerId)) {
+      homePointsSum += result.boxScore[playerId].points;
+      homeMinutesSum += result.boxScore[playerId].minutes;
+      assert.ok(result.boxScore[playerId].points >= 0);
+      assert.ok(result.boxScore[playerId].fga >= result.boxScore[playerId].fgm);
+      assert.ok(result.boxScore[playerId].tpa >= result.boxScore[playerId].tpm);
+      assert.ok(result.boxScore[playerId].fta >= result.boxScore[playerId].ftm);
+    }
+  });
+  assert.strictEqual(homePointsSum, result.homeScore, 'home box score points must sum to home team score');
+  assert.strictEqual(homeMinutesSum, 240, 'home team minutes must sum to 240');
+
+  console.log('checkBoxScoreGeneration: OK');
+}
+
+checkDistributeInt();
+checkBoxScoreGeneration();
 console.log('All sim validations passed');

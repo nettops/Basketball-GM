@@ -30,6 +30,130 @@ function simulateScore(homeRating, awayRating, rng) {
   return { homeScore: homeScore, awayScore: awayScore };
 }
 
+// Largest-remainder distribution: splits `total` across `weights` proportionally,
+// as integers that sum to exactly `total` (never over/under by rounding drift).
+// Reused for points, rebounds, assists, steals, blocks, and minutes.
+function distributeInt(total, weights) {
+  const sumW = weights.reduce(function (a, b) { return a + b; }, 0);
+  if (sumW <= 0) {
+    // No positive weights (shouldn't happen with real rosters) — split evenly.
+    const even = weights.map(function () { return Math.floor(total / weights.length); });
+    let leftover = total - even.reduce(function (a, b) { return a + b; }, 0);
+    for (let i = 0; leftover > 0; i = (i + 1) % even.length, leftover--) even[i]++;
+    return even;
+  }
+  const raw = weights.map(function (w) { return (total * w) / sumW; });
+  const floors = raw.map(Math.floor);
+  let remainder = total - floors.reduce(function (a, b) { return a + b; }, 0);
+  const order = raw.map(function (v, i) { return { i: i, frac: v - Math.floor(v) }; })
+    .sort(function (a, b) { return b.frac - a.frac; });
+  const result = floors.slice();
+  for (let k = 0; k < remainder; k++) {
+    result[order[k % order.length].i] += 1;
+  }
+  return result;
+}
+
+function scoringWeight(player) {
+  const a = player.attributes;
+  return Math.max(1, (a.insideScoring + a.midRange + a.threePoint + a.postScoring) / 4);
+}
+function reboundWeight(player) {
+  const a = player.attributes;
+  return Math.max(1, (a.offReb + a.defReb) / 2);
+}
+function assistWeight(player) {
+  const a = player.attributes;
+  return Math.max(1, (a.passing + a.ballHandling) / 2);
+}
+function stealWeight(player) { return Math.max(1, player.attributes.steal); }
+function blockWeight(player) { return Math.max(1, player.attributes.block); }
+function minutesWeight(player) { return Math.max(1, player.overall - 40); }
+
+// Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by
+// their shooting attributes. This is a flavor-stat approximation, not a precise
+// possession-level shot model (that's the possession-by-possession engine, later).
+function deriveShootingLine(player, points, rng) {
+  if (points === 0) return { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0 };
+  const a = player.attributes;
+  const ftShare = Math.min(0.35, 0.10 + (a.freeThrow - 50) / 300);
+  const ftPoints = Math.round(points * Math.max(0, ftShare));
+  const threeShare = Math.min(0.6, Math.max(0, (a.threePoint - 50) / 120));
+  const remainderAfterFt = points - ftPoints;
+  let threeMade = Math.round((remainderAfterFt * threeShare) / 3);
+  let threePoints = threeMade * 3;
+  if (threePoints > remainderAfterFt) { threeMade = Math.floor(remainderAfterFt / 3); threePoints = threeMade * 3; }
+  const twoPointRemainder = remainderAfterFt - threePoints;
+  const twoMade = Math.round(twoPointRemainder / 2);
+
+  const twoPct = Math.max(0.30, Math.min(0.65, ((a.insideScoring + a.midRange) / 2) / 150));
+  const threePct = Math.max(0.20, Math.min(0.50, a.threePoint / 180));
+  const ftPct = Math.max(0.55, Math.min(0.95, a.freeThrow / 105));
+
+  const twoAttempts = twoMade > 0 ? Math.max(twoMade, Math.round(twoMade / twoPct)) : (rng() < 0.15 ? 1 : 0);
+  const threeAttempts = threeMade > 0 ? Math.max(threeMade, Math.round(threeMade / threePct)) : (rng() < 0.1 ? 1 : 0);
+  const ftAttempts = ftPoints > 0 ? Math.max(Math.round(ftPoints / 1), Math.round(ftPoints / ftPct)) : 0;
+
+  return {
+    fgm: twoMade + threeMade,
+    fga: twoAttempts + threeAttempts,
+    tpm: threeMade,
+    tpa: threeAttempts,
+    ftm: ftPoints,
+    fta: ftAttempts
+  };
+}
+
+function simulateTeamBoxScore(teamId, teamScore, rng) {
+  const roster = _ENGINE_DATA.league.getTeamRoster(teamId).filter(function (p) { return !p.status.injury; });
+  const minutes = distributeInt(240, roster.map(minutesWeight));
+  const points = distributeInt(teamScore, roster.map(scoringWeight));
+  const rebounds = distributeInt(Math.round(teamScore * 0.42), roster.map(reboundWeight)); // ~42 total rebounds/team is a realistic NBA average
+  const assists = distributeInt(Math.round(teamScore * 0.22), roster.map(assistWeight));
+  const steals = distributeInt(7, roster.map(stealWeight));
+  const blocks = distributeInt(5, roster.map(blockWeight));
+
+  const boxScore = {};
+  roster.forEach(function (p, i) {
+    const shooting = deriveShootingLine(p, points[i], rng);
+    boxScore[p.id] = {
+      minutes: minutes[i],
+      points: points[i],
+      rebounds: rebounds[i],
+      assists: assists[i],
+      steals: steals[i],
+      blocks: blocks[i],
+      fgm: shooting.fgm,
+      fga: shooting.fga,
+      tpm: shooting.tpm,
+      tpa: shooting.tpa,
+      ftm: shooting.ftm,
+      fta: shooting.fta
+    };
+  });
+  return boxScore;
+}
+
+function simulateGame(homeTeamId, awayTeamId, rng) {
+  const homeRating = computeTeamRating(homeTeamId);
+  const awayRating = computeTeamRating(awayTeamId);
+  const score = simulateScore(homeRating, awayRating, rng);
+  const homeBox = simulateTeamBoxScore(homeTeamId, score.homeScore, rng);
+  const awayBox = simulateTeamBoxScore(awayTeamId, score.awayScore, rng);
+  return {
+    homeScore: score.homeScore,
+    awayScore: score.awayScore,
+    boxScore: Object.assign({}, homeBox, awayBox)
+  };
+}
+
+_ENGINE_DATA.simEngine.registerEngine('boxscore', { simulateGame: simulateGame });
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { computeTeamRating: computeTeamRating, simulateScore: simulateScore };
+  module.exports = {
+    computeTeamRating: computeTeamRating,
+    simulateScore: simulateScore,
+    distributeInt: distributeInt,
+    simulateGame: simulateGame
+  };
 }
