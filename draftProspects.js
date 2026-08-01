@@ -1,6 +1,9 @@
 var _PROSPECT_DATA = (typeof require !== 'undefined')
-  ? require('./data.js')
-  : { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS };
+  ? { data: require('./data.js'), traits: require('./traits.js') }
+  : {
+      data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS },
+      traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies }
+    };
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
 // than shared — prospects and rostered players are authored independently and
@@ -17,9 +20,9 @@ const PROSPECT_ARCHETYPES = {
 function makeProspectAttributes(overall, archetype) {
   const offsets = PROSPECT_ARCHETYPES[archetype];
   const attrs = {};
-  _PROSPECT_DATA.ATTRIBUTE_KEYS.forEach(function (key) {
+  _PROSPECT_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     const raw = overall + (offsets[key] || 0);
-    attrs[key] = Math.max(_PROSPECT_DATA.RATING_MIN, Math.min(_PROSPECT_DATA.RATING_MAX, raw));
+    attrs[key] = Math.max(_PROSPECT_DATA.data.RATING_MIN, Math.min(_PROSPECT_DATA.data.RATING_MAX, raw));
   });
   return attrs;
 }
@@ -66,13 +69,17 @@ function generateProspectClass(rng, count) {
     const overall = Math.round(58 + rankFactor * 22 + (rng() - 0.5) * 8);
     const potential = Math.round(overall + rng() * 15 + rankFactor * 8);
     const archetype = ARCHETYPE_NAMES[Math.floor(rng() * ARCHETYPE_NAMES.length)];
-    const position = _PROSPECT_DATA.POSITIONS[Math.floor(rng() * _PROSPECT_DATA.POSITIONS.length)];
+    const position = _PROSPECT_DATA.data.POSITIONS[Math.floor(rng() * _PROSPECT_DATA.data.POSITIONS.length)];
     const name = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)] + ' ' + LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)] + ' Jr.'.slice(0, rng() < 0.15 ? 4 : 0);
     const age = 18 + Math.floor(rng() * 4);
     const heightIn = 74 + Math.floor(rng() * 10);
     const weightLb = 180 + Math.floor(rng() * 60);
     const bustChance = Math.round((0.15 + (1 - rankFactor) * 0.35) * 100) / 100;
-    prospects.push(mkProspect(name.trim(), age, heightIn, weightLb, position, Math.max(40, Math.min(90, overall)), Math.max(overall, Math.min(99, potential)), archetype, bustChance, 'Unproven'));
+    const prospect = mkProspect(name.trim(), age, heightIn, weightLb, position, Math.max(40, Math.min(90, overall)), Math.max(overall, Math.min(99, potential)), archetype, bustChance, 'Unproven');
+    prospect.hiddenTraits = _PROSPECT_DATA.traits.generateHiddenTraits(prospect, rng);
+    prospect.hiddenPersonality = _PROSPECT_DATA.traits.generatePersonality(prospect, rng);
+    prospect.hiddenTendencies = _PROSPECT_DATA.traits.generateTendencies(prospect, rng);
+    prospects.push(prospect);
   }
   return prospects;
 }
