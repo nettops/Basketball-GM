@@ -380,4 +380,25 @@ function checkDraftOrderRespectsTradedPicks() {
 }
 
 checkDraftOrderRespectsTradedPicks();
+
+function checkGenerateNewSeason() {
+  const transitionModule = require(path.join(__dirname, '..', 'seasonTransition.js'));
+  const team = teamsModule.getTeamById('BOS');
+  team.record = { wins: 55, losses: 27, pointsFor: 9000, pointsAgainst: 8700 };
+  const player = leagueModule.getTeamRoster('BOS')[0];
+  player.seasonStats = { gamesPlayed: 82, points: 2000 };
+
+  const rng = makeRng(1000);
+  const games = transitionModule.generateNewSeason(rng);
+
+  assert.strictEqual(games.length, 1230, 'a new season should have exactly 1230 games');
+  assert.strictEqual(team.record.wins, 0, 'records should reset for the new season');
+  assert.strictEqual(player.seasonStats, undefined, 'season stats should clear for the new season');
+  assert.strictEqual(teamsModule.getTeamById('BOS').draftPicks.length, 2, 'every team should have fresh draft picks after generating a new season');
+  assert.strictEqual(teamsModule.getTeamById('BOS').draftPicks[0].currentOwnerId, 'BOS', 'a fresh pick is owned by its original team until traded again');
+
+  console.log('checkGenerateNewSeason: OK');
+}
+
+checkGenerateNewSeason();
 console.log('All offseason validations passed');
