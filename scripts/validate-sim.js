@@ -154,4 +154,24 @@ function checkBoxScoreGeneration() {
 
 checkDistributeInt();
 checkBoxScoreGeneration();
+
+function checkFatigue() {
+  const fatigueModule = require(path.join(__dirname, '..', 'fatigue.js'));
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const roster = leagueModule.getTeamRoster('BOS');
+  const starter = roster[0];
+  starter.status.fatigue = 0;
+
+  fatigueModule.applyFatigueForGame('BOS', (function () { const m = {}; roster.forEach(function (p) { m[p.id] = 30; }); return m; })(), false);
+  assert.ok(starter.status.fatigue > 0, 'fatigue should rise after playing minutes');
+
+  const before = starter.status.fatigue;
+  fatigueModule.decayFatigueForRest('BOS', 2);
+  assert.ok(starter.status.fatigue < before, 'fatigue should fall after rest days');
+
+  starter.status.fatigue = 0; // reset so later tasks' tests aren't affected by this one's side effects
+  console.log('checkFatigue: OK');
+}
+
+checkFatigue();
 console.log('All sim validations passed');
