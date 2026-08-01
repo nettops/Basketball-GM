@@ -1,6 +1,6 @@
 var _ENGINE_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js') }
-  : { league: { getTeamRoster: getTeamRoster }, teams: { getTeamById: getTeamById }, simEngine: { registerEngine: registerEngine } };
+  ? { league: require('./league.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), traits: require('./traits.js') }
+  : { league: { getTeamRoster: getTeamRoster }, teams: { getTeamById: getTeamById }, simEngine: { registerEngine: registerEngine }, traits: { getTraitBonus: getTraitBonus } };
 
 function computeTeamRating(teamId) {
   const roster = _ENGINE_DATA.league.getTeamRoster(teamId).filter(function (p) { return !p.status.injury; });
@@ -10,7 +10,12 @@ function computeTeamRating(teamId) {
   const avgFatiguePenalty = (rotation.reduce(function (s, p) { return s + p.status.fatigue; }, 0) / rotation.length) * 0.1;
   const team = _ENGINE_DATA.teams.getTeamById(teamId);
   const chemistryBonus = (team.chemistry - 70) * 0.05;
-  return avgOverall - avgFatiguePenalty + chemistryBonus;
+  // Modest nudge from hidden traits: a rotation stacked with Sharpshooters/Lockdown
+  // Defenders plays a little better than raw overall alone would predict.
+  const traitBonus = rotation.reduce(function (s, p) {
+    return s + _ENGINE_DATA.traits.getTraitBonus(p, 'boxscore', 'scoring') + _ENGINE_DATA.traits.getTraitBonus(p, 'boxscore', 'defense');
+  }, 0) / rotation.length * 0.15;
+  return avgOverall - avgFatiguePenalty + chemistryBonus + traitBonus;
 }
 
 function simulateScore(homeRating, awayRating, rng) {
@@ -56,19 +61,28 @@ function distributeInt(total, weights) {
 
 function scoringWeight(player) {
   const a = player.attributes;
-  return Math.max(1, (a.insideScoring + a.midRange + a.threePoint + a.postScoring) / 4);
+  const base = (a.insideScoring + a.midRange + a.threePoint + a.postScoring) / 4;
+  return Math.max(1, base + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'scoring'));
 }
 function reboundWeight(player) {
   const a = player.attributes;
-  return Math.max(1, (a.offReb + a.defReb) / 2);
+  const base = (a.offReb + a.defReb) / 2;
+  return Math.max(1, base + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
 }
 function assistWeight(player) {
   const a = player.attributes;
-  return Math.max(1, (a.passing + a.ballHandling) / 2);
+  const base = (a.passing + a.ballHandling) / 2;
+  return Math.max(1, base + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
 }
-function stealWeight(player) { return Math.max(1, player.attributes.steal); }
-function blockWeight(player) { return Math.max(1, player.attributes.block); }
-function minutesWeight(player) { return Math.max(1, player.overall - 40); }
+function stealWeight(player) {
+  return Math.max(1, player.attributes.steal + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'steal'));
+}
+function blockWeight(player) {
+  return Math.max(1, player.attributes.block + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'block'));
+}
+function minutesWeight(player) {
+  return Math.max(1, player.overall - 40 + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
+}
 
 // Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by
 // their shooting attributes. This is a flavor-stat approximation, not a precise
@@ -78,7 +92,11 @@ function deriveShootingLine(player, points, rng) {
   const a = player.attributes;
   const ftShare = Math.min(0.35, 0.10 + (a.freeThrow - 50) / 300);
   const ftPoints = Math.round(points * Math.max(0, ftShare));
-  const threeShare = Math.min(0.6, Math.max(0, (a.threePoint - 50) / 120));
+  // hiddenTendencies.threeTendency is a ~0-100 share of a player's shot mix
+  // (see traits.js's generateTendencies); nudge the visible-attribute-driven
+  // three-point share by how far it sits from a neutral one-third split.
+  const tendencyNudge = (player.hiddenTendencies && player.hiddenTendencies.threeTendency !== undefined) ? (player.hiddenTendencies.threeTendency - 33) / 300 : 0;
+  const threeShare = Math.min(0.6, Math.max(0, (a.threePoint - 50) / 120 + tendencyNudge));
   const remainderAfterFt = points - ftPoints;
   let threeMade = Math.round((remainderAfterFt * threeShare) / 3);
   let threePoints = threeMade * 3;

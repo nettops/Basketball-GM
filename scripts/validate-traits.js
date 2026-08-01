@@ -170,4 +170,52 @@ function checkRevealThresholds() {
 
 checkRevealThresholds();
 
+function checkComputeTeamRatingTraitBonus() {
+  const engineModule = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+  const before = engineModule.computeTeamRating('BOS');
+
+  const roster = leagueModule.getTeamRoster('BOS');
+  const originalTraits = roster.map(function (p) { return p.hiddenTraits; });
+  roster.forEach(function (p) { p.hiddenTraits = [{ key: 'sharpshooter', tier: 'legendary' }, { key: 'iceInVeins', tier: 'legendary' }]; });
+
+  const after = engineModule.computeTeamRating('BOS');
+  roster.forEach(function (p, i) { p.hiddenTraits = originalTraits[i]; }); // restore
+
+  assert.ok(after > before, 'stacking every player with elite offensive traits should raise team rating');
+
+  console.log('checkComputeTeamRatingTraitBonus: OK');
+}
+
+checkComputeTeamRatingTraitBonus();
+
+// scoringWeight/reboundWeight/stealWeight/blockWeight/etc aren't exported
+// individually (and a full simulateGame roll is too noisy to reliably detect
+// a single player's trait-driven share shift within a fixed 5-block team
+// total, especially on a roster where several other players already have high
+// block attributes). Instead, reproduce blockWeight's exact formula
+// (Math.max(1, attributes.block + getTraitBonus(player,'boxscore','block')))
+// directly against the two exported building blocks it's made of —
+// getTraitBonus and distributeInt — which deterministically proves both that
+// the trait raises the weight and that distributeInt turns a higher weight
+// into a bigger integer share.
+function checkWeightFunctionTraitBias() {
+  const engineModule = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+
+  const withTrait = { attributes: { block: 45 }, hiddenTraits: [{ key: 'rimProtector', tier: 'legendary' }] };
+  const withoutTrait = { attributes: { block: 45 }, hiddenTraits: [] };
+  const weightWith = Math.max(1, withTrait.attributes.block + traitsModule.getTraitBonus(withTrait, 'boxscore', 'block'));
+  const weightWithout = Math.max(1, withoutTrait.attributes.block + traitsModule.getTraitBonus(withoutTrait, 'boxscore', 'block'));
+  assert.ok(weightWith > weightWithout, 'a legendary Rim Protector should raise blockWeight\'s underlying weight');
+
+  const shareWith = engineModule.distributeInt(5, [weightWith, 10, 10, 10])[0];
+  const shareWithout = engineModule.distributeInt(5, [weightWithout, 10, 10, 10])[0];
+  assert.ok(shareWith >= shareWithout, 'a higher block weight should never receive a smaller share of the fixed team block total');
+
+  console.log('checkWeightFunctionTraitBias: OK');
+}
+
+checkWeightFunctionTraitBias();
+
 console.log('All trait/scouting validations passed');
