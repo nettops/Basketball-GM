@@ -3,8 +3,23 @@ const GameState = {
   currentView: 'dashboard',
   season: null,
   playoffBracket: null,
-  settings: { simEngine: 'boxscore', simSpeed: 'normal' }
+  playMode: 'gm', // 'gm' | 'commissioner' | 'spectator'
+  automation: { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: false, autoScout: false },
+  feed: [],
+  draftSession: null,
+  tradeOffers: [],
+  pauseRequested: false,
+  settings: {
+    simEngine: 'boxscore', simSpeed: 'normal',
+    pauseOn: { madePlayoffs: false, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: false },
+    capDisabled: false
+  }
 };
+
+function pushToFeed(text) {
+  GameState.feed.push({ day: GameState.season ? GameState.season.currentDay : null, leagueYear: GameState.leagueYear || 2026, text: text });
+  if (GameState.feed.length > 200) GameState.feed.shift();
+}
 
 function initSeason() {
   GameState.rng = makeRng(Date.now());
@@ -44,6 +59,84 @@ function tickScoutingForDay(dayIndex) {
   const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
   const daysUntilDraft = lastDay - dayIndex;
   tickPassiveScouting(GameState.scouting, team, dayIndex, ownRosterIds, playedOpponentIds, prospectIds, daysUntilDraft);
+  if (GameState.automation.autoScout) {
+    autoAllocateScoutPoints(GameState.scouting, ownRosterIds, prospectIds.filter(function (id) { return GameState.scouting.targets[id] && GameState.scouting.targets[id].watchlisted; }), playedOpponentIds.filter(function (id) { return GameState.scouting.targets[id] && GameState.scouting.targets[id].watchlisted; }));
+  }
+}
+
+function pushGameResultsToFeed(dayIndex, todaysGames) {
+  todaysGames.forEach(function (g) {
+    if (!g.played) return;
+    const isUserGame = g.homeTeamId === GameState.userTeamId || g.awayTeamId === GameState.userTeamId;
+    if (GameState.playMode !== 'spectator' && !isUserGame) return;
+    const home = getTeamById(g.homeTeamId);
+    const away = getTeamById(g.awayTeamId);
+    pushToFeed(away.name + ' ' + g.awayScore + ', ' + home.name + ' ' + g.homeScore);
+  });
+}
+
+function pushInjuriesToFeed(newInjuries) {
+  newInjuries.forEach(function (inj) {
+    const player = getPlayerById(inj.playerId);
+    const isUserPlayer = inj.teamId === GameState.userTeamId;
+    if (GameState.playMode !== 'spectator' && !isUserPlayer && player.overall < 80) return;
+    pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity);
+    if (isUserPlayer && player.overall >= 80 && GameState.settings.pauseOn.keyInjury) {
+      GameState.pauseRequested = true;
+    }
+  });
+}
+
+// Weekly (not daily) trade-offer generation for the user's team only — AI-vs-AI
+// trading isn't modeled in this batch (see the Phase 7A plan's Global
+// Constraints for why).
+function runWeeklyTradeGeneration(dayIndex) {
+  if (GameState.playMode === 'spectator' || !GameState.userTeamId) return;
+  const week = currentWeek(dayIndex);
+  if (GameState.lastTradeGenWeek === week) return;
+  GameState.lastTradeGenWeek = week;
+  const team = getTeamById(GameState.userTeamId);
+  const offer = generateTradeOffer(team, GameState.rng);
+  if (!offer) return;
+  if (GameState.automation.autoTrade) {
+    executeTrade(offer.proposal);
+    const partnerId = offer.proposal.participants.find(function (id) { return id !== team.id; });
+    pushToFeed('Auto-traded with ' + getTeamById(partnerId).name);
+  } else {
+    GameState.tradeOffers.push(offer);
+    if (GameState.settings.pauseOn.tradeOfferReceived) GameState.pauseRequested = true;
+  }
+}
+
+function handleDayComplete(dayIndex, todaysGames, newInjuries) {
+  tickScoutingForDay(dayIndex);
+  pushGameResultsToFeed(dayIndex, todaysGames || []);
+  pushInjuriesToFeed(newInjuries || []);
+  runWeeklyTradeGeneration(dayIndex);
+}
+
+function switchPlayMode(newMode, teamId) {
+  if (newMode === 'spectator') {
+    Object.keys(GameState.automation).forEach(function (k) { GameState.automation[k] = true; });
+  } else if (!GameState.userTeamId && teamId) {
+    GameState.userTeamId = teamId;
+  }
+  GameState.playMode = newMode;
+  renderView(GameState.currentView);
+}
+
+function spectateLeague() {
+  GameState.playMode = 'spectator';
+  Object.keys(GameState.automation).forEach(function (k) { GameState.automation[k] = true; });
+  // Purely cosmetic "camera" team for the feed/dashboard/standings to default
+  // to — has zero gameplay effect, so Math.random() here (rather than the
+  // seeded rng, which doesn't exist until initSeason() below creates it)
+  // doesn't threaten save/load's exact-resume guarantee.
+  GameState.userTeamId = TEAMS[Math.floor(Math.random() * TEAMS.length)].id;
+  initSeason();
+  document.getElementById('team-select-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'block';
+  renderView('dashboard');
 }
 
 // Views with a real renderer this phase. Anything else in NAV_ITEMS (ui/nav.js)
@@ -56,9 +149,16 @@ const BUILT_VIEWS = {
   settings: renderSettings,
   trade: renderTradeCenter,
   freeagency: renderFreeAgency,
-  draft: function (container) { renderDraftResults(container, GameState.lastDraftResults || []); },
+  draft: function (container) {
+    if (GameState.draftSession && currentPick(GameState.draftSession)) {
+      renderDraftPicker(container, GameState.draftSession, GameState.userTeamId, handleUserDraftPick);
+    } else {
+      renderDraftResults(container, GameState.lastDraftResults || []);
+    }
+  },
   scouting: renderScouting,
-  saveload: renderSaveLoad
+  saveload: renderSaveLoad,
+  feed: renderLiveFeed
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -68,9 +168,36 @@ function isRegularSeasonAndPlayoffsComplete() {
 
 function handleAdvanceToOffseason() {
   GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
-  const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass);
-  GameState.lastDraftResults = result.draftResults;
+  const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
+
+  if (autoDraftEffective) {
+    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass);
+    GameState.lastDraftResults = result.draftResults;
+    GameState.draftSession = null;
+  } else {
+    runOffseasonPreDraft(GameState.rng);
+    const draftOrder = buildDraftOrder(GameState.playoffBracket, GameState.rng);
+    GameState.draftSession = startDraftSession(draftOrder, GameState.upcomingDraftClass);
+    advanceDraftUntilUserTurn(GameState.draftSession, GameState.userTeamId, false);
+    if (!currentPick(GameState.draftSession)) {
+      GameState.lastDraftResults = GameState.draftSession.results;
+      GameState.draftSession = null;
+    }
+  }
+
   GameState.offseasonStage = 'draft';
+  renderView('draft');
+  autosave(GameState);
+}
+
+function handleUserDraftPick(prospectId) {
+  const prospect = GameState.draftSession.available.find(function (p) { return p.id === prospectId; });
+  resolveCurrentPick(GameState.draftSession, prospect);
+  advanceDraftUntilUserTurn(GameState.draftSession, GameState.userTeamId, false);
+  if (!currentPick(GameState.draftSession)) {
+    GameState.lastDraftResults = GameState.draftSession.results;
+    GameState.draftSession = null;
+  }
   renderView('draft');
   autosave(GameState);
 }
@@ -109,15 +236,24 @@ function renderView(viewName) {
     document.getElementById('advance-offseason-btn').addEventListener('click', handleAdvanceToOffseason);
   } else if (GameState.offseasonStage === 'draft') {
     simControlsEl.innerHTML += '<button id="advance-to-fa-btn">Go to Free Agency</button>';
-    document.getElementById('advance-to-fa-btn').addEventListener('click', function () { GameState.offseasonStage = 'freeagency'; renderView('freeagency'); autosave(GameState); });
+    document.getElementById('advance-to-fa-btn').addEventListener('click', function () {
+      GameState.offseasonStage = 'freeagency';
+      if (GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency) {
+        runFreeAgencySilently(GameState.rng);
+        autoEnforceRosterSize(getTeamById(GameState.userTeamId));
+      }
+      renderView('freeagency');
+      autosave(GameState);
+    });
   } else if (GameState.offseasonStage === 'freeagency') {
     simControlsEl.innerHTML += '<button id="start-new-season-btn">Start New Season</button>';
     document.getElementById('start-new-season-btn').addEventListener('click', handleAdvanceToNewSeason);
   }
 }
 
-function selectTeam(teamId) {
+function selectTeam(teamId, playMode) {
   GameState.userTeamId = teamId;
+  GameState.playMode = playMode || 'gm';
   initSeason();
   document.getElementById('team-select-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';
@@ -136,7 +272,7 @@ function loadGame(slotId) {
 }
 
 function init() {
-  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame);
+  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague);
 }
 
 document.addEventListener('DOMContentLoaded', init);
