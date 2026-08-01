@@ -227,4 +227,27 @@ function checkOffseasonThroughDraft() {
 }
 
 checkOffseasonThroughDraft();
+
+function checkScoreOffer() {
+  const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgency.js'));
+  const player = { id: 'test-fa-player', age: 34, overall: 82, position: 'SF' };
+  const winNowTeam = teamsModule.getTeamById('LAL');
+  const rebuildingTeam = teamsModule.getTeamById('WAS');
+
+  const sameOffer = { salary: 20000000, yearsRemaining: 2 };
+  const winNowScore = freeAgencyModule.scoreOffer(player, winNowTeam, sameOffer);
+  const rebuildingScore = freeAgencyModule.scoreOffer(player, rebuildingTeam, sameOffer);
+  assert.ok(winNowScore > rebuildingScore, 'an aging star should score an identical offer higher from a win-now team than a rebuilding one');
+
+  const bigOffer = { salary: 40000000, yearsRemaining: 2 };
+  const smallOffer = { salary: 5000000, yearsRemaining: 2 };
+  assert.ok(
+    freeAgencyModule.scoreOffer(player, winNowTeam, bigOffer) > freeAgencyModule.scoreOffer(player, winNowTeam, smallOffer),
+    'more money should score higher, all else equal'
+  );
+
+  console.log('checkScoreOffer: OK');
+}
+
+checkScoreOffer();
 console.log('All offseason validations passed');
