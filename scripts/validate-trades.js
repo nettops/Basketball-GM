@@ -44,4 +44,25 @@ function checkBasePlayerValue() {
 }
 
 checkBasePlayerValue();
+
+function checkAdjustedPlayerValue() {
+  const evaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
+  const rebuildingTeam = { id: 'BKN', timeline: 'rebuilding' };
+
+  const youngPlayer = { overall: 78, potential: 88, age: 22, position: 'SF', contract: { salary: 6000000 } };
+  const oldVeteran = { overall: 78, potential: 78, age: 33, position: 'SF', contract: { salary: 6000000 } };
+
+  assert.ok(
+    evaluatorModule.adjustedPlayerValue(youngPlayer, rebuildingTeam) > evaluatorModule.adjustedPlayerValue(oldVeteran, rebuildingTeam),
+    'a rebuilding team should value the young player over an equal-overall veteran'
+  );
+
+  const centerHeavyTeam = teamsModule.getTeamById('DEN'); // real roster, has real centers
+  const needMultiplierForGuard = evaluatorModule.needMultiplier('PG', centerHeavyTeam);
+  assert.ok(typeof needMultiplierForGuard === 'number' && needMultiplierForGuard > 0);
+
+  console.log('checkAdjustedPlayerValue: OK');
+}
+
+checkAdjustedPlayerValue();
 console.log('All trade validations passed');
