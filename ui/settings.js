@@ -49,6 +49,11 @@ function renderSettings(container) {
     Object.keys(PAUSE_ON_LABELS).forEach(function (key) {
       html += '<label style="display:block;"><input type="checkbox" data-pause-on-key="' + key + '"' + (GameState.settings.pauseOn[key] ? ' checked' : '') + '> ' + PAUSE_ON_LABELS[key] + '</label>';
     });
+
+    if (GameState.playMode === 'commissioner') {
+      html += '<h3>Commissioner</h3>';
+      html += '<label style="display:block;"><input type="checkbox" id="settings-disable-cap"' + (GameState.settings.capDisabled ? ' checked' : '') + '> Disable Salary Cap (free agency and trades ignore cap space entirely)</label>';
+    }
   }
 
   container.innerHTML = html;
@@ -78,6 +83,13 @@ function renderSettings(container) {
       GameState.settings.pauseOn[e.target.getAttribute('data-pause-on-key')] = e.target.checked;
     });
   });
+
+  const disableCapInput = document.getElementById('settings-disable-cap');
+  if (disableCapInput) {
+    disableCapInput.addEventListener('change', function (e) {
+      GameState.settings.capDisabled = e.target.checked;
+    });
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
