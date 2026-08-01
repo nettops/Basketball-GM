@@ -6,7 +6,8 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       teams: require('./teams.js'),
       prospects: require('./draftProspects.js'),
       traits: require('./traits.js'),
-      trade: require('./trade.js')
+      trade: require('./trade.js'),
+      tradeEvaluator: require('./tradeEvaluator.js')
     }
   : {
       league: { getPlayerById: getPlayerById, getTeamRoster: getTeamRoster },
@@ -15,7 +16,8 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS },
       prospects: { mkProspect: mkProspect },
       traits: { ensureHiddenPlayerData: ensureHiddenPlayerData },
-      trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade }
+      trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
     };
 
 function clampRating(v) {
@@ -103,12 +105,115 @@ function forceTrade(proposal) {
   return { success: true, rosterErrors: [] };
 }
 
+function shuffleTeamIds(ids, rng) {
+  const a = ids.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
+
+// Same "highest adjustedPlayerValue wins" selection draft.js's selectAIPick
+// already uses for the real draft, reused here so the expansion team's picks
+// are evaluated the same way every other roster decision in the game is.
+function pickBestAvailable(available, team) {
+  let best = available[0];
+  let bestValue = _COMMISSIONER_DATA.tradeEvaluator.adjustedPlayerValue(best, team);
+  for (let i = 1; i < available.length; i++) {
+    const value = _COMMISSIONER_DATA.tradeEvaluator.adjustedPlayerValue(available[i], team);
+    if (value > bestValue) { best = available[i]; bestValue = value; }
+  }
+  return best;
+}
+
+// Auto-balanced: a 31st team unbalances the existing 3-division/5-team-per-
+// conference structure no matter where it lands, so this just picks
+// whichever conference+division currently has the fewest teams.
+function balancedConferenceDivision() {
+  const counts = {};
+  _COMMISSIONER_DATA.teams.TEAMS.forEach(function (t) {
+    const key = t.conference + '|' + t.division;
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  let bestKey = null;
+  let bestCount = Infinity;
+  _COMMISSIONER_DATA.data.CONFERENCES.forEach(function (conf) {
+    _COMMISSIONER_DATA.data.DIVISIONS[conf].forEach(function (div) {
+      const key = conf + '|' + div;
+      const count = counts[key] || 0;
+      if (count < bestCount) { bestCount = count; bestKey = key; }
+    });
+  });
+  const parts = bestKey.split('|');
+  return { conference: parts[0], division: parts[1] };
+}
+
+const EXPANSION_ROSTER_TARGET = 14;
+const EXPANSION_PROTECTED_COUNT = 8;
+const EXPANSION_DONOR_FLOOR = 12; // never take a donor team below the game's existing roster-size floor
+
+// 1. Appends a new team (fresh id, prestige 40, rebuilding, empty record).
+// 2. Simplified expansion draft: every existing team auto-protects its top 8
+//    by overall; the new team drafts one unprotected player from each other
+//    team per round (rng-shuffled order) via pickBestAvailable, until it
+//    reaches EXPANSION_ROSTER_TARGET. Donor teams already at the 12-player
+//    floor are skipped so no other team's roster-size invariant breaks.
+// 3. Takes effect starting the next generateNewSeason() call — schedule
+//    generation already reads TEAMS fresh each time, so this is picked up
+//    automatically; no retroactive mid-season schedule regeneration.
+function createExpansionTeam(details, rng) {
+  const placement = balancedConferenceDivision();
+  const id = 'EXP-' + details.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now();
+
+  const team = {
+    id: id, name: details.name, conference: placement.conference, division: placement.division,
+    colors: { primary: details.primaryColor, secondary: details.secondaryColor },
+    prestige: 40, fanHappiness: 60, ownerHappiness: 60, chemistry: 60,
+    timeline: 'rebuilding', marketSize: clampRating(details.marketSize),
+    record: { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 },
+    draftPicks: [
+      { round: 1, originalTeamId: id, currentOwnerId: id },
+      { round: 2, originalTeamId: id, currentOwnerId: id }
+    ]
+  };
+  _COMMISSIONER_DATA.teams.TEAMS.push(team);
+
+  const donorIds = _COMMISSIONER_DATA.teams.TEAMS
+    .filter(function (t) { return t.id !== id; })
+    .map(function (t) { return t.id; });
+
+  let guardCounter = 0; // safety valve — real 30-team rosters always satisfy the target well within a few rounds
+  while (_COMMISSIONER_DATA.league.getTeamRoster(id).length < EXPANSION_ROSTER_TARGET && guardCounter < 10) {
+    guardCounter += 1;
+    let draftedThisRound = false;
+    shuffleTeamIds(donorIds, rng).forEach(function (donorId) {
+      if (_COMMISSIONER_DATA.league.getTeamRoster(id).length >= EXPANSION_ROSTER_TARGET) return;
+      const donorRoster = _COMMISSIONER_DATA.league.getTeamRoster(donorId);
+      if (donorRoster.length <= EXPANSION_DONOR_FLOOR) return;
+      const byOverall = donorRoster.slice().sort(function (a, b) { return b.overall - a.overall; });
+      const protectedIds = {};
+      byOverall.slice(0, EXPANSION_PROTECTED_COUNT).forEach(function (p) { protectedIds[p.id] = true; });
+      const available = byOverall.filter(function (p) { return !protectedIds[p.id]; });
+      if (available.length === 0) return;
+      const picked = pickBestAvailable(available, team);
+      picked.teamId = id;
+      picked.jerseyNumber = nextAvailableJersey(id, picked.id);
+      draftedThisRound = true;
+    });
+    if (!draftedThisRound) break;
+  }
+
+  return team;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     editPlayerRatings: editPlayerRatings,
     deletePlayer: deletePlayer,
     createPlayer: createPlayer,
     CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES,
-    forceTrade: forceTrade
+    forceTrade: forceTrade,
+    createExpansionTeam: createExpansionTeam
   };
 }
