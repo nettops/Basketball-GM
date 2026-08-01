@@ -181,4 +181,47 @@ function checkRunDraft() {
 }
 
 checkRunDraft();
+
+function checkOffseasonThroughDraft() {
+  const transitionModule = require(path.join(__dirname, '..', 'seasonTransition.js'));
+  const playoffsModule = require(path.join(__dirname, '..', 'playoffs.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+
+  const eastern = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Eastern'; });
+  eastern.forEach(function (t, i) { t.record = { wins: 12 + (eastern.length - 1 - i) * 4, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+  const western = teamsModule.TEAMS.filter(function (t) { return t.conference === 'Western'; });
+  western.forEach(function (t, i) { t.record = { wins: 12 + (western.length - 1 - i) * 4, losses: 0, pointsFor: 0, pointsAgainst: 0 }; });
+
+  const bracket = playoffsModule.generateBracket();
+  const settings = { simEngine: 'boxscore' };
+  const rngForPlayoffs = makeRng(500);
+  let g = playoffsModule.simulateNextPlayoffGame(bracket, settings, rngForPlayoffs);
+  while (g !== null) { g = playoffsModule.simulateNextPlayoffGame(bracket, settings, rngForPlayoffs); }
+
+  const totalPlayersBefore = require(path.join(__dirname, '..', 'players-2026.js')).PLAYERS_2026.length;
+
+  const rng = makeRng(600);
+  const result = transitionModule.runOffseasonThroughDraft(bracket, rng, true);
+
+  assert.ok(result.draftResults.length === 60, 'the first draft should use the real 60-prospect class');
+
+  // Every team gains exactly 2 new draftees (1 first round + 1 second round).
+  // Roster size can otherwise move in either direction this offseason: down from
+  // retirements and contract expirations (expired contracts become free agents,
+  // which Batch B's free agency exists to resolve — not a bug here), so the only
+  // safe per-team invariant is a non-negative, sane roster count.
+  teamsModule.TEAMS.forEach(function (t) {
+    const after = leagueModule.getTeamRoster(t.id).length;
+    assert.ok(after >= 0 && after <= 17, t.id + ' roster size implausible after offseason: ' + after);
+  });
+
+  // League-wide player count: before + 60 drafted - retirees (free agents are
+  // still in PLAYERS_2026, just with teamId null, so they aren't subtracted here).
+  const totalPlayersAfter = require(path.join(__dirname, '..', 'players-2026.js')).PLAYERS_2026.length;
+  assert.strictEqual(totalPlayersAfter, totalPlayersBefore + 60 - result.retireeCount, 'league-wide player count should reflect draftees added and retirees removed');
+
+  console.log('checkOffseasonThroughDraft: OK (' + result.retireeCount + ' retirements, ' + result.draftResults.length + ' picks made)');
+}
+
+checkOffseasonThroughDraft();
 console.log('All offseason validations passed');
