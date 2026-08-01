@@ -31,6 +31,23 @@ function handlePropose(state, userTeamId, redraw) {
   resultEl.innerHTML = html;
 }
 
+function handleForceTrade(state, redraw) {
+  if (state.assignments.length === 0 && state.pickAssignments.length === 0) {
+    document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
+    return;
+  }
+  const result = forceTrade(state);
+  const resultEl = document.getElementById('trade-result');
+  if (!result.success) {
+    resultEl.innerHTML = '<p>Force trade blocked: ' + result.rosterErrors.join('; ') + '</p>';
+    return;
+  }
+  resultEl.innerHTML = '<p>Trade forced through — no value/salary checks applied.</p>';
+  state.assignments = [];
+  state.pickAssignments = [];
+  redraw();
+}
+
 function renderTradeCenter(container, userTeamId) {
   const state = {
     participants: [userTeamId],
@@ -122,6 +139,9 @@ function renderTradeCenter(container, userTeamId) {
 
     html += '<div id="trade-result"></div>';
     html += '<button id="propose-trade-btn">Propose Trade</button>';
+    if (GameState.playMode === 'commissioner') {
+      html += ' <button id="force-trade-btn">Force Trade</button>';
+    }
 
     container.innerHTML = html;
     wireEvents();
@@ -185,6 +205,12 @@ function renderTradeCenter(container, userTeamId) {
     document.getElementById('propose-trade-btn').addEventListener('click', function () {
       handlePropose(state, userTeamId, draw);
     });
+    const forceBtn = document.getElementById('force-trade-btn');
+    if (forceBtn) {
+      forceBtn.addEventListener('click', function () {
+        handleForceTrade(state, draw);
+      });
+    }
 
     container.querySelectorAll('button[data-accept-offer]').forEach(function (btn) {
       btn.addEventListener('click', function () {
