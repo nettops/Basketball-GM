@@ -457,4 +457,10 @@ table { border-collapse: collapse; width: 100%; }
 .headline-list li { font-size: .85rem; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .headline-list li:last-child { border-bottom: none; padding-bottom: 0; }
 .headline-list .pill { margin-right: 6px; }
+
+.schedule-chevron { color: var(--text-mute); font-size: .8rem; width: 20px; }
+.schedule-row.is-playable:hover .schedule-chevron { color: var(--accent); }
+.schedule-row.is-playable:hover td { background: var(--surface-2); }
+.schedule-row.is-expanded td { background: var(--accent-soft); border-bottom-color: var(--accent); }
+.schedule-row.is-expanded .schedule-chevron { color: var(--accent); font-weight: 700; }
 .select-actions { text-align: center; margin-bottom: 26px; }

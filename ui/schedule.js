@@ -4,34 +4,49 @@ function renderSchedule(container, teamId) {
     .slice()
     .sort(function (a, b) { return a.day - b.day; });
 
-  let html = '<div class="view-header"><h2>Schedule</h2><span class="view-sub">Click a game for its box score</span></div>';
-  html += '<div class="panel"><table class="data-table"><thead><tr><th class="num">Day</th><th>Opponent</th><th>Result</th></tr></thead><tbody>';
-  games.forEach(function (g) {
-    const isHome = g.homeTeamId === teamId;
-    const oppId = isHome ? g.awayTeamId : g.homeTeamId;
-    const opp = getTeamById(oppId);
-    const oppLabel = '<span class="pill pill-mute">' + (isHome ? 'VS' : '@') + '</span> ' + teamLogoImgHtml(oppId, 18) + ' ' + opp.name;
-    let resultLabel = '<span class="pill pill-mute">Scheduled</span>';
-    if (g.played) {
-      const teamScore = isHome ? g.homeScore : g.awayScore;
-      const oppScore = isHome ? g.awayScore : g.homeScore;
-      const won = teamScore > oppScore;
-      resultLabel = '<span class="pill ' + (won ? 'pill-win' : 'pill-loss') + '">' + (won ? 'W' : 'L') + '</span> ' +
-        teamScore + '-' + oppScore;
-    }
-    html += '<tr class="is-clickable" data-game-id="' + g.id + '"><td class="num">' + g.day + '</td>' +
-      '<td class="col-name">' + oppLabel + '</td><td>' + resultLabel + '</td></tr>';
-  });
-  html += '</tbody></table></div><div id="box-score-detail"></div>';
-  container.innerHTML = html;
+  let expandedGameId = null;
 
-  container.querySelectorAll('tr[data-game-id]').forEach(function (row) {
-    row.addEventListener('click', function () {
-      const gameId = Number(row.getAttribute('data-game-id'));
-      const game = games.find(function (g) { return g.id === gameId; });
-      renderBoxScoreDetail(document.getElementById('box-score-detail'), game);
+  function draw() {
+    let html = '<div class="view-header"><h2>Schedule</h2><span class="view-sub">Click a played game to expand its box score</span></div>';
+    html += '<div class="panel"><table class="data-table"><thead><tr><th class="num">Day</th><th>Opponent</th><th>Result</th><th class="num"></th></tr></thead><tbody>';
+    games.forEach(function (g) {
+      const isHome = g.homeTeamId === teamId;
+      const oppId = isHome ? g.awayTeamId : g.homeTeamId;
+      const opp = getTeamById(oppId);
+      const oppLabel = '<span class="pill pill-mute">' + (isHome ? 'VS' : '@') + '</span> ' + teamLogoImgHtml(oppId, 18) + ' ' + opp.name;
+      let resultLabel = '<span class="pill pill-mute">Scheduled</span>';
+      if (g.played) {
+        const teamScore = isHome ? g.homeScore : g.awayScore;
+        const oppScore = isHome ? g.awayScore : g.homeScore;
+        const won = teamScore > oppScore;
+        resultLabel = '<span class="pill ' + (won ? 'pill-win' : 'pill-loss') + '">' + (won ? 'W' : 'L') + '</span> ' +
+          teamScore + '-' + oppScore;
+      }
+      const isExpanded = g.id === expandedGameId;
+      const rowClasses = 'is-clickable schedule-row' + (g.played ? ' is-playable' : '') + (isExpanded ? ' is-expanded' : '');
+      const title = g.played ? 'Click to view box score' : 'Not played yet';
+      html += '<tr class="' + rowClasses + '" data-game-id="' + g.id + '" title="' + title + '"><td class="num">' + g.day + '</td>' +
+        '<td class="col-name">' + oppLabel + '</td><td>' + resultLabel + '</td>' +
+        '<td class="num schedule-chevron">' + (g.played ? (isExpanded ? '▾' : '▸') : '') + '</td></tr>';
     });
-  });
+    html += '</tbody></table></div><div id="box-score-detail"></div>';
+    container.innerHTML = html;
+
+    if (expandedGameId !== null) {
+      const expandedGame = games.find(function (g) { return g.id === expandedGameId; });
+      renderBoxScoreDetail(document.getElementById('box-score-detail'), expandedGame);
+    }
+
+    container.querySelectorAll('tr[data-game-id]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        const gameId = Number(row.getAttribute('data-game-id'));
+        expandedGameId = expandedGameId === gameId ? null : gameId;
+        draw();
+      });
+    });
+  }
+
+  draw();
 }
 
 function renderBoxScoreDetail(container, game) {
