@@ -14,7 +14,7 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       players: { PLAYERS_2026: PLAYERS_2026 },
-      awards: { computeSeasonAwards: computeSeasonAwards }
+      awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS }
     };
 
 const LEAGUE_HISTORY = {

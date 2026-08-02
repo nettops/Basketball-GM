@@ -150,9 +150,18 @@ async function runMultiSeason(mode, target) {
     }
     if (GameState.pauseRequested) { seasonsRun += 1; break; }
 
+    // This loop is a second, independent season-rollover path alongside
+    // script.js's handleAdvanceToOffseason (used by the manual "Next..."
+    // buttons) — it drives every fast-forward control (Sim N Seasons, Sim
+    // Until Championship, Sim Custom Days), which is precisely the
+    // "long unattended multi-season sim" use case Phase 8's history/awards
+    // tracking exists for, so it needs the same finalizeSeasonHistory /
+    // archiveDraftClass wiring, not just the manual single-step path.
+    finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
     GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
-    const draftResult = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass);
+    const draftResult = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear);
     GameState.lastDraftResults = draftResult.draftResults;
+    archiveDraftClass(GameState.leagueYear, draftResult.draftResults);
     runFreeAgencySilently(GameState.rng);
     autoEnforceRosterSize(getTeamById(GameState.userTeamId));
 
