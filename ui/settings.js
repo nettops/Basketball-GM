@@ -1,7 +1,7 @@
 const ENGINE_LABELS = {
   boxscore: 'Team Rating + Box Score',
   scoreonly: 'Score Only (coming in a later phase)',
-  possession: 'Possession-by-Possession (coming in a later phase)'
+  possession: 'Possession-by-Possession (slower, more granular)'
 };
 
 const AUTOMATION_LABELS = {

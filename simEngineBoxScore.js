@@ -172,6 +172,12 @@ if (typeof module !== 'undefined' && module.exports) {
     computeTeamRating: computeTeamRating,
     simulateScore: simulateScore,
     distributeInt: distributeInt,
-    simulateGame: simulateGame
+    simulateGame: simulateGame,
+    scoringWeight: scoringWeight,
+    reboundWeight: reboundWeight,
+    assistWeight: assistWeight,
+    stealWeight: stealWeight,
+    blockWeight: blockWeight,
+    minutesWeight: minutesWeight
   };
 }
