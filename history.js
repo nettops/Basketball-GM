@@ -90,10 +90,63 @@ function rollSeasonIntoCareerStats(player, feedSink) {
   checkMilestones(player, beforeTotals, sink);
 }
 
+// Weighted career-value score: counting stats are worth a small fraction of a
+// point each (roughly calibrated to what a decorated ~15-year career
+// accumulates), awards/selections are flat bonuses — the same "mix scaled-
+// stat and flat-bonus terms into one comparable score" approach
+// tradeEvaluator.js's contractBurden/needMultiplier already use.
+const HOF_THRESHOLD = 100;
+
+function computeHofScore(player) {
+  ensureCareerData([player]);
+  const cs = player.careerStats;
+  const mvpCount = player.awardsWon.filter(function (a) { return a.award === _HISTORY_DATA.awards.AWARD_KEYS.MVP; }).length;
+  const dpoyCount = player.awardsWon.filter(function (a) { return a.award === _HISTORY_DATA.awards.AWARD_KEYS.DPOY; }).length;
+  const allNbaCount = player.awardsWon.filter(function (a) {
+    return a.award === _HISTORY_DATA.awards.AWARD_KEYS.ALL_NBA_1
+      || a.award === _HISTORY_DATA.awards.AWARD_KEYS.ALL_NBA_2
+      || a.award === _HISTORY_DATA.awards.AWARD_KEYS.ALL_NBA_3;
+  }).length;
+  return (
+    cs.points / 250 +
+    cs.rebounds / 100 +
+    cs.assists / 60 +
+    mvpCount * 25 +
+    dpoyCount * 15 +
+    allNbaCount * 8 +
+    player.championshipsWon * 12 +
+    Math.max(0, player.peakOverall - 75) * 2
+  );
+}
+
+function archiveRetiree(player, leagueYear) {
+  ensureCareerData([player]);
+  const hofScore = computeHofScore(player);
+  const record = {
+    id: player.id,
+    name: player.name,
+    position: player.position,
+    retiredYear: leagueYear,
+    teamsPlayedFor: player.teamsPlayedFor.slice(),
+    careerStats: Object.assign({}, player.careerStats),
+    bestSeasonTotals: Object.assign({}, player.bestSeasonTotals),
+    awardsWon: player.awardsWon.slice(),
+    championshipsWon: player.championshipsWon,
+    peakOverall: player.peakOverall,
+    hofScore: hofScore,
+    hallOfFame: hofScore >= HOF_THRESHOLD
+  };
+  LEAGUE_HISTORY.retiredPlayers.push(record);
+  return record;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LEAGUE_HISTORY: LEAGUE_HISTORY,
     ensureCareerData: ensureCareerData,
-    rollSeasonIntoCareerStats: rollSeasonIntoCareerStats
+    rollSeasonIntoCareerStats: rollSeasonIntoCareerStats,
+    computeHofScore: computeHofScore,
+    HOF_THRESHOLD: HOF_THRESHOLD,
+    archiveRetiree: archiveRetiree
   };
 }
