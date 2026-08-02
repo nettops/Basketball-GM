@@ -152,6 +152,7 @@ const BUILT_VIEWS = {
   roster: renderRoster,
   standings: renderStandings,
   schedule: renderSchedule,
+  playoffs: renderPlayoffs,
   settings: renderSettings,
   trade: renderTradeCenter,
   freeagency: renderFreeAgency,
