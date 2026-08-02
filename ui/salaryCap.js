@@ -1,0 +1,129 @@
+// Real NBA luxury tax is a graduated bracket system; this is a deliberately
+// simple flat-rate approximation (consistent with this project's "simplified
+// contract system" decision from the Phase 1 design) purely for a rough
+// dollar estimate, not exact enforcement.
+const LUXURY_TAX_RATE = 1.5;
+
+function estimateLuxuryTax(payroll) {
+  return payroll > CAP_CONSTANTS.LUXURY_TAX_LINE ? Math.round((payroll - CAP_CONSTANTS.LUXURY_TAX_LINE) * LUXURY_TAX_RATE) : 0;
+}
+
+function capSpaceHtml(capSpace) {
+  return capSpace >= 0
+    ? '<span class="is-good">$' + capSpace.toLocaleString() + ' space</span>'
+    : '<span class="is-warn">$' + Math.abs(capSpace).toLocaleString() + ' over</span>';
+}
+
+function renderSalaryCap(container, userTeamId) {
+  let sortKey = 'payroll';
+  let sortDir = -1;
+  let checkAmount = '';
+
+  function draw() {
+    const team = getTeamById(userTeamId);
+    const roster = getTeamRoster(userTeamId);
+    const payroll = getTeamPayroll(userTeamId);
+    const capSpace = CAP_CONSTANTS.SALARY_CAP - payroll;
+    const tax = estimateLuxuryTax(payroll);
+    const expiring = roster.filter(function (p) { return p.contract.yearsRemaining <= 1; })
+      .sort(function (a, b) { return b.contract.salary - a.contract.salary; });
+
+    let html = '<div class="view-header"><h2>' + teamLogoImgHtml(team.id, 26) + ' Salary Cap</h2>' +
+      '<span class="view-sub">Cap $' + CAP_CONSTANTS.SALARY_CAP.toLocaleString() + ' · Luxury tax line $' + CAP_CONSTANTS.LUXURY_TAX_LINE.toLocaleString() + '</span></div>';
+
+    html += '<div class="kpi-grid">' +
+      '<div class="kpi-tile"><div class="kpi-label">Payroll</div>' +
+        '<div class="kpi-value ' + (capSpace < 0 ? 'is-warn' : '') + '">$' + payroll.toLocaleString() + '</div></div>' +
+      '<div class="kpi-tile"><div class="kpi-label">Cap Space</div>' +
+        '<div class="kpi-value">' + capSpaceHtml(capSpace) + '</div></div>' +
+      '<div class="kpi-tile"><div class="kpi-label">Est. Luxury Tax</div>' +
+        '<div class="kpi-value ' + (tax > 0 ? 'is-warn' : '') + '">$' + tax.toLocaleString() + '</div>' +
+        (tax > 0 ? '<div class="kpi-sub">' + LUXURY_TAX_RATE + 'x over the tax line (approximate)</div>' : '<div class="kpi-sub">Under the tax line</div>') +
+      '</div>' +
+      '<div class="kpi-tile"><div class="kpi-label">Roster Size</div>' +
+        '<div class="kpi-value">' + roster.length + '</div><div class="kpi-sub">players under contract</div></div>' +
+    '</div>';
+
+    html += '<div class="panel"><div class="panel-header">Your Team Contracts</div><div class="panel-body">' +
+      '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Salary</th><th class="num">Yrs Left</th><th></th></tr></thead><tbody>' +
+      roster.slice().sort(function (a, b) { return b.contract.salary - a.contract.salary; }).map(function (p) {
+        return '<tr><td class="col-name">' + p.name + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
+          '<td class="num">$' + p.contract.salary.toLocaleString() + '</td>' +
+          '<td class="num">' + p.contract.yearsRemaining + '</td>' +
+          '<td>' + (p.contract.yearsRemaining <= 1 ? '<span class="pill pill-loss">Expiring</span>' : '') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+    '</div></div>';
+
+    html += '<div class="panel"><div class="panel-header">Upcoming Expiring Contracts</div><div class="panel-body">' +
+      (expiring.length === 0 ? '<div class="empty-state">No contracts expiring after this season.</div>' :
+        '<table class="data-table"><thead><tr><th>Player</th><th class="num">Salary</th></tr></thead><tbody>' +
+        expiring.map(function (p) {
+          return '<tr><td class="col-name">' + p.name + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
+        }).join('') + '</tbody></table>') +
+    '</div></div>';
+
+    html += '<div class="panel"><div class="panel-header">Cap Space Checker</div><div class="panel-body">' +
+      '<p class="kpi-sub">Could you absorb a contract of this salary without exceeding the cap?</p>' +
+      '<div class="toolbar"><input type="number" id="cap-check-input" placeholder="e.g. 20000000" min="0" value="' + checkAmount + '" style="width:180px"> ' +
+      '<button id="cap-check-btn" class="btn-primary">Check</button></div>' +
+      (checkAmount !== '' ? renderCapCheckResult(Number(checkAmount), capSpace, team) : '') +
+    '</div></div>';
+
+    html += '<div class="panel"><div class="panel-header">League-Wide Payroll</div><div class="panel-body">' +
+      '<table class="data-table"><thead><tr>' +
+      ['team', 'payroll', 'capSpace', 'tax'].map(function (key) {
+        const labels = { team: 'Team', payroll: 'Payroll', capSpace: 'Cap Space', tax: 'Est. Tax' };
+        const numeric = key !== 'team';
+        return '<th data-key="' + key + '"' + (numeric ? ' class="num"' : '') + '>' + labels[key] +
+          (sortKey === key ? (sortDir === 1 ? ' ▲' : ' ▼') : '') + '</th>';
+      }).join('') + '</tr></thead><tbody>' +
+      TEAMS.map(function (t) {
+        const p = getTeamPayroll(t.id);
+        return { team: t, payroll: p, capSpace: CAP_CONSTANTS.SALARY_CAP - p, tax: estimateLuxuryTax(p) };
+      }).sort(function (a, b) {
+        const av = sortKey === 'team' ? a.team.name : a[sortKey];
+        const bv = sortKey === 'team' ? b.team.name : b[sortKey];
+        if (av < bv) return -1 * sortDir;
+        if (av > bv) return 1 * sortDir;
+        return 0;
+      }).map(function (row) {
+        const rowClass = row.team.id === userTeamId ? ' class="row-user"' : '';
+        return '<tr' + rowClass + '><td class="col-name">' + teamLogoImgHtml(row.team.id, 18) + ' ' + row.team.name + '</td>' +
+          '<td class="num">$' + row.payroll.toLocaleString() + '</td>' +
+          '<td class="num">' + capSpaceHtml(row.capSpace) + '</td>' +
+          '<td class="num">' + (row.tax > 0 ? '$' + row.tax.toLocaleString() : '—') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+    '</div></div>';
+
+    container.innerHTML = html;
+
+    container.querySelectorAll('th[data-key]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        const key = th.getAttribute('data-key');
+        if (key === sortKey) { sortDir = -sortDir; } else { sortKey = key; sortDir = -1; }
+        draw();
+      });
+    });
+
+    document.getElementById('cap-check-btn').addEventListener('click', function () {
+      checkAmount = document.getElementById('cap-check-input').value;
+      draw();
+    });
+  }
+
+  draw();
+}
+
+function renderCapCheckResult(amount, capSpace, team) {
+  if (!(amount > 0)) return '<div class="empty-state">Enter a positive salary amount.</div>';
+  const canAfford = amount <= capSpace || (typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled);
+  return '<div class="kpi-value ' + (canAfford ? 'is-good' : 'is-warn') + '" style="margin-top:10px;font-size:1rem;">' +
+    (canAfford
+      ? team.name + ' could absorb a $' + amount.toLocaleString() + ' salary within cap space.'
+      : team.name + ' would need $' + (amount - capSpace).toLocaleString() + ' more cap space to absorb a $' + amount.toLocaleString() + ' salary.') +
+    '</div>';
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { renderSalaryCap: renderSalaryCap, estimateLuxuryTax: estimateLuxuryTax, LUXURY_TAX_RATE: LUXURY_TAX_RATE };
+}

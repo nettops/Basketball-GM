@@ -167,7 +167,8 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
-  news: renderLeagueNews
+  news: renderLeagueNews,
+  salarycap: renderSalaryCap
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
