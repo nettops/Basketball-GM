@@ -1,21 +1,26 @@
 function renderTeamSelect(container, onSelect, onLoadGame, onSpectate) {
   container.innerHTML =
-    '<h1 style="text-align:center;">Choose Your Team</h1>' +
-    '<p style="text-align:center;">' +
-    '<label><input type="radio" name="play-mode" value="gm" checked> GM (manual control)</label> ' +
-    '<label><input type="radio" name="play-mode" value="commissioner"> Commissioner (manual control + sandbox tools)</label>' +
-    '</p>' +
-    '<div id="team-grid" style="text-align:center;"></div>' +
-    '<p style="text-align:center;"><button id="spectate-league-btn">Spectate League (fully automated)</button></p>' +
-    '<div id="load-game-section"></div>';
+    '<div class="select-screen">' +
+    '<div class="select-title">Choose Your Franchise</div>' +
+    '<div class="select-sub">Take control of any team in the league.</div>' +
+    '<div class="segmented">' +
+    '<label><input type="radio" name="play-mode" value="gm" checked> GM <span class="kpi-sub">manual control</span></label>' +
+    '<label><input type="radio" name="play-mode" value="commissioner"> Commissioner <span class="kpi-sub">+ sandbox tools</span></label>' +
+    '</div>' +
+    '<div id="team-grid" class="team-grid"></div>' +
+    '<div class="select-actions"><button id="spectate-league-btn" class="btn-ghost">Spectate League (fully automated)</button></div>' +
+    '<div id="load-game-section"></div>' +
+    '</div>';
 
   const grid = container.querySelector('#team-grid');
   TEAMS.forEach(function (team) {
     const card = document.createElement('div');
     card.className = 'team-card';
-    card.style.backgroundColor = team.colors.primary;
-    card.style.border = '3px solid ' + team.colors.secondary;
-    card.innerHTML = teamLogoImgHtml(team.id, 48) + '<div>' + team.name + '</div>';
+    card.style.background = 'linear-gradient(150deg, ' + team.colors.primary + ' 0%, ' + team.colors.secondary + ' 190%)';
+    card.style.borderColor = team.colors.secondary;
+    card.innerHTML = teamLogoImgHtml(team.id, 46) +
+      '<div class="team-card-name">' + team.name + '</div>' +
+      '<div class="team-card-meta">' + team.division + '</div>';
     card.addEventListener('click', function () {
       const mode = container.querySelector('input[name="play-mode"]:checked').value;
       onSelect(team.id, mode);

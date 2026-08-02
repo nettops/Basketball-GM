@@ -1,37 +1,37 @@
 function renderChampionsSection() {
-  let html = '<section><h3>Champions</h3>';
+  let html = '<div class="panel"><div class="panel-header">Champions</div>';
   if (LEAGUE_HISTORY.champions.length === 0) {
-    html += '<p>No champion crowned yet.</p></section>';
-    return html;
+    return html + '<div class="panel-body"><div class="empty-state">No champion crowned yet.</div></div></div>';
   }
-  html += '<ul>';
+  html += '<ul class="stack-list">';
   LEAGUE_HISTORY.champions.slice().reverse().forEach(function (c) {
     const team = getTeamById(c.teamId);
-    html += '<li>' + c.leagueYear + ': ' + (team ? team.name : 'Unknown') + '</li>';
+    html += '<li><span class="pill pill-gold">' + c.leagueYear + '</span> ' +
+      (team ? teamLogoImgHtml(team.id, 18) + ' ' + team.name : 'Unknown') + '</li>';
   });
-  html += '</ul></section>';
-  return html;
+  return html + '</ul></div>';
 }
 
 function renderHallOfFameSection() {
   const inducted = LEAGUE_HISTORY.retiredPlayers.filter(function (r) { return r.hallOfFame; });
-  let html = '<section><h3>Hall of Fame</h3>';
+  let html = '<div class="panel"><div class="panel-header">Hall of Fame</div>';
   if (inducted.length === 0) {
-    html += '<p>No one inducted yet.</p></section>';
-    return html;
+    return html + '<div class="panel-body"><div class="empty-state">No one inducted yet.</div></div></div>';
   }
-  html += '<table><thead><tr><th>Name</th><th>Retired</th><th>Career Pts</th><th>Career Reb</th><th>Career Ast</th><th>Championships</th></tr></thead><tbody>';
+  html += '<table class="data-table"><thead><tr><th>Name</th><th class="num">Retired</th><th class="num">Pts</th>' +
+    '<th class="num">Reb</th><th class="num">Ast</th><th class="num">Titles</th></tr></thead><tbody>';
   inducted.forEach(function (r) {
-    html += '<tr><td>' + r.name + '</td><td>' + r.retiredYear + '</td><td>' + r.careerStats.points + '</td><td>' + r.careerStats.rebounds + '</td><td>' + r.careerStats.assists + '</td><td>' + r.championshipsWon + '</td></tr>';
+    html += '<tr><td class="col-name">' + r.name + '</td><td class="num">' + r.retiredYear + '</td><td class="num">' +
+      r.careerStats.points + '</td><td class="num">' + r.careerStats.rebounds + '</td><td class="num">' +
+      r.careerStats.assists + '</td><td class="num">' + r.championshipsWon + '</td></tr>';
   });
-  html += '</tbody></table></section>';
-  return html;
+  return html + '</tbody></table></div>';
 }
 
 const RECORD_STAT_LABELS = { points: 'Points', rebounds: 'Rebounds', assists: 'Assists' };
 
 function renderRecordsSection() {
-  let html = '<section><h3>Records</h3>';
+  let html = '<div class="panel"><div class="panel-header">Records</div><div class="panel-body">';
   html += '<h4>Career Leaders</h4>';
   Object.keys(RECORD_STAT_LABELS).forEach(function (statKey) {
     html += '<p><strong>' + RECORD_STAT_LABELS[statKey] + ':</strong> ';
@@ -46,16 +46,15 @@ function renderRecordsSection() {
   });
   html += '<h4>Most Franchise Wins</h4><p>';
   html += franchiseWinLeaders(5).map(function (l) { return l.name + ' (' + l.allTimeWins + ')'; }).join(', ');
-  html += '</p></section>';
-  return html;
+  return html + '</p></div></div>';
 }
 
 function renderDraftArchiveSection() {
-  let html = '<section><h3>Draft Archive</h3>';
+  let html = '<div class="panel"><div class="panel-header">Draft Archive</div>';
   if (LEAGUE_HISTORY.draftClasses.length === 0) {
-    html += '<p>No drafts completed yet.</p></section>';
-    return html;
+    return html + '<div class="panel-body"><div class="empty-state">No drafts completed yet.</div></div></div>';
   }
+  html += '<div class="panel-body">';
   LEAGUE_HISTORY.draftClasses.slice().reverse().forEach(function (dc) {
     html += '<h4>' + dc.leagueYear + '</h4><ol>';
     dc.picks.slice().sort(function (a, b) { return a.pickNumber - b.pickNumber; }).forEach(function (p) {
@@ -64,28 +63,25 @@ function renderDraftArchiveSection() {
     });
     html += '</ol>';
   });
-  html += '</section>';
-  return html;
+  return html + '</div></div>';
 }
 
 function renderTradeArchiveSection() {
-  let html = '<section><h3>Trade Archive</h3>';
+  let html = '<div class="panel"><div class="panel-header">Trade Archive</div>';
   if (LEAGUE_HISTORY.trades.length === 0) {
-    html += '<p>No trades executed yet.</p></section>';
-    return html;
+    return html + '<div class="panel-body"><div class="empty-state">No trades executed yet.</div></div></div>';
   }
-  html += '<ul>';
+  html += '<ul class="stack-list">';
   LEAGUE_HISTORY.trades.slice().reverse().forEach(function (t) {
     const teamNames = t.participants.map(function (id) { const team = getTeamById(id); return team ? team.name : 'Unknown'; }).join(' / ');
     const playerNames = t.players.map(function (p) { return p.playerName; }).join(', ');
-    html += '<li>' + t.leagueYear + ' — ' + teamNames + ': ' + playerNames + '</li>';
+    html += '<li><span class="pill pill-mute">' + t.leagueYear + '</span> ' + teamNames + ': ' + playerNames + '</li>';
   });
-  html += '</ul></section>';
-  return html;
+  return html + '</ul></div>';
 }
 
 function renderHistory(container) {
-  let html = '<h2>League History</h2>';
+  let html = '<div class="view-header"><h2>League History</h2></div>';
   html += renderChampionsSection();
   html += renderHallOfFameSection();
   html += renderRecordsSection();

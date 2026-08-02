@@ -10,13 +10,22 @@ function saveSlotLabel(slot) {
 }
 
 function renderSaveSlotRow(slot, opts) {
-  let html = '<div class="save-slot"><span>' + saveSlotLabel(slot) + '</span>';
-  html += ' <button data-load-slot="' + slot.slotId + '"' + (slot.empty ? ' disabled' : '') + '>Load</button>';
+  const label = slot.slotId === 'autosave' ? 'Autosave' : 'Slot ' + slot.slotId;
+  let html = '<div class="save-slot' + (slot.empty ? ' is-empty' : '') + '"><div class="save-slot-info">';
+  if (slot.empty) {
+    html += '<div class="save-slot-name">' + label + ' — empty</div>';
+  } else {
+    html += '<div class="save-slot-name">' + label + ' · ' + slot.name + '</div>' +
+      '<div class="save-slot-meta">' + slot.teamName + ' · ' + slot.wins + '-' + slot.losses +
+      ' · ' + (slot.leagueYear || 2026) + ' · saved ' + formatSavedAt(slot.savedAt) + '</div>';
+  }
+  html += '</div>';
+  html += '<button data-load-slot="' + slot.slotId + '"' + (slot.empty ? ' disabled' : '') + '>Load</button>';
   if (opts.showSaveButton) {
-    html += ' <button data-save-slot="' + slot.slotId + '">' + (slot.empty ? 'Save' : 'Overwrite') + '</button>';
+    html += '<button class="btn-primary" data-save-slot="' + slot.slotId + '">' + (slot.empty ? 'Save' : 'Overwrite') + '</button>';
   }
   if (opts.showDeleteButton && !slot.empty) {
-    html += ' <button data-delete-slot="' + slot.slotId + '">Delete</button>';
+    html += '<button class="btn-danger" data-delete-slot="' + slot.slotId + '">Delete</button>';
   }
   html += '</div>';
   return html;
@@ -24,8 +33,9 @@ function renderSaveSlotRow(slot, opts) {
 
 function renderSaveList(container, onLoad) {
   const slots = listSaves();
-  let html = '<h3>Load Game</h3>';
+  let html = '<div class="panel"><div class="panel-header">Load Game</div>';
   slots.forEach(function (slot) { html += renderSaveSlotRow(slot, { showSaveButton: false, showDeleteButton: false }); });
+  html += '</div>';
   container.innerHTML = html;
 
   container.querySelectorAll('button[data-load-slot]').forEach(function (btn) {
@@ -41,14 +51,15 @@ function renderSaveLoad(container) {
     const slots = listSaves();
     const defaultName = GameState.userTeamId ? getTeamById(GameState.userTeamId).name + ' Save' : 'My Save';
 
-    let html = '<h2>Save / Load</h2>';
-    html += '<label>Save name: <input type="text" id="save-name-input" value="' + defaultName + '"></label>';
-    html += '<div id="save-slots">';
+    let html = '<div class="view-header"><h2>Save / Load</h2></div>';
+    html += '<div class="panel"><div class="panel-header">Save Name</div><div class="panel-body">' +
+      '<input type="text" id="save-name-input" value="' + defaultName + '" style="width:320px;"></div></div>';
+    html += '<div class="panel"><div class="panel-header">Slots</div><div id="save-slots">';
     slots.forEach(function (slot) {
       html += renderSaveSlotRow(slot, { showSaveButton: slot.slotId !== 'autosave', showDeleteButton: slot.slotId !== 'autosave' });
     });
-    html += '</div>';
-    html += '<div id="save-message"></div>';
+    html += '</div></div>';
+    html += '<div id="save-message" class="kpi-sub"></div>';
 
     container.innerHTML = html;
 

@@ -63,34 +63,40 @@ function renderTradeCenter(container, userTeamId) {
   };
 
   function draw() {
-    let html = '<h2>Trade Center</h2>';
+    let html = '<div class="view-header"><h2>Trade Center</h2></div>';
 
     if (GameState.playMode === 'spectator') {
-      html += '<p>Spectator mode — teams manage themselves.</p>';
+      html += '<div class="empty-state">Spectator mode — teams manage themselves.</div>';
       container.innerHTML = html;
       return;
     }
 
     if (GameState.tradeOffers.length > 0) {
-      html += '<h3>Trade Offers</h3><ul>';
+      html += '<div class="panel"><div class="panel-header">Incoming Offers <span class="pill pill-gold">' +
+        GameState.tradeOffers.length + '</span></div><ul class="stack-list">';
       GameState.tradeOffers.forEach(function (offer, i) {
         const partnerId = offer.proposal.participants.find(function (id) { return id !== userTeamId; });
         const partner = getTeamById(partnerId);
         const mine = offer.proposal.assignments.find(function (a) { return a.fromTeamId === userTeamId; });
         const theirs = offer.proposal.assignments.find(function (a) { return a.fromTeamId === partnerId; });
-        html += '<li>' + partner.name + ' offers ' + getPlayerById(theirs.playerId).name + ' for your ' + getPlayerById(mine.playerId).name +
-          ' <button data-accept-offer="' + i + '">Accept</button> <button data-decline-offer="' + i + '">Decline</button></li>';
+        html += '<li>' + teamLogoImgHtml(partnerId, 18) + ' <strong>' + partner.name + '</strong> offers ' +
+          getPlayerById(theirs.playerId).name + ' for your ' + getPlayerById(mine.playerId).name +
+          ' <button class="btn-primary" data-accept-offer="' + i + '">Accept</button> ' +
+          '<button class="btn-ghost" data-decline-offer="' + i + '">Decline</button></li>';
       });
-      html += '</ul>';
+      html += '</ul></div>';
     }
 
-    html += '<h3>Participants</h3><select id="add-team-select"><option value="">Add a team...</option>';
+    html += '<div class="toolbar"><span class="dock-label">Add participant</span>' +
+      '<select id="add-team-select"><option value="">Add a team...</option>';
     TEAMS.forEach(function (t) {
       if (state.participants.indexOf(t.id) === -1) {
         html += '<option value="' + t.id + '">' + t.name + '</option>';
       }
     });
-    html += '</select>';
+    html += '</select></div>';
+
+    html += '<div class="trade-grid">';
 
     state.participants.forEach(function (teamId) {
       const team = getTeamById(teamId);
@@ -109,16 +115,21 @@ function renderTradeCenter(container, userTeamId) {
         .filter(function (pa) { return pa.toTeamId === teamId; })
         .reduce(function (s, pa) { const pick = findPick(pa.fromTeamId, pa.round); return s + (pick ? estimateFuturePickValue(pa.round, getTeamById(pick.originalTeamId)) : 0); }, 0);
 
-      html += '<div class="trade-team-panel" data-team-id="' + teamId + '">';
-      html += '<h3>' + team.name + (teamId === userTeamId ? ' (You)' : '') + '</h3>';
-      html += '<p>Outgoing value: ' + (outgoingValue + outgoingPickValue).toFixed(1) + ' / Incoming value: ' + (incomingValue + incomingPickValue).toFixed(1) + '</p>';
-      html += '<p>Outgoing salary: $' + outgoingSalary.toLocaleString() + ' / Incoming salary: $' + incomingSalary.toLocaleString() + '</p>';
+      html += '<div class="trade-team-panel panel" data-team-id="' + teamId + '">';
+      html += '<div class="panel-header">' + teamLogoImgHtml(teamId, 20) + ' ' + team.name +
+        (teamId === userTeamId ? ' <span class="pill pill-mute">You</span>' : '') + '</div>';
+      html += '<div class="balance">' +
+        '<div class="balance-item"><div class="balance-label">Value Out / In</div>' +
+        '<div class="balance-value">' + (outgoingValue + outgoingPickValue).toFixed(1) + ' → ' + (incomingValue + incomingPickValue).toFixed(1) + '</div></div>' +
+        '<div class="balance-item"><div class="balance-label">Salary Out / In</div>' +
+        '<div class="balance-value">$' + Math.round(outgoingSalary / 1e6) + 'M → $' + Math.round(incomingSalary / 1e6) + 'M</div></div>' +
+        '</div>';
 
-      html += '<table><thead><tr><th>Player</th><th>In trade?</th><th>Send to</th></tr></thead><tbody>';
+      html += '<table class="data-table"><thead><tr><th>Player</th><th class="num">In</th><th>Send to</th></tr></thead><tbody>';
       roster.forEach(function (p) {
         const assignment = state.assignments.find(function (a) { return a.playerId === p.id; });
-        html += '<tr><td>' + p.name + ' (' + p.overall + ' OVR)</td>' +
-          '<td><input type="checkbox" data-player-id="' + p.id + '" data-from-team="' + teamId + '"' + (assignment ? ' checked' : '') + '></td>' +
+        html += '<tr><td class="col-name">' + p.name + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+          '<td class="num"><input type="checkbox" data-player-id="' + p.id + '" data-from-team="' + teamId + '"' + (assignment ? ' checked' : '') + '></td>' +
           '<td><select data-dest-for="' + p.id + '"' + (assignment ? '' : ' disabled') + '>';
         state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
           const selected = assignment && assignment.toTeamId === destId ? ' selected' : '';
@@ -128,28 +139,31 @@ function renderTradeCenter(container, userTeamId) {
       });
       html += '</tbody></table>';
 
-      html += '<p>Draft Picks:</p>';
+      html += '<div class="panel-body"><div class="kpi-label">Draft Picks</div>';
       [1, 2].forEach(function (round) {
         const pick = findPick(teamId, round);
         if (!pick) return; // already traded away earlier in this same proposal
         const pickAssignment = state.pickAssignments.find(function (pa) { return pa.fromTeamId === teamId && pa.round === round; });
-        html += '<label><input type="checkbox" data-pick-round="' + round + '" data-pick-from="' + teamId + '"' + (pickAssignment ? ' checked' : '') + '> Round ' + round + ' pick</label> ';
+        html += '<div class="field-row"><label style="margin:0;"><input type="checkbox" data-pick-round="' + round +
+          '" data-pick-from="' + teamId + '"' + (pickAssignment ? ' checked' : '') + '> Round ' + round + '</label>';
         html += '<select data-pick-dest-round="' + round + '" data-pick-dest-from="' + teamId + '"' + (pickAssignment ? '' : ' disabled') + '>';
         state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
           const selected = pickAssignment && pickAssignment.toTeamId === destId ? ' selected' : '';
           html += '<option value="' + destId + '"' + selected + '>' + getTeamById(destId).name + '</option>';
         });
-        html += '</select><br>';
+        html += '</select></div>';
       });
-      html += '</div>';
+      html += '</div></div>';
     });
 
+    html += '</div>';
     html += '<div id="trade-result">' + (state.resultMessage || '') + '</div>';
     state.resultMessage = null;
-    html += '<button id="propose-trade-btn">Propose Trade</button>';
+    html += '<div class="toolbar"><button id="propose-trade-btn" class="btn-primary">Propose Trade</button>';
     if (GameState.playMode === 'commissioner') {
-      html += ' <button id="force-trade-btn">Force Trade</button>';
+      html += '<button id="force-trade-btn" class="btn-danger">Force Trade</button>';
     }
+    html += '</div>';
 
     container.innerHTML = html;
     wireEvents();

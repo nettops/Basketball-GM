@@ -1,6 +1,6 @@
 # UI Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the 13-line stylesheet and bare `innerHTML` markup with a token-driven dark design system and sidebar app shell, so the game reads as a modern sports management title — without altering any existing function, listener, or gameplay mechanic.
 
@@ -44,7 +44,7 @@ This is presentation code — there is nothing to assert on, so the TDD cycle is
 **Interfaces:**
 - Produces: the full `:root` token set (`--bg`, `--surface-1..3`, `--line`, `--line-strong`, `--text`, `--text-dim`, `--text-mute`, `--win`, `--loss`, `--warn`, `--info`, `--gold`, `--accent`, `--accent-soft`, `--r-sm/md/lg`, `--shadow`) consumed by every later task. Also base element styles for `body`, `button`, `input`, `select`, `table`, and the `.team-logo` / `.placeholder-view` rules carried over from the old stylesheet.
 
-- [ ] **Step 1: Capture the validator baseline**
+- [x] **Step 1: Capture the validator baseline**
 
 Run each validator and record that they pass, so any later failure is unambiguously caused by this work:
 
@@ -54,7 +54,7 @@ cd "C:/Users/cory/Desktop/nba" && for f in scripts/validate-*.js; do echo "== $f
 
 Expected: every validator reports success. If any fails *before* any edit, note it as pre-existing and do not attempt to fix it in this plan.
 
-- [ ] **Step 2: Create the preview server config**
+- [x] **Step 2: Create the preview server config**
 
 Create `.claude/launch.json`:
 
@@ -72,11 +72,11 @@ Create `.claude/launch.json`:
 }
 ```
 
-- [ ] **Step 3: Start the preview and confirm the game runs unmodified**
+- [x] **Step 3: Start the preview and confirm the game runs unmodified**
 
 Start the `nba-gm` preview. Confirm the team-select screen renders and the console is clean. This is the "before" state.
 
-- [ ] **Step 4: Rewrite `style.css` with tokens and base element styles**
+- [x] **Step 4: Rewrite `style.css` with tokens and base element styles**
 
 Replace the entire file. Preserve the two rules the old sheet needed — `.team-logo` (used by `ui/teamLogo.js`) and `.placeholder-view` (used by `renderPlaceholder`) — retuned for dark.
 
@@ -182,11 +182,11 @@ select { cursor: pointer; }
 }
 ```
 
-- [ ] **Step 5: Verify in the browser**
+- [x] **Step 5: Verify in the browser**
 
 Reload. Expected: dark background, light text, dark form controls throughout. Layout is still the old stacked one — that is correct at this stage. Console must be clean. Click into a team to confirm the app still boots.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add .claude/launch.json style.css && git commit -m "style: dark design tokens and base element styles"
@@ -206,7 +206,7 @@ git add .claude/launch.json style.css && git commit -m "style: dark design token
 - Produces: `.app-shell`, `.app-sidebar`, `.app-main`, `.sidebar-brand`, `.nav-group`, `.nav-group-label`, `.nav-item` classes. `#app-topbar` div exists in the DOM, empty, for Task 3 to fill.
 - `NAV_ITEMS` entries gain a `group` string. `renderNav(container, activeView, onNavigate, playMode)` signature is unchanged.
 
-- [ ] **Step 1: Restructure `index.html`**
+- [x] **Step 1: Restructure `index.html`**
 
 Replace the `#app-view` block. `#app-view` keeps no layout of its own so `script.js`'s `style.display = 'block'` stays valid; `.app-shell` carries the grid.
 
@@ -234,7 +234,7 @@ Also add the new topbar script immediately before `ui/nav.js` in the script list
   <script src="ui/nav.js"></script>
 ```
 
-- [ ] **Step 2: Add `group` to `NAV_ITEMS` and emit groups in `renderNav`**
+- [x] **Step 2: Add `group` to `NAV_ITEMS` and emit groups in `renderNav`**
 
 Rewrite the top of `ui/nav.js`. Every `id` and `label` is unchanged; only the additive `group` key is new.
 
@@ -292,7 +292,7 @@ function renderNav(container, activeView, onNavigate, playMode) {
 
 Note: `NAV_ITEMS` order changed so grouping reads naturally, but every id is still present exactly once, the commissioner filter is preserved verbatim, and `onNavigate(item.id)` is unchanged. Keep the existing `module.exports` line at the bottom of the file untouched.
 
-- [ ] **Step 3: Append shell and nav CSS to `style.css`**
+- [x] **Step 3: Append shell and nav CSS to `style.css`**
 
 ```css
 /* ---------- App shell ---------- */
@@ -343,11 +343,11 @@ Note: `NAV_ITEMS` order changed so grouping reads naturally, but every id is sti
 }
 ```
 
-- [ ] **Step 4: Verify in the browser**
+- [x] **Step 4: Verify in the browser**
 
 Reload, select a team. Expected: a sidebar with four labeled groups; content to its right; the active item shows an accent left-bar. Click through **every** nav item and confirm each view renders and the active state follows — this exercises the `onNavigate` callback for all 16 entries. Console clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add index.html ui/nav.js style.css && git commit -m "feat(ui): sidebar app shell with grouped navigation"
@@ -366,7 +366,7 @@ git add index.html ui/nav.js style.css && git commit -m "feat(ui): sidebar app s
 - Consumes: `.app-main` grid row 1 (`#app-topbar`) from Task 2.
 - Produces: `renderTopBar(container)` and `resolveAccent(team)` globals. `.topbar`, `.topbar-identity`, `.status-chip`, `.meter`, `.meter-fill` classes, where `.meter` is reused by Tasks 6 and 10.
 
-- [ ] **Step 1: Create `ui/topbar.js`**
+- [x] **Step 1: Create `ui/topbar.js`**
 
 `resolveAccent` uses relative luminance so near-black team colors (Brooklyn `#000000`, Toronto's black secondary) can't produce an invisible accent.
 
@@ -456,7 +456,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 ```
 
-- [ ] **Step 2: Wire it into `renderView`**
+- [x] **Step 2: Wire it into `renderView`**
 
 In `script.js`, inside `renderView`, immediately after the existing `renderNav(...)` call, add exactly one line:
 
@@ -466,7 +466,7 @@ In `script.js`, inside `renderView`, immediately after the existing `renderNav(.
 
 Nothing else in `renderView` changes at this step.
 
-- [ ] **Step 3: Append topbar CSS to `style.css`**
+- [x] **Step 3: Append topbar CSS to `style.css`**
 
 ```css
 /* ---------- Topbar ---------- */
@@ -508,11 +508,11 @@ Nothing else in `renderView` changes at this step.
 .mode-pill.mode-spectator { color: var(--info); border-color: rgba(88, 166, 255, .45); }
 ```
 
-- [ ] **Step 4: Verify in the browser**
+- [x] **Step 4: Verify in the browser**
 
 Reload and select **Boston** (bright green primary — accent should turn green) then restart and select **Brooklyn** (`#000000` primary — accent must fall back, *not* go invisible). Confirm the topbar shows record, season, day, stage, payroll meter, chemistry, and mode pill. Sim a few days and confirm day/record update. Console clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/topbar.js script.js index.html style.css && git commit -m "feat(ui): persistent topbar with contrast-guarded team accent"
@@ -531,7 +531,7 @@ git add ui/topbar.js script.js index.html style.css && git commit -m "feat(ui): 
 - Consumes: `.app-main` grid row 3 (`#sim-controls`).
 - Produces: `.dock-group` wrappers, leaving the offseason advance button as the only direct-child `button` of `#sim-controls`, which `#sim-controls > button` styles as the primary CTA.
 
-- [ ] **Step 1: Fix the listener-destroying `innerHTML +=`**
+- [x] **Step 1: Fix the listener-destroying `innerHTML +=`**
 
 This is the one authorized behavioral change. In `script.js`, replace all three occurrences. `innerHTML +=` re-parses the container and destroys the listeners `renderSimControls` just attached; `insertAdjacentHTML` appends without touching existing children.
 
@@ -549,7 +549,7 @@ This is the one authorized behavioral change. In `script.js`, replace all three 
 
 The `document.getElementById(...).addEventListener(...)` line following each one is unchanged and still resolves.
 
-- [ ] **Step 2: Group the dock markup in `ui/simControls.js`**
+- [x] **Step 2: Group the dock markup in `ui/simControls.js`**
 
 Replace only the `container.innerHTML = ...` assignment inside `renderSimControls`. Every id, both number inputs, and the speed select options are byte-identical to before; only wrappers and classes are added. The `document.getElementById(...)` listener block below it is untouched.
 
@@ -587,7 +587,7 @@ Replace only the `container.innerHTML = ...` assignment inside `renderSimControl
 
 Note: the inline `style="width:3em"` / `style="width:4em"` on the two number inputs moves to CSS. The `id`, `type`, `value`, `min`, and `max` attributes are unchanged, so `Number(document.getElementById('sim-n-seasons').value)` still reads exactly the same.
 
-- [ ] **Step 3: Append dock CSS to `style.css`**
+- [x] **Step 3: Append dock CSS to `style.css`**
 
 ```css
 /* ---------- Sim dock ---------- */
@@ -626,13 +626,13 @@ Note: the inline `style="width:3em"` / `style="width:4em"` on the two number inp
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 ```
 
-- [ ] **Step 4: Verify the dock and the bug fix**
+- [x] **Step 4: Verify the dock and the bug fix**
 
 Reload and confirm the dock is grouped along the bottom with "Next Game" as the accent-filled primary. Then exercise every control: Next Game, Next Day, Sim to End, Trade Deadline, and a 2-season fast-forward. Confirm buttons disable during a sim and `#sim-status` shows the pulsing indicator.
 
 Then verify the fix specifically: use **Sim to Draft** to reach the offseason, confirm the green advance CTA appears at the dock's right — and confirm the sim control buttons **still respond**, which they do not on `main` today.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/simControls.js script.js style.css && git commit -m "feat(ui): grouped sim dock; fix innerHTML += destroying sim control listeners"
@@ -648,7 +648,7 @@ git add ui/simControls.js script.js style.css && git commit -m "feat(ui): groupe
 **Interfaces:**
 - Produces: `.panel`, `.panel-header`, `.panel-body`, `.data-table`, `.rating-chip` (+ `.tier-elite/.tier-high/.tier-mid/.tier-low`), `.pill` (+ `.pill-pos/.pill-win/.pill-loss/.pill-gold/.pill-mute`), `.empty-state`, `.view-header`, `.kpi-grid`, `.kpi-tile`. Every later task consumes these; no later task defines its own table or panel styling.
 
-- [ ] **Step 1: Append the shared component layer to `style.css`**
+- [x] **Step 1: Append the shared component layer to `style.css`**
 
 ```css
 /* ---------- Panels ---------- */
@@ -771,11 +771,11 @@ table { border-collapse: collapse; width: 100%; }
 .stack-list li:last-child { border-bottom: none; }
 ```
 
-- [ ] **Step 2: Verify no regression**
+- [x] **Step 2: Verify no regression**
 
 Reload and click through the views. Nothing should visibly change yet except that bare `<table>` elements now have collapsed borders and no white background — the classes are not applied until later tasks. Console clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add style.css && git commit -m "style: shared panel, table, chip, pill, and KPI components"
@@ -792,7 +792,7 @@ git add style.css && git commit -m "style: shared panel, table, chip, pill, and 
 - Consumes: `.kpi-grid`, `.kpi-tile`, `.panel`, `.meter` from Tasks 3 and 5.
 - Produces: nothing consumed downstream.
 
-- [ ] **Step 1: Rebuild the dashboard markup**
+- [x] **Step 1: Rebuild the dashboard markup**
 
 Every value computed by the existing function is preserved — record, roster size, payroll, cap space, chemistry, fan/owner happiness, next game. The variable computation above (`team`, `roster`, `payroll`, `capSpace`, `nextDay`, `nextGameLabel`) is **unchanged**; only the `container.innerHTML` assignment is replaced.
 
@@ -835,11 +835,11 @@ Every value computed by the existing function is preserved — record, roster si
     '</div></div>';
 ```
 
-- [ ] **Step 2: Verify in the browser**
+- [x] **Step 2: Verify in the browser**
 
 Reload the Dashboard. Expected: five KPI tiles with accent left-bars and chemistry/happiness meters, a cap panel whose meter turns amber when over, and a next-game panel. Sim a few days and confirm record and next-game text update. Console clean.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add ui/dashboard.js && git commit -m "feat(ui): dashboard KPI tiles and cap meter"
@@ -857,7 +857,7 @@ git add ui/dashboard.js && git commit -m "feat(ui): dashboard KPI tiles and cap 
 - Consumes: `.data-table`, `.rating-chip`, `.pill-pos`, `.panel` from Task 5.
 - Produces: `ratingTier(value)` local helper.
 
-- [ ] **Step 1: Add the rating tier helper to `ui/roster.js`**
+- [x] **Step 1: Add the rating tier helper to `ui/roster.js`**
 
 Place above `renderRoster`:
 
@@ -870,7 +870,7 @@ function ratingTier(value) {
 }
 ```
 
-- [ ] **Step 2: Rebuild the roster table markup**
+- [x] **Step 2: Rebuild the roster table markup**
 
 Replace only the `html` construction inside `draw()`. `th[data-key]`, the sort-caret logic, `data-waive-id`, and `data-scout-id` are all preserved exactly, so the three `querySelectorAll` listener blocks below are untouched.
 
@@ -919,13 +919,13 @@ Replace only the `html` construction inside `draw()`. `th[data-key]`, the sort-c
 
 Note: Scout and Waive swapped visual order so the destructive action sits last; both `data-*` attributes are unchanged, so both listener blocks still bind.
 
-- [ ] **Step 3: Verify in the browser**
+- [x] **Step 3: Verify in the browser**
 
 Open Roster. Expected: sticky uppercase headers, tiered OVR/POT chips, position pills, right-aligned tabular stats, ghost/danger action buttons, career panel below.
 
 Exercise all three listener groups: click several column headers and confirm sorting works in **both** directions; click **Scout** and confirm it navigates to the Scouting view with the report open; click **Waive** on a player and confirm the roster shrinks. Console clean.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add ui/roster.js style.css && git commit -m "feat(ui): roster table with rating chips and position pills"
@@ -943,7 +943,7 @@ git add ui/roster.js style.css && git commit -m "feat(ui): roster table with rat
 **Interfaces:**
 - Consumes: `.panel`, `.data-table`, `.pill-win`, `.pill-loss` from Task 5.
 
-- [ ] **Step 1: Add the conference grid to `style.css`**
+- [x] **Step 1: Add the conference grid to `style.css`**
 
 ```css
 .conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
@@ -951,7 +951,7 @@ git add ui/roster.js style.css && git commit -m "feat(ui): roster table with rat
 .row-user td { background: var(--accent-soft) !important; font-weight: 650; }
 ```
 
-- [ ] **Step 2: Rebuild standings markup**
+- [x] **Step 2: Rebuild standings markup**
 
 Two conferences side by side, each division a panel. The user's team row is highlighted. Sorting and data are unchanged.
 
@@ -984,7 +984,7 @@ function renderStandings(container) {
 }
 ```
 
-- [ ] **Step 3: Rebuild schedule markup**
+- [x] **Step 3: Rebuild schedule markup**
 
 `tr[data-game-id]` and `#box-score-detail` are preserved, so the row-click listener below is untouched.
 
@@ -1039,11 +1039,11 @@ function renderBoxScoreDetail(container, game) {
 }
 ```
 
-- [ ] **Step 4: Verify in the browser**
+- [x] **Step 4: Verify in the browser**
 
 Standings: two conference columns, three division panels each, your team's row accent-highlighted, point differential colored. Schedule: sim some games first, then confirm W/L pills render and **clicking a row opens its box score** below. Click an unplayed game and confirm the empty state. Console clean.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/standings.js ui/schedule.js style.css && git commit -m "feat(ui): conference standings grid and schedule with box score panel"
@@ -1060,7 +1060,7 @@ git add ui/standings.js ui/schedule.js style.css && git commit -m "feat(ui): con
 **Interfaces:**
 - Consumes: `.panel`, `.data-table`, `.empty-state`, `.stack-list`, `.pill-gold` from Task 5.
 
-- [ ] **Step 1: Append feed and save-slot CSS**
+- [x] **Step 1: Append feed and save-slot CSS**
 
 ```css
 .feed-item { display: flex; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: .85rem; }
@@ -1082,7 +1082,7 @@ git add ui/standings.js ui/schedule.js style.css && git commit -m "feat(ui): con
 .save-slot.is-empty .save-slot-name { color: var(--text-mute); font-weight: 400; font-style: italic; }
 ```
 
-- [ ] **Step 2: Rebuild `ui/liveFeed.js`**
+- [x] **Step 2: Rebuild `ui/liveFeed.js`**
 
 ```js
 function renderLiveFeed(container) {
@@ -1101,7 +1101,7 @@ function renderLiveFeed(container) {
 }
 ```
 
-- [ ] **Step 3: Rebuild `ui/awards.js` render body**
+- [x] **Step 3: Rebuild `ui/awards.js` render body**
 
 `AWARD_LABELS` and `AWARD_DISPLAY_ORDER` are unchanged; only the html construction inside `renderAwards` changes.
 
@@ -1134,7 +1134,7 @@ function renderAwards(container) {
 }
 ```
 
-- [ ] **Step 4: Rebuild the five `ui/history.js` section builders**
+- [x] **Step 4: Rebuild the five `ui/history.js` section builders**
 
 Each returns a `.panel` instead of a bare `<section>`. `renderHistory` itself is unchanged apart from its header line.
 
@@ -1226,7 +1226,7 @@ And in `renderHistory`, change the heading line only:
   let html = '<div class="view-header"><h2>League History</h2></div>';
 ```
 
-- [ ] **Step 5: Rebuild `ui/saveLoad.js` slot markup**
+- [x] **Step 5: Rebuild `ui/saveLoad.js` slot markup**
 
 `saveSlotLabel` is split into structured fields, but `renderSaveSlotRow` keeps all three `data-*-slot` attributes and the `disabled` logic exactly, so every listener block below is untouched.
 
@@ -1278,11 +1278,11 @@ In `renderSaveLoad`'s `draw()`, replace the html construction (keeping `#save-na
 
 Note: `saveSlotLabel` is no longer called by `renderSaveSlotRow`, but the function and its `module.exports` line stay in place — it is exported and removing it would change the module's public surface.
 
-- [ ] **Step 6: Verify in the browser**
+- [x] **Step 6: Verify in the browser**
 
 Feed: sim days, confirm timeline entries with day markers. Awards/History: confirm empty states before a season completes. Save/Load: **save to a slot**, confirm the slot card populates with name/team/record/timestamp; **load** it back; **delete** it. All three listener groups must work. Console clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/liveFeed.js ui/awards.js ui/history.js ui/saveLoad.js style.css && git commit -m "feat(ui): feed timeline, awards, history, and save slot cards"
@@ -1299,7 +1299,7 @@ git add ui/liveFeed.js ui/awards.js ui/history.js ui/saveLoad.js style.css && gi
 **Interfaces:**
 - Consumes: `.panel`, `.data-table`, `.rating-chip`, `.pill`, `.meter`, `.empty-state` from Tasks 3 and 5. Reuses `ratingTier` — since `ui/roster.js` loads before these files and defines it as a global, it is available; do **not** redefine it.
 
-- [ ] **Step 1: Append the bidding panel and toolbar CSS**
+- [x] **Step 1: Append the bidding panel and toolbar CSS**
 
 ```css
 .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -1316,7 +1316,7 @@ git add ui/liveFeed.js ui/awards.js ui/history.js ui/saveLoad.js style.css && gi
 .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .82rem; }
 ```
 
-- [ ] **Step 2: Rebuild `ui/draft.js`**
+- [x] **Step 2: Rebuild `ui/draft.js`**
 
 ```js
 function renderDraftResults(container, draftResults) {
@@ -1343,7 +1343,7 @@ function renderDraftResults(container, draftResults) {
 
 Note: the hardcoded `'2026 Draft Results'` heading becomes just `'Draft Results'` — the old label was wrong for every year after the first.
 
-- [ ] **Step 3: Rebuild `ui/draftPicker.js` markup**
+- [x] **Step 3: Rebuild `ui/draftPicker.js` markup**
 
 `data-prospect-id` is preserved, so the listener block is untouched.
 
@@ -1370,7 +1370,7 @@ Note: the hardcoded `'2026 Draft Results'` heading becomes just `'Draft Results'
   container.innerHTML = html;
 ```
 
-- [ ] **Step 4: Rebuild `ui/freeAgency.js` markup**
+- [x] **Step 4: Rebuild `ui/freeAgency.js` markup**
 
 `#resolve-remaining-btn`, `data-offer-id`, `#bidding-panel`, and `#signing-log` are all preserved.
 
@@ -1425,7 +1425,7 @@ In `renderBiddingPanel`'s `draw()`, keeping `#bid-salary`, `#bid-years`, `#submi
     container.innerHTML = html;
 ```
 
-- [ ] **Step 5: Rebuild `ui/scouting.js` markup**
+- [x] **Step 5: Rebuild `ui/scouting.js` markup**
 
 All of `#scouting-add-select`, `#scouting-add-btn`, `#scouting-report`, `data-alloc-id`, `data-spend-id`, `data-report-id`, `data-unwatch-id` are preserved.
 
@@ -1488,11 +1488,11 @@ then keep the existing Traits / Personality / Tendencies blocks exactly as they 
   container.innerHTML = html;
 ```
 
-- [ ] **Step 6: Verify in the browser**
+- [x] **Step 6: Verify in the browser**
 
 Scouting: add a player to the watchlist, spend points on them, open the report, remove them — all four listener groups. Free Agency: sim to free agency, click Make Offer, submit a bid, then sign or withdraw. Draft: sim to draft with auto-draft **off** so the picker appears, and draft a prospect. Console clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/draft.js ui/draftPicker.js ui/freeAgency.js ui/scouting.js style.css && git commit -m "feat(ui): draft, free agency, and scouting panels"
@@ -1509,7 +1509,7 @@ git add ui/draft.js ui/draftPicker.js ui/freeAgency.js ui/scouting.js style.css 
 **Interfaces:**
 - Consumes: `.panel`, `.data-table`, `.toolbar`, `.pill` from Tasks 5 and 10.
 
-- [ ] **Step 1: Append the CSS**
+- [x] **Step 1: Append the CSS**
 
 ```css
 .toggle-row {
@@ -1531,7 +1531,7 @@ git add ui/draft.js ui/draftPicker.js ui/freeAgency.js ui/scouting.js style.css 
 .form-grid label { font-size: .82rem; color: var(--text-dim); }
 ```
 
-- [ ] **Step 2: Rebuild `ui/settings.js` markup**
+- [x] **Step 2: Rebuild `ui/settings.js` markup**
 
 Every `input[name=...]`, `data-automation-key`, `data-pause-on-key`, `#settings-disable-cap`, and `#settings-team-picker` is preserved, so all five listener blocks are untouched. Only `style="display:block"` on labels becomes `class="toggle-row"`.
 
@@ -1588,7 +1588,7 @@ function renderSettings(container) {
 
 The entire listener block below `container.innerHTML = html;` stays exactly as it is.
 
-- [ ] **Step 3: Rebuild `ui/tradeCenter.js` markup**
+- [x] **Step 3: Rebuild `ui/tradeCenter.js` markup**
 
 Inside `draw()`, keeping `#add-team-select`, `.trade-team-panel[data-team-id]`, `data-player-id`, `data-from-team`, `data-dest-for`, `data-pick-round`, `data-pick-from`, `data-pick-dest-round`, `data-pick-dest-from`, `#trade-result`, `#propose-trade-btn`, `#force-trade-btn`, `data-accept-offer`, `data-decline-offer`:
 
@@ -1691,7 +1691,7 @@ And after the loop, close the grid and style the actions:
 
 `wireEvents()` itself is not edited.
 
-- [ ] **Step 4: Rebuild `ui/commissioner.js` section markup**
+- [x] **Step 4: Rebuild `ui/commissioner.js` section markup**
 
 Each of the four `render*Section` functions returns a `.panel` instead of a bare `<section>`, and the create/expansion forms use `.form-grid`. Every id and `data-edit-*` attribute is preserved, so all four `wire*Events` functions are untouched.
 
@@ -1739,11 +1739,11 @@ function renderExpansionTeamSection(state) {
 
 For `renderEditPlayerSection`, keep the `data-edit-field` / `data-edit-attribute` inputs and their `<table>` exactly, adding `class="data-table"` to the table and wrapping the select in a `.toolbar`. For `renderDeletePlayerSection`, keep the two-click confirm state logic and all three button ids exactly, wrapping them in a `.toolbar`.
 
-- [ ] **Step 5: Verify in the browser**
+- [x] **Step 5: Verify in the browser**
 
 Settings: toggle each automation and pause-on checkbox and confirm `GameState` updates in the console; switch the sim engine radio; switch play mode. Trade Center: add a participant team, check a player, change their destination, check a draft pick, and propose the trade — confirm the accept/reject message renders. Commissioner (in commissioner mode): select a player and edit a rating, use the two-click delete, create a player, create an expansion team. Console clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add ui/settings.js ui/tradeCenter.js ui/commissioner.js style.css && git commit -m "feat(ui): settings toggle rows, trade grid, commissioner panels"
@@ -1762,7 +1762,7 @@ git add ui/settings.js ui/tradeCenter.js ui/commissioner.js style.css && git com
 
 This is last because it is the first screen a player sees, and doing it after the in-app shell means the two are styled consistently rather than guessed at.
 
-- [ ] **Step 1: Append the select screen CSS**
+- [x] **Step 1: Append the select screen CSS**
 
 ```css
 .select-screen { max-width: 1080px; margin: 0 auto; padding: 44px 24px 64px; }
@@ -1795,7 +1795,7 @@ This is last because it is the first screen a player sees, and doing it after th
 .select-actions { text-align: center; margin-bottom: 26px; }
 ```
 
-- [ ] **Step 2: Rebuild `ui/teamSelect.js`**
+- [x] **Step 2: Rebuild `ui/teamSelect.js`**
 
 `input[name="play-mode"]`, `#team-grid`, `#spectate-league-btn`, and `#load-game-section` are all preserved, so the three listener blocks below are untouched. The `.team-card` click listener is attached per-card in JS exactly as before.
 
@@ -1836,11 +1836,11 @@ function renderTeamSelect(container, onSelect, onLoadGame, onSpectate) {
 }
 ```
 
-- [ ] **Step 3: Verify in the browser**
+- [x] **Step 3: Verify in the browser**
 
 Reload. Expected: a centered grid of 30 gradient team cards with logos, a segmented GM/Commissioner control, spectate button, and the load-game panel. Confirm: selecting **Commissioner** then a team enters commissioner mode (Commissioner appears in the sidebar); the **Spectate** button starts an automated league; a **saved slot loads** from this screen. Console clean.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add ui/teamSelect.js style.css && git commit -m "feat(ui): team select screen with gradient franchise cards"
@@ -1852,7 +1852,7 @@ git add ui/teamSelect.js style.css && git commit -m "feat(ui): team select scree
 
 **Files:** none modified unless a defect is found.
 
-- [ ] **Step 1: Re-run the full validator suite**
+- [x] **Step 1: Re-run the full validator suite**
 
 ```bash
 cd "C:/Users/cory/Desktop/nba" && for f in scripts/validate-*.js; do echo "== $f"; node "$f" 2>&1 | tail -3; done
@@ -1860,7 +1860,7 @@ cd "C:/Users/cory/Desktop/nba" && for f in scripts/validate-*.js; do echo "== $f
 
 Expected: identical results to the Task 1 baseline. Any difference means gameplay logic was touched and must be reverted.
 
-- [ ] **Step 2: Full-game playthrough**
+- [x] **Step 2: Full-game playthrough**
 
 In one continuous session, exercise the complete loop and confirm the console stays clean throughout:
 
@@ -1874,11 +1874,11 @@ In one continuous session, exercise the complete loop and confirm the console st
 8. Advance to Offseason → **confirm sim dock buttons still work** (the Task 4 fix) → Draft → Free Agency → Start New Season.
 9. Save to a slot, reload the page, load the save, confirm state resumes.
 
-- [ ] **Step 3: Verify every view renders under a cold spectator start**
+- [x] **Step 3: Verify every view renders under a cold spectator start**
 
 Reload, click Spectate League, and visit all 16 nav items. Spectator mode takes different branches in Trade Center, Free Agency, and Settings — confirm each shows its empty state rather than erroring.
 
-- [ ] **Step 4: Commit any fixes**
+- [x] **Step 4: Commit any fixes**
 
 ```bash
 git add -A && git commit -m "fix(ui): regression sweep corrections"

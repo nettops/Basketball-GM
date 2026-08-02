@@ -1,13 +1,14 @@
 function renderLiveFeed(container) {
-  let html = '<h2>Live Feed</h2>';
+  let html = '<div class="view-header"><h2>Live Feed</h2><span class="view-sub">' + GameState.feed.length + ' events</span></div>';
   if (GameState.feed.length === 0) {
-    html += '<p>Nothing has happened yet — advance the sim to see events here.</p>';
+    html += '<div class="empty-state">Nothing has happened yet — advance the sim to see events here.</div>';
   } else {
-    html += '<ul>';
+    html += '<div class="panel">';
     GameState.feed.slice().reverse().forEach(function (entry) {
-      html += '<li>[Year ' + entry.leagueYear + ', Day ' + (entry.day === null ? '-' : entry.day) + '] ' + entry.text + '</li>';
+      html += '<div class="feed-item"><span class="feed-day">Y' + entry.leagueYear + ' · D' +
+        (entry.day === null ? '—' : entry.day) + '</span><span>' + entry.text + '</span></div>';
     });
-    html += '</ul>';
+    html += '</div>';
   }
   container.innerHTML = html;
 }

@@ -20,39 +20,49 @@ const PAUSE_ON_LABELS = {
 };
 
 function renderSettings(container) {
-  let html = '<h2>Settings</h2>';
+  let html = '<div class="view-header"><h2>Settings</h2></div>';
 
-  html += '<h3>Play Mode</h3><p>Current: ' + GameState.playMode + '</p>';
+  html += '<div class="panel"><div class="panel-header">Play Mode <span class="pill pill-mute">' + GameState.playMode + '</span></div>';
   ['gm', 'commissioner', 'spectator'].forEach(function (mode) {
-    html += '<label style="display:block;"><input type="radio" name="play-mode-switch" value="' + mode + '"' + (GameState.playMode === mode ? ' checked' : '') + '> ' + mode + '</label>';
+    html += '<label class="toggle-row"><input type="radio" name="play-mode-switch" value="' + mode + '"' +
+      (GameState.playMode === mode ? ' checked' : '') + '> ' + mode + '</label>';
   });
   if (!GameState.userTeamId) {
-    html += '<p>No team selected yet — choose one below before switching out of Spectator.</p>';
-    html += '<select id="settings-team-picker">' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select>';
+    html += '<div class="panel-body"><p class="kpi-sub">No team selected yet — choose one before switching out of Spectator.</p>';
+    html += '<select id="settings-team-picker">' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select></div>';
   }
+  html += '</div>';
 
-  html += '<h3>Simulation Engine</h3>';
+  html += '<div class="panel"><div class="panel-header">Simulation Engine</div>';
   Object.keys(SIM_ENGINES).forEach(function (engineName) {
     const available = SIM_ENGINES[engineName] !== null;
     const checked = GameState.settings.simEngine === engineName ? ' checked' : '';
     const disabled = available ? '' : ' disabled';
-    html += '<label style="display:block;"><input type="radio" name="sim-engine" value="' + engineName + '"' + checked + disabled + '> ' + ENGINE_LABELS[engineName] + '</label>';
+    html += '<label class="toggle-row' + (available ? '' : ' is-disabled') + '"><input type="radio" name="sim-engine" value="' +
+      engineName + '"' + checked + disabled + '> ' + ENGINE_LABELS[engineName] + '</label>';
   });
+  html += '</div>';
 
   if (GameState.playMode !== 'spectator') {
-    html += '<h3>Automation</h3>';
+    html += '<div class="panel"><div class="panel-header">Automation</div>';
     Object.keys(AUTOMATION_LABELS).forEach(function (key) {
-      html += '<label style="display:block;"><input type="checkbox" data-automation-key="' + key + '"' + (GameState.automation[key] ? ' checked' : '') + '> ' + AUTOMATION_LABELS[key] + '</label>';
+      html += '<label class="toggle-row"><input type="checkbox" data-automation-key="' + key + '"' +
+        (GameState.automation[key] ? ' checked' : '') + '> ' + AUTOMATION_LABELS[key] + '</label>';
     });
+    html += '</div>';
 
-    html += '<h3>Pause Multi-Season Sim On</h3>';
+    html += '<div class="panel"><div class="panel-header">Pause Multi-Season Sim On</div>';
     Object.keys(PAUSE_ON_LABELS).forEach(function (key) {
-      html += '<label style="display:block;"><input type="checkbox" data-pause-on-key="' + key + '"' + (GameState.settings.pauseOn[key] ? ' checked' : '') + '> ' + PAUSE_ON_LABELS[key] + '</label>';
+      html += '<label class="toggle-row"><input type="checkbox" data-pause-on-key="' + key + '"' +
+        (GameState.settings.pauseOn[key] ? ' checked' : '') + '> ' + PAUSE_ON_LABELS[key] + '</label>';
     });
+    html += '</div>';
 
     if (GameState.playMode === 'commissioner') {
-      html += '<h3>Commissioner</h3>';
-      html += '<label style="display:block;"><input type="checkbox" id="settings-disable-cap"' + (GameState.settings.capDisabled ? ' checked' : '') + '> Disable Salary Cap (free agency and trades ignore cap space entirely)</label>';
+      html += '<div class="panel"><div class="panel-header">Commissioner</div>';
+      html += '<label class="toggle-row"><input type="checkbox" id="settings-disable-cap"' +
+        (GameState.settings.capDisabled ? ' checked' : '') +
+        '> Disable Salary Cap (free agency and trades ignore cap space entirely)</label></div>';
     }
   }
 

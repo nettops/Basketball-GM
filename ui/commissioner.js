@@ -1,6 +1,7 @@
 function renderCommissioner(container, userTeamId) {
   if (GameState.playMode !== 'commissioner') {
-    container.innerHTML = '<p>Commissioner tools are only available in Commissioner mode.</p>';
+    container.innerHTML = '<div class="view-header"><h2>Commissioner Tools</h2></div>' +
+      '<div class="empty-state">Commissioner tools are only available in Commissioner mode.</div>';
     return;
   }
 
@@ -15,7 +16,7 @@ function renderCommissioner(container, userTeamId) {
   };
 
   function draw() {
-    let html = '<h2>Commissioner Tools</h2>';
+    let html = '<div class="view-header"><h2>Commissioner Tools</h2></div>';
     html += renderEditPlayerSection(state);
     html += renderDeletePlayerSection(state);
     html += renderCreatePlayerSection(state);
@@ -31,30 +32,31 @@ function renderCommissioner(container, userTeamId) {
 }
 
 function renderEditPlayerSection(state) {
-  let html = '<section><h3>Edit Player</h3>';
-  html += '<select id="commissioner-edit-select"><option value="">Choose a player...</option>';
+  let html = '<div class="panel"><div class="panel-header">Edit Player</div><div class="panel-body">';
+  html += '<div class="toolbar"><select id="commissioner-edit-select" style="min-width:280px;"><option value="">Choose a player...</option>';
   PLAYERS_2026.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
     const teamLabel = p.teamId ? getTeamById(p.teamId).name : 'Free Agent';
     const selected = state.editPlayerId === p.id ? ' selected' : '';
     html += '<option value="' + p.id + '"' + selected + '>' + p.name + ' (' + teamLabel + ')</option>';
   });
-  html += '</select>';
+  html += '</select></div>';
 
   if (state.editPlayerId) {
     const player = getPlayerById(state.editPlayerId);
-    html += '<table><tbody>';
-    html += '<tr><td>Overall</td><td><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="overall" value="' + player.overall + '"></td></tr>';
-    html += '<tr><td>Potential</td><td><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="potential" value="' + player.potential + '"></td></tr>';
+    html += '<table class="data-table"><tbody>';
+    html += '<tr><td class="col-name">Overall</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="overall" value="' + player.overall + '" style="width:80px;"></td></tr>';
+    html += '<tr><td class="col-name">Potential</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="potential" value="' + player.potential + '" style="width:80px;"></td></tr>';
     ATTRIBUTE_KEYS.forEach(function (key) {
-      html += '<tr><td>' + key + '</td><td><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-attribute="' + key + '" value="' + player.attributes[key] + '"></td></tr>';
+      html += '<tr><td>' + key + '</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-attribute="' + key + '" value="' + player.attributes[key] + '" style="width:80px;"></td></tr>';
     });
     html += '</tbody></table>';
-    html += '<button id="commissioner-edit-save-btn">Save Changes</button>';
+    html += '<div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-edit-save-btn" class="btn-primary">Save Changes</button>';
     if (state.editMessage) {
-      html += ' <span>' + state.editMessage + '</span>';
+      html += '<span class="kpi-sub">' + state.editMessage + '</span>';
     }
+    html += '</div>';
   }
-  html += '</section>';
+  html += '</div></div>';
   return html;
 }
 
@@ -89,8 +91,8 @@ function wireEditPlayerEvents(state, redraw) {
 // browser automation, and no precedent for it elsewhere in this codebase) in
 // favor of an inline two-click confirm, tracked in state.
 function renderDeletePlayerSection(state) {
-  let html = '<section><h3>Delete Player</h3>';
-  html += '<select id="commissioner-delete-select"><option value="">Choose a player...</option>';
+  let html = '<div class="panel"><div class="panel-header">Delete Player</div><div class="panel-body"><div class="toolbar">';
+  html += '<select id="commissioner-delete-select" style="min-width:280px;"><option value="">Choose a player...</option>';
   PLAYERS_2026.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
     const teamLabel = p.teamId ? getTeamById(p.teamId).name : 'Free Agent';
     const selected = state.deletePlayerId === p.id ? ' selected' : '';
@@ -98,15 +100,15 @@ function renderDeletePlayerSection(state) {
   });
   html += '</select>';
   if (state.deletePlayerId && state.deleteConfirming) {
-    html += ' <button id="commissioner-delete-confirm-btn">Confirm Delete — Cannot Be Undone</button>';
-    html += ' <button id="commissioner-delete-cancel-btn">Cancel</button>';
+    html += '<button id="commissioner-delete-confirm-btn" class="btn-danger">Confirm Delete — Cannot Be Undone</button>';
+    html += '<button id="commissioner-delete-cancel-btn" class="btn-ghost">Cancel</button>';
   } else {
-    html += ' <button id="commissioner-delete-btn"' + (state.deletePlayerId ? '' : ' disabled') + '>Delete Player</button>';
+    html += '<button id="commissioner-delete-btn" class="btn-danger"' + (state.deletePlayerId ? '' : ' disabled') + '>Delete Player</button>';
   }
   if (state.deleteMessage) {
-    html += ' <span>' + state.deleteMessage + '</span>';
+    html += '<span class="kpi-sub">' + state.deleteMessage + '</span>';
   }
-  html += '</section>';
+  html += '</div></div></div>';
   return html;
 }
 
@@ -147,19 +149,19 @@ function wireDeletePlayerEvents(state, redraw) {
 }
 
 function renderCreatePlayerSection(state) {
-  let html = '<section><h3>Create Player</h3>';
-  html += '<label>Name <input type="text" id="commissioner-create-name"></label><br>';
-  html += '<label>Position <select id="commissioner-create-position">' + POSITIONS.map(function (pos) { return '<option value="' + pos + '">' + pos + '</option>'; }).join('') + '</select></label><br>';
-  html += '<label>Age <input type="number" id="commissioner-create-age" min="18" max="45" value="22"></label><br>';
-  html += '<label>Overall <input type="number" id="commissioner-create-overall" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="60"></label><br>';
-  html += '<label>Potential <input type="number" id="commissioner-create-potential" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="70"></label><br>';
-  html += '<label>Archetype <select id="commissioner-create-archetype">' + CREATE_PLAYER_ARCHETYPES.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('') + '</select></label><br>';
-  html += '<label>Team <select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select></label><br>';
-  html += '<button id="commissioner-create-btn">Create Player</button>';
+  let html = '<div class="panel"><div class="panel-header">Create Player</div><div class="panel-body"><div class="form-grid">';
+  html += '<label>Name</label><input type="text" id="commissioner-create-name">';
+  html += '<label>Position</label><select id="commissioner-create-position">' + POSITIONS.map(function (pos) { return '<option value="' + pos + '">' + pos + '</option>'; }).join('') + '</select>';
+  html += '<label>Age</label><input type="number" id="commissioner-create-age" min="18" max="45" value="22">';
+  html += '<label>Overall</label><input type="number" id="commissioner-create-overall" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="60">';
+  html += '<label>Potential</label><input type="number" id="commissioner-create-potential" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="70">';
+  html += '<label>Archetype</label><select id="commissioner-create-archetype">' + CREATE_PLAYER_ARCHETYPES.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('') + '</select>';
+  html += '<label>Team</label><select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select>';
+  html += '</div><div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-create-btn" class="btn-primary">Create Player</button>';
   if (state.createMessage) {
-    html += ' <span>' + state.createMessage + '</span>';
+    html += '<span class="kpi-sub">' + state.createMessage + '</span>';
   }
-  html += '</section>';
+  html += '</div></div></div>';
   return html;
 }
 
@@ -189,17 +191,17 @@ function wireCreatePlayerEvents(state, redraw) {
 }
 
 function renderExpansionTeamSection(state) {
-  let html = '<section><h3>Create Expansion Team</h3>';
-  html += '<label>Name <input type="text" id="commissioner-expansion-name"></label><br>';
-  html += '<label>Primary Color <input type="color" id="commissioner-expansion-primary" value="#1D1160"></label><br>';
-  html += '<label>Secondary Color <input type="color" id="commissioner-expansion-secondary" value="#FFFFFF"></label><br>';
-  html += '<label>Market Size (1-100) <input type="number" id="commissioner-expansion-market" min="1" max="100" value="50"></label><br>';
-  html += '<button id="commissioner-expansion-btn">Create Expansion Team</button>';
+  let html = '<div class="panel"><div class="panel-header">Create Expansion Team</div><div class="panel-body"><div class="form-grid">';
+  html += '<label>Name</label><input type="text" id="commissioner-expansion-name">';
+  html += '<label>Primary Color</label><input type="color" id="commissioner-expansion-primary" value="#1D1160">';
+  html += '<label>Secondary Color</label><input type="color" id="commissioner-expansion-secondary" value="#FFFFFF">';
+  html += '<label>Market Size (1-100)</label><input type="number" id="commissioner-expansion-market" min="1" max="100" value="50">';
+  html += '</div><div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-expansion-btn" class="btn-primary">Create Expansion Team</button></div>';
   if (state.expansionResult) {
-    html += '<p>Created ' + state.expansionResult.name + ' (' + state.expansionResult.conference + ' — ' + state.expansionResult.division + '), roster of ' +
+    html += '<p class="kpi-sub">Created ' + state.expansionResult.name + ' (' + state.expansionResult.conference + ' — ' + state.expansionResult.division + '), roster of ' +
       getTeamRoster(state.expansionResult.id).length + ' via expansion draft. Takes effect next season.</p>';
   }
-  html += '</section>';
+  html += '</div></div>';
   return html;
 }
 
