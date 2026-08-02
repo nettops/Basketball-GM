@@ -374,3 +374,22 @@ table { border-collapse: collapse; width: 100%; }
 .bid-panel label { display: block; margin-bottom: 9px; font-size: .82rem; color: var(--text-dim); }
 .bid-panel label input { margin-left: 6px; }
 .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .82rem; }
+
+/* ---------- Settings, trade, forms ---------- */
+.toggle-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  font-size: .85rem; cursor: pointer;
+}
+.toggle-row:last-child { border-bottom: none; }
+.toggle-row:hover { background: var(--surface-2); }
+.toggle-row input { margin-top: 2px; flex-shrink: 0; }
+.toggle-row.is-disabled { opacity: .45; cursor: not-allowed; }
+
+.trade-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.balance { display: flex; gap: 18px; padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.balance-item { flex: 1; }
+.balance-label { font-size: .62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-mute); }
+.balance-value { font-size: .95rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.form-grid { display: grid; grid-template-columns: 128px 1fr; gap: 9px 12px; align-items: center; max-width: 440px; }
+.form-grid label { font-size: .82rem; color: var(--text-dim); }
