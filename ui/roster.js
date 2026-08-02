@@ -57,6 +57,12 @@ function renderRoster(container, teamId) {
         '</tr>';
     });
     html += '</tbody></table>';
+    html += '<h3>Career</h3><table><thead><tr><th>Name</th><th>Seasons</th><th>Career Pts</th><th>Career Reb</th><th>Career Ast</th><th>Championships</th></tr></thead><tbody>';
+    roster.forEach(function (p) {
+      ensureCareerData([p]);
+      html += '<tr><td>' + p.name + '</td><td>' + p.careerStats.seasonsPlayed + '</td><td>' + p.careerStats.points + '</td><td>' + p.careerStats.rebounds + '</td><td>' + p.careerStats.assists + '</td><td>' + p.championshipsWon + '</td></tr>';
+    });
+    html += '</tbody></table>';
     container.innerHTML = html;
 
     container.querySelectorAll('th[data-key]').forEach(function (th) {
