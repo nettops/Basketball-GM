@@ -96,12 +96,12 @@ function createPlayer(details) {
 // 12-15 roster-size band every other trade path enforces — an unchecked
 // Force Trade could otherwise drop a team below the floor other systems
 // (box-score sim, waivePlayer) assume always holds.
-function forceTrade(proposal) {
+function forceTrade(proposal, historySink) {
   const rosterErrors = _COMMISSIONER_DATA.trade.validateRosterSizes(proposal);
   if (rosterErrors.length > 0) {
     return { success: false, rosterErrors: rosterErrors };
   }
-  _COMMISSIONER_DATA.trade.executeTrade(proposal);
+  _COMMISSIONER_DATA.trade.executeTrade(proposal, historySink);
   return { success: true, rosterErrors: [] };
 }
 

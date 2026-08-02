@@ -66,7 +66,7 @@ function evaluateTrade(proposal, userTeamId, evaluateUserLeg) {
   return { accepted: accepted, legs: legs };
 }
 
-function executeTrade(proposal) {
+function executeTrade(proposal, historySink) {
   proposal.assignments.forEach(function (a) {
     const player = _TRADE_DATA.league.getPlayerById(a.playerId);
     player.teamId = a.toTeamId;
@@ -80,16 +80,17 @@ function executeTrade(proposal) {
     const pick = findPick(pa.fromTeamId, pa.round);
     if (pick) pick.currentOwnerId = pa.toTeamId;
   });
+  if (historySink) historySink(proposal);
 }
 
-function proposeTrade(proposal, userTeamId, evaluateUserLeg) {
+function proposeTrade(proposal, userTeamId, evaluateUserLeg, historySink) {
   const rosterErrors = validateRosterSizes(proposal);
   if (rosterErrors.length > 0) {
     return { accepted: false, rosterErrors: rosterErrors, legs: {} };
   }
   const evaluation = evaluateTrade(proposal, userTeamId, evaluateUserLeg);
   if (evaluation.accepted) {
-    executeTrade(proposal);
+    executeTrade(proposal, historySink);
   }
   return Object.assign({ rosterErrors: [] }, evaluation);
 }
