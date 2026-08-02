@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "nba-gm",
-      "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8123"],
-      "port": 8123
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "python scripts/devserver.py \"$PORT\""],
+      "port": 8124,
+      "autoPort": true
     }
   ]
 }

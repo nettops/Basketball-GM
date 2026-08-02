@@ -3,6 +3,7 @@ const ROSTER_COLUMNS = [
   { key: 'position', label: 'Pos' },
   { key: 'age', label: 'Age' },
   { key: 'college', label: 'College' },
+  { key: 'status', label: 'Status' },
   { key: 'overall', label: 'OVR' },
   { key: 'potential', label: 'POT' },
   { key: 'ppg', label: 'PPG' },
@@ -16,8 +17,16 @@ const ROSTER_COLUMNS = [
 function rosterCellValue(player, key) {
   if (key === 'salary') { return player.contract.salary; }
   if (key === 'yearsRemaining') { return player.contract.yearsRemaining; }
+  if (key === 'status') { return player.status.injury ? player.status.injury.gamesRemaining : 0; }
   if (['ppg', 'rpg', 'apg', 'fgPct'].indexOf(key) !== -1) { return getPlayerAverages(player)[key]; }
   return player[key];
+}
+
+function injuryStatusHtml(player) {
+  const injury = player.status.injury;
+  if (!injury) return '<span class="pill pill-mute">&mdash;</span>';
+  const label = injury.gamesRemaining >= 999 ? 'Out (season)' : 'Out ' + injury.gamesRemaining + 'g';
+  return '<span class="pill pill-loss" title="' + injury.severity + '">' + label + '</span>';
 }
 
 function ratingTier(value) {
@@ -57,6 +66,7 @@ function renderRoster(container, teamId) {
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
         '<td>' + (p.college || '—') + '</td>' +
+        '<td>' + injuryStatusHtml(p) + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></td>' +
         '<td class="num">' + avg.ppg.toFixed(1) + '</td>' +

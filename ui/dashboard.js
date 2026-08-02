@@ -1,8 +1,14 @@
+function injuryLabel(injury) {
+  return injury.gamesRemaining >= 999 ? 'Out (season) — ' + injury.severity : 'Out ' + injury.gamesRemaining + 'g — ' + injury.severity;
+}
+
 function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
   const payroll = getTeamPayroll(teamId);
   const capSpace = CAP_CONSTANTS.SALARY_CAP - payroll;
+  const injuredPlayers = roster.filter(function (p) { return p.status.injury; })
+    .sort(function (a, b) { return b.overall - a.overall; });
 
   const nextDay = GameState.season ? getNextGameDay(GameState.season, teamId, GameState.season.currentDay) : null;
   let nextGameLabel = 'No season in progress.';
@@ -50,6 +56,19 @@ function renderDashboard(container, teamId) {
 
     '<div class="panel"><div class="panel-header">Next Up</div><div class="panel-body">' +
       '<div class="kpi-value" style="font-size:1.05rem;">' + nextGameLabel + '</div>' +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">Key Injuries' +
+      (injuredPlayers.length > 0 ? ' <span class="pill pill-loss">' + injuredPlayers.length + '</span>' : '') +
+      '</div><div class="panel-body">' +
+      (injuredPlayers.length === 0
+        ? '<div class="empty-state">No players currently injured.</div>'
+        : '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">OVR</th><th>Status</th></tr></thead><tbody>' +
+          injuredPlayers.map(function (p) {
+            return '<tr><td class="col-name">' + p.name + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
+              '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+              '<td><span class="pill pill-loss">' + injuryLabel(p.status.injury) + '</span></td></tr>';
+          }).join('') + '</tbody></table>') +
     '</div></div>';
 }
 
