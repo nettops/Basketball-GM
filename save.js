@@ -17,6 +17,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       teams: require('./teams.js'),
       league: require('./league.js'),
       rng: require('./rng.js'),
+      history: require('./history.js'),
       storage: _makeMemoryStorage()
     }
   : {
@@ -24,6 +25,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS },
       league: { getPlayerById: getPlayerById },
       rng: { makeRng: makeRng },
+      history: { LEAGUE_HISTORY: LEAGUE_HISTORY },
       storage: localStorage
     };
 
@@ -33,7 +35,7 @@ const SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
 // don't need round-tripping through a save.
-const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks'];
+const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins'];
 
 function saveSlotKey(slotId) {
   return slotId === 'autosave' ? 'nba-gm-save-autosave' : 'nba-gm-save-' + slotId;
@@ -91,7 +93,8 @@ function serializeGameState(gameState, name) {
     playMode: gameState.playMode,
     automation: gameState.automation,
     feed: gameState.feed || [],
-    draftSession: gameState.draftSession || null
+    draftSession: gameState.draftSession || null,
+    leagueHistory: _SAVE_DATA.history.LEAGUE_HISTORY
   };
 }
 
@@ -144,6 +147,15 @@ function applySavedState(payload, gameState) {
   gameState.lastDraftResults = payload.lastDraftResults.map(function (r) {
     return { teamId: r.teamId, prospect: _SAVE_DATA.league.getPlayerById(r.playerId), pickNumber: r.pickNumber, round: r.round };
   });
+
+  // Older saves (pre-Phase 8) won't have this field — leave LEAGUE_HISTORY at
+  // its default empty-arrays state rather than crashing on a missing key.
+  // Matches this phase's explicit "no retroactive backfill" scope decision.
+  if (payload.leagueHistory) {
+    Object.keys(payload.leagueHistory).forEach(function (key) {
+      _SAVE_DATA.history.LEAGUE_HISTORY[key] = payload.leagueHistory[key];
+    });
+  }
 
   return gameState;
 }
