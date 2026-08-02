@@ -393,3 +393,34 @@ table { border-collapse: collapse; width: 100%; }
 .balance-value { font-size: .95rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 .form-grid { display: grid; grid-template-columns: 128px 1fr; gap: 9px 12px; align-items: center; max-width: 440px; }
 .form-grid label { font-size: .82rem; color: var(--text-dim); }
+
+/* ---------- Team select screen ---------- */
+.select-screen { max-width: 1080px; margin: 0 auto; padding: 44px 24px 64px; }
+.select-title { text-align: center; font-size: 2rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6px; }
+.select-sub { text-align: center; color: var(--text-mute); margin-bottom: 26px; }
+
+.segmented { display: flex; justify-content: center; gap: 0; margin-bottom: 28px; }
+.segmented label {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 18px; cursor: pointer;
+  background: var(--surface-1); border: 1px solid var(--line-strong);
+  font-size: .85rem; color: var(--text-dim);
+}
+.segmented label:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.segmented label:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; border-left: none; }
+.segmented label:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.segmented .kpi-sub { margin: 0; }
+
+.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 12px; margin-bottom: 28px; }
+.team-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 18px 12px; cursor: pointer;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line-strong);
+  color: #fff; text-align: center;
+  transition: transform .14s ease, box-shadow .14s ease;
+}
+.team-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+.team-card-name { font-weight: 700; font-size: .88rem; line-height: 1.25; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
+.team-card-meta { font-size: .66rem; letter-spacing: .07em; text-transform: uppercase; opacity: .8; }
+.select-actions { text-align: center; margin-bottom: 26px; }
