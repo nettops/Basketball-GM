@@ -182,3 +182,38 @@ select { cursor: pointer; }
 }
 .mode-pill.mode-commissioner { color: var(--gold); border-color: rgba(212, 169, 78, .45); }
 .mode-pill.mode-spectator { color: var(--info); border-color: rgba(88, 166, 255, .45); }
+
+/* ---------- Sim dock ---------- */
+#sim-controls {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 11px 26px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--line);
+}
+.dock-group { display: flex; align-items: center; gap: 7px; }
+.dock-group.dock-end { margin-left: auto; }
+.dock-label {
+  font-size: .62rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-mute);
+  margin-right: 2px;
+}
+#sim-controls input[type="number"] { width: 58px; padding: 6px 7px; }
+#sim-controls .dock-primary button { padding: 8px 16px; }
+
+/* The offseason advance button — appended by renderView as the only
+   direct-child button of #sim-controls (all dock controls are nested). */
+#sim-controls > button {
+  margin-left: auto;
+  background: var(--win); border-color: var(--win); color: #06140A;
+  font-weight: 700;
+}
+#sim-controls > button:hover:not(:disabled) { filter: brightness(1.12); background: var(--win); }
+
+#sim-status { font-size: .8rem; color: var(--accent); font-weight: 600; min-width: 0; }
+#sim-status:not(:empty)::before {
+  content: ''; display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); margin-right: 6px;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }

@@ -251,10 +251,10 @@ function renderView(viewName) {
 
   const simControlsEl = document.getElementById('sim-controls');
   if (isRegularSeasonAndPlayoffsComplete() && !GameState.offseasonStage) {
-    simControlsEl.innerHTML += '<button id="advance-offseason-btn">Advance to Offseason</button>';
+    simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-offseason-btn">Advance to Offseason</button>');
     document.getElementById('advance-offseason-btn').addEventListener('click', handleAdvanceToOffseason);
   } else if (GameState.offseasonStage === 'draft') {
-    simControlsEl.innerHTML += '<button id="advance-to-fa-btn">Go to Free Agency</button>';
+    simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-to-fa-btn">Go to Free Agency</button>');
     document.getElementById('advance-to-fa-btn').addEventListener('click', function () {
       GameState.offseasonStage = 'freeagency';
       if (GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency) {
@@ -265,7 +265,7 @@ function renderView(viewName) {
       autosave(GameState);
     });
   } else if (GameState.offseasonStage === 'freeagency') {
-    simControlsEl.innerHTML += '<button id="start-new-season-btn">Start New Season</button>';
+    simControlsEl.insertAdjacentHTML('beforeend', '<button id="start-new-season-btn">Start New Season</button>');
     document.getElementById('start-new-season-btn').addEventListener('click', handleAdvanceToNewSeason);
   }
 }

@@ -181,21 +181,34 @@ async function runMultiSeason(mode, target) {
 function renderSimControls(container) {
   const stageLabel = GameState.playoffBracket ? 'Playoffs' : 'Regular Season';
   container.innerHTML =
-    '<button id="sim-next-game">Next Game</button>' +
-    '<button id="sim-next-day">Next Day</button>' +
-    '<button id="sim-to-end">Sim to End of ' + stageLabel + '</button>' +
-    '<button id="sim-to-deadline">Sim to Trade Deadline</button>' +
-    '<button id="sim-to-draft">Sim to Draft</button>' +
-    '<button id="sim-to-fa">Sim to Free Agency</button>' +
-    '<input type="number" id="sim-n-seasons" value="1" min="1" max="15" style="width:3em;"><button id="sim-n-seasons-btn">Sim N Seasons</button>' +
-    '<button id="sim-until-championship">Sim Until Championship</button>' +
-    '<input type="number" id="sim-n-days" value="7" min="1" style="width:4em;"><button id="sim-n-days-btn">Sim Custom Days</button>' +
-    '<select id="sim-speed">' +
-      ['slow', 'normal', 'fast', 'ultra'].map(function (s) {
-        return '<option value="' + s + '"' + (GameState.settings.simSpeed === s ? ' selected' : '') + '>' + s + '</option>';
-      }).join('') +
-    '</select>' +
-    '<span id="sim-status"></span>';
+    '<div class="dock-group dock-primary">' +
+      '<button id="sim-next-game" class="btn-primary">Next Game</button>' +
+      '<button id="sim-next-day">Next Day</button>' +
+      '<button id="sim-to-end">Sim to End of ' + stageLabel + '</button>' +
+    '</div>' +
+    '<div class="dock-group">' +
+      '<span class="dock-label">Skip to</span>' +
+      '<button id="sim-to-deadline" class="btn-ghost">Trade Deadline</button>' +
+      '<button id="sim-to-draft" class="btn-ghost">Draft</button>' +
+      '<button id="sim-to-fa" class="btn-ghost">Free Agency</button>' +
+    '</div>' +
+    '<div class="dock-group">' +
+      '<span class="dock-label">Fast forward</span>' +
+      '<input type="number" id="sim-n-seasons" value="1" min="1" max="15">' +
+      '<button id="sim-n-seasons-btn" class="btn-ghost">Seasons</button>' +
+      '<button id="sim-until-championship" class="btn-ghost">Until Title</button>' +
+      '<input type="number" id="sim-n-days" value="7" min="1">' +
+      '<button id="sim-n-days-btn" class="btn-ghost">Days</button>' +
+    '</div>' +
+    '<div class="dock-group dock-end">' +
+      '<span class="dock-label">Speed</span>' +
+      '<select id="sim-speed">' +
+        ['slow', 'normal', 'fast', 'ultra'].map(function (s) {
+          return '<option value="' + s + '"' + (GameState.settings.simSpeed === s ? ' selected' : '') + '>' + s + '</option>';
+        }).join('') +
+      '</select>' +
+      '<span id="sim-status"></span>' +
+    '</div>';
 
   document.getElementById('sim-next-game').addEventListener('click', handleNextGame);
   document.getElementById('sim-next-day').addEventListener('click', handleNextDay);
