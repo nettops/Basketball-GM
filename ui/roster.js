@@ -2,6 +2,7 @@ const ROSTER_COLUMNS = [
   { key: 'name', label: 'Name' },
   { key: 'position', label: 'Pos' },
   { key: 'age', label: 'Age' },
+  { key: 'college', label: 'College' },
   { key: 'overall', label: 'OVR' },
   { key: 'potential', label: 'POT' },
   { key: 'ppg', label: 'PPG' },
@@ -55,6 +56,7 @@ function renderRoster(container, teamId) {
         '<td class="col-name">' + p.name + '</td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
+        '<td>' + (p.college || '—') + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></td>' +
         '<td class="num">' + avg.ppg.toFixed(1) + '</td>' +

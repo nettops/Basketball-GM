@@ -31,7 +31,9 @@ function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-function mkProspect(name, age, heightIn, weightLb, position, overall, potential, archetype, bustChance, nbaComparison) {
+function mkProspect(name, age, heightIn, weightLb, position, overall, potential, archetype, bustChance, nbaComparison, opts) {
+  opts = opts || {};
+  const autoData = PROSPECT_DATA_MAP[name] || {};
   return {
     id: 'prospect-' + slugify(name) + '-' + Math.floor(Math.random() * 1000000),
     teamId: null,
@@ -51,9 +53,78 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
     hiddenPersonality: {},
     hiddenTendencies: {},
     bustChance: bustChance,
-    nbaComparison: nbaComparison
+    nbaComparison: nbaComparison,
+    college: opts.college || autoData.college || null,
+    dateOfBirth: opts.dateOfBirth || autoData.dateOfBirth || null
   };
 }
+
+// College and estimated birth date for the real 2026 mock draft class (see
+// DRAFT_PROSPECTS_2026 below). Some names below carry a disambiguating " Jr."
+// suffix in the roster array where they'd otherwise collide with an existing
+// NBA player's name — that suffix is kept here as part of the lookup key.
+const PROSPECT_DATA_MAP = {
+  'A.J. Dybantsa': { college: 'BYU', dateOfBirth: '2006-05-09' },
+  'Cameron Boozer': { college: 'Duke', dateOfBirth: '2006-11-01' },
+  'Darryn Peterson': { college: 'Kansas', dateOfBirth: '2006-08-27' },
+  'Chris Cenac Jr.': { college: 'Houston', dateOfBirth: '2006-08-15' },
+  'Nate Ament': { college: 'Tennessee', dateOfBirth: '2006-07-22' },
+  'Caleb Wilson': { college: 'North Carolina', dateOfBirth: '2006-05-10' },
+  'Koa Peat': { college: 'Arizona', dateOfBirth: '2006-08-01' },
+  'Tounde Yessoufou': { college: 'Baylor', dateOfBirth: '2006-09-05' },
+  'Cayden Boozer': { college: 'Duke', dateOfBirth: '2006-11-01' },
+  'Jasper Johnson': { college: 'Kentucky', dateOfBirth: '2006-06-15' },
+  'Alijah Arenas': { college: 'USC', dateOfBirth: '2006-12-01' },
+  'Meleek Thomas': { college: 'Arkansas', dateOfBirth: '2006-04-20' },
+  'Isiah Harwell': { college: 'Houston', dateOfBirth: '2006-05-01' },
+  'Braylon Mullins': { college: 'UConn', dateOfBirth: '2005-09-01' },
+  'Mikel Brown Jr.': { college: 'Louisville', dateOfBirth: '2006-08-01' },
+  'Kiyan Anthony': { college: 'Syracuse', dateOfBirth: '2006-06-07' },
+  'Labaron Philon': { college: 'Alabama', dateOfBirth: '2005-11-01' },
+  'Dwayne Aristode': { college: 'Florida', dateOfBirth: '2006-01-01' },
+  'Jerry Easter II': { college: 'Louisville', dateOfBirth: '2006-05-01' },
+  'Sadiq White Jr.': { college: 'Auburn', dateOfBirth: '2006-03-01' },
+  'Karim Lopez': { college: 'Overtime Elite', dateOfBirth: '2006-06-01' },
+  'Christian Anderson': { college: 'Virginia', dateOfBirth: '2005-10-01' },
+  'Roman Hall': { college: 'Nebraska', dateOfBirth: '2006-01-01' },
+  'Jamier Jones': { college: 'South Florida', dateOfBirth: '2006-02-01' },
+  'Sebastian Wilkins': { college: 'Rutgers', dateOfBirth: '2005-12-01' },
+  'Vertrail Vaughns': { college: 'San Francisco', dateOfBirth: '2003-01-01' },
+  'Bryson Stiggers': { college: 'Wichita State', dateOfBirth: '2005-06-01' },
+  'Immanuel Sheppard': { college: 'Illinois', dateOfBirth: '2006-02-01' },
+  'Elzie Harrington': { college: 'San Diego State', dateOfBirth: '2005-09-01' },
+  'Traylen Roberts': { college: 'Louisville', dateOfBirth: '2006-01-01' },
+  'Nique Clifford Jr.': { college: 'Iowa State', dateOfBirth: '2003-06-01' },
+  'Boogie Fland': { college: 'Florida', dateOfBirth: '2005-08-06' },
+  'Tre Johnson Jr.': { college: 'Kentucky', dateOfBirth: '2005-04-01' },
+  'Milos Uzan': { college: 'Houston', dateOfBirth: '2003-05-01' },
+  'Chance Westry': { college: 'Syracuse', dateOfBirth: '2003-01-01' },
+  'Aday Mara': { college: 'UCLA', dateOfBirth: '2005-01-01' },
+  'Tounde Zogbo': { college: 'Marquette', dateOfBirth: '2004-06-01' },
+  'Rob Wright III': { college: 'Baylor', dateOfBirth: '2004-01-01' },
+  'Jayden Quaintance': { college: 'Arizona State', dateOfBirth: '2006-01-01' },
+  'Alex Condon Jr.': { college: 'Florida', dateOfBirth: '2004-03-01' },
+  'Donovan Dent': { college: 'UCLA', dateOfBirth: '2003-11-01' },
+  'Elliot Cadeau': { college: 'Michigan', dateOfBirth: '2005-06-01' },
+  'Nate Bittle': { college: 'Oregon', dateOfBirth: '2003-01-01' },
+  'Curtis Givens III': { college: 'Kentucky', dateOfBirth: '2004-01-01' },
+  'Isaiah Elohim': { college: 'G League Ignite', dateOfBirth: '2004-01-01' },
+  'Grant Nelson Jr.': { college: 'Alabama', dateOfBirth: '2001-01-01' },
+  'Chaz Lanier': { college: 'Tennessee', dateOfBirth: '2000-01-01' },
+  'Javon Small Jr.': { college: 'West Virginia', dateOfBirth: '2001-11-09' },
+  'Rasheer Fleming Jr.': { college: "Saint Joseph's", dateOfBirth: '2004-08-10' },
+  'Yaxel Lendeborg': { college: 'Michigan', dateOfBirth: '2002-01-01' },
+  'Kobe Sanders Jr.': { college: 'Nevada', dateOfBirth: '2002-06-15' },
+  'Kam Williams': { college: 'Notre Dame', dateOfBirth: '2003-01-01' },
+  'Jamie Kaiser Jr.': { college: 'Villanova', dateOfBirth: '2003-01-01' },
+  'Enrique Freeman Jr.': { college: 'Michigan State', dateOfBirth: '2001-01-01' },
+  'Adou Thiero': { college: 'Arkansas', dateOfBirth: '2003-01-01' },
+  'Silas Demary Jr.': { college: 'Georgia', dateOfBirth: '2004-01-01' },
+  'Bennett Stirtz': { college: 'Drake', dateOfBirth: '2003-01-01' },
+  'Zvonimir Ivisic Jr.': { college: 'Illinois', dateOfBirth: '2002-01-01' },
+  'Otega Oweh': { college: 'Kentucky', dateOfBirth: '2003-01-01' },
+  'Great Osobor': { college: 'Washington', dateOfBirth: '2002-01-01' }
+};
 
 const ARCHETYPE_NAMES = Object.keys(PROSPECT_ARCHETYPES);
 const FIRST_NAMES = ['Jaylen', 'Marcus', 'Devin', 'Isaiah', 'Elijah', 'Cameron', 'Xavier', 'Malik', 'Tyler', 'Andre', 'DeAndre', 'Josiah', 'Amari', 'Jalen', 'Caleb'];
