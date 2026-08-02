@@ -140,6 +140,60 @@ function archiveRetiree(player, leagueYear) {
   return record;
 }
 
+const PRESTIGE_CHAMPION_BUMP = 5;
+const PRESTIGE_FINALS_BUMP = 2;
+const PRESTIGE_PLAYOFF_BUMP = 1;
+const PRESTIGE_BAD_SEASON_DECAY = 1;
+const BAD_SEASON_WIN_PCT = 0.35;
+const PRESTIGE_MIN = 20;
+const PRESTIGE_MAX = 99;
+
+function adjustPrestige(team, madeFinals, wonChampionship, madePlayoffs) {
+  let delta = 0;
+  if (wonChampionship) {
+    delta = PRESTIGE_CHAMPION_BUMP;
+  } else if (madeFinals) {
+    delta = PRESTIGE_FINALS_BUMP;
+  } else if (madePlayoffs) {
+    delta = PRESTIGE_PLAYOFF_BUMP;
+  } else {
+    const gamesPlayed = team.record.wins + team.record.losses;
+    const winPct = gamesPlayed > 0 ? team.record.wins / gamesPlayed : 0.5;
+    if (winPct < BAD_SEASON_WIN_PCT) delta = -PRESTIGE_BAD_SEASON_DECAY;
+  }
+  team.prestige = Math.max(PRESTIGE_MIN, Math.min(PRESTIGE_MAX, team.prestige + delta));
+}
+
+function archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, feedSink) {
+  const sink = feedSink || function () {};
+  if (!playoffBracket || playoffBracket.finals.length === 0 || !playoffBracket.finals[0].complete) return;
+
+  const championId = playoffBracket.finals[0].winner;
+  LEAGUE_HISTORY.champions.push({ leagueYear: leagueYear, teamId: championId });
+
+  const playoffTeamIds = {};
+  playoffBracket.first.forEach(function (s) { playoffTeamIds[s.higherSeed] = true; playoffTeamIds[s.lowerSeed] = true; });
+  const finalsTeamIds = {};
+  finalsTeamIds[playoffBracket.finals[0].higherSeed] = true;
+  finalsTeamIds[playoffBracket.finals[0].lowerSeed] = true;
+
+  _HISTORY_DATA.teams.TEAMS.forEach(function (team) {
+    const madePlayoffs = !!playoffTeamIds[team.id];
+    const madeFinals = !!finalsTeamIds[team.id];
+    const wonChampionship = team.id === championId;
+    adjustPrestige(team, madeFinals, wonChampionship, madePlayoffs);
+  });
+
+  const champRoster = _HISTORY_DATA.league.getTeamRoster(championId);
+  champRoster.forEach(function (p) {
+    ensureCareerData([p]);
+    p.championshipsWon += 1;
+  });
+
+  const champTeam = _HISTORY_DATA.teams.getTeamById(championId);
+  sink(champTeam.name + ' wins the ' + leagueYear + ' championship!');
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LEAGUE_HISTORY: LEAGUE_HISTORY,
@@ -147,6 +201,7 @@ if (typeof module !== 'undefined' && module.exports) {
     rollSeasonIntoCareerStats: rollSeasonIntoCareerStats,
     computeHofScore: computeHofScore,
     HOF_THRESHOLD: HOF_THRESHOLD,
-    archiveRetiree: archiveRetiree
+    archiveRetiree: archiveRetiree,
+    archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige
   };
 }
