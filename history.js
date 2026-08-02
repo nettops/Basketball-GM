@@ -194,6 +194,63 @@ function archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, feedSink) 
   sink(champTeam.name + ' wins the ' + leagueYear + ' championship!');
 }
 
+function archiveTrade(proposal, leagueYear) {
+  const record = {
+    leagueYear: leagueYear,
+    participants: proposal.participants.slice(),
+    players: proposal.assignments.map(function (a) {
+      const player = _HISTORY_DATA.league.getPlayerById(a.playerId);
+      return { playerId: a.playerId, playerName: player ? player.name : 'Unknown', fromTeamId: a.fromTeamId, toTeamId: a.toTeamId };
+    }),
+    picks: (proposal.pickAssignments || []).map(function (pa) {
+      return { round: pa.round, fromTeamId: pa.fromTeamId, toTeamId: pa.toTeamId };
+    })
+  };
+  LEAGUE_HISTORY.trades.push(record);
+  return record;
+}
+
+function archiveDraftClass(leagueYear, draftResults) {
+  const record = {
+    leagueYear: leagueYear,
+    picks: draftResults.map(function (r) {
+      return { round: r.round, pickNumber: r.pickNumber, teamId: r.teamId, playerId: r.prospect.id, playerName: r.prospect.name };
+    })
+  };
+  LEAGUE_HISTORY.draftClasses.push(record);
+  return record;
+}
+
+// The single season-end entry point script.js calls, once, at the top of
+// handleAdvanceToOffseason — BEFORE retirement runs, so archiveRetiree (Task
+// 5, wired into seasonTransition.js in Task 9) sees each retiree's fully
+// updated careerStats/awardsWon for the season that just finished.
+function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
+  const sink = feedSink || function () {};
+  const seasonAwards = _HISTORY_DATA.awards.computeSeasonAwards(leagueYear);
+
+  seasonAwards.winners.forEach(function (w) {
+    const player = _HISTORY_DATA.league.getPlayerById(w.playerId);
+    if (!player) return;
+    ensureCareerData([player]);
+    player.awardsWon.push({ award: w.award, leagueYear: leagueYear });
+    sink(player.name + ' wins ' + w.award + ' for ' + leagueYear + '.');
+  });
+  LEAGUE_HISTORY.awardsHistory.push(seasonAwards);
+
+  _HISTORY_DATA.teams.TEAMS.forEach(function (team) {
+    team.allTimeWins = (team.allTimeWins || 0) + team.record.wins;
+    team.allTimeLosses = (team.allTimeLosses || 0) + team.record.losses;
+    team.lastSeasonWins = team.record.wins;
+  });
+
+  archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, sink);
+
+  _HISTORY_DATA.players.PLAYERS_2026.forEach(function (p) {
+    rollSeasonIntoCareerStats(p, sink);
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LEAGUE_HISTORY: LEAGUE_HISTORY,
@@ -202,6 +259,9 @@ if (typeof module !== 'undefined' && module.exports) {
     computeHofScore: computeHofScore,
     HOF_THRESHOLD: HOF_THRESHOLD,
     archiveRetiree: archiveRetiree,
-    archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige
+    archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige,
+    archiveTrade: archiveTrade,
+    archiveDraftClass: archiveDraftClass,
+    finalizeSeasonHistory: finalizeSeasonHistory
   };
 }
