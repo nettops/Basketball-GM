@@ -15,8 +15,10 @@ function renderScoutingReport(container, playerId) {
   const confidence = target ? target.confidence : 0;
   const view = getRevealedView(player, confidence);
 
-  let html = '<h3>Scouting Report: ' + player.name + '</h3>';
-  html += '<p>Confidence: ' + Math.round(confidence) + '% (' + view.level + ')</p>';
+  let html = '<div class="panel"><div class="panel-header">Scouting Report — ' + player.name + '</div><div class="panel-body">';
+  html += '<div class="kpi-label">Confidence</div><div class="kpi-value">' + Math.round(confidence) + '% ' +
+    '<span class="pill pill-mute">' + view.level + '</span></div>';
+  html += '<div class="meter" style="margin:8px 0 16px;"><div class="meter-fill" style="width:' + Math.round(confidence) + '%"></div></div>';
 
   html += '<h4>Traits</h4>';
   if (view.level === 'hidden') {
@@ -50,41 +52,47 @@ function renderScoutingReport(container, playerId) {
     }).join('') + '</ul>';
   }
 
+  html += '</div></div>';
   container.innerHTML = html;
 }
 
 function renderScouting(container, userTeamId) {
   function draw() {
     const state = GameState.scouting;
-    let html = '<h2>Scouting</h2>';
-    html += '<p>Scout points available this week: ' + Math.round(state.pointsAvailable) + '</p>';
+    let html = '<div class="view-header"><h2>Scouting</h2><span class="view-sub">' +
+      Math.round(state.pointsAvailable) + ' scout points available this week</span></div>';
 
     const watchlistIds = Object.keys(state.targets).filter(function (id) { return state.targets[id].watchlisted; });
-    html += '<h3>Watchlist</h3>';
+    html += '<div class="panel"><div class="panel-header">Watchlist</div>';
     if (watchlistIds.length === 0) {
-      html += '<p>No players watchlisted yet. Add players below.</p>';
+      html += '<div class="panel-body"><div class="empty-state">No players watchlisted yet. Add players below.</div></div>';
     } else {
-      html += '<table><thead><tr><th>Name</th><th>Team</th><th>Confidence</th><th>Allocate Points</th><th></th></tr></thead><tbody>';
+      html += '<table class="data-table"><thead><tr><th>Name</th><th>Team</th><th class="num">Confidence</th>' +
+        '<th>Allocate</th><th class="num"></th></tr></thead><tbody>';
       watchlistIds.forEach(function (id) {
         const player = findScoutableById(id);
         if (!player) return;
         const conf = state.targets[id].confidence;
-        html += '<tr><td>' + player.name + '</td><td>' + (player.teamId ? getTeamById(player.teamId).name : 'Draft Prospect') + '</td>' +
-          '<td>' + Math.round(conf) + '%</td>' +
-          '<td><input type="number" min="0" max="' + Math.round(state.pointsAvailable) + '" value="10" data-alloc-id="' + id + '" style="width:60px"> <button data-spend-id="' + id + '">Spend</button></td>' +
-          '<td><button data-report-id="' + id + '">View Report</button> <button data-unwatch-id="' + id + '">Remove</button></td>' +
+        html += '<tr><td class="col-name">' + player.name + '</td>' +
+          '<td>' + (player.teamId ? teamLogoImgHtml(player.teamId, 18) + ' ' + getTeamById(player.teamId).name : '<span class="pill pill-mute">Prospect</span>') + '</td>' +
+          '<td class="num">' + Math.round(conf) + '%<div class="meter"><div class="meter-fill" style="width:' + Math.round(conf) + '%"></div></div></td>' +
+          '<td><input type="number" min="0" max="' + Math.round(state.pointsAvailable) + '" value="10" data-alloc-id="' + id + '" style="width:64px"> ' +
+          '<button class="btn-ghost" data-spend-id="' + id + '">Spend</button></td>' +
+          '<td class="actions"><button data-report-id="' + id + '">Report</button> ' +
+          '<button class="btn-danger" data-unwatch-id="' + id + '">Remove</button></td>' +
           '</tr>';
       });
       html += '</tbody></table>';
     }
+    html += '</div>';
 
-    html += '<h3>Add to Watchlist</h3>';
-    html += '<select id="scouting-add-select"><option value="">Choose a player or prospect...</option>';
+    html += '<div class="panel"><div class="panel-header">Add to Watchlist</div><div class="panel-body"><div class="toolbar">';
+    html += '<select id="scouting-add-select" style="min-width:280px;"><option value="">Choose a player or prospect...</option>';
     scoutablePool().forEach(function (p) {
       if (state.targets[p.id] && state.targets[p.id].watchlisted) return;
       html += '<option value="' + p.id + '">' + p.name + (p.teamId ? ' (' + getTeamById(p.teamId).name + ')' : ' (Prospect)') + '</option>';
     });
-    html += '</select> <button id="scouting-add-btn">Add</button>';
+    html += '</select> <button id="scouting-add-btn" class="btn-primary">Add</button></div></div></div>';
 
     html += '<div id="scouting-report"></div>';
 

@@ -360,3 +360,17 @@ table { border-collapse: collapse; width: 100%; }
 .save-slot-name { font-weight: 650; font-size: .88rem; }
 .save-slot-meta { font-size: .74rem; color: var(--text-mute); }
 .save-slot.is-empty .save-slot-name { color: var(--text-mute); font-weight: 400; font-style: italic; }
+
+/* ---------- Toolbar & bidding ---------- */
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.bid-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  padding: 16px; margin: 14px 0;
+  box-shadow: var(--shadow);
+  max-width: 420px;
+}
+.bid-panel label { display: block; margin-bottom: 9px; font-size: .82rem; color: var(--text-dim); }
+.bid-panel label input { margin-left: 6px; }
+.field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; font-size: .82rem; }
