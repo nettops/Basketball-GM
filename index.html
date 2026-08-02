@@ -8,9 +8,17 @@
 <body>
   <div id="team-select-view"></div>
   <div id="app-view" style="display:none;">
-    <div id="nav-bar"></div>
-    <div id="sim-controls"></div>
-    <div id="view-content"></div>
+    <div class="app-shell">
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">NBA<span>GM</span></div>
+        <div id="nav-bar"></div>
+      </aside>
+      <div class="app-main">
+        <div id="app-topbar"></div>
+        <div id="view-content"></div>
+        <div id="sim-controls"></div>
+      </div>
+    </div>
   </div>
 
   <script src="data.js"></script>
