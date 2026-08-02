@@ -105,9 +105,7 @@ function runWeeklyTradeGeneration(dayIndex) {
   const offer = generateTradeOffer(team, GameState.rng);
   if (!offer) return;
   if (GameState.automation.autoTrade) {
-    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
-    const partnerId = offer.proposal.participants.find(function (id) { return id !== team.id; });
-    pushToFeed('Auto-traded with ' + getTeamById(partnerId).name, dayIndex);
+    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
   } else {
     GameState.tradeOffers.push(offer);
     if (GameState.settings.pauseOn.tradeOfferReceived) GameState.pauseRequested = true;
@@ -168,7 +166,8 @@ const BUILT_VIEWS = {
   feed: renderLiveFeed,
   commissioner: renderCommissioner,
   awards: renderAwards,
-  history: renderHistory
+  history: renderHistory,
+  news: renderLeagueNews
 };
 
 function isRegularSeasonAndPlayoffsComplete() {

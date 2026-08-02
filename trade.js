@@ -66,7 +66,20 @@ function evaluateTrade(proposal, userTeamId, evaluateUserLeg) {
   return { accepted: accepted, legs: legs };
 }
 
-function executeTrade(proposal, historySink) {
+// Every team's side of the deal, e.g. "Boston Celtics get Player A; Sacramento
+// Kings get Player B". Built from proposal.assignments (fromTeamId/toTeamId),
+// not the players' now-updated teamId, so it's accurate regardless of when
+// it's called relative to the teamId mutation below.
+function describeTradeForFeed(proposal) {
+  return proposal.participants.map(function (teamId) {
+    const team = _TRADE_DATA.teams.getTeamById(teamId);
+    const incoming = proposal.assignments.filter(function (a) { return a.toTeamId === teamId; })
+      .map(function (a) { const p = _TRADE_DATA.league.getPlayerById(a.playerId); return p ? p.name : a.playerId; });
+    return team.name + ' get ' + (incoming.length > 0 ? incoming.join(', ') : 'draft compensation only');
+  }).join('; ');
+}
+
+function executeTrade(proposal, historySink, dayIndex) {
   proposal.assignments.forEach(function (a) {
     const player = _TRADE_DATA.league.getPlayerById(a.playerId);
     player.teamId = a.toTeamId;
@@ -80,6 +93,11 @@ function executeTrade(proposal, historySink) {
     const pick = findPick(pa.fromTeamId, pa.round);
     if (pick) pick.currentOwnerId = pa.toTeamId;
   });
+  // pushToFeed is a browser-global from script.js — guarded since trade.js
+  // also runs standalone under Node in scripts/validate-trades.js.
+  if (typeof pushToFeed === 'function') {
+    pushToFeed('Trade: ' + describeTradeForFeed(proposal), dayIndex);
+  }
   if (historySink) historySink(proposal);
 }
 
@@ -102,6 +120,7 @@ if (typeof module !== 'undefined' && module.exports) {
     executeTrade: executeTrade,
     proposeTrade: proposeTrade,
     findPick: findPick,
-    pickValueForLeg: pickValueForLeg
+    pickValueForLeg: pickValueForLeg,
+    describeTradeForFeed: describeTradeForFeed
   };
 }

@@ -92,6 +92,13 @@ function signPlayer(player, offer) {
   if (player.status && player.status.morale !== undefined) {
     player.status.morale = Math.min(100, player.status.morale + 4);
   }
+  // pushToFeed is a browser-global from script.js — guarded since freeAgency.js
+  // also runs standalone under Node in scripts/validate-offseason.js.
+  if (typeof pushToFeed === 'function') {
+    const team = _FA_DATA.teams.getTeamById(offer.teamId);
+    pushToFeed(player.name + ' signs with ' + team.name + ' ($' + offer.salary.toLocaleString() + '/yr, ' +
+      offer.yearsRemaining + ' yr' + (offer.yearsRemaining === 1 ? '' : 's') + ')');
+  }
 }
 
 function resolveFreeAgentSilently(player, rng) {
