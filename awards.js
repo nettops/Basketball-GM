@@ -1,0 +1,152 @@
+var _AWARDS_DATA = (typeof require !== 'undefined')
+  ? { league: require('./league.js'), teams: require('./teams.js') }
+  : {
+      league: { getTeamRoster: getTeamRoster, getPlayerAverages: getPlayerAverages },
+      teams: { TEAMS: TEAMS, getTeamById: getTeamById }
+    };
+
+const AWARD_KEYS = {
+  MVP: 'mvp',
+  DPOY: 'dpoy',
+  ROY: 'roy',
+  SIXTH_MOY: 'sixthMoy',
+  MIP: 'mip',
+  ALL_NBA_1: 'allNba1',
+  ALL_NBA_2: 'allNba2',
+  ALL_NBA_3: 'allNba3'
+};
+
+// Comfortably below a full season regardless of exact schedule length —
+// keeps a short call-up or an injury-shortened season out of award races
+// without hardcoding the schedule's exact game count anywhere in this file.
+const MIN_GAMES_FOR_AWARDS = 50;
+
+function eligiblePlayerEntries() {
+  return _AWARDS_DATA.teams.TEAMS.reduce(function (all, team) {
+    const roster = _AWARDS_DATA.league.getTeamRoster(team.id).map(function (p) { return { player: p, team: team }; });
+    return all.concat(roster);
+  }, []).filter(function (entry) {
+    return entry.player.seasonStats && entry.player.seasonStats.gamesPlayed >= MIN_GAMES_FOR_AWARDS;
+  });
+}
+
+function teamWinPct(team) {
+  const gamesPlayed = team.record.wins + team.record.losses;
+  return gamesPlayed > 0 ? team.record.wins / gamesPlayed : 0;
+}
+
+// Blends per-game production with team success — the same "team context
+// matters" idea tradeEvaluator.js's directionMultiplier already applies to
+// trade value, reused here for award value instead of inventing a separate
+// weighting philosophy.
+function mvpValue(entry) {
+  const avg = _AWARDS_DATA.league.getPlayerAverages(entry.player);
+  const production = avg.ppg + avg.rpg * 1.2 + avg.apg * 1.5 + avg.spg * 2 + avg.bpg * 2;
+  return production * (0.6 + teamWinPct(entry.team) * 0.8);
+}
+
+function dpoyValue(entry) {
+  const avg = _AWARDS_DATA.league.getPlayerAverages(entry.player);
+  const attrs = entry.player.attributes;
+  return avg.spg * 3 + avg.bpg * 3 + (attrs.perimeterDefense + attrs.interiorDefense) / 20;
+}
+
+function bestByValue(entries, valueFn) {
+  if (entries.length === 0) return null;
+  let best = entries[0];
+  let bestValue = valueFn(best);
+  for (let i = 1; i < entries.length; i++) {
+    const value = valueFn(entries[i]);
+    if (value > bestValue) { best = entries[i]; bestValue = value; }
+  }
+  return best;
+}
+
+function computeMip(entries) {
+  const withPriorSeason = entries.filter(function (entry) {
+    return entry.player.careerStats && entry.player.careerStats.seasonsPlayed > 0;
+  });
+  return bestByValue(withPriorSeason, function (entry) {
+    const avg = _AWARDS_DATA.league.getPlayerAverages(entry.player);
+    const prior = entry.player.lastSeasonAverages || { ppg: 0, rpg: 0, apg: 0 };
+    return (avg.ppg - prior.ppg) + (avg.rpg - prior.rpg) * 1.2 + (avg.apg - prior.apg) * 1.5;
+  });
+}
+
+// No starter/bench flag exists anywhere in this sim engine — a player not in
+// their own team's top 5 by minutes that season is the closest available
+// proxy for "reserve."
+function computeSixthMoy(entries) {
+  const benchEntries = entries.filter(function (entry) {
+    const teammates = entries.filter(function (e) { return e.team.id === entry.team.id; });
+    const top5Ids = teammates.slice().sort(function (a, b) { return b.player.seasonStats.minutes - a.player.seasonStats.minutes; })
+      .slice(0, 5).map(function (e) { return e.player.id; });
+    return top5Ids.indexOf(entry.player.id) === -1;
+  });
+  return bestByValue(benchEntries, mvpValue);
+}
+
+// Position-agnostic top 15 split into three 5-man tiers by rank — matches the
+// real NBA's current selection format, not the old 2G/2F/1C quota.
+function computeAllNba(entries) {
+  const ranked = entries.slice().sort(function (a, b) { return mvpValue(b) - mvpValue(a); });
+  const top15 = ranked.slice(0, 15);
+  return {
+    allNba1: top15.slice(0, 5).map(function (e) { return e.player; }),
+    allNba2: top15.slice(5, 10).map(function (e) { return e.player; }),
+    allNba3: top15.slice(10, 15).map(function (e) { return e.player; })
+  };
+}
+
+// Coach of the Year has no coach entity to attach to in this codebase — a
+// team-level "most improved" replaces it, per the design spec's confirmed
+// scope correction.
+function computeMostImprovedTeam() {
+  let best = null;
+  let bestDelta = -Infinity;
+  _AWARDS_DATA.teams.TEAMS.forEach(function (team) {
+    const priorWins = team.lastSeasonWins || 0;
+    const delta = team.record.wins - priorWins;
+    if (delta > bestDelta) { bestDelta = delta; best = team; }
+  });
+  return best;
+}
+
+function computeSeasonAwards(leagueYear) {
+  const entries = eligiblePlayerEntries();
+  const mvp = bestByValue(entries, mvpValue);
+  const dpoy = bestByValue(entries, dpoyValue);
+  const roy = bestByValue(entries.filter(function (e) { return e.player.yearsPro === 0; }), mvpValue);
+  const mip = computeMip(entries);
+  const sixthMoy = computeSixthMoy(entries);
+  const allNba = computeAllNba(entries);
+  const mostImprovedTeam = computeMostImprovedTeam();
+
+  const winners = [];
+  function recordWinner(award, player) {
+    if (!player) return;
+    winners.push({ award: award, playerId: player.id, playerName: player.name });
+  }
+  recordWinner(AWARD_KEYS.MVP, mvp ? mvp.player : null);
+  recordWinner(AWARD_KEYS.DPOY, dpoy ? dpoy.player : null);
+  recordWinner(AWARD_KEYS.ROY, roy ? roy.player : null);
+  recordWinner(AWARD_KEYS.MIP, mip ? mip.player : null);
+  recordWinner(AWARD_KEYS.SIXTH_MOY, sixthMoy ? sixthMoy.player : null);
+  allNba.allNba1.forEach(function (p) { recordWinner(AWARD_KEYS.ALL_NBA_1, p); });
+  allNba.allNba2.forEach(function (p) { recordWinner(AWARD_KEYS.ALL_NBA_2, p); });
+  allNba.allNba3.forEach(function (p) { recordWinner(AWARD_KEYS.ALL_NBA_3, p); });
+
+  return {
+    leagueYear: leagueYear,
+    winners: winners,
+    mostImprovedTeam: mostImprovedTeam ? { teamId: mostImprovedTeam.id, teamName: mostImprovedTeam.name } : null
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    AWARD_KEYS: AWARD_KEYS,
+    MIN_GAMES_FOR_AWARDS: MIN_GAMES_FOR_AWARDS,
+    computeSeasonAwards: computeSeasonAwards
+  };
+}
