@@ -39,6 +39,7 @@ function initSeason() {
 
   ensureHiddenPlayerData(PLAYERS_2026);
   ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
+  ensureCareerData(PLAYERS_2026);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
   GameState.scouting = initScoutingState();
 }
@@ -104,7 +105,7 @@ function runWeeklyTradeGeneration(dayIndex) {
   const offer = generateTradeOffer(team, GameState.rng);
   if (!offer) return;
   if (GameState.automation.autoTrade) {
-    executeTrade(offer.proposal);
+    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
     const partnerId = offer.proposal.participants.find(function (id) { return id !== team.id; });
     pushToFeed('Auto-traded with ' + getTeamById(partnerId).name, dayIndex);
   } else {
@@ -164,7 +165,9 @@ const BUILT_VIEWS = {
   scouting: renderScouting,
   saveload: renderSaveLoad,
   feed: renderLiveFeed,
-  commissioner: renderCommissioner
+  commissioner: renderCommissioner,
+  awards: renderAwards,
+  history: renderHistory
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -173,21 +176,29 @@ function isRegularSeasonAndPlayoffsComplete() {
 }
 
 function handleAdvanceToOffseason() {
+  // Runs BEFORE the leagueYear increment and before retirement, so
+  // finalizeSeasonHistory's award/career-stat rollup reflects the season
+  // that just finished, and retirees archived immediately after this see
+  // their fully-updated careerStats/awardsWon.
+  finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
+
   GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
   const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
 
   if (autoDraftEffective) {
-    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass);
+    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear);
     GameState.lastDraftResults = result.draftResults;
     GameState.draftSession = null;
+    archiveDraftClass(GameState.leagueYear, result.draftResults);
   } else {
-    runOffseasonPreDraft(GameState.rng);
+    runOffseasonPreDraft(GameState.rng, GameState.leagueYear);
     const draftOrder = buildDraftOrder(GameState.playoffBracket, GameState.rng);
     GameState.draftSession = startDraftSession(draftOrder, GameState.upcomingDraftClass);
     advanceDraftUntilUserTurn(GameState.draftSession, GameState.userTeamId, false);
     if (!currentPick(GameState.draftSession)) {
       GameState.lastDraftResults = GameState.draftSession.results;
       GameState.draftSession = null;
+      archiveDraftClass(GameState.leagueYear, GameState.lastDraftResults);
     }
   }
 
@@ -203,6 +214,7 @@ function handleUserDraftPick(prospectId) {
   if (!currentPick(GameState.draftSession)) {
     GameState.lastDraftResults = GameState.draftSession.results;
     GameState.draftSession = null;
+    archiveDraftClass(GameState.leagueYear, GameState.lastDraftResults);
   }
   renderView('draft');
   autosave(GameState);
