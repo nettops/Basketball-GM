@@ -12,25 +12,27 @@ const AWARD_LABELS = {
 const AWARD_DISPLAY_ORDER = ['mvp', 'dpoy', 'roy', 'sixthMoy', 'mip', 'allNba1', 'allNba2', 'allNba3'];
 
 function renderAwards(container) {
-  let html = '<h2>Awards</h2>';
+  let html = '<div class="view-header"><h2>Awards</h2></div>';
 
   if (LEAGUE_HISTORY.awardsHistory.length === 0) {
-    html += '<p>No seasons completed yet — awards appear here once a season ends.</p>';
+    html += '<div class="empty-state">No seasons completed yet — awards appear here once a season ends.</div>';
     container.innerHTML = html;
     return;
   }
 
   LEAGUE_HISTORY.awardsHistory.slice().reverse().forEach(function (season) {
-    html += '<h3>' + season.leagueYear + '</h3><ul>';
+    html += '<div class="panel"><div class="panel-header">' + season.leagueYear + ' Season</div><ul class="stack-list">';
     AWARD_DISPLAY_ORDER.forEach(function (awardKey) {
       const winners = season.winners.filter(function (w) { return w.award === awardKey; });
       if (winners.length === 0) return;
-      html += '<li>' + AWARD_LABELS[awardKey] + ': ' + winners.map(function (w) { return w.playerName; }).join(', ') + '</li>';
+      html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">' + AWARD_LABELS[awardKey] +
+        '</span>' + winners.map(function (w) { return w.playerName; }).join(', ') + '</li>';
     });
     if (season.mostImprovedTeam) {
-      html += '<li>Most Improved Team: ' + season.mostImprovedTeam.teamName + '</li>';
+      html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">Most Improved Team</span>' +
+        season.mostImprovedTeam.teamName + '</li>';
     }
-    html += '</ul>';
+    html += '</ul></div>';
   });
 
   container.innerHTML = html;

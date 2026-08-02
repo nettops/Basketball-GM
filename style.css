@@ -341,3 +341,22 @@ table { border-collapse: collapse; width: 100%; }
 .conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .conf-col h3 { font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
 .row-user td { background: var(--accent-soft) !important; font-weight: 650; }
+
+/* ---------- Feed & save slots ---------- */
+.feed-item { display: flex; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: .85rem; }
+.feed-item:last-child { border-bottom: none; }
+.feed-day {
+  flex-shrink: 0; min-width: 92px;
+  font-size: .66rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-mute);
+  font-variant-numeric: tabular-nums; padding-top: 2px;
+}
+.save-slot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line);
+}
+.save-slot:last-child { border-bottom: none; }
+.save-slot-info { flex: 1; min-width: 0; }
+.save-slot-name { font-weight: 650; font-size: .88rem; }
+.save-slot-meta { font-size: .74rem; color: var(--text-mute); }
+.save-slot.is-empty .save-slot-name { color: var(--text-mute); font-weight: 400; font-style: italic; }
