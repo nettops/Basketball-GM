@@ -1,10 +1,11 @@
 var _PLAYOFF_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js') }
+  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js'), morale: require('./morale.js') }
   : {
       data: { CONFERENCES: CONFERENCES },
       teams: { TEAMS: TEAMS },
       simEngine: { getActiveEngine: getActiveEngine },
-      league: { recordGameResult: recordGameResult, accumulateSeasonStats: accumulateSeasonStats }
+      league: { recordGameResult: recordGameResult, accumulateSeasonStats: accumulateSeasonStats },
+      morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
     };
 
 function getPlayoffSeeds(conference) {
@@ -65,13 +66,17 @@ function simulateSeriesGame(series, settings, rng) {
   const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, isPlayoff: true, seriesId: series.id };
 
   _PLAYOFF_DATA.league.recordGameResult(game);
+  const homeWon = result.homeScore > result.awayScore;
   if (result.boxScore) {
     Object.keys(result.boxScore).forEach(function (playerId) {
       _PLAYOFF_DATA.league.accumulateSeasonStats(playerId, result.boxScore[playerId]);
     });
+    const minutesByPlayerId = {};
+    Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(homeTeamId, homeWon, minutesByPlayerId);
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(awayTeamId, !homeWon, minutesByPlayerId);
   }
 
-  const homeWon = result.homeScore > result.awayScore;
   const higherWonThisGame = homeWon === homeIsHigher;
   if (higherWonThisGame) series.winsHigher += 1; else series.winsLower += 1;
 

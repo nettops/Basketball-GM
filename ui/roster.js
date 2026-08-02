@@ -4,6 +4,7 @@ const ROSTER_COLUMNS = [
   { key: 'age', label: 'Age' },
   { key: 'college', label: 'College' },
   { key: 'status', label: 'Status' },
+  { key: 'morale', label: 'Morale' },
   { key: 'overall', label: 'OVR' },
   { key: 'potential', label: 'POT' },
   { key: 'ppg', label: 'PPG' },
@@ -18,6 +19,7 @@ function rosterCellValue(player, key) {
   if (key === 'salary') { return player.contract.salary; }
   if (key === 'yearsRemaining') { return player.contract.yearsRemaining; }
   if (key === 'status') { return player.status.injury ? player.status.injury.gamesRemaining : 0; }
+  if (key === 'morale') { return player.status.morale; }
   if (['ppg', 'rpg', 'apg', 'fgPct'].indexOf(key) !== -1) { return getPlayerAverages(player)[key]; }
   return player[key];
 }
@@ -27,6 +29,15 @@ function injuryStatusHtml(player) {
   if (!injury) return '<span class="pill pill-mute">&mdash;</span>';
   const label = injury.gamesRemaining >= 999 ? 'Out (season)' : 'Out ' + injury.gamesRemaining + 'g';
   return '<span class="pill pill-loss" title="' + injury.severity + '">' + label + '</span>';
+}
+
+const MORALE_EMOJI = { happy: '😊', neutral: '😐', unhappy: '😞' };
+
+function moraleStatusHtml(player) {
+  const morale = player.status.morale;
+  const tier = moraleTier(morale);
+  return '<span class="morale-chip morale-' + tier + '" title="Morale: ' + Math.round(morale) + '/100">' +
+    MORALE_EMOJI[tier] + ' ' + Math.round(morale) + '</span>';
 }
 
 function ratingTier(value) {
@@ -67,6 +78,7 @@ function renderRoster(container, teamId) {
         '<td class="num">' + p.age + '</td>' +
         '<td>' + (p.college || '—') + '</td>' +
         '<td>' + injuryStatusHtml(p) + '</td>' +
+        '<td>' + moraleStatusHtml(p) + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></td>' +
         '<td class="num">' + avg.ppg.toFixed(1) + '</td>' +

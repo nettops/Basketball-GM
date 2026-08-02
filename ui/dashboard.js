@@ -2,6 +2,38 @@ function injuryLabel(injury) {
   return injury.gamesRemaining >= 999 ? 'Out (season) — ' + injury.severity : 'Out ' + injury.gamesRemaining + 'g — ' + injury.severity;
 }
 
+function topLeaders(players, statKey, n) {
+  return players
+    .filter(function (p) { return p.seasonStats && p.seasonStats.gamesPlayed > 0; })
+    .slice()
+    .sort(function (a, b) { return getPlayerAverages(b)[statKey] - getPlayerAverages(a)[statKey]; })
+    .slice(0, n);
+}
+
+function leadersTableHtml(title, players, statKey, statLabel) {
+  const leaders = topLeaders(players, statKey, 3);
+  if (leaders.length === 0) return '<div><div class="kpi-label">' + title + '</div><div class="empty-state">No games played yet.</div></div>';
+  return '<div><div class="kpi-label">' + title + '</div><table class="data-table"><tbody>' +
+    leaders.map(function (p, i) {
+      return '<tr><td class="num">' + (i + 1) + '</td><td class="col-name">' + p.name + '</td>' +
+        '<td class="num">' + getPlayerAverages(p)[statKey].toFixed(1) + ' ' + statLabel + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+// Score-result feed lines ("Team A 120, Team B 117") are already fully
+// browsable in the Live Feed tab — headlines surface everything ELSE (trades,
+// injuries, signings, offseason news) so the dashboard reads as "what
+// happened" rather than a running scoreboard. The feed has no structured
+// event types (see script.js's pushToFeed), so this is a text-shape heuristic
+// rather than a real classification.
+const SCORE_LINE_PATTERN = /^.+\s\d+,\s.+\s\d+$/;
+
+function recentHeadlines(feed, n) {
+  return feed.filter(function (entry) { return !SCORE_LINE_PATTERN.test(entry.text); })
+    .slice(-n)
+    .reverse();
+}
+
 function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
@@ -9,6 +41,14 @@ function renderDashboard(container, teamId) {
   const capSpace = CAP_CONSTANTS.SALARY_CAP - payroll;
   const injuredPlayers = roster.filter(function (p) { return p.status.injury; })
     .sort(function (a, b) { return b.overall - a.overall; });
+
+  const avgMorale = roster.length > 0
+    ? roster.reduce(function (s, p) { return s + p.status.morale; }, 0) / roster.length
+    : 70;
+  const unhappyPlayers = roster.filter(function (p) { return moraleTier(p.status.morale) === 'unhappy'; })
+    .sort(function (a, b) { return a.status.morale - b.status.morale; });
+
+  const headlines = recentHeadlines(GameState.feed || [], 8);
 
   const nextDay = GameState.season ? getNextGameDay(GameState.season, teamId, GameState.season.currentDay) : null;
   let nextGameLabel = 'No season in progress.';
@@ -69,6 +109,41 @@ function renderDashboard(container, teamId) {
               '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
               '<td><span class="pill pill-loss">' + injuryLabel(p.status.injury) + '</span></td></tr>';
           }).join('') + '</tbody></table>') +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">Your Team Leaders</div><div class="panel-body leaders-grid">' +
+      leadersTableHtml('Points', roster, 'ppg', 'PPG') +
+      leadersTableHtml('Rebounds', roster, 'rpg', 'RPG') +
+      leadersTableHtml('Assists', roster, 'apg', 'APG') +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">League Leaders</div><div class="panel-body leaders-grid">' +
+      leadersTableHtml('Points', PLAYERS_2026, 'ppg', 'PPG') +
+      leadersTableHtml('Rebounds', PLAYERS_2026, 'rpg', 'RPG') +
+      leadersTableHtml('Assists', PLAYERS_2026, 'apg', 'APG') +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">Team Morale</div><div class="panel-body">' +
+      '<div class="kpi-label">Average Morale</div>' +
+      '<div class="kpi-value">' + Math.round(avgMorale) + '</div>' +
+      '<div class="meter" style="margin:8px 0 16px;"><div class="meter-fill" style="width:' + Math.round(avgMorale) + '%"></div></div>' +
+      (unhappyPlayers.length === 0
+        ? '<div class="empty-state">No unhappy players right now.</div>'
+        : '<div class="kpi-label">Unhappy Players</div><table class="data-table"><thead><tr><th>Player</th><th class="num">Morale</th><th>Why</th></tr></thead><tbody>' +
+          unhappyPlayers.map(function (p) {
+            const reasons = moraleFactors(p, team);
+            return '<tr><td class="col-name">' + p.name + '</td>' +
+              '<td class="num">' + moraleStatusHtml(p) + '</td>' +
+              '<td>' + (reasons.length > 0 ? reasons.join(', ') : '—') + '</td></tr>';
+          }).join('') + '</tbody></table>') +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">Headlines</div><div class="panel-body">' +
+      (headlines.length === 0
+        ? '<div class="empty-state">No news yet.</div>'
+        : '<ul class="headline-list">' + headlines.map(function (h) {
+            return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + h.text + '</li>';
+          }).join('') + '</ul>') +
     '</div></div>';
 }
 

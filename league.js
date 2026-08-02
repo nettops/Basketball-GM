@@ -10,11 +10,12 @@ var _LEAGUE_DATA = (typeof require !== 'undefined')
 // cycle entirely: by call time every module has finished loading.
 function _simDeps() {
   return (typeof require !== 'undefined')
-    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js') }
+    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js'), morale: require('./morale.js') }
     : {
         simEngine: { getActiveEngine: getActiveEngine },
         fatigue: { applyFatigueForGame: applyFatigueForGame, decayFatigueForRest: decayFatigueForRest },
-        injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame }
+        injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame },
+        morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
       };
 }
 
@@ -103,6 +104,9 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
       const isBackToBackAway = season.games.some(function (g) { return g.played && (g.homeTeamId === game.awayTeamId || g.awayTeamId === game.awayTeamId) && g.day === dayIndex - 1; });
       deps.fatigue.applyFatigueForGame(game.homeTeamId, minutesByPlayerId, isBackToBackHome);
       deps.fatigue.applyFatigueForGame(game.awayTeamId, minutesByPlayerId, isBackToBackAway);
+      const homeWon = game.homeScore > game.awayScore;
+      deps.morale.tickMoraleForTeamGame(game.homeTeamId, homeWon, minutesByPlayerId);
+      deps.morale.tickMoraleForTeamGame(game.awayTeamId, !homeWon, minutesByPlayerId);
     }
 
     [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {

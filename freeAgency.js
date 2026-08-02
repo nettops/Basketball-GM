@@ -55,8 +55,15 @@ function scoreOffer(player, team, offer) {
   return score;
 }
 
+// Morale nudges what a player considers a fair asking price: an unhappy
+// player (low morale, wherever it came from — bench time, a losing record,
+// an unwanted trade) just wants a good situation and will take less; a happy
+// player knows their worth and holds out for a premium.
 function estimateFairSalary(player) {
-  return Math.max(1200000, (player.overall - 45) * 900000);
+  const base = Math.max(1200000, (player.overall - 45) * 900000);
+  const morale = (player.status && player.status.morale !== undefined) ? player.status.morale : 70;
+  const moraleMultiplier = 0.85 + (morale / 100) * 0.3;
+  return Math.round(base * moraleMultiplier);
 }
 
 function generateAIOffer(team, player, rng) {
@@ -80,6 +87,11 @@ function signPlayer(player, offer) {
   player.teamId = offer.teamId;
   player.jerseyNumber = jersey;
   player.contract = { salary: offer.salary, yearsRemaining: offer.yearsRemaining, playerOption: false, teamOption: false };
+  // Landing a new deal is a positive event regardless of whether it's a
+  // fresh signing or a re-signing with the incumbent team.
+  if (player.status && player.status.morale !== undefined) {
+    player.status.morale = Math.min(100, player.status.morale + 4);
+  }
 }
 
 function resolveFreeAgentSilently(player, rng) {
