@@ -251,6 +251,39 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   });
 }
 
+function careerLeaders(statKey, count) {
+  const activeEntries = _HISTORY_DATA.players.PLAYERS_2026.map(function (p) {
+    ensureCareerData([p]);
+    return { id: p.id, name: p.name, value: p.careerStats[statKey] };
+  });
+  const retiredEntries = LEAGUE_HISTORY.retiredPlayers.map(function (r) {
+    return { id: r.id, name: r.name, value: r.careerStats[statKey] };
+  });
+  return activeEntries.concat(retiredEntries)
+    .sort(function (a, b) { return b.value - a.value; })
+    .slice(0, count);
+}
+
+function singleSeasonLeaders(statKey, count) {
+  const activeEntries = _HISTORY_DATA.players.PLAYERS_2026.map(function (p) {
+    ensureCareerData([p]);
+    return { id: p.id, name: p.name, value: p.bestSeasonTotals[statKey] };
+  });
+  const retiredEntries = LEAGUE_HISTORY.retiredPlayers.map(function (r) {
+    return { id: r.id, name: r.name, value: r.bestSeasonTotals ? r.bestSeasonTotals[statKey] : 0 };
+  });
+  return activeEntries.concat(retiredEntries)
+    .sort(function (a, b) { return b.value - a.value; })
+    .slice(0, count);
+}
+
+function franchiseWinLeaders(count) {
+  return _HISTORY_DATA.teams.TEAMS.slice()
+    .map(function (t) { return { id: t.id, name: t.name, allTimeWins: t.allTimeWins || 0 }; })
+    .sort(function (a, b) { return b.allTimeWins - a.allTimeWins; })
+    .slice(0, count);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LEAGUE_HISTORY: LEAGUE_HISTORY,
@@ -262,6 +295,9 @@ if (typeof module !== 'undefined' && module.exports) {
     archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige,
     archiveTrade: archiveTrade,
     archiveDraftClass: archiveDraftClass,
-    finalizeSeasonHistory: finalizeSeasonHistory
+    finalizeSeasonHistory: finalizeSeasonHistory,
+    careerLeaders: careerLeaders,
+    singleSeasonLeaders: singleSeasonLeaders,
+    franchiseWinLeaders: franchiseWinLeaders
   };
 }
