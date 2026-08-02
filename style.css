@@ -144,3 +144,41 @@ select { cursor: pointer; }
   border-left-color: var(--accent);
   color: var(--text); font-weight: 650;
 }
+
+/* ---------- Topbar ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 12px 26px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.topbar-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.identity-text { min-width: 0; }
+.identity-name { font-size: 1.05rem; font-weight: 700; white-space: nowrap; }
+.identity-meta { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-mute); }
+.identity-record {
+  margin-left: 8px; padding-left: 14px;
+  border-left: 1px solid var(--line);
+  font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.identity-record span { color: var(--text-mute); margin: 0 2px; }
+
+.topbar-status { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.status-chip { display: flex; flex-direction: column; gap: 1px; min-width: 54px; }
+.chip-label { font-size: .62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-mute); }
+.chip-value { font-size: .9rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.chip-value em { font-style: normal; font-weight: 400; color: var(--text-mute); }
+.chip-value.is-over { color: var(--warn); }
+.chip-cap { min-width: 148px; }
+
+.meter { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; margin-top: 3px; }
+.meter-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .2s ease; }
+.meter-fill.is-over { background: var(--warn); }
+
+.mode-pill {
+  padding: 3px 10px; border-radius: 999px;
+  font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  border: 1px solid var(--line-strong); color: var(--text-dim);
+}
+.mode-pill.mode-commissioner { color: var(--gold); border-color: rgba(212, 169, 78, .45); }
+.mode-pill.mode-spectator { color: var(--info); border-color: rgba(88, 166, 255, .45); }
