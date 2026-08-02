@@ -25,6 +25,7 @@ function checkTeams() {
     assert.ok(data.CONFERENCES.includes(t.conference), 'invalid conference: ' + t.conference);
     assert.ok(data.DIVISIONS[t.conference].includes(t.division), 'invalid division: ' + t.division + ' for ' + t.conference);
     assert.ok(t.colors && t.colors.primary && t.colors.secondary, 'missing colors on ' + t.id);
+    assert.strictEqual(teams.getTeamLogoUrl(t.id), 'assets/logos/' + t.id + '.png', 'unexpected logo URL for ' + t.id);
     ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry'].forEach(function (field) {
       assert.ok(t[field] >= 1 && t[field] <= 100, field + ' out of range on ' + t.id);
     });

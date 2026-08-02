@@ -16,7 +16,7 @@ function renderDashboard(container, teamId) {
   }
 
   container.innerHTML =
-    '<h1 style="color:' + team.colors.primary + ';">' + team.name + '</h1>' +
+    '<h1 style="color:' + team.colors.primary + ';">' + teamLogoImgHtml(team.id, 40) + ' ' + team.name + '</h1>' +
     '<p>Record: ' + team.record.wins + '-' + team.record.losses + '</p>' +
     '<p>Roster size: ' + roster.length + ' players</p>' +
     '<p>Payroll: $' + payroll.toLocaleString() + ' / Cap: $' + CAP_CONSTANTS.SALARY_CAP.toLocaleString() +

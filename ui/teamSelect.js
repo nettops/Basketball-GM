@@ -15,7 +15,7 @@ function renderTeamSelect(container, onSelect, onLoadGame, onSpectate) {
     card.className = 'team-card';
     card.style.backgroundColor = team.colors.primary;
     card.style.border = '3px solid ' + team.colors.secondary;
-    card.textContent = team.name;
+    card.innerHTML = teamLogoImgHtml(team.id, 48) + '<div>' + team.name + '</div>';
     card.addEventListener('click', function () {
       const mode = container.querySelector('input[name="play-mode"]:checked').value;
       onSelect(team.id, mode);

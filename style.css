@@ -8,4 +8,6 @@ table { border-collapse: collapse; width: 100%; background: #fff; }
 th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
 th { background: #e0e0e0; cursor: pointer; }
 .team-card { display: inline-block; width: 180px; margin: 8px; padding: 12px; border-radius: 6px; cursor: pointer; color: #fff; text-align: center; }
+.team-logo { display: inline-flex; align-items: center; justify-content: center; border: 2px solid; border-radius: 50%; overflow: hidden; vertical-align: middle; flex-shrink: 0; }
+.team-logo img { width: 100%; height: 100%; object-fit: contain; }
 .placeholder-view { padding: 40px; text-align: center; color: #777; font-style: italic; }

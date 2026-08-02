@@ -136,6 +136,13 @@ function getTeamById(teamId) {
   return TEAMS.find(function (t) { return t.id === teamId; });
 }
 
+// Convention: a logo lives at assets/logos/{team.id}.png (e.g. assets/logos/BOS.png).
+// No files ship with the repo — drop your own in and the UI picks them up automatically;
+// missing files fall back to the existing colored badge (see ui/teamLogo.js).
+function getTeamLogoUrl(teamId) {
+  return 'assets/logos/' + teamId + '.png';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { TEAMS: TEAMS, getTeamById: getTeamById };
+  module.exports = { TEAMS: TEAMS, getTeamById: getTeamById, getTeamLogoUrl: getTeamLogoUrl };
 }
