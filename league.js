@@ -152,6 +152,7 @@ function simulateThroughDate(season, currentDay, targetDay, settings, rng, onDay
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    SEASON_STAT_KEYS: SEASON_STAT_KEYS,
     getTeamRoster: getTeamRoster,
     getTeamPayroll: getTeamPayroll,
     getPlayerById: getPlayerById,
