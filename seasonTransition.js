@@ -1,5 +1,5 @@
 var _TRANSITION_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js'), history: require('./history.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
       teams: { TEAMS: TEAMS },
@@ -7,7 +7,8 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
       progression: { progressPlayer: progressPlayer },
       draft: { buildDraftOrder: buildDraftOrder, runDraft: runDraft },
       prospects: { DRAFT_PROSPECTS_2026: DRAFT_PROSPECTS_2026, generateProspectClass: generateProspectClass },
-      schedule: { generateSeasonGames: generateSeasonGames }
+      schedule: { generateSeasonGames: generateSeasonGames },
+      history: { archiveRetiree: archiveRetiree }
     };
 
 // Retirement chance rises sharply after 33, further penalized for players whose
@@ -36,7 +37,7 @@ function decrementContracts() {
 // signature/behavior is unchanged) so the manual-draft path can run these
 // steps once and then drive the draft itself via draft.js's session API,
 // instead of duplicating this logic.
-function runOffseasonPreDraft(rng) {
+function runOffseasonPreDraft(rng, leagueYear) {
   const rosterPlayers = _TRANSITION_DATA.players.PLAYERS_2026.filter(function (p) { return p.teamId; });
   rosterPlayers.forEach(function (p) {
     const teammates = rosterPlayers.filter(function (tp) { return tp.teamId === p.teamId && tp.id !== p.id; });
@@ -45,6 +46,7 @@ function runOffseasonPreDraft(rng) {
 
   const retirees = rosterPlayers.filter(function (p) { return rollRetirement(p, rng); });
   retirees.forEach(function (p) {
+    _TRANSITION_DATA.history.archiveRetiree(p, leagueYear);
     const idx = _TRANSITION_DATA.players.PLAYERS_2026.indexOf(p);
     if (idx !== -1) _TRANSITION_DATA.players.PLAYERS_2026.splice(idx, 1);
   });
