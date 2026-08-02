@@ -336,3 +336,8 @@ table { border-collapse: collapse; width: 100%; }
   font-size: .85rem;
 }
 .stack-list li:last-child { border-bottom: none; }
+
+/* ---------- Standings ---------- */
+.conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+.conf-col h3 { font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px; }
+.row-user td { background: var(--accent-soft) !important; font-weight: 650; }
