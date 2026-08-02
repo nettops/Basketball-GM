@@ -19,6 +19,13 @@ function rosterCellValue(player, key) {
   return player[key];
 }
 
+function ratingTier(value) {
+  if (value >= 90) return 'tier-elite';
+  if (value >= 80) return 'tier-high';
+  if (value >= 70) return 'tier-mid';
+  return 'tier-low';
+}
+
 function renderRoster(container, teamId) {
   let roster = getTeamRoster(teamId).slice();
   let sortKey = 'overall';
@@ -33,36 +40,45 @@ function renderRoster(container, teamId) {
       return 0;
     });
 
-    let html = '<table><thead><tr>';
+    let html = '<div class="view-header"><h2>Roster</h2><span class="view-sub">' + roster.length + ' players</span></div>';
+    html += '<div class="panel"><table class="data-table"><thead><tr>';
     ROSTER_COLUMNS.forEach(function (col) {
-      html += '<th data-key="' + col.key + '">' + col.label + (sortKey === col.key ? (sortDir === 1 ? ' ▲' : ' ▼') : '') + '</th>';
+      const numeric = col.key !== 'name' && col.key !== 'position';
+      html += '<th data-key="' + col.key + '"' + (numeric ? ' class="num"' : '') + '>' +
+        col.label + (sortKey === col.key ? (sortDir === 1 ? ' ▲' : ' ▼') : '') + '</th>';
     });
-    html += '<th>Action</th>';
+    html += '<th class="num">Action</th>';
     html += '</tr></thead><tbody>';
     roster.forEach(function (p) {
       const avg = getPlayerAverages(p);
       html += '<tr>' +
-        '<td>' + p.name + '</td>' +
-        '<td>' + p.position + '</td>' +
-        '<td>' + p.age + '</td>' +
-        '<td>' + p.overall + '</td>' +
-        '<td>' + p.potential + '</td>' +
-        '<td>' + avg.ppg.toFixed(1) + '</td>' +
-        '<td>' + avg.rpg.toFixed(1) + '</td>' +
-        '<td>' + avg.apg.toFixed(1) + '</td>' +
-        '<td>' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
-        '<td>$' + p.contract.salary.toLocaleString() + '</td>' +
-        '<td>' + p.contract.yearsRemaining + '</td>' +
-        '<td><button data-waive-id="' + p.id + '">Waive</button> <button data-scout-id="' + p.id + '">Scout</button></td>' +
+        '<td class="col-name">' + p.name + '</td>' +
+        '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
+        '<td class="num">' + p.age + '</td>' +
+        '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+        '<td class="num"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></td>' +
+        '<td class="num">' + avg.ppg.toFixed(1) + '</td>' +
+        '<td class="num">' + avg.rpg.toFixed(1) + '</td>' +
+        '<td class="num">' + avg.apg.toFixed(1) + '</td>' +
+        '<td class="num">' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
+        '<td class="num">$' + p.contract.salary.toLocaleString() + '</td>' +
+        '<td class="num">' + p.contract.yearsRemaining + '</td>' +
+        '<td class="actions"><button class="btn-ghost" data-scout-id="' + p.id + '">Scout</button> ' +
+          '<button class="btn-danger" data-waive-id="' + p.id + '">Waive</button></td>' +
         '</tr>';
     });
-    html += '</tbody></table>';
-    html += '<h3>Career</h3><table><thead><tr><th>Name</th><th>Seasons</th><th>Career Pts</th><th>Career Reb</th><th>Career Ast</th><th>Championships</th></tr></thead><tbody>';
+    html += '</tbody></table></div>';
+    html += '<div class="panel"><div class="panel-header">Career Totals</div>' +
+      '<table class="data-table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">Pts</th>' +
+      '<th class="num">Reb</th><th class="num">Ast</th><th class="num">Titles</th></tr></thead><tbody>';
     roster.forEach(function (p) {
       ensureCareerData([p]);
-      html += '<tr><td>' + p.name + '</td><td>' + p.careerStats.seasonsPlayed + '</td><td>' + p.careerStats.points + '</td><td>' + p.careerStats.rebounds + '</td><td>' + p.careerStats.assists + '</td><td>' + p.championshipsWon + '</td></tr>';
+      html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + p.careerStats.seasonsPlayed +
+        '</td><td class="num">' + p.careerStats.points + '</td><td class="num">' + p.careerStats.rebounds +
+        '</td><td class="num">' + p.careerStats.assists + '</td><td class="num">' +
+        (p.championshipsWon > 0 ? '<span class="pill pill-gold">' + p.championshipsWon + '</span>' : '—') + '</td></tr>';
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     container.innerHTML = html;
 
     container.querySelectorAll('th[data-key]').forEach(function (th) {
