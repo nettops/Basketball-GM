@@ -217,3 +217,122 @@ select { cursor: pointer; }
   animation: pulse 1s ease-in-out infinite;
 }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* ---------- Panels ---------- */
+.view-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.view-header h2 { margin: 0; }
+.view-header .view-sub { font-size: .8rem; color: var(--text-mute); }
+
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  margin-bottom: 18px;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: .7rem; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.panel-body { padding: 14px; }
+.panel-body > :last-child { margin-bottom: 0; }
+
+/* ---------- Data tables ---------- */
+table { border-collapse: collapse; width: 100%; }
+.data-table { background: var(--surface-1); font-size: .84rem; }
+.data-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2);
+  padding: 9px 12px; text-align: left;
+  font-size: .66rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line-strong);
+  white-space: nowrap;
+}
+.data-table th[data-key] { cursor: pointer; user-select: none; }
+.data-table th[data-key]:hover { color: var(--text); background: var(--surface-3); }
+.data-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr:hover td { background: var(--surface-2); }
+.data-table .col-name { font-weight: 600; font-variant-numeric: normal; }
+.data-table td.actions { white-space: nowrap; text-align: right; }
+.data-table td.actions button { padding: 4px 10px; font-size: .78rem; }
+.data-table tr.is-clickable { cursor: pointer; }
+
+/* ---------- Rating chips ---------- */
+.rating-chip {
+  display: inline-block; min-width: 30px; padding: 2px 7px;
+  border-radius: var(--r-sm);
+  font-weight: 700; font-size: .8rem; text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-3); color: var(--text-dim);
+}
+.rating-chip.tier-elite { background: rgba(212, 169, 78, .18); color: var(--gold); }
+.rating-chip.tier-high { background: rgba(88, 166, 255, .16); color: var(--info); }
+.rating-chip.tier-mid { background: rgba(63, 185, 80, .14); color: var(--win); }
+.rating-chip.tier-low { background: var(--surface-3); color: var(--text-mute); }
+
+/* ---------- Pills ---------- */
+.pill {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 999px;
+  font-size: .68rem; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase;
+  background: var(--surface-3); color: var(--text-dim);
+}
+.pill-pos { background: var(--surface-3); color: var(--text); min-width: 32px; text-align: center; }
+.pill-win { background: rgba(63, 185, 80, .16); color: var(--win); }
+.pill-loss { background: rgba(248, 81, 73, .16); color: var(--loss); }
+.pill-gold { background: rgba(212, 169, 78, .16); color: var(--gold); }
+.pill-mute { background: transparent; color: var(--text-mute); border: 1px solid var(--line); }
+
+/* ---------- KPI tiles ---------- */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.kpi-tile {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+}
+.kpi-label {
+  font-size: .64rem; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-mute); margin-bottom: 4px;
+}
+.kpi-value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.kpi-sub { font-size: .74rem; color: var(--text-dim); margin-top: 2px; }
+.kpi-value.is-good { color: var(--win); }
+.kpi-value.is-bad { color: var(--loss); }
+.kpi-value.is-warn { color: var(--warn); }
+
+/* ---------- Empty state ---------- */
+.empty-state {
+  padding: 40px 24px; text-align: center;
+  color: var(--text-mute); font-size: .875rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+
+/* ---------- Misc lists ---------- */
+.stack-list { list-style: none; margin: 0; padding: 0; }
+.stack-list li {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: .85rem;
+}
+.stack-list li:last-child { border-bottom: none; }
