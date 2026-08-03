@@ -63,18 +63,47 @@ function renderPlayerDashboard(container, playerId) {
     </div>
 
     <div class="panel">
+      <div class="panel-header">Offseason Decisions</div>
+      <p><strong>Training Focus</strong> (applied at the next offseason progression):</p>
+      <div style="margin: 10px 0;">
+        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_shooting')">Focus Shooting</button>
+        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_defense')">Focus Defense</button>
+        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_athleticism')">Focus Athleticism</button>
+        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_playmaking')">Focus Playmaking</button>
+      </div>
+      ${pendingTrainingHtml(player)}
+    </div>
+
+    <div class="panel">
       <div class="panel-header">Quick Actions</div>
-      <button class="btn btn-primary" onclick="simulateSeason()">Simulate Season</button>
-      <button class="btn btn-ghost" onclick="renderView('dashboard')">Back to Main</button>
+      <button class="btn btn-primary" onclick="simulateSeason()">Simulate to End of Season</button>
+      <button class="btn btn-ghost" onclick="renderView('dashboard')">Team Dashboard</button>
+      ${player.age >= 34 ? '<button class="btn btn-ghost" onclick="retireCareerPlayer()">Retire</button>' : ''}
     </div>
   `;
 
   container.innerHTML = html;
 }
 
+function pendingTrainingHtml(player) {
+  const pending = GameState.playerCareerController.decisionHistory
+    .filter(function (d) { return d.type === 'training' && !d.applied; })
+    .slice(-1)[0];
+  if (!pending) return '<small>No training focus selected for next offseason.</small>';
+  return '<small>Selected: ' + pending.decision.replace(/_/g, ' ') + ' (applies next offseason)</small>';
+}
+
+function recordTrainingDecision(trainingType) {
+  GameState.playerCareerController.recordDecision('training', trainingType, 'selected');
+  renderPlayerDashboard(document.getElementById('view-content'), GameState.controlledPlayerId);
+}
+
 function simulateSeason() {
-  // Placeholder for season simulation
-  alert('Season simulation not yet implemented');
+  const btns = Array.from(document.querySelectorAll('#sim-controls button'));
+  const simToEndBtn = btns.find(function (b) { return b.textContent.trim() === 'Sim to End of Regular Season'; });
+  if (simToEndBtn) {
+    simToEndBtn.click();
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

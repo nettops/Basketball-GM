@@ -53,6 +53,37 @@ function progressPlayer(player, rng, teammates) {
   _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     player.attributes[key] = clampRating(player.attributes[key] + change);
   });
+
+  applyCareerModeTraining(player);
+}
+
+// Player-career-mode-only: applies the most recent unconsumed "training"
+// decision (recorded via PlayerCareerController.recordDecision) as a small
+// bonus to the attributes that focus covers, then marks it consumed so it
+// only ever applies once. Guarded by isCustomPlayer + a runtime GameState
+// check so this is a no-op for every generated player and for the node
+// validation scripts, which never define GameState.
+function applyCareerModeTraining(player) {
+  if (!player.isCustomPlayer) return;
+  if (typeof GameState === 'undefined' || !GameState.playerCareerController) return;
+
+  const history = GameState.playerCareerController.decisionHistory;
+  const pending = history.find(function (d) { return d.type === 'training' && !d.applied; });
+  if (!pending) return;
+
+  const TRAINING_FOCUS_ATTRS = {
+    focus_shooting: ['midRange', 'threePoint', 'freeThrow'],
+    focus_defense: ['perimeterDefense', 'interiorDefense'],
+    focus_athleticism: ['speed', 'acceleration', 'vertical'],
+    focus_playmaking: ['passing', 'ballHandling']
+  };
+  const TRAINING_BONUS = 2;
+
+  const attrs = TRAINING_FOCUS_ATTRS[pending.decision] || [];
+  attrs.forEach(function (key) {
+    player.attributes[key] = clampRating(player.attributes[key] + TRAINING_BONUS);
+  });
+  pending.applied = true;
 }
 
 if (typeof module !== 'undefined' && module.exports) {

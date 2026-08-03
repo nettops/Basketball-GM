@@ -175,7 +175,8 @@ const BUILT_VIEWS = {
   salarycap: renderSalaryCap,
   playerDashboard: function (container) {
     renderPlayerDashboard(container, GameState.controlledPlayerId);
-  }
+  },
+  legacy: renderLegacyView
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -213,6 +214,72 @@ function handleAdvanceToOffseason() {
   GameState.offseasonStage = 'draft';
   renderView('draft');
   autosave(GameState);
+
+  if (GameState.gameMode === 'playerCareer') {
+    handlePlayerCareerOffseasonFollowup();
+  }
+}
+
+// Runs after the standard offseason (progression + retirement rolls +
+// auto-draft) completes for a player-career game. Checks whether the
+// controlled player retired automatically (rollRetirement in
+// seasonTransition.js applies to every rostered player, including a custom
+// one) and shows the retirement scene if so; otherwise rolls a random
+// narrative event for the season ahead. Overrides the 'draft' view
+// handleAdvanceToOffseason already rendered, since a career-mode player
+// doesn't need to see the league's rookie draft results.
+function handlePlayerCareerOffseasonFollowup() {
+  const container = document.getElementById('view-content');
+  const player = getPlayerById(GameState.controlledPlayerId);
+
+  if (!player) {
+    const record = LEAGUE_HISTORY.retiredPlayers.slice().reverse()
+      .find(function (r) { return r.id === GameState.controlledPlayerId; });
+    if (record) {
+      GameState.playerLegacy = record;
+      renderMilestoneScene(container, 'retirement', {
+        playerName: record.name,
+        careerStats: record.careerStats,
+        championshipsWon: record.championshipsWon,
+        hallOfFameEligible: record.hallOfFame
+      });
+    }
+    return;
+  }
+
+  if (!GameState.randomEventSystem) {
+    GameState.randomEventSystem = new RandomEventSystem(GameState);
+  }
+  const event = GameState.randomEventSystem.triggerRandomEvent(player.id, GameState.leagueYear);
+  if (event) {
+    GameState.pendingRandomEvent = event;
+    renderRandomEventScene(container, event);
+  } else {
+    renderView('playerDashboard');
+  }
+}
+
+function retireCareerPlayer() {
+  const transition = new PlayerToGMTransition(GameState);
+  transition.retirePlayer(GameState.controlledPlayerId);
+  const container = document.getElementById('view-content');
+  const record = GameState.playerLegacy;
+  renderMilestoneScene(container, 'retirement', {
+    playerName: record.name,
+    careerStats: record.careerStats,
+    championshipsWon: record.championshipsWon,
+    hallOfFameEligible: record.hallOfFame
+  });
+}
+
+function startGMModeFromLegacy() {
+  const transition = new PlayerToGMTransition(GameState);
+  transition.transitionToGMMode();
+  renderView('dashboard');
+}
+
+function dismissNarrativeScene() {
+  renderView('playerDashboard');
 }
 
 function handleUserDraftPick(prospectId) {
