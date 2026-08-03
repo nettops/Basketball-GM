@@ -8,7 +8,7 @@ var _PLAYOFF_DATA = (typeof require !== 'undefined')
       morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
     };
 
-function getPlayoffSeeds(conference) {
+function getPlayoffSeeds(conference, count) {
   const confTeams = _PLAYOFF_DATA.teams.TEAMS.filter(function (t) { return t.conference === conference; });
   return confTeams.slice().sort(function (a, b) {
     if (b.record.wins !== a.record.wins) return b.record.wins - a.record.wins;
@@ -16,7 +16,49 @@ function getPlayoffSeeds(conference) {
     const diffB = (b.record.pointsFor || 0) - (b.record.pointsAgainst || 0);
     if (diffB !== diffA) return diffB - diffA;
     return a.id.localeCompare(b.id);
-  }).slice(0, 8);
+  }).slice(0, count || 8);
+}
+
+// Single-game (not best-of-7) sim, reusing the same result/stats/morale
+// plumbing as simulateSeriesGame but with no series object to update.
+function simulatePlayInGame(homeTeamId, awayTeamId, settings, rng) {
+  const engine = _PLAYOFF_DATA.simEngine.getActiveEngine(settings);
+  const result = engine.simulateGame(homeTeamId, awayTeamId, rng);
+  const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, isPlayoff: true, isPlayIn: true, seriesId: null };
+
+  _PLAYOFF_DATA.league.recordGameResult(game);
+  if (result.boxScore) {
+    Object.keys(result.boxScore).forEach(function (playerId) {
+      _PLAYOFF_DATA.league.accumulateSeasonStats(playerId, result.boxScore[playerId]);
+    });
+    const minutesByPlayerId = {};
+    Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
+    const homeWon = result.homeScore > result.awayScore;
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(homeTeamId, homeWon, minutesByPlayerId);
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(awayTeamId, !homeWon, minutesByPlayerId);
+  }
+  return game;
+}
+
+// Real NBA play-in format: 7 seed hosts 8 seed, winner takes the 7 seed
+// outright; 9 seed hosts 10 seed, loser is eliminated; the 7-vs-8 loser then
+// hosts the 9-vs-10 winner for the final 8 seed. All three games are single
+// elimination, not best-of-7 series.
+function resolvePlayInForConference(conference, settings, rng) {
+  const seeds = getPlayoffSeeds(conference, 10);
+  const seed7 = seeds[6], seed8 = seeds[7], seed9 = seeds[8], seed10 = seeds[9];
+
+  const game1 = simulatePlayInGame(seed7.id, seed8.id, settings, rng);
+  const winner1 = game1.homeScore > game1.awayScore ? seed7 : seed8;
+  const loser1 = winner1 === seed7 ? seed8 : seed7;
+
+  const game2 = simulatePlayInGame(seed9.id, seed10.id, settings, rng);
+  const winner2 = game2.homeScore > game2.awayScore ? seed9 : seed10;
+
+  const game3 = simulatePlayInGame(loser1.id, winner2.id, settings, rng);
+  const finalEighth = game3.homeScore > game3.awayScore ? loser1 : winner2;
+
+  return { seventhSeed: winner1, eighthSeed: finalEighth, games: [game1, game2, game3] };
 }
 
 let _seriesIdCounter = 0;
@@ -37,10 +79,27 @@ function createSeries(higherSeedTeamId, lowerSeedTeamId) {
 // Round 1: 0v7, 3v4, 2v5, 1v6 — keeps the 1 and 2 seeds apart until the conference finals.
 const ROUND1_SEED_PAIRS = [[0, 7], [3, 4], [2, 5], [1, 6]];
 
-function generateBracket() {
-  const bracket = { first: [], semis: [], confFinals: [], finals: [] };
+// rng/settings are optional and only needed when settings.playInEnabled is
+// set — every existing caller that omits them keeps the original
+// straight-top-8-seeds behavior unchanged.
+function generateBracket(rng, settings) {
+  const bracket = { first: [], semis: [], confFinals: [], finals: [], playIn: null };
+  const playInEnabled = !!(settings && settings.playInEnabled && rng);
   _PLAYOFF_DATA.data.CONFERENCES.forEach(function (conf) {
-    const seeds = getPlayoffSeeds(conf);
+    let seeds;
+    if (playInEnabled) {
+      // Snapshot the top 6 BEFORE playing any play-in games — those games
+      // mutate the participating teams' win/loss records via recordGameResult,
+      // which could otherwise reshuffle a seed-6/seed-7 team that was close
+      // in the standings if queried again afterward.
+      const topSix = getPlayoffSeeds(conf, 10).slice(0, 6);
+      const resolved = resolvePlayInForConference(conf, settings, rng);
+      seeds = topSix.concat([resolved.seventhSeed, resolved.eighthSeed]);
+      if (!bracket.playIn) bracket.playIn = {};
+      bracket.playIn[conf] = resolved;
+    } else {
+      seeds = getPlayoffSeeds(conf);
+    }
     ROUND1_SEED_PAIRS.forEach(function (pair) {
       bracket.first.push(createSeries(seeds[pair[0]].id, seeds[pair[1]].id));
     });
@@ -137,6 +196,8 @@ if (typeof module !== 'undefined' && module.exports) {
     generateBracket: generateBracket,
     ROUND1_SEED_PAIRS: ROUND1_SEED_PAIRS,
     simulateNextPlayoffGame: simulateNextPlayoffGame,
-    getCurrentRoundSeries: getCurrentRoundSeries
+    getCurrentRoundSeries: getCurrentRoundSeries,
+    resolvePlayInForConference: resolvePlayInForConference,
+    simulatePlayInGame: simulatePlayInGame
   };
 }

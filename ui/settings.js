@@ -67,6 +67,9 @@ function renderSettings(container) {
     INJURY_FREQUENCY_OPTIONS.map(function (opt) {
       return '<option value="' + opt.value + '"' + (GameState.settings.injuryFrequency === opt.value ? ' selected' : (opt.value === 1 && GameState.settings.injuryFrequency === undefined ? ' selected' : '')) + '>' + opt.label + '</option>';
     }).join('') + '</select></label>' +
+    '<label class="toggle-row"><input type="checkbox" id="settings-play-in-enabled"' +
+    (GameState.settings.playInEnabled ? ' checked' : '') +
+    '> Play-In Tournament (7-10 seeds play in for the final two spots, instead of a straight top-8 cutoff)</label>' +
   '</div></div>';
 
   if (GameState.playMode !== 'spectator') {
@@ -133,6 +136,10 @@ function renderSettings(container) {
 
   document.getElementById('settings-injury-frequency').addEventListener('change', function (e) {
     GameState.settings.injuryFrequency = Number(e.target.value);
+  });
+
+  document.getElementById('settings-play-in-enabled').addEventListener('change', function (e) {
+    GameState.settings.playInEnabled = e.target.checked;
   });
 }
 

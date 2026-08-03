@@ -54,7 +54,7 @@ async function handleSimToEnd() {
       GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng, handleDayComplete);
     }, 1);
     if (isRegularSeasonComplete(GameState.season)) {
-      GameState.playoffBracket = generateBracket();
+      GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
     }
   } else {
     await runWithDelay(container, function () {
@@ -79,7 +79,7 @@ async function runRegularSeasonAndPlayoffsToCompletion(container) {
   const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
   await runWithDelay(container, function () {
     GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng, handleDayComplete);
-    if (!GameState.playoffBracket && isRegularSeasonComplete(GameState.season)) GameState.playoffBracket = generateBracket();
+    if (!GameState.playoffBracket && isRegularSeasonComplete(GameState.season)) GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
     if (GameState.playoffBracket) {
       let g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
       while (g !== null) g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
@@ -134,7 +134,7 @@ async function runMultiSeason(mode, target) {
     if (GameState.season.currentDay < lastDay) continue; // 'days' mode hit its limit mid-season
 
     if (!GameState.playoffBracket) {
-      GameState.playoffBracket = generateBracket();
+      GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
       const madePlayoffs = GameState.playoffBracket.first.some(function (s) { return s.higherSeed === GameState.userTeamId || s.lowerSeed === GameState.userTeamId; });
       if ((madePlayoffs && GameState.settings.pauseOn.madePlayoffs) || (!madePlayoffs && GameState.settings.pauseOn.missedPlayoffs)) {
         GameState.pauseRequested = true;
@@ -170,6 +170,7 @@ async function runMultiSeason(mode, target) {
     GameState.upcomingDraftClass = seasonResult.nextDraftClass;
     GameState.playoffBracket = null;
     GameState.offseasonStage = null;
+    GameState.allStarWeekend = null;
     seasonsRun += 1;
   }
 

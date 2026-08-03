@@ -48,11 +48,34 @@ function playoffRoundColumnHtml(title, series, expectedCount, seedLookup, userTe
     '</div>';
 }
 
+function playInResultsHtml(bracket) {
+  if (!bracket.playIn) return '';
+  let html = '<div class="panel"><div class="panel-header">Play-In Tournament</div><div class="panel-body">';
+  CONFERENCES.forEach(function (conf) {
+    const result = bracket.playIn[conf];
+    if (!result) return;
+    html += '<div class="playoff-conf-label">' + conf + ' Conference</div><ul class="stack-list">';
+    result.games.forEach(function (g, i) {
+      const home = getTeamById(g.homeTeamId);
+      const away = getTeamById(g.awayTeamId);
+      const label = i === 0 ? '7-8 Game' : (i === 1 ? '9-10 Game' : 'Final Spot');
+      html += '<li><span class="feed-day" style="min-width:110px;display:inline-block;">' + label + '</span>' +
+        away.name + ' ' + g.awayScore + ' @ ' + home.name + ' ' + g.homeScore + '</li>';
+    });
+    html += '</ul>';
+  });
+  html += '</div></div>';
+  return html;
+}
+
 function renderBracketView(container, bracket, userTeamId) {
   const seedLookup = buildSeedLookup(bracket);
   const championId = bracket.finals.length > 0 && bracket.finals[0].complete ? bracket.finals[0].winner : null;
 
-  let html = '<div class="view-header"><h2>Playoffs</h2><span class="view-sub">Standard 2-2-1-1-1 best-of-7, 8 seeds per conference</span></div>';
+  let html = '<div class="view-header"><h2>Playoffs</h2><span class="view-sub">' +
+    (bracket.playIn ? 'Play-in tournament + standard 2-2-1-1-1 best-of-7' : 'Standard 2-2-1-1-1 best-of-7, 8 seeds per conference') + '</span></div>';
+
+  html += playInResultsHtml(bracket);
 
   if (championId) {
     const champ = getTeamById(championId);

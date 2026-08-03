@@ -19,6 +19,7 @@ const GameState = {
     capDisabled: false,
     capLevel: 1,
     injuryFrequency: 1,
+    playInEnabled: false,
     leagueYear: 2026
   }
 };
@@ -167,6 +168,7 @@ const BUILT_VIEWS = {
   standings: renderStandings,
   schedule: renderSchedule,
   playoffs: renderPlayoffs,
+  allStarWeekend: renderAllStarWeekend,
   settings: renderSettings,
   trade: renderTradeCenter,
   freeagency: renderFreeAgency,
@@ -318,6 +320,7 @@ function handleAdvanceToNewSeason() {
   GameState.upcomingDraftClass = result.nextDraftClass;
   GameState.playoffBracket = null;
   GameState.offseasonStage = null;
+  GameState.allStarWeekend = null;
   renderView('dashboard');
   autosave(GameState);
 }
