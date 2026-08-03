@@ -3,7 +3,8 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       league: require('./league.js'),
       teams: require('./teams.js'),
       players: require('./players-2026.js'),
-      awards: require('./awards.js')
+      awards: require('./awards.js'),
+      careerHistory: require('./careerHistory.js')
     }
   : {
       league: {
@@ -14,7 +15,8 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       players: { PLAYERS_2026: PLAYERS_2026 },
-      awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS }
+      awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS },
+      careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory }
     };
 
 const LEAGUE_HISTORY = {
@@ -39,6 +41,7 @@ function ensureCareerData(players) {
     if (!p.teamsPlayedFor) p.teamsPlayedFor = p.teamId ? [p.teamId] : [];
     if (!p.bestSeasonTotals) p.bestSeasonTotals = { points: 0, rebounds: 0, assists: 0 };
     if (!p.lastSeasonAverages) p.lastSeasonAverages = Object.assign({}, ZERO_AVERAGES);
+    _HISTORY_DATA.careerHistory.ensureCareerHistory(p);
   });
 }
 
@@ -59,13 +62,19 @@ function checkMilestones(player, beforeTotals, feedSink) {
   });
 }
 
-function rollSeasonIntoCareerStats(player, feedSink) {
+function rollSeasonIntoCareerStats(player, leagueYear, feedSink) {
   const sink = feedSink || function () {};
   ensureCareerData([player]);
   player.peakOverall = Math.max(player.peakOverall, player.overall);
   if (player.teamId && player.teamsPlayedFor.indexOf(player.teamId) === -1) {
     player.teamsPlayedFor.push(player.teamId);
   }
+
+  // Must run before the early-return below (a player with no games this
+  // season has nothing to record) but also before seasonTransition.js's
+  // generateNewSeason wipes player.seasonStats — this call happens well
+  // before that, from finalizeSeasonHistory at the top of the offseason.
+  _HISTORY_DATA.careerHistory.recordSeasonInHistory(player, leagueYear);
 
   if (!player.seasonStats || player.seasonStats.gamesPlayed === 0) {
     player.lastSeasonAverages = Object.assign({}, ZERO_AVERAGES);
@@ -207,6 +216,16 @@ function archiveTrade(proposal, leagueYear) {
     })
   };
   LEAGUE_HISTORY.trades.push(record);
+
+  proposal.assignments.forEach(function (a) {
+    const player = _HISTORY_DATA.league.getPlayerById(a.playerId);
+    if (!player) return;
+    const fromTeam = _HISTORY_DATA.teams.getTeamById(a.fromTeamId);
+    const toTeam = _HISTORY_DATA.teams.getTeamById(a.toTeamId);
+    const details = (fromTeam ? fromTeam.name : a.fromTeamId) + ' trade ' + player.name + ' to ' + (toTeam ? toTeam.name : a.toTeamId) + '.';
+    _HISTORY_DATA.careerHistory.recordTradeInHistory(player, a.fromTeamId, a.toTeamId, leagueYear, details);
+  });
+
   return record;
 }
 
@@ -247,7 +266,7 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, sink);
 
   _HISTORY_DATA.players.PLAYERS_2026.forEach(function (p) {
-    rollSeasonIntoCareerStats(p, sink);
+    rollSeasonIntoCareerStats(p, leagueYear, sink);
   });
 }
 

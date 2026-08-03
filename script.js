@@ -171,6 +171,9 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
+  playerProfile: renderPlayerProfile,
+  careerLedger: renderCareerLedger,
+  playerComparison: renderPlayerComparison,
   news: renderLeagueNews,
   salarycap: renderSalaryCap,
   playerDashboard: function (container) {

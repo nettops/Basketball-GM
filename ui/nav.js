@@ -7,6 +7,8 @@ const NAV_ITEMS = [
   { id: 'standings', label: 'Standings', group: 'League' },
   { id: 'awards', label: 'Awards', group: 'League' },
   { id: 'history', label: 'History', group: 'League' },
+  { id: 'careerLedger', label: 'Career Ledger', group: 'League' },
+  { id: 'playerComparison', label: 'Compare Players', group: 'League' },
   { id: 'news', label: 'League News', group: 'League' },
   { id: 'feed', label: 'Live Feed', group: 'League' },
   { id: 'trade', label: 'Trade Center', group: 'Transactions' },

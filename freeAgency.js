@@ -1,11 +1,12 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
-      rosterMoves: { getFreeAgents: getFreeAgents }
+      rosterMoves: { getFreeAgents: getFreeAgents },
+      careerHistory: { recordContractInHistory: recordContractInHistory }
     };
 
 // Higher score = more playing-time opportunity: wide open at the position,
@@ -84,9 +85,14 @@ function signPlayer(player, offer) {
   const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
   let jersey = 0;
   while (usedNumbers.has(jersey)) jersey++;
+  const contractType = player.teamId === offer.teamId ? 're_signing' : 'free_agency';
   player.teamId = offer.teamId;
   player.jerseyNumber = jersey;
   player.contract = { salary: offer.salary, yearsRemaining: offer.yearsRemaining, playerOption: false, teamOption: false };
+  // GameState is a browser global from script.js — guarded since freeAgency.js
+  // also runs standalone under Node in scripts/validate-offseason.js.
+  const leagueYear = typeof GameState !== 'undefined' ? (GameState.leagueYear || 2026) : undefined;
+  _FA_DATA.careerHistory.recordContractInHistory(player, leagueYear, offer.salary, offer.yearsRemaining, offer.teamId, contractType);
   // Landing a new deal is a positive event regardless of whether it's a
   // fresh signing or a re-signing with the incumbent team.
   if (player.status && player.status.morale !== undefined) {

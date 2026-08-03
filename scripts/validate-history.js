@@ -31,15 +31,16 @@ function checkRollSeasonIntoCareerStats() {
   historyModule.ensureCareerData([player]);
   player.seasonStats = { gamesPlayed: 70, points: 10000, rebounds: 400, assists: 300, steals: 60, blocks: 20, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, minutes: 2000 };
   const messages = [];
-  historyModule.rollSeasonIntoCareerStats(player, function (text) { messages.push(text); });
+  historyModule.rollSeasonIntoCareerStats(player, 2060, function (text) { messages.push(text); });
   assert.strictEqual(player.careerStats.points, 10000, 'career points should accumulate the season total');
   assert.strictEqual(player.careerStats.seasonsPlayed, 1, 'seasonsPlayed should increment');
   assert.strictEqual(player.bestSeasonTotals.points, 10000, 'bestSeasonTotals should capture this season');
   assert.ok(messages.some(function (m) { return m.indexOf('10,000 career points') !== -1; }), 'crossing 10,000 points should push a milestone feed line');
+  assert.strictEqual(player.careerHistory.seasonByYear[2060].points, 10000, 'careerHistory.seasonByYear should record the season');
 
   player.seasonStats = { gamesPlayed: 70, points: 5000, rebounds: 300, assists: 200, steals: 50, blocks: 15, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, minutes: 2000 };
   const messages2 = [];
-  historyModule.rollSeasonIntoCareerStats(player, function (text) { messages2.push(text); });
+  historyModule.rollSeasonIntoCareerStats(player, 2061, function (text) { messages2.push(text); });
   assert.strictEqual(player.careerStats.points, 15000, 'career points should keep accumulating');
   assert.ok(!messages2.some(function (m) { return m.indexOf('10,000') !== -1; }), 'an already-crossed milestone should not re-fire');
   console.log('checkRollSeasonIntoCareerStats: OK');

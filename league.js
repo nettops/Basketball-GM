@@ -49,6 +49,15 @@ function recordGameResult(game) {
   }
 }
 
+// Lazily required for the same reason _simDeps() is: careerHistory.js
+// requires league.js back (for SEASON_STAT_KEYS/getPlayerAverages), so an
+// eager require here would deadlock on the cycle at module-load time.
+function _historyDeps() {
+  return (typeof require !== 'undefined')
+    ? { careerHistory: require('./careerHistory.js') }
+    : { careerHistory: { checkAndUpdateCareerHighs: checkAndUpdateCareerHighs } };
+}
+
 function accumulateSeasonStats(playerId, statLine) {
   const player = getPlayerById(playerId);
   if (!player.seasonStats) {
@@ -57,6 +66,7 @@ function accumulateSeasonStats(playerId, statLine) {
   }
   player.seasonStats.gamesPlayed += 1;
   SEASON_STAT_KEYS.forEach(function (k) { player.seasonStats[k] += statLine[k] || 0; });
+  _historyDeps().careerHistory.checkAndUpdateCareerHighs(player, statLine);
 }
 
 function getPlayerAverages(player) {

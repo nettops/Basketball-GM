@@ -73,7 +73,7 @@ function renderRoster(container, teamId) {
     roster.forEach(function (p) {
       const avg = getPlayerAverages(p);
       html += '<tr>' +
-        '<td class="col-name">' + p.name + '</td>' +
+        '<td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' + p.name + '</button></td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
         '<td>' + (p.college || '—') + '</td>' +
@@ -136,6 +136,10 @@ function renderRoster(container, teamId) {
         GameState.pendingScoutReportId = btn.getAttribute('data-scout-id');
         renderView('scouting');
       });
+    });
+
+    container.querySelectorAll('button[data-profile-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openPlayerProfile(btn.getAttribute('data-profile-id')); });
     });
   }
 
