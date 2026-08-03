@@ -28,6 +28,10 @@ function renderAwards(container) {
       html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">' + AWARD_LABELS[awardKey] +
         '</span>' + winners.map(function (w) { return w.playerName; }).join(', ') + '</li>';
     });
+    if (season.coachOfTheYear) {
+      html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">Coach of the Year</span>' +
+        season.coachOfTheYear.coach.name + ' (' + season.coachOfTheYear.teamName + ')</li>';
+    }
     if (season.mostImprovedTeam) {
       html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">Most Improved Team</span>' +
         season.mostImprovedTeam.teamName + '</li>';

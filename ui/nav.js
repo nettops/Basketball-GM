@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { id: 'scouting', label: 'Scouting', group: 'Transactions' },
   { id: 'salarycap', label: 'Salary Cap', group: 'Transactions' },
   { id: 'finances', label: 'Team Finances', group: 'Transactions' },
+  { id: 'coaching', label: 'Coaching', group: 'Transactions' },
   { id: 'saveload', label: 'Save/Load', group: 'System' },
   { id: 'settings', label: 'Settings', group: 'System' },
   { id: 'commissioner', label: 'Commissioner', group: 'System' }

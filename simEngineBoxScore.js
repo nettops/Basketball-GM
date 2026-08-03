@@ -15,11 +15,17 @@ function computeTeamRating(teamId) {
   const traitBonus = rotation.reduce(function (s, p) {
     return s + _ENGINE_DATA.traits.getTraitBonus(p, 'boxscore', 'scoring') + _ENGINE_DATA.traits.getTraitBonus(p, 'boxscore', 'defense');
   }, 0) / rotation.length * 0.15;
-  return avgOverall - avgFatiguePenalty + chemistryBonus + traitBonus;
+  // Coach quality contributes a small game-day edge on top of pure roster talent.
+  const coachBonus = team.coach ? (team.coach.overall - 70) * 0.04 : 0;
+  return avgOverall - avgFatiguePenalty + chemistryBonus + traitBonus + coachBonus;
 }
 
-function simulateScore(homeRating, awayRating, rng) {
-  const BASE_PACE = 112;
+// paceAdjustment shifts both teams' expected possessions equally — derived
+// by simulateBoxScoreGame from both teams' strategy.pace dial (coaches.js /
+// ui/coaching.js), so a fast-paced matchup runs higher-scoring than a
+// slow-paced one regardless of which side has the rating edge.
+function simulateScore(homeRating, awayRating, rng, paceAdjustment) {
+  const BASE_PACE = 112 + (paceAdjustment || 0);
   const HOME_COURT_BONUS = 3;
   const diff = homeRating - awayRating;
   const homeExpected = BASE_PACE + diff * 0.6 + HOME_COURT_BONUS;
@@ -87,7 +93,7 @@ function minutesWeight(player) {
 // Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by
 // their shooting attributes. This is a flavor-stat approximation, not a precise
 // possession-level shot model (that's the possession-by-possession engine, later).
-function deriveShootingLine(player, points, rng) {
+function deriveShootingLine(player, points, rng, threePointRateDial) {
   if (points === 0) return { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0 };
   const a = player.attributes;
   const ftShare = Math.min(0.35, 0.10 + (a.freeThrow - 50) / 300);
@@ -96,7 +102,11 @@ function deriveShootingLine(player, points, rng) {
   // (see traits.js's generateTendencies); nudge the visible-attribute-driven
   // three-point share by how far it sits from a neutral one-third split.
   const tendencyNudge = (player.hiddenTendencies && player.hiddenTendencies.threeTendency !== undefined) ? (player.hiddenTendencies.threeTendency - 33) / 300 : 0;
-  const threeShare = Math.min(0.6, Math.max(0, (a.threePoint - 50) / 120 + tendencyNudge));
+  // team.strategy.threePointRate (coaches.js / ui/coaching.js), roughly -1..1,
+  // nudges every player's three-point share the same direction — a coach's
+  // scheme, not an individual shot preference.
+  const strategyNudge = (threePointRateDial || 0) * 0.06;
+  const threeShare = Math.min(0.6, Math.max(0, (a.threePoint - 50) / 120 + tendencyNudge + strategyNudge));
   const remainderAfterFt = points - ftPoints;
   let threeMade = Math.round((remainderAfterFt * threeShare) / 3);
   let threePoints = threeMade * 3;
@@ -130,10 +140,12 @@ function simulateTeamBoxScore(teamId, teamScore, rng) {
   const assists = distributeInt(Math.round(teamScore * 0.22), roster.map(assistWeight));
   const steals = distributeInt(7, roster.map(stealWeight));
   const blocks = distributeInt(5, roster.map(blockWeight));
+  const team = _ENGINE_DATA.teams.getTeamById(teamId);
+  const threePointRateDial = team.strategy ? team.strategy.threePointRate : 0;
 
   const boxScore = {};
   roster.forEach(function (p, i) {
-    const shooting = deriveShootingLine(p, points[i], rng);
+    const shooting = deriveShootingLine(p, points[i], rng, threePointRateDial);
     boxScore[p.id] = {
       minutes: minutes[i],
       points: points[i],
@@ -152,10 +164,21 @@ function simulateTeamBoxScore(teamId, teamScore, rng) {
   return boxScore;
 }
 
-function simulateGame(homeTeamId, awayTeamId, rng) {
+// Named distinctly from simEnginePossession.js's own simulateGame — both
+// files load as plain global scripts, so a same-named top-level function
+// here would silently shadow (or be shadowed by) the other engine's version
+// for any caller that isn't going through the SIM_ENGINES registry. See the
+// commissioner.js/progression.js clampRating collision this project already
+// hit for what that class of bug looks like once it isn't caught early.
+function simulateBoxScoreGame(homeTeamId, awayTeamId, rng) {
   const homeRating = computeTeamRating(homeTeamId);
   const awayRating = computeTeamRating(awayTeamId);
-  const score = simulateScore(homeRating, awayRating, rng);
+  const homeTeam = _ENGINE_DATA.teams.getTeamById(homeTeamId);
+  const awayTeam = _ENGINE_DATA.teams.getTeamById(awayTeamId);
+  const homePace = homeTeam.strategy ? homeTeam.strategy.pace : 0;
+  const awayPace = awayTeam.strategy ? awayTeam.strategy.pace : 0;
+  const paceAdjustment = ((homePace || 0) + (awayPace || 0)) / 2 * 4; // dial is roughly -1..1, worth up to ±4 possessions
+  const score = simulateScore(homeRating, awayRating, rng, paceAdjustment);
   const homeBox = simulateTeamBoxScore(homeTeamId, score.homeScore, rng);
   const awayBox = simulateTeamBoxScore(awayTeamId, score.awayScore, rng);
   return {
@@ -165,14 +188,14 @@ function simulateGame(homeTeamId, awayTeamId, rng) {
   };
 }
 
-_ENGINE_DATA.simEngine.registerEngine('boxscore', { simulateGame: simulateGame });
+_ENGINE_DATA.simEngine.registerEngine('boxscore', { simulateGame: simulateBoxScoreGame });
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     computeTeamRating: computeTeamRating,
     simulateScore: simulateScore,
     distributeInt: distributeInt,
-    simulateGame: simulateGame,
+    simulateGame: simulateBoxScoreGame,
     scoringWeight: scoringWeight,
     reboundWeight: reboundWeight,
     assistWeight: assistWeight,

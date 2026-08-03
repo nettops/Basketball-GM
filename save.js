@@ -35,7 +35,7 @@ const SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
 // don't need round-tripping through a save.
-const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins'];
+const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins', 'finances', 'coach', 'strategy'];
 
 function saveSlotKey(slotId) {
   return slotId === 'autosave' ? 'nba-gm-save-autosave' : 'nba-gm-save-' + slotId;

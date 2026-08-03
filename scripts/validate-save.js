@@ -202,4 +202,44 @@ function checkPhase7FieldsRoundTrip() {
 
 checkPhase7FieldsRoundTrip();
 
+// Regression check: finances (Phase B) and coach/strategy (Phase C) were
+// initially left out of TEAM_SAVE_FIELDS, so a save/load cycle silently
+// dropped cash balances, arena tier, and any hired coach.
+function checkTeamFinancesCoachAndStrategyRoundTrip() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const teamsModule = require(path.join(__dirname, '..', 'teams.js'));
+  const coachesModule = require(path.join(__dirname, '..', 'coaches.js'));
+  const financesModule = require(path.join(__dirname, '..', 'finances.js'));
+  const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+
+  const team = teamsModule.getTeamById('BOS');
+  const finances = financesModule.ensureTeamFinances(team);
+  finances.cash = 12345678;
+  finances.arenaTier = 3;
+  coachesModule.hireCoach(team, coachesModule.generateCoach(makeRng(5)), 2027);
+  const hiredCoachName = team.coach.name;
+  team.strategy = { pace: 1, threePointRate: -1 };
+
+  const gameState = makeFakeGameState({});
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gameState, 'Finances Round Trip')));
+
+  // Wipe the live fields to prove restore (not just the still-live object
+  // reference) is what brings them back.
+  team.finances = null;
+  team.coach = null;
+  team.strategy = null;
+
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+
+  assert.strictEqual(team.finances.cash, 12345678, 'cash balance should round-trip');
+  assert.strictEqual(team.finances.arenaTier, 3, 'arena tier should round-trip');
+  assert.strictEqual(team.coach.name, hiredCoachName, 'hired coach should round-trip');
+  assert.deepStrictEqual(team.strategy, { pace: 1, threePointRate: -1 }, 'strategy dials should round-trip');
+
+  console.log('checkTeamFinancesCoachAndStrategyRoundTrip: OK');
+}
+
+checkTeamFinancesCoachAndStrategyRoundTrip();
+
 console.log('All save/load validations passed');

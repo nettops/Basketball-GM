@@ -5,7 +5,8 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       players: require('./players-2026.js'),
       awards: require('./awards.js'),
       careerHistory: require('./careerHistory.js'),
-      finances: require('./finances.js')
+      finances: require('./finances.js'),
+      coaches: require('./coaches.js')
     }
   : {
       league: {
@@ -19,7 +20,8 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       players: { PLAYERS_2026: PLAYERS_2026 },
       awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS },
       careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory },
-      finances: { applySeasonEndFinances: applySeasonEndFinances }
+      finances: { applySeasonEndFinances: applySeasonEndFinances },
+      coaches: { tickCoachTenure: tickCoachTenure }
     };
 
 const LEAGUE_HISTORY = {
@@ -258,6 +260,11 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
     player.awardsWon.push({ award: w.award, leagueYear: leagueYear });
     sink(player.name + ' wins ' + w.award + ' for ' + leagueYear + '.');
   });
+  if (seasonAwards.coachOfTheYear) {
+    const coach = seasonAwards.coachOfTheYear.coach;
+    coach.awardsWon.push({ award: 'coachOfTheYear', leagueYear: leagueYear });
+    sink(coach.name + ' (' + seasonAwards.coachOfTheYear.teamName + ') wins Coach of the Year for ' + leagueYear + '.');
+  }
   LEAGUE_HISTORY.awardsHistory.push(seasonAwards);
 
   // GameState is a browser global from script.js — guarded since history.js
@@ -268,6 +275,7 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
     team.allTimeLosses = (team.allTimeLosses || 0) + team.record.losses;
     team.lastSeasonWins = team.record.wins;
     _HISTORY_DATA.finances.applySeasonEndFinances(team, _HISTORY_DATA.league.getTeamPayroll(team.id), capLevel);
+    _HISTORY_DATA.coaches.tickCoachTenure(team);
   });
 
   archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, sink);

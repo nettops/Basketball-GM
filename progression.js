@@ -1,6 +1,11 @@
 var _PROGRESSION_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js') }
-  : { data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX }, traits: { getTraitBonus: getTraitBonus } };
+  ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js') }
+  : {
+      data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX },
+      traits: { getTraitBonus: getTraitBonus },
+      teams: { getTeamById: getTeamById },
+      coaches: { coachFitMultiplier: coachFitMultiplier }
+    };
 
 function clampRating(v) {
   return Math.max(_PROGRESSION_DATA.data.RATING_MIN, Math.min(_PROGRESSION_DATA.data.RATING_MAX, Math.round(v)));
@@ -33,11 +38,14 @@ function progressPlayer(player, rng, teammates) {
     change -= 8;
   }
 
-  // Trait/personality modifiers. No coach entities exist yet, so Coachable/
-  // Stubborn apply unconditionally rather than being gated by coach fit.
+  // Trait/personality modifiers, gated by coach fit: a player whose skill
+  // lean matches their coach's specialty gets more out of being Coachable
+  // (or is hurt less by being Stubborn) than a mismatched pairing would.
+  const team = player.teamId ? _PROGRESSION_DATA.teams.getTeamById(player.teamId) : null;
+  const fit = team ? _PROGRESSION_DATA.coaches.coachFitMultiplier(team.coach, player) : 1;
   change += _PROGRESSION_DATA.traits.getTraitBonus(player, 'progression', 'self') * 0.3;
   if (player.hiddenPersonality && player.hiddenPersonality.coachability !== undefined) {
-    change += (player.hiddenPersonality.coachability - 50) / 50 * 1.5;
+    change += (player.hiddenPersonality.coachability - 50) / 50 * 1.5 * fit;
   }
   if (player.age <= 25) {
     const mentorBonus = teammates.reduce(function (sum, tm) {

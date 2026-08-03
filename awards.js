@@ -98,9 +98,27 @@ function computeAllNba(entries) {
   };
 }
 
-// Coach of the Year has no coach entity to attach to in this codebase — a
-// team-level "most improved" replaces it, per the design spec's confirmed
-// scope correction.
+// Same win-improvement signal as computeMostImprovedTeam, but attached to
+// the team's actual coach entity (coaches.js) now that one exists, plus a
+// small nod to coach overall so an equally-improved team with the stronger
+// coach edges out a weaker one.
+function computeCoachOfTheYear() {
+  let best = null;
+  let bestScore = -Infinity;
+  _AWARDS_DATA.teams.TEAMS.forEach(function (team) {
+    if (!team.coach) return;
+    const priorWins = team.lastSeasonWins || 0;
+    const delta = team.record.wins - priorWins;
+    const score = delta + team.coach.overall * 0.05;
+    if (score > bestScore) { bestScore = score; best = team; }
+  });
+  return best ? { coach: best.coach, teamId: best.id, teamName: best.name } : null;
+}
+
+// Coach of the Year previously had no coach entity to attach to in this
+// codebase — computeMostImprovedTeam (a team-level award) filled in for it.
+// Both are kept: mostImprovedTeam is a genuinely different (team, not coach)
+// stat, and existing history/awards UI already renders it.
 function computeMostImprovedTeam() {
   let best = null;
   let bestDelta = -Infinity;
@@ -121,6 +139,7 @@ function computeSeasonAwards(leagueYear) {
   const sixthMoy = computeSixthMoy(entries);
   const allNba = computeAllNba(entries);
   const mostImprovedTeam = computeMostImprovedTeam();
+  const coachOfTheYear = computeCoachOfTheYear();
 
   const winners = [];
   function recordWinner(award, player) {
@@ -139,7 +158,8 @@ function computeSeasonAwards(leagueYear) {
   return {
     leagueYear: leagueYear,
     winners: winners,
-    mostImprovedTeam: mostImprovedTeam ? { teamId: mostImprovedTeam.id, teamName: mostImprovedTeam.name } : null
+    mostImprovedTeam: mostImprovedTeam ? { teamId: mostImprovedTeam.id, teamName: mostImprovedTeam.name } : null,
+    coachOfTheYear: coachOfTheYear
   };
 }
 
@@ -147,6 +167,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     AWARD_KEYS: AWARD_KEYS,
     MIN_GAMES_FOR_AWARDS: MIN_GAMES_FOR_AWARDS,
-    computeSeasonAwards: computeSeasonAwards
+    computeSeasonAwards: computeSeasonAwards,
+    computeMostImprovedTeam: computeMostImprovedTeam,
+    computeCoachOfTheYear: computeCoachOfTheYear
   };
 }

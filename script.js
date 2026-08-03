@@ -55,6 +55,7 @@ function initSeason() {
   ensureHiddenPlayerData(PLAYERS_2026);
   ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
   ensureCareerData(PLAYERS_2026);
+  ensureAllTeamsHaveCoaches(GameState.rng);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
   GameState.scouting = initScoutingState();
 }
@@ -188,6 +189,7 @@ const BUILT_VIEWS = {
   news: renderLeagueNews,
   salarycap: renderSalaryCap,
   finances: renderTeamFinances,
+  coaching: renderCoaching,
   playerDashboard: function (container) {
     renderPlayerDashboard(container, GameState.controlledPlayerId);
   },
