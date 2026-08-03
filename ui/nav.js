@@ -1,5 +1,6 @@
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', group: 'Team' },
+  { id: 'playerDashboard', label: 'Career', group: 'Team' },
   { id: 'roster', label: 'Roster', group: 'Team' },
   { id: 'schedule', label: 'Schedule', group: 'Team' },
   { id: 'playoffs', label: 'Playoffs', group: 'Team' },
@@ -20,12 +21,13 @@ const NAV_ITEMS = [
 
 const NAV_GROUP_ORDER = ['Team', 'League', 'Transactions', 'System'];
 
-function renderNav(container, activeView, onNavigate, playMode) {
+function renderNav(container, activeView, onNavigate, playMode, gameMode) {
   container.innerHTML = '';
   NAV_GROUP_ORDER.forEach(function (group) {
     const items = NAV_ITEMS.filter(function (item) {
       if (item.group !== group) return false;
       if (item.id === 'commissioner' && playMode !== 'commissioner') return false;
+      if (item.id === 'playerDashboard' && gameMode !== 'playerCareer') return false;
       return true;
     });
     if (items.length === 0) return;

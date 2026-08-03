@@ -9,6 +9,10 @@ const GameState = {
   draftSession: null,
   tradeOffers: [],
   pauseRequested: false,
+  gameMode: null, // null (GM mode) | 'playerCareer'
+  playerCareerController: null,
+  narrativeSystem: null,
+  controlledPlayerId: null,
   settings: {
     simEngine: 'boxscore', simSpeed: 'normal',
     pauseOn: { madePlayoffs: false, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: false },
@@ -168,7 +172,10 @@ const BUILT_VIEWS = {
   awards: renderAwards,
   history: renderHistory,
   news: renderLeagueNews,
-  salarycap: renderSalaryCap
+  salarycap: renderSalaryCap,
+  playerDashboard: function (container) {
+    renderPlayerDashboard(container, GameState.controlledPlayerId);
+  }
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -244,7 +251,7 @@ function renderView(viewName) {
   } else {
     renderPlaceholder(container);
   }
-  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode);
+  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode);
   renderTopBar(document.getElementById('app-topbar'));
   if (GameState.season) {
     renderSimControls(document.getElementById('sim-controls'));
@@ -291,8 +298,48 @@ function loadGame(slotId) {
   renderView(GameState.currentView || 'dashboard');
 }
 
+function initPlayerCareerMode() {
+  GameState.playerCareerController = new PlayerCareerController(GameState);
+  GameState.narrativeSystem = new NarrativeSystem(GameState);
+  GameState.gameMode = 'playerCareer';
+  GameState.leagueYear = GameState.leagueYear || 2026;
+
+  document.getElementById('team-select-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'block';
+
+  const container = document.getElementById('view-content');
+  renderPlayerCreation(container, function (player) {
+    GameState.playerCareerController.setControlledPlayer(player.id);
+    GameState.controlledPlayerId = player.id;
+    renderDraftPhase();
+  });
+}
+
+function renderDraftPhase() {
+  const container = document.getElementById('view-content');
+  const team = TEAMS[Math.floor(Math.random() * TEAMS.length)];
+  const player = getPlayerById(GameState.controlledPlayerId);
+  player.teamId = team.id;
+
+  container.innerHTML =
+    '<div class="view-header"><h2>Draft Night</h2></div>' +
+    '<div class="panel">' +
+    '<p>You are selected by the ' + team.name + '...</p>' +
+    '<p style="margin-top: 20px;"><button class="btn btn-primary" onclick="startFirstSeason()">Accept Draft</button></p>' +
+    '</div>';
+}
+
+function startFirstSeason() {
+  const player = getPlayerById(GameState.controlledPlayerId);
+  player.careerPhase = 'rookie';
+  GameState.userTeamId = player.teamId;
+  GameState.playMode = 'spectator';
+  initSeason();
+  renderView('playerDashboard');
+}
+
 function init() {
-  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague);
+  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague, initPlayerCareerMode);
 }
 
 document.addEventListener('DOMContentLoaded', init);

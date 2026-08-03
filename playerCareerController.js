@@ -1,3 +1,14 @@
+// Maps a career-mode archetype key to the attribute-offset archetype used by
+// makeAttributes() (players-2026.js) so custom players get a realistic 20-key
+// attribute spread instead of just overall/potential.
+const CAREER_ARCHETYPE_ATTR_MAP = {
+  scorer: 'primary_scorer',
+  defender: 'three_and_d',
+  playmaker: 'playmaker',
+  rebounder: 'rim_protector',
+  all_around: 'veteran_glue'
+};
+
 class PlayerCareerController {
   constructor(gameState) {
     this.gameState = gameState;
@@ -14,34 +25,55 @@ class PlayerCareerController {
       throw new Error(`Invalid archetype: ${archetype}`);
     }
 
+    const attrArchetype = CAREER_ARCHETYPE_ATTR_MAP[archetype] || 'veteran_glue';
+
+    // recordGameResult (league.js) only zero-fills SEASON_STAT_KEYS the first
+    // time it sees a falsy player.seasonStats — a pre-set {gamesPlayed: 0}
+    // with the rest of the keys missing skips that init and every stat
+    // accumulates as NaN, so all keys must start at 0 here.
+    const seasonStats = { gamesPlayed: 0 };
+    SEASON_STAT_KEYS.forEach(function (k) { seasonStats[k] = 0; });
+
     const player = {
       id: this.generatePlayerId(),
+      teamId: null,
       name: name,
       position: position,
       college: college,
+      dateOfBirth: null,
       age: 22, // Draft age
+      heightIn: 78,
+      weightLb: 210,
+      jerseyNumber: null,
+      yearsPro: 0,
       overall: archetypeData.startingOverall,
       potential: archetypeData.startingPotential,
+      attributes: makeAttributes(archetypeData.startingOverall, attrArchetype),
       badges: selectedBadges, // Array of badge strings
       traits: selectedTraits, // Array of trait strings
+      hiddenTraits: [],
+      hiddenPersonality: {},
+      hiddenTendencies: {},
+      status: { morale: 70, fatigue: 0, injury: null },
       contract: {
         salary: 0,
-        yearsRemaining: 0
+        yearsRemaining: 0,
+        playerOption: false,
+        teamOption: false
       },
-      careerStats: {
-        seasonsPlayed: 0,
-        totalPoints: 0,
-        totalRebounds: 0,
-        totalAssists: 0,
-        championships: 0,
-        mvpAwards: 0,
-        allStarSelections: 0,
-        careerHighScore: 0,
-        hallOfFameEligible: false
-      },
+      seasonStats: seasonStats,
       isCustomPlayer: true,
       careerPhase: "college"
     };
+
+    // Populates player.careerStats/awardsWon/championshipsWon/peakOverall/etc.
+    // using the same shape the rest of the league (history.js, awards.js,
+    // roster UI) already reads/writes for every player — a career-mode
+    // player must look identical to a generated one to the season/award
+    // pipeline, or season rollups and roster display break on field mismatch.
+    ensureCareerData([player]);
+
+    PLAYERS_2026.push(player);
 
     return player;
   }
@@ -52,14 +84,14 @@ class PlayerCareerController {
 
   getCurrentCareerPhase() {
     if (!this.controlledPlayerId) return null;
-    const player = this.gameState.players[this.controlledPlayerId];
+    const player = getPlayerById(this.controlledPlayerId);
     return player ? player.careerPhase : null;
   }
 
   recordDecision(type, decision, outcome) {
     // type: "contract" | "trade" | "training" | "playoff" | "endorsement"
     const record = {
-      season: this.gameState.currentSeason,
+      season: this.gameState.leagueYear,
       type: type,
       decision: decision,
       outcome: outcome,
@@ -70,32 +102,27 @@ class PlayerCareerController {
 
   getCareerStats() {
     if (!this.controlledPlayerId) return null;
-    const player = this.gameState.players[this.controlledPlayerId];
+    const player = getPlayerById(this.controlledPlayerId);
     return player ? player.careerStats : null;
   }
 
   triggerRetirement() {
     if (!this.controlledPlayerId) return;
-    const player = this.gameState.players[this.controlledPlayerId];
+    const player = getPlayerById(this.controlledPlayerId);
+    if (!player) return;
     player.careerPhase = "retired";
 
-    // Calculate Hall of Fame eligibility
-    player.careerStats.hallOfFameEligible = this.calculateHOFEligibility(player);
+    const hallOfFameEligible = this.calculateHOFEligibility(player);
 
     this.careerEvents.push({
       type: "retired",
-      season: this.gameState.currentSeason,
-      hallOfFameEligible: player.careerStats.hallOfFameEligible
+      season: this.gameState.leagueYear,
+      hallOfFameEligible: hallOfFameEligible
     });
   }
 
   calculateHOFEligibility(player) {
-    return (
-      player.careerStats.totalPoints >= 10000 ||
-      player.careerStats.championships >= 2 ||
-      player.careerStats.mvpAwards >= 1 ||
-      player.careerStats.allStarSelections >= 5
-    );
+    return computeHofScore(player) >= HOF_THRESHOLD;
   }
 
   generatePlayerId() {
