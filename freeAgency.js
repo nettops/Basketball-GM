@@ -94,7 +94,8 @@ function generateAIOffer(team, player, rng) {
 
 function signPlayer(player, offer) {
   const roster = _FA_DATA.league.getTeamRoster(offer.teamId);
-  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
+  const team = _FA_DATA.teams.getTeamById(offer.teamId);
+  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }).concat((team && team.retiredNumbers) || []));
   let jersey = 0;
   while (usedNumbers.has(jersey)) jersey++;
   const contractType = player.teamId === offer.teamId ? 're_signing' : 'free_agency';

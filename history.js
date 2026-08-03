@@ -162,9 +162,25 @@ function archiveRetiree(player, leagueYear) {
     championshipsWon: player.championshipsWon,
     peakOverall: player.peakOverall,
     hofScore: hofScore,
-    hallOfFame: hofScore >= HOF_THRESHOLD
+    hallOfFame: hofScore >= HOF_THRESHOLD,
+    jerseyNumber: player.jerseyNumber,
+    lastTeamId: player.teamId || null
   };
   LEAGUE_HISTORY.retiredPlayers.push(record);
+
+  // A Hall-of-Fame-caliber career gets their number retired by whichever
+  // team they were on when they retired — no attempt to guess which team
+  // they're "most associated with" across a multi-team career.
+  if (record.hallOfFame && player.teamId && player.jerseyNumber !== null && player.jerseyNumber !== undefined) {
+    const team = _HISTORY_DATA.teams.getTeamById(player.teamId);
+    if (team) {
+      if (!team.retiredNumbers) team.retiredNumbers = [];
+      if (team.retiredNumbers.indexOf(player.jerseyNumber) === -1) {
+        team.retiredNumbers.push(player.jerseyNumber);
+      }
+    }
+  }
+
   return record;
 }
 

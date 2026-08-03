@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { id: 'powerRankings', label: 'Power Rankings', group: 'League' },
   { id: 'awards', label: 'Awards', group: 'League' },
   { id: 'history', label: 'History', group: 'League' },
+  { id: 'frivolities', label: 'Frivolities', group: 'League' },
   { id: 'careerLedger', label: 'Career Ledger', group: 'League' },
   { id: 'playerComparison', label: 'Compare Players', group: 'League' },
   { id: 'news', label: 'League News', group: 'League' },

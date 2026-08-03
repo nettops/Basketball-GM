@@ -44,6 +44,33 @@ function editPlayerRatings(playerId, changes) {
   return { success: true };
 }
 
+// Direct contract override — bypasses estimateFairSalary/tradeEvaluator
+// entirely, same "sandbox is consequence-free" spirit as forceTrade.
+function editPlayerContract(playerId, changes) {
+  const player = _COMMISSIONER_DATA.league.getPlayerById(playerId);
+  if (!player) return { success: false, reason: 'Player not found.' };
+  if (changes.salary !== undefined) player.contract.salary = Math.max(0, Math.round(changes.salary));
+  if (changes.yearsRemaining !== undefined) player.contract.yearsRemaining = Math.max(0, Math.round(changes.yearsRemaining));
+  if (changes.playerOption !== undefined) player.contract.playerOption = !!changes.playerOption;
+  if (changes.teamOption !== undefined) player.contract.teamOption = !!changes.teamOption;
+  return { success: true };
+}
+
+const TEAM_EDITABLE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'marketSize'];
+
+// Direct team attribute override — the team-level counterpart to
+// editPlayerRatings, for the same sandbox purposes (testing how a struggling
+// team's finances/free-agency behavior responds to a healthier prestige/
+// happiness baseline, without having to grind through seasons to get there).
+function editTeamAttributes(teamId, changes) {
+  const team = _COMMISSIONER_DATA.teams.TEAMS.find(function (t) { return t.id === teamId; });
+  if (!team) return { success: false, reason: 'Team not found.' };
+  TEAM_EDITABLE_FIELDS.forEach(function (key) {
+    if (changes[key] !== undefined) team[key] = commissionerClampRating(changes[key]);
+  });
+  return { success: true };
+}
+
 function deletePlayer(playerId) {
   const idx = _COMMISSIONER_DATA.players.PLAYERS_2026.findIndex(function (p) { return p.id === playerId; });
   if (idx === -1) return { success: false, reason: 'Player not found.' };
@@ -58,7 +85,8 @@ const CREATE_PLAYER_ARCHETYPES = ['primary_scorer', 'playmaker', 'three_and_d', 
 
 function nextAvailableJersey(teamId, excludePlayerId) {
   const roster = _COMMISSIONER_DATA.league.getTeamRoster(teamId).filter(function (p) { return p.id !== excludePlayerId; });
-  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
+  const team = _COMMISSIONER_DATA.teams.TEAMS.find(function (t) { return t.id === teamId; });
+  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }).concat((team && team.retiredNumbers) || []));
   let jersey = 0;
   while (usedNumbers.has(jersey)) jersey++;
   return jersey;
@@ -260,6 +288,9 @@ function checkAutoExpansion(rng) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     editPlayerRatings: editPlayerRatings,
+    editPlayerContract: editPlayerContract,
+    editTeamAttributes: editTeamAttributes,
+    TEAM_EDITABLE_FIELDS: TEAM_EDITABLE_FIELDS,
     deletePlayer: deletePlayer,
     createPlayer: createPlayer,
     CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES,

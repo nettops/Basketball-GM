@@ -14,22 +14,31 @@ function renderCommissioner(container, userTeamId) {
     createMessage: null,
     expansionResult: null,
     relocateTeamId: null,
-    relocateMessage: null
+    relocateMessage: null,
+    rewindMessage: null,
+    rewindTargetYear: null,
+    rewindConfirming: false,
+    editTeamId: null,
+    editTeamMessage: null
   };
 
   function draw() {
     let html = '<div class="view-header"><h2>Commissioner Tools</h2></div>';
     html += renderEditPlayerSection(state);
+    html += renderEditTeamSection(state);
     html += renderDeletePlayerSection(state);
     html += renderCreatePlayerSection(state);
     html += renderExpansionTeamSection(state);
     html += renderRelocateTeamSection(state);
+    html += renderRewindSection(state);
     container.innerHTML = html;
     wireEditPlayerEvents(state, draw);
+    wireEditTeamEvents(state, draw);
     wireDeletePlayerEvents(state, draw);
     wireCreatePlayerEvents(state, draw);
     wireExpansionTeamEvents(state, draw);
     wireRelocateTeamEvents(state, draw);
+    wireRewindEvents(state, draw);
   }
 
   draw();
@@ -50,6 +59,8 @@ function renderEditPlayerSection(state) {
     html += '<table class="data-table"><tbody>';
     html += '<tr><td class="col-name">Overall</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="overall" value="' + player.overall + '" style="width:80px;"></td></tr>';
     html += '<tr><td class="col-name">Potential</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="potential" value="' + player.potential + '" style="width:80px;"></td></tr>';
+    html += '<tr><td class="col-name">Salary</td><td class="num"><input type="number" min="0" step="100000" data-edit-contract="salary" value="' + player.contract.salary + '" style="width:140px;"></td></tr>';
+    html += '<tr><td class="col-name">Years Remaining</td><td class="num"><input type="number" min="0" max="10" data-edit-contract="yearsRemaining" value="' + player.contract.yearsRemaining + '" style="width:80px;"></td></tr>';
     ATTRIBUTE_KEYS.forEach(function (key) {
       html += '<tr><td>' + key + '</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-attribute="' + key + '" value="' + player.attributes[key] + '" style="width:80px;"></td></tr>';
     });
@@ -85,6 +96,11 @@ function wireEditPlayerEvents(state, redraw) {
         changes.attributes[input.getAttribute('data-edit-attribute')] = Number(input.value);
       });
       editPlayerRatings(state.editPlayerId, changes);
+      const contractChanges = {};
+      document.querySelectorAll('input[data-edit-contract]').forEach(function (input) {
+        contractChanges[input.getAttribute('data-edit-contract')] = Number(input.value);
+      });
+      editPlayerContract(state.editPlayerId, contractChanges);
       state.editMessage = 'Saved.';
       redraw();
     });
@@ -272,6 +288,122 @@ function wireRelocateTeamEvents(state, redraw) {
       };
       relocateTeam(state.relocateTeamId, details);
       state.relocateMessage = 'Relocated to ' + name + '.';
+      redraw();
+    });
+  }
+}
+
+const TEAM_EDITABLE_FIELD_LABELS = { prestige: 'Prestige', fanHappiness: 'Fan Happiness', ownerHappiness: 'Owner Happiness', chemistry: 'Chemistry', marketSize: 'Market Size' };
+
+function renderEditTeamSection(state) {
+  let html = '<div class="panel"><div class="panel-header">Edit Team</div><div class="panel-body">';
+  html += '<div class="toolbar"><select id="commissioner-edit-team-select" style="min-width:220px;"><option value="">Choose a team...</option>';
+  TEAMS.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (t) {
+    const selected = state.editTeamId === t.id ? ' selected' : '';
+    html += '<option value="' + t.id + '"' + selected + '>' + t.name + '</option>';
+  });
+  html += '</select></div>';
+
+  if (state.editTeamId) {
+    const team = getTeamById(state.editTeamId);
+    html += '<table class="data-table"><tbody>';
+    TEAM_EDITABLE_FIELDS.forEach(function (key) {
+      html += '<tr><td class="col-name">' + TEAM_EDITABLE_FIELD_LABELS[key] + '</td><td class="num">' +
+        '<input type="number" min="1" max="100" data-edit-team-field="' + key + '" value="' + team[key] + '" style="width:80px;"></td></tr>';
+    });
+    html += '</tbody></table>';
+    html += '<div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-edit-team-save-btn" class="btn-primary">Save Changes</button>';
+    if (state.editTeamMessage) html += '<span class="kpi-sub">' + state.editTeamMessage + '</span>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function wireEditTeamEvents(state, redraw) {
+  const select = document.getElementById('commissioner-edit-team-select');
+  if (select) {
+    select.addEventListener('change', function (e) {
+      state.editTeamId = e.target.value || null;
+      state.editTeamMessage = null;
+      redraw();
+    });
+  }
+  const saveBtn = document.getElementById('commissioner-edit-team-save-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      const changes = {};
+      document.querySelectorAll('input[data-edit-team-field]').forEach(function (input) {
+        changes[input.getAttribute('data-edit-team-field')] = Number(input.value);
+      });
+      editTeamAttributes(state.editTeamId, changes);
+      state.editTeamMessage = 'Saved.';
+      redraw();
+    });
+  }
+}
+
+function renderRewindSection(state) {
+  const seasons = listSeasonSnapshots(GameState);
+  let html = '<div class="panel"><div class="panel-header">Rewind to a Past Season</div><div class="panel-body">';
+  html += '<p class="kpi-sub">Restores the league exactly as it stood at the end of that season\'s playoffs — everything since (trades, signings, later seasons) is discarded.</p>';
+  if (seasons.length === 0) {
+    html += '<div class="empty-state">No season snapshots yet — one is captured automatically each time you advance to the offseason.</div>';
+  } else {
+    html += '<div class="toolbar"><select id="commissioner-rewind-select">' +
+      seasons.map(function (y) { return '<option value="' + y + '"' + (state.rewindTargetYear === y ? ' selected' : '') + '>' + y + '</option>'; }).join('') +
+      '</select> ';
+    if (state.rewindConfirming) {
+      html += '<button id="commissioner-rewind-confirm-btn" class="btn-danger">Confirm Rewind — Cannot Be Undone</button>' +
+        '<button id="commissioner-rewind-cancel-btn" class="btn-ghost">Cancel</button>';
+    } else {
+      html += '<button id="commissioner-rewind-btn" class="btn-danger">Rewind</button>';
+    }
+    html += '</div>';
+  }
+  if (state.rewindMessage) html += '<p class="kpi-sub">' + state.rewindMessage + '</p>';
+  html += '</div></div>';
+  return html;
+}
+
+// A native confirm() dialog is deliberately avoided here (untestable via
+// browser automation, and no precedent for it elsewhere in this codebase —
+// see renderDeletePlayerSection above) in favor of the same inline
+// two-click confirm that flow already uses.
+function wireRewindEvents(state, redraw) {
+  const select = document.getElementById('commissioner-rewind-select');
+  if (select) {
+    select.addEventListener('change', function (e) {
+      state.rewindTargetYear = Number(e.target.value);
+      state.rewindConfirming = false;
+      redraw();
+    });
+  }
+  const btn = document.getElementById('commissioner-rewind-btn');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      state.rewindTargetYear = Number(document.getElementById('commissioner-rewind-select').value);
+      state.rewindConfirming = true;
+      redraw();
+    });
+  }
+  const confirmBtn = document.getElementById('commissioner-rewind-confirm-btn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', function () {
+      const result = rewindToSeason(GameState, state.rewindTargetYear);
+      if (!result.success) {
+        state.rewindMessage = result.reason;
+        state.rewindConfirming = false;
+        redraw();
+        return;
+      }
+      renderView('dashboard');
+    });
+  }
+  const cancelBtn = document.getElementById('commissioner-rewind-cancel-btn');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', function () {
+      state.rewindConfirming = false;
       redraw();
     });
   }

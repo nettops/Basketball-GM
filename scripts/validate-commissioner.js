@@ -7,6 +7,7 @@ const leagueModule = require(path.join(__dirname, '..', 'league.js'));
 const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
 const tradeEvaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
 const saveModule = require(path.join(__dirname, '..', 'save.js'));
+const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
 const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 
 function checkEditPlayerRatings() {
@@ -117,7 +118,13 @@ function checkExpansionTeamSurvivesSaveLoad() {
     settings: { simEngine: 'boxscore', simSpeed: 'normal', pauseOn: {}, capDisabled: false }, rng: rng,
     playMode: 'commissioner', automation: {}, feed: [], draftSession: null
   };
-  const payload = saveModule.serializeGameState(gameState, 'validator-test');
+  // JSON round-trip like the real saveToSlot/loadFromSlot path does (and
+  // like scripts/validate-save.js's own tests do) — serializeGameState hands
+  // back the LIVE PLAYERS_2026 array by reference (players: _SAVE_DATA...),
+  // so without this, applySavedState's `.length = 0; forEach(push)` below
+  // truncates payload.players (the same array) before it can be read back,
+  // silently wiping the entire roster instead of restoring it.
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gameState, 'validator-test')));
 
   const idx = teamsModule.TEAMS.findIndex(function (t) { return t.id === team.id; });
   teamsModule.TEAMS.splice(idx, 1);
@@ -211,5 +218,46 @@ function checkAutoExpansionGating() {
 }
 
 checkAutoExpansionGating();
+
+function checkEditPlayerContract() {
+  const player = playersModule.PLAYERS_2026.find(function (p) { return p.teamId; });
+  const result = commissionerModule.editPlayerContract(player.id, { salary: 25000000, yearsRemaining: 4, playerOption: true });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(player.contract.salary, 25000000);
+  assert.strictEqual(player.contract.yearsRemaining, 4);
+  assert.strictEqual(player.contract.playerOption, true);
+  assert.strictEqual(player.contract.teamOption, false, 'fields not passed in changes should be left untouched');
+
+  const negative = commissionerModule.editPlayerContract(player.id, { salary: -500000, yearsRemaining: -2 });
+  assert.strictEqual(negative.success, true);
+  assert.strictEqual(player.contract.salary, 0, 'salary should clamp to a minimum of 0, not go negative');
+  assert.strictEqual(player.contract.yearsRemaining, 0, 'yearsRemaining should clamp to a minimum of 0');
+
+  const missing = commissionerModule.editPlayerContract('not-a-real-id', { salary: 1 });
+  assert.strictEqual(missing.success, false);
+
+  console.log('checkEditPlayerContract: OK');
+}
+
+checkEditPlayerContract();
+
+function checkEditTeamAttributes() {
+  const team = teamsModule.getTeamById('MEM');
+  const result = commissionerModule.editTeamAttributes('MEM', { prestige: 95, chemistry: 88 });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(team.prestige, 95);
+  assert.strictEqual(team.chemistry, 88);
+
+  const clamped = commissionerModule.editTeamAttributes('MEM', { prestige: 500 });
+  assert.strictEqual(clamped.success, true);
+  assert.strictEqual(team.prestige, 99, 'prestige should clamp to RATING_MAX (99), not accept an out-of-range value');
+
+  const missing = commissionerModule.editTeamAttributes('not-a-real-team', { prestige: 50 });
+  assert.strictEqual(missing.success, false);
+
+  console.log('checkEditTeamAttributes: OK');
+}
+
+checkEditTeamAttributes();
 
 console.log('All commissioner validations passed');

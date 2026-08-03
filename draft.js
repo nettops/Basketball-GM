@@ -98,7 +98,8 @@ function rookieYears(pickNumber) {
 
 function executePick(teamId, prospect, pickNumber) {
   const roster = _DRAFT_DATA.league.getTeamRoster(teamId);
-  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }));
+  const team = _DRAFT_DATA.teams.getTeamById(teamId);
+  const usedNumbers = new Set(roster.map(function (p) { return p.jerseyNumber; }).concat((team && team.retiredNumbers) || []));
   let jersey = 0;
   while (usedNumbers.has(jersey)) jersey++;
 

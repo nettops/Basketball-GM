@@ -44,6 +44,12 @@ function pushToFeed(text, dayIndex) {
 }
 
 function initSeason() {
+  // GameState.leagueYear was previously left implicitly undefined until the
+  // first offseason transition (everything that reads it defensively falls
+  // back to `|| 2026`) — but serializeGameState captures the raw value, so
+  // any snapshot/save taken during a league's very first season persisted
+  // leagueYear: undefined. Explicit init closes that gap at the source.
+  setLeagueYear(GameState.leagueYear || 2026);
   GameState.rng = makeRng(Date.now());
   const games = generateSeasonGames(GameState.rng, TEAMS).map(function (g) {
     return {
@@ -206,6 +212,7 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
+  frivolities: renderFrivolities,
   playerProfile: renderPlayerProfile,
   careerLedger: renderCareerLedger,
   playerComparison: renderPlayerComparison,
@@ -225,6 +232,11 @@ function isRegularSeasonAndPlayoffsComplete() {
 }
 
 function handleAdvanceToOffseason() {
+  // Snapshot before anything about the season that just finished changes —
+  // this is what a commissioner's "Rewind to Season N" (ui/commissioner.js)
+  // restores.
+  pushSeasonSnapshot(GameState);
+
   // Runs BEFORE the leagueYear increment and before retirement, so
   // finalizeSeasonHistory's award/career-stat rollup reflects the season
   // that just finished, and retirees archived immediately after this see
@@ -446,8 +458,38 @@ function startFirstSeason() {
   renderView('playerDashboard');
 }
 
+// Single-key shortcuts for the most common actions — sim controls and a
+// handful of nav jumps. Ignored while typing in any form field (including
+// contenteditable) so they never hijack normal text entry, and while a
+// modifier key is held (so browser/OS shortcuts like Ctrl+R still work).
+const KEYBOARD_SHORTCUTS = {
+  n: function () { const btn = document.getElementById('sim-next-day'); if (btn) btn.click(); },
+  g: function () { const btn = document.getElementById('sim-next-game'); if (btn) btn.click(); },
+  u: function () { const btn = document.getElementById('sim-undo-btn'); if (btn && !btn.disabled) btn.click(); },
+  y: function () { const btn = document.getElementById('sim-redo-btn'); if (btn && !btn.disabled) btn.click(); },
+  d: function () { renderView('dashboard'); },
+  r: function () { renderView('roster'); },
+  s: function () { renderView('standings'); },
+  t: function () { renderView('trade'); }
+};
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function handleKeyboardShortcut(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (isTypingTarget(e.target)) return;
+  if (!GameState.season || document.getElementById('app-view').style.display === 'none') return;
+  const handler = KEYBOARD_SHORTCUTS[e.key.toLowerCase()];
+  if (handler) handler();
+}
+
 function init() {
   renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague, initPlayerCareerMode);
+  document.addEventListener('keydown', handleKeyboardShortcut);
 }
 
 document.addEventListener('DOMContentLoaded', init);

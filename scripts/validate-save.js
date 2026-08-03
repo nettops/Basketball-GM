@@ -340,4 +340,55 @@ function checkUndoStackIsBounded() {
 
 checkUndoStackIsBounded();
 
+// Phase G: season snapshots — pushed once per season boundary, restorable
+// by leagueYear, independent of the undo/redo stacks.
+function checkSeasonSnapshotsAndRewind() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const teamsModule = require(path.join(__dirname, '..', 'teams.js'));
+
+  const gs = makeFakeGameState({ leagueYear: 2050 });
+  const team = teamsModule.getTeamById('BOS');
+  team.record.wins = 41;
+
+  saveModule.pushSeasonSnapshot(gs);
+  assert.deepStrictEqual(saveModule.listSeasonSnapshots(gs), [2050]);
+
+  gs.leagueYear = 2051;
+  team.record.wins = 55;
+  saveModule.pushSeasonSnapshot(gs);
+  assert.deepStrictEqual(saveModule.listSeasonSnapshots(gs), [2050, 2051]);
+
+  const missing = saveModule.rewindToSeason(gs, 1999);
+  assert.strictEqual(missing.success, false, 'rewinding to a season with no snapshot should fail cleanly');
+
+  team.record.wins = 10; // simulate further drift before rewinding
+  const result = saveModule.rewindToSeason(gs, 2050);
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(team.record.wins, 41, 'rewind should restore that season\'s recorded state');
+  assert.strictEqual(gs.leagueYear, 2050, 'rewind should restore leagueYear too');
+
+  // Re-pushing the same year should replace, not duplicate.
+  saveModule.pushSeasonSnapshot(gs);
+  const count2050 = gs.seasonSnapshots.filter(function (s) { return s.leagueYear === 2050; }).length;
+  assert.strictEqual(count2050, 1, 're-pushing the same season should replace the existing snapshot');
+
+  console.log('checkSeasonSnapshotsAndRewind: OK');
+}
+
+checkSeasonSnapshotsAndRewind();
+
+function checkSeasonSnapshotsAreBounded() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gs = makeFakeGameState({});
+  for (let year = 2000; year < 2015; year++) {
+    gs.leagueYear = year;
+    saveModule.pushSeasonSnapshot(gs);
+  }
+  assert.strictEqual(gs.seasonSnapshots.length, 10, 'season snapshots should be capped at SEASON_SNAPSHOT_LIMIT (10)');
+  assert.strictEqual(gs.seasonSnapshots[0].leagueYear, 2005, 'the oldest snapshots should be dropped first');
+  console.log('checkSeasonSnapshotsAreBounded: OK');
+}
+
+checkSeasonSnapshotsAreBounded();
+
 console.log('All save/load validations passed');

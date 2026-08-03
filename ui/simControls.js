@@ -156,7 +156,9 @@ async function runMultiSeason(mode, target) {
     // Until Championship, Sim Custom Days), which is precisely the
     // "long unattended multi-season sim" use case Phase 8's history/awards
     // tracking exists for, so it needs the same finalizeSeasonHistory /
-    // archiveDraftClass wiring, not just the manual single-step path.
+    // archiveDraftClass wiring, not just the manual single-step path. Same
+    // reasoning applies to the season-snapshot rewind feature.
+    pushSeasonSnapshot(GameState);
     finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
     setLeagueYear((GameState.leagueYear || 2026) + 1);
     const draftResult = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear);

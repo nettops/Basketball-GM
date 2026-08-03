@@ -35,7 +35,7 @@ const SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
 // don't need round-tripping through a save.
-const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins', 'finances', 'coach', 'strategy'];
+const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins', 'finances', 'coach', 'strategy', 'retiredNumbers'];
 
 function saveSlotKey(slotId) {
   return slotId === 'autosave' ? 'nba-gm-save-autosave' : 'nba-gm-save-' + slotId;
@@ -304,6 +304,36 @@ function performRedo(gameState) {
   return { success: true };
 }
 
+const SEASON_SNAPSHOT_LIMIT = 10;
+
+// Called once per season boundary (script.js's handleAdvanceToOffseason and
+// ui/simControls.js's runMultiSeason, both right before finalizeSeasonHistory
+// runs) so "rewind to season N" restores the league exactly as that season's
+// regular-season-plus-playoffs left it. Reuses the same snapshotGameState
+// deep-clone save/load format Phase F's undo/redo already established —
+// this is a commissioner-only convenience layered on top of it, not a
+// separate persistence mechanism.
+function pushSeasonSnapshot(gameState) {
+  if (!gameState.seasonSnapshots) gameState.seasonSnapshots = [];
+  const leagueYear = gameState.leagueYear || 2026;
+  // Replace any existing snapshot for the same year (e.g. a re-simmed season)
+  // rather than accumulating duplicates.
+  gameState.seasonSnapshots = gameState.seasonSnapshots.filter(function (s) { return s.leagueYear !== leagueYear; });
+  gameState.seasonSnapshots.push({ leagueYear: leagueYear, payload: snapshotGameState(gameState, 'season-' + leagueYear) });
+  if (gameState.seasonSnapshots.length > SEASON_SNAPSHOT_LIMIT) gameState.seasonSnapshots.shift();
+}
+
+function listSeasonSnapshots(gameState) {
+  return (gameState.seasonSnapshots || []).map(function (s) { return s.leagueYear; }).sort(function (a, b) { return a - b; });
+}
+
+function rewindToSeason(gameState, leagueYear) {
+  const entry = (gameState.seasonSnapshots || []).find(function (s) { return s.leagueYear === leagueYear; });
+  if (!entry) return { success: false, reason: 'No snapshot found for that season.' };
+  applySavedState(entry.payload, gameState);
+  return { success: true };
+}
+
 function listSaves() {
   const bySlot = {};
   readSaveIndex().forEach(function (entry) { bySlot[entry.slotId] = entry; });
@@ -344,6 +374,9 @@ if (typeof module !== 'undefined' && module.exports) {
     canUndo: canUndo,
     canRedo: canRedo,
     performUndo: performUndo,
-    performRedo: performRedo
+    performRedo: performRedo,
+    pushSeasonSnapshot: pushSeasonSnapshot,
+    listSeasonSnapshots: listSeasonSnapshots,
+    rewindToSeason: rewindToSeason
   };
 }

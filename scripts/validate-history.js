@@ -234,4 +234,80 @@ function checkSaveLoadRoundTrip() {
 
 checkSaveLoadRoundTrip();
 
+// Phase G: a Hall-of-Fame-caliber retirement should retire the player's
+// jersey number with their last team, and that number should no longer be
+// assignable to a new player on that team.
+function checkJerseyRetirementOnHofInduction() {
+  const team = teamsModule.getTeamById('DEN');
+  team.retiredNumbers = [];
+  const player = leagueModule.getTeamRoster(team.id)[0];
+  player.teamId = team.id;
+  player.jerseyNumber = 42; // pick a number unlikely to already be in use
+  player.teamsPlayedFor = [team.id];
+  player.awardsWon = [
+    { award: 'mvp', leagueYear: 2050 }, { award: 'mvp', leagueYear: 2051 }, { award: 'mvp', leagueYear: 2052 },
+    { award: 'allNba1', leagueYear: 2050 }, { award: 'allNba1', leagueYear: 2051 }
+  ];
+  player.championshipsWon = 3;
+  player.peakOverall = 96;
+  player.careerStats = { gamesPlayed: 1200, seasonsPlayed: 15, points: 30000, rebounds: 8000, assists: 6000 };
+  leagueModule.SEASON_STAT_KEYS.forEach(function (k) { if (player.careerStats[k] === undefined) player.careerStats[k] = 0; });
+  player.bestSeasonTotals = { points: 2200, rebounds: 700, assists: 500 };
+
+  const record = historyModule.archiveRetiree(player, 2053);
+  assert.strictEqual(record.hallOfFame, true, 'test setup should produce a clear Hall-of-Fame score');
+  assert.strictEqual(record.jerseyNumber, 42);
+  assert.strictEqual(record.lastTeamId, team.id);
+  assert.ok(team.retiredNumbers.indexOf(42) !== -1, "the team's retiredNumbers should include the retiree's number");
+
+  // A non-Hall-of-Famer's number should NOT be retired.
+  const commonPlayer = leagueModule.getTeamRoster(team.id)[1];
+  commonPlayer.teamId = team.id;
+  commonPlayer.jerseyNumber = 43;
+  commonPlayer.teamsPlayedFor = [team.id];
+  commonPlayer.awardsWon = [];
+  commonPlayer.championshipsWon = 0;
+  commonPlayer.peakOverall = 70;
+  commonPlayer.careerStats = { gamesPlayed: 200, seasonsPlayed: 3, points: 1500, rebounds: 500, assists: 300 };
+  leagueModule.SEASON_STAT_KEYS.forEach(function (k) { if (commonPlayer.careerStats[k] === undefined) commonPlayer.careerStats[k] = 0; });
+  commonPlayer.bestSeasonTotals = { points: 600, rebounds: 200, assists: 100 };
+  const commonRecord = historyModule.archiveRetiree(commonPlayer, 2053);
+  assert.strictEqual(commonRecord.hallOfFame, false, 'test setup should produce a clearly non-Hall-of-Fame score');
+  assert.strictEqual(team.retiredNumbers.indexOf(43), -1, "a non-Hall-of-Famer's number should not be retired");
+
+  console.log('checkJerseyRetirementOnHofInduction: OK (hofScore=' + record.hofScore.toFixed(1) + ')');
+}
+
+checkJerseyRetirementOnHofInduction();
+
+// The three jersey-assignment call sites (draft, free agency, commissioner
+// player creation) should all skip a team's retired numbers.
+function checkRetiredNumbersExcludedFromAssignment() {
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+  const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgencyBidding.js')) && require(path.join(__dirname, '..', 'freeAgency.js'));
+  const commissionerModule = require(path.join(__dirname, '..', 'commissioner.js'));
+  const draftProspectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+
+  const team = teamsModule.getTeamById('POR');
+  const roster = leagueModule.getTeamRoster(team.id);
+  team.retiredNumbers = [0]; // block the number executePick/signPlayer/nextAvailableJersey would otherwise pick first
+  roster.forEach(function (p) { p.jerseyNumber = 99; }); // clear the roster's own numbers out of the way too
+
+  const prospect = draftProspectsModule.generateProspectClass(makeRng(1), 1)[0];
+  draftModule.executePick(team.id, prospect, 30);
+  assert.notStrictEqual(prospect.jerseyNumber, 0, "a draft pick should not receive a team's retired number");
+
+  const faPlayer = leagueModule.getTeamRoster('LAC')[0];
+  freeAgencyModule.signPlayer(faPlayer, { teamId: team.id, salary: 2000000, yearsRemaining: 1 });
+  assert.notStrictEqual(faPlayer.jerseyNumber, 0, "a free agent signing should not receive a team's retired number");
+
+  const created = commissionerModule.createPlayer({ name: 'Test Rookie', position: 'PG', age: 20, overall: 60, potential: 70, archetype: 'playmaker', teamId: team.id });
+  assert.notStrictEqual(created.jerseyNumber, 0, "a commissioner-created player should not receive a team's retired number");
+
+  team.retiredNumbers = [];
+  console.log('checkRetiredNumbersExcludedFromAssignment: OK');
+}
+
+checkRetiredNumbersExcludedFromAssignment();
+
 console.log('All history validations passed');

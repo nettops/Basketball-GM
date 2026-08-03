@@ -28,6 +28,23 @@ function renderHallOfFameSection() {
   return html + '</tbody></table></div>';
 }
 
+function renderRetiredNumbersSection() {
+  const teamsWithNumbers = TEAMS.filter(function (t) { return t.retiredNumbers && t.retiredNumbers.length > 0; });
+  let html = '<div class="panel"><div class="panel-header">Retired Numbers</div>';
+  if (teamsWithNumbers.length === 0) {
+    return html + '<div class="panel-body"><div class="empty-state">No numbers retired yet — a Hall of Fame induction retires the player\'s number with their last team.</div></div></div>';
+  }
+  html += '<ul class="stack-list">';
+  teamsWithNumbers.forEach(function (t) {
+    const owners = t.retiredNumbers.map(function (num) {
+      const retiree = LEAGUE_HISTORY.retiredPlayers.find(function (r) { return r.lastTeamId === t.id && r.jerseyNumber === num && r.hallOfFame; });
+      return '#' + num + (retiree ? ' (' + retiree.name + ')' : '');
+    }).join(', ');
+    html += '<li>' + teamLogoImgHtml(t.id, 18) + ' <strong>' + t.name + '</strong>: ' + owners + '</li>';
+  });
+  return html + '</ul></div>';
+}
+
 const RECORD_STAT_LABELS = { points: 'Points', rebounds: 'Rebounds', assists: 'Assists' };
 
 function renderRecordsSection() {
@@ -84,6 +101,7 @@ function renderHistory(container) {
   let html = '<div class="view-header"><h2>League History</h2></div>';
   html += renderChampionsSection();
   html += renderHallOfFameSection();
+  html += renderRetiredNumbersSection();
   html += renderRecordsSection();
   html += renderDraftArchiveSection();
   html += renderTradeArchiveSection();
