@@ -134,6 +134,9 @@ function applySavedState(payload, gameState) {
   gameState.leagueYear = payload.leagueYear;
   gameState.offseasonStage = payload.offseasonStage;
   gameState.settings = payload.settings;
+  // Guards against save files written before settings.leagueYear existed —
+  // league.js's simulateDate reads the season year off settings, not GameState.
+  if (gameState.settings) gameState.settings.leagueYear = gameState.leagueYear;
   gameState.playMode = payload.playMode || 'gm';
   gameState.automation = payload.automation || { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: false, autoScout: false };
   gameState.feed = payload.feed || [];

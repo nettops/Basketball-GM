@@ -19,6 +19,17 @@ const CAP_CONSTANTS = {
   LUXURY_TAX_LINE: 187000000
 };
 
+// capLevel is a settings-driven multiplier (default 1.0) on the base cap
+// figures above — lets ui/settings.js offer a "cap level" slider without
+// every consumer needing its own scaling logic.
+function getEffectiveSalaryCap(capLevel) {
+  return Math.round(CAP_CONSTANTS.SALARY_CAP * (capLevel || 1));
+}
+
+function getEffectiveLuxuryTaxLine(capLevel) {
+  return Math.round(CAP_CONSTANTS.LUXURY_TAX_LINE * (capLevel || 1));
+}
+
 const RATING_MIN = 25;
 const RATING_MAX = 99;
 
@@ -63,6 +74,7 @@ const PLAYER_ARCHETYPES = {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ATTRIBUTE_KEYS, POSITIONS, CONFERENCES, DIVISIONS,
-    CAP_CONSTANTS, RATING_MIN, RATING_MAX, PLAYER_ARCHETYPES
+    CAP_CONSTANTS, RATING_MIN, RATING_MAX, PLAYER_ARCHETYPES,
+    getEffectiveSalaryCap, getEffectiveLuxuryTaxLine
   };
 }

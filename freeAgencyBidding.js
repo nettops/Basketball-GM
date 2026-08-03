@@ -3,7 +3,7 @@ var _BIDDING_DATA = (typeof require !== 'undefined')
   : {
       league: { getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
-      data: { CAP_CONSTANTS: CAP_CONSTANTS },
+      data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap },
       freeAgency: { scoreOffer: scoreOffer, generateAIOffer: generateAIOffer, signPlayer: signPlayer }
     };
 
@@ -41,7 +41,8 @@ function evaluateBiddingRound(state, userSalary, userYears) {
     const aiTeam = _BIDDING_DATA.teams.getTeamById(o.teamId);
     const currentScore = _BIDDING_DATA.freeAgency.scoreOffer(player, aiTeam, o);
     if (currentScore >= userScore) return o; // already winning, no need to raise
-    const capSpace = _BIDDING_DATA.data.CAP_CONSTANTS.SALARY_CAP - _BIDDING_DATA.league.getTeamPayroll(o.teamId) + o.salary;
+    const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
+    const capSpace = _BIDDING_DATA.data.getEffectiveSalaryCap(capLevel) - _BIDDING_DATA.league.getTeamPayroll(o.teamId) + o.salary;
     const raisedSalary = Math.min(capSpace, Math.round(o.salary * 1.1));
     if (raisedSalary <= o.salary) return null; // no room to raise, drops out
     const raised = { teamId: o.teamId, salary: raisedSalary, yearsRemaining: o.yearsRemaining };

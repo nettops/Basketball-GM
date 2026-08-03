@@ -21,7 +21,7 @@ function basePlayerValue(player) {
 
 var _EVAL_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js') }
-  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll }, teams: { getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS } };
+  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll }, teams: { getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap } };
 
 function directionMultiplier(player, timeline) {
   if (timeline === 'rebuilding') {
@@ -81,7 +81,8 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
   const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);
   const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
   const payroll = _EVAL_DATA.league.getTeamPayroll(teamId);
-  const capSpace = _EVAL_DATA.data.CAP_CONSTANTS.SALARY_CAP - payroll;
+  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
+  const capSpace = _EVAL_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
   const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
   const salaryIncrease = incomingSalary - outgoingSalary;
   const salaryOk = capDisabled || salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;

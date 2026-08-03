@@ -19,6 +19,21 @@ const PAUSE_ON_LABELS = {
   keyInjury: 'A key player (80+ OVR) on your team is injured'
 };
 
+const CAP_LEVEL_OPTIONS = [
+  { value: 0.75, label: 'Low (75% of standard cap)' },
+  { value: 1, label: 'Standard' },
+  { value: 1.25, label: 'High (125% of standard cap)' },
+  { value: 1.5, label: 'Very High (150% of standard cap)' }
+];
+
+const INJURY_FREQUENCY_OPTIONS = [
+  { value: 0, label: 'Off' },
+  { value: 0.5, label: 'Low' },
+  { value: 1, label: 'Normal' },
+  { value: 2, label: 'High' },
+  { value: 3, label: 'Very High' }
+];
+
 function renderSettings(container) {
   let html = '<div class="view-header"><h2>Settings</h2></div>';
 
@@ -42,6 +57,17 @@ function renderSettings(container) {
       engineName + '"' + checked + disabled + '> ' + ENGINE_LABELS[engineName] + '</label>';
   });
   html += '</div>';
+
+  html += '<div class="panel"><div class="panel-header">League Rules</div><div class="panel-body">' +
+    '<label class="toggle-row" style="display:block;">Cap Level<br><select id="settings-cap-level">' +
+    CAP_LEVEL_OPTIONS.map(function (opt) {
+      return '<option value="' + opt.value + '"' + (GameState.settings.capLevel === opt.value ? ' selected' : (opt.value === 1 && GameState.settings.capLevel === undefined ? ' selected' : '')) + '>' + opt.label + '</option>';
+    }).join('') + '</select></label>' +
+    '<label class="toggle-row" style="display:block;">Injury Frequency<br><select id="settings-injury-frequency">' +
+    INJURY_FREQUENCY_OPTIONS.map(function (opt) {
+      return '<option value="' + opt.value + '"' + (GameState.settings.injuryFrequency === opt.value ? ' selected' : (opt.value === 1 && GameState.settings.injuryFrequency === undefined ? ' selected' : '')) + '>' + opt.label + '</option>';
+    }).join('') + '</select></label>' +
+  '</div></div>';
 
   if (GameState.playMode !== 'spectator') {
     html += '<div class="panel"><div class="panel-header">Automation</div>';
@@ -100,6 +126,14 @@ function renderSettings(container) {
       GameState.settings.capDisabled = e.target.checked;
     });
   }
+
+  document.getElementById('settings-cap-level').addEventListener('change', function (e) {
+    GameState.settings.capLevel = Number(e.target.value);
+  });
+
+  document.getElementById('settings-injury-frequency').addEventListener('change', function (e) {
+    GameState.settings.injuryFrequency = Number(e.target.value);
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {

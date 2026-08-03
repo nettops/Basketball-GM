@@ -16,9 +16,20 @@ const GameState = {
   settings: {
     simEngine: 'boxscore', simSpeed: 'normal',
     pauseOn: { madePlayoffs: false, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: false },
-    capDisabled: false
+    capDisabled: false,
+    capLevel: 1,
+    injuryFrequency: 1,
+    leagueYear: 2026
   }
 };
+
+// league.js's simulateDate reads the current season year off settings.leagueYear
+// (league.js has no access to the GameState global), so every leagueYear
+// write must go through this helper to keep the two in sync.
+function setLeagueYear(year) {
+  GameState.leagueYear = year;
+  GameState.settings.leagueYear = year;
+}
 
 function pushToFeed(text, dayIndex) {
   // dayIndex is the day actually being processed by the onDayComplete
@@ -194,7 +205,7 @@ function handleAdvanceToOffseason() {
   // their fully-updated careerStats/awardsWon.
   finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
 
-  GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
+  setLeagueYear((GameState.leagueYear || 2026) + 1);
   const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
 
   if (autoDraftEffective) {
@@ -372,7 +383,7 @@ function initPlayerCareerMode() {
   GameState.playerCareerController = new PlayerCareerController(GameState);
   GameState.narrativeSystem = new NarrativeSystem(GameState);
   GameState.gameMode = 'playerCareer';
-  GameState.leagueYear = GameState.leagueYear || 2026;
+  setLeagueYear(GameState.leagueYear || 2026);
 
   document.getElementById('team-select-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';

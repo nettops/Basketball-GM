@@ -38,7 +38,8 @@ function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
   const payroll = getTeamPayroll(teamId);
-  const capSpace = CAP_CONSTANTS.SALARY_CAP - payroll;
+  const effectiveCap = getEffectiveSalaryCap(GameState.settings && GameState.settings.capLevel);
+  const capSpace = effectiveCap - payroll;
   const injuredPlayers = roster.filter(function (p) { return p.status.injury; })
     .sort(function (a, b) { return b.overall - a.overall; });
 
@@ -61,7 +62,7 @@ function renderDashboard(container, teamId) {
     nextGameLabel = 'No games remaining.';
   }
 
-  const capPct = Math.min(100, Math.round((payroll / CAP_CONSTANTS.SALARY_CAP) * 100));
+  const capPct = Math.min(100, Math.round((payroll / effectiveCap) * 100));
   const capClass = capSpace >= 0 ? 'is-good' : 'is-warn';
   const capText = capSpace >= 0
     ? '$' + capSpace.toLocaleString() + ' space'
@@ -91,7 +92,7 @@ function renderDashboard(container, teamId) {
       '<div class="kpi-label">Payroll</div>' +
       '<div class="kpi-value ' + capClass + '">$' + payroll.toLocaleString() + '</div>' +
       '<div class="meter" style="margin:8px 0 6px;"><div class="meter-fill ' + (capSpace < 0 ? 'is-over' : '') + '" style="width:' + capPct + '%"></div></div>' +
-      '<div class="kpi-sub">Cap $' + CAP_CONSTANTS.SALARY_CAP.toLocaleString() + ' · ' + capText + '</div>' +
+      '<div class="kpi-sub">Cap $' + effectiveCap.toLocaleString() + ' · ' + capText + '</div>' +
     '</div></div>' +
 
     '<div class="panel"><div class="panel-header">Next Up</div><div class="panel-body">' +

@@ -1,7 +1,10 @@
 const assert = require('assert');
 const path = require('path');
 
-global.CAP_CONSTANTS = require(path.join(__dirname, '..', 'data.js')).CAP_CONSTANTS;
+const dataModule = require(path.join(__dirname, '..', 'data.js'));
+global.CAP_CONSTANTS = dataModule.CAP_CONSTANTS;
+global.getEffectiveSalaryCap = dataModule.getEffectiveSalaryCap;
+global.getEffectiveLuxuryTaxLine = dataModule.getEffectiveLuxuryTaxLine;
 const salaryCap = require(path.join(__dirname, '..', 'ui', 'salaryCap.js'));
 
 function checkEstimateLuxuryTax() {

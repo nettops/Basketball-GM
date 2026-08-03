@@ -14,13 +14,17 @@ const INJURY_SEVERITIES = [
 function rollInjury(player, rng) {
   if (player.status.injury) return;
   const baseChance = 0.003;
+  // GameState is a browser global from script.js — guarded since injuries.js
+  // also runs standalone under Node in scripts/validate-*.js.
+  const injurySetting = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.injuryFrequency : undefined;
+  const injuryFrequency = injurySetting === undefined ? 1 : injurySetting;
   const fatigueMultiplier = 1 + player.status.fatigue / 100;
   const traitBonus = _INJURY_DATA.traits.getTraitBonus(player, 'injury', 'chance');
   const durabilityFactor = (player.hiddenPersonality && player.hiddenPersonality.durabilityMindset !== undefined)
     ? (50 - player.hiddenPersonality.durabilityMindset) / 100
     : 0;
   const chanceMultiplier = Math.max(0.2, 1 + traitBonus * 0.08 + durabilityFactor * 0.3);
-  if (rng() < baseChance * fatigueMultiplier * chanceMultiplier) {
+  if (rng() < baseChance * injuryFrequency * fatigueMultiplier * chanceMultiplier) {
     const roll = rng();
     let severity;
     if (roll < 0.5) severity = INJURY_SEVERITIES[0];
@@ -34,9 +38,24 @@ function rollInjury(player, rng) {
     const gamesOut = severity.gamesOut >= 999
       ? 999
       : Math.max(1, Math.round(severity.gamesOut * Math.max(0.4, 1 + recoveryBonus * 0.06)));
-    player.status.injury = { severity: severity.name, gamesRemaining: gamesOut };
+    player.status.injury = { severity: severity.name, gamesRemaining: gamesOut, gamesOut: gamesOut };
   }
 }
+
+// Maps a sim severity name to the minor/moderate/major/severe tier the
+// career-history UI (ui/playerProfile.js's SEVERITY_PILL) expects.
+const INJURY_SEVERITY_TIER = {
+  'Day-to-Day': 'minor',
+  'Two Weeks': 'moderate',
+  'One Month': 'major',
+  'Season Ending': 'severe'
+};
+
+// Rough games-missed -> calendar-days approximation (NBA teams play roughly
+// every other day across an 82-game season) — good enough for the career
+// history "Est. Days"/"Actual Days" columns since the sim doesn't track a
+// real calendar.
+const GAMES_TO_DAYS = 2;
 
 function decrementInjuriesForTeamGame(teamId) {
   _INJURY_DATA.league.getTeamRoster(teamId).forEach(function (p) {
@@ -48,5 +67,11 @@ function decrementInjuriesForTeamGame(teamId) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { INJURY_SEVERITIES: INJURY_SEVERITIES, rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame };
+  module.exports = {
+    INJURY_SEVERITIES: INJURY_SEVERITIES,
+    INJURY_SEVERITY_TIER: INJURY_SEVERITY_TIER,
+    GAMES_TO_DAYS: GAMES_TO_DAYS,
+    rollInjury: rollInjury,
+    decrementInjuriesForTeamGame: decrementInjuriesForTeamGame
+  };
 }

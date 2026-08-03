@@ -14,7 +14,7 @@ function _simDeps() {
     : {
         simEngine: { getActiveEngine: getActiveEngine },
         fatigue: { applyFatigueForGame: applyFatigueForGame, decayFatigueForRest: decayFatigueForRest },
-        injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame },
+        injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame, INJURY_SEVERITY_TIER: INJURY_SEVERITY_TIER, GAMES_TO_DAYS: GAMES_TO_DAYS },
         morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
       };
 }
@@ -55,7 +55,13 @@ function recordGameResult(game) {
 function _historyDeps() {
   return (typeof require !== 'undefined')
     ? { careerHistory: require('./careerHistory.js') }
-    : { careerHistory: { checkAndUpdateCareerHighs: checkAndUpdateCareerHighs } };
+    : {
+        careerHistory: {
+          checkAndUpdateCareerHighs: checkAndUpdateCareerHighs,
+          recordInjuryInHistory: recordInjuryInHistory,
+          recordInjuryReturn: recordInjuryReturn
+        }
+      };
 }
 
 function accumulateSeasonStats(playerId, statLine) {
@@ -89,6 +95,7 @@ function getPlayerAverages(player) {
 
 function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
   const deps = _simDeps();
+  const leagueYear = (settings && settings.leagueYear) || 2026;
   const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
   const playingTeamIds = {};
   const newInjuries = [];
@@ -120,12 +127,25 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
     }
 
     [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {
+      const rosterBeforeDecrement = getTeamRoster(teamId).map(function (p) {
+        return { player: p, injuryBefore: p.status.injury };
+      });
       deps.injuries.decrementInjuriesForTeamGame(teamId);
+      rosterBeforeDecrement.forEach(function (entry) {
+        if (entry.injuryBefore && !entry.player.status.injury) {
+          const actualRecoveryDays = entry.injuryBefore.gamesOut * deps.injuries.GAMES_TO_DAYS;
+          _historyDeps().careerHistory.recordInjuryReturn(entry.player, leagueYear, actualRecoveryDays);
+        }
+      });
       getTeamRoster(teamId).forEach(function (p) {
         const wasInjured = !!p.status.injury;
         deps.injuries.rollInjury(p, rng);
         if (!wasInjured && p.status.injury) {
           newInjuries.push({ playerId: p.id, teamId: teamId, severity: p.status.injury.severity });
+          const tier = deps.injuries.INJURY_SEVERITY_TIER[p.status.injury.severity] || 'minor';
+          const estimatedRecoveryDays = p.status.injury.gamesOut >= 999 ? null : p.status.injury.gamesOut * deps.injuries.GAMES_TO_DAYS;
+          const record = _historyDeps().careerHistory.recordInjuryInHistory(p, 'In-game injury', tier, estimatedRecoveryDays, leagueYear);
+          if (record) record.gamesOut = p.status.injury.gamesOut;
         }
       });
       playingTeamIds[teamId] = true;

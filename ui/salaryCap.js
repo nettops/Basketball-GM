@@ -4,8 +4,9 @@
 // dollar estimate, not exact enforcement.
 const LUXURY_TAX_RATE = 1.5;
 
-function estimateLuxuryTax(payroll) {
-  return payroll > CAP_CONSTANTS.LUXURY_TAX_LINE ? Math.round((payroll - CAP_CONSTANTS.LUXURY_TAX_LINE) * LUXURY_TAX_RATE) : 0;
+function estimateLuxuryTax(payroll, capLevel) {
+  const taxLine = getEffectiveLuxuryTaxLine(capLevel);
+  return payroll > taxLine ? Math.round((payroll - taxLine) * LUXURY_TAX_RATE) : 0;
 }
 
 function capSpaceHtml(capSpace) {
@@ -23,13 +24,16 @@ function renderSalaryCap(container, userTeamId) {
     const team = getTeamById(userTeamId);
     const roster = getTeamRoster(userTeamId);
     const payroll = getTeamPayroll(userTeamId);
-    const capSpace = CAP_CONSTANTS.SALARY_CAP - payroll;
-    const tax = estimateLuxuryTax(payroll);
+    const capLevel = GameState.settings && GameState.settings.capLevel;
+    const effectiveCap = getEffectiveSalaryCap(capLevel);
+    const effectiveTaxLine = getEffectiveLuxuryTaxLine(capLevel);
+    const capSpace = effectiveCap - payroll;
+    const tax = estimateLuxuryTax(payroll, capLevel);
     const expiring = roster.filter(function (p) { return p.contract.yearsRemaining <= 1; })
       .sort(function (a, b) { return b.contract.salary - a.contract.salary; });
 
     let html = '<div class="view-header"><h2>' + teamLogoImgHtml(team.id, 26) + ' Salary Cap</h2>' +
-      '<span class="view-sub">Cap $' + CAP_CONSTANTS.SALARY_CAP.toLocaleString() + ' · Luxury tax line $' + CAP_CONSTANTS.LUXURY_TAX_LINE.toLocaleString() + '</span></div>';
+      '<span class="view-sub">Cap $' + effectiveCap.toLocaleString() + ' · Luxury tax line $' + effectiveTaxLine.toLocaleString() + '</span></div>';
 
     html += '<div class="kpi-grid">' +
       '<div class="kpi-tile"><div class="kpi-label">Payroll</div>' +
@@ -79,7 +83,7 @@ function renderSalaryCap(container, userTeamId) {
       }).join('') + '</tr></thead><tbody>' +
       TEAMS.map(function (t) {
         const p = getTeamPayroll(t.id);
-        return { team: t, payroll: p, capSpace: CAP_CONSTANTS.SALARY_CAP - p, tax: estimateLuxuryTax(p) };
+        return { team: t, payroll: p, capSpace: effectiveCap - p, tax: estimateLuxuryTax(p, capLevel) };
       }).sort(function (a, b) {
         const av = sortKey === 'team' ? a.team.name : a[sortKey];
         const bv = sortKey === 'team' ? b.team.name : b[sortKey];

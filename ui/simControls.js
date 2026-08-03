@@ -158,7 +158,7 @@ async function runMultiSeason(mode, target) {
     // tracking exists for, so it needs the same finalizeSeasonHistory /
     // archiveDraftClass wiring, not just the manual single-step path.
     finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
-    GameState.leagueYear = (GameState.leagueYear || 2026) + 1;
+    setLeagueYear((GameState.leagueYear || 2026) + 1);
     const draftResult = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear);
     GameState.lastDraftResults = draftResult.draftResults;
     archiveDraftClass(GameState.leagueYear, draftResult.draftResults);

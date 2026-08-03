@@ -119,7 +119,7 @@ function renderTeamHistoryTab(player) {
   return html;
 }
 
-const SEVERITY_PILL = { minor: 'pill-mute', moderate: 'pill-pos', major: 'pill-loss' };
+const SEVERITY_PILL = { minor: 'pill-mute', moderate: 'pill-pos', major: 'pill-loss', severe: 'pill-loss' };
 
 function renderInjuryTimelineTab(player) {
   ensureCareerHistory(player);
@@ -130,8 +130,8 @@ function renderInjuryTimelineTab(player) {
     '<th class="num">Est. Days</th><th class="num">Actual Days</th><th class="num">Games Out</th><th>Return</th><th>Notes</th></tr></thead><tbody>';
   injuries.slice().reverse().forEach(function (i) {
     const pillClass = SEVERITY_PILL[i.severity] || 'pill-mute';
-    html += '<tr><td class="num">' + i.season + '</td><td>' + i.type + '</td><td><span class="pill ' + pillClass + '">' + i.severity + '</span></td>' +
-      '<td class="num">' + i.estimatedRecoveryDays + '</td><td class="num">' + (i.actualRecoveryDays === null ? '—' : i.actualRecoveryDays) +
+    html += '<tr><td class="num">' + i.season + '</td><td>' + (i.type || '—') + '</td><td><span class="pill ' + pillClass + '">' + i.severity + '</span></td>' +
+      '<td class="num">' + (i.estimatedRecoveryDays === null ? 'Season' : i.estimatedRecoveryDays) + '</td><td class="num">' + (i.actualRecoveryDays === null ? '—' : i.actualRecoveryDays) +
       '</td><td class="num">' + i.gamesOut + '</td><td>' + (i.returnDate || '—') + '</td><td>' + (i.notes || '') + '</td></tr>';
   });
   html += '</tbody></table></div>';

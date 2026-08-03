@@ -3,7 +3,7 @@ var _FA_DATA = (typeof require !== 'undefined')
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
-      data: { CAP_CONSTANTS: CAP_CONSTANTS },
+      data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
       rosterMoves: { getFreeAgents: getFreeAgents },
       careerHistory: { recordContractInHistory: recordContractInHistory }
@@ -70,7 +70,8 @@ function estimateFairSalary(player) {
 function generateAIOffer(team, player, rng) {
   if (_FA_DATA.league.getTeamRoster(team.id).length >= 15) return null;
   const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
-  const capSpace = _FA_DATA.data.CAP_CONSTANTS.SALARY_CAP - _FA_DATA.league.getTeamPayroll(team.id);
+  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
+  const capSpace = _FA_DATA.data.getEffectiveSalaryCap(capLevel) - _FA_DATA.league.getTeamPayroll(team.id);
   if (!capDisabled && capSpace < 1200000) return null;
   const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
   if (interest < 40) return null;

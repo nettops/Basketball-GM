@@ -47,7 +47,7 @@ function renderTopBar(container) {
   applyTeamAccent(team);
 
   const payroll = getTeamPayroll(team.id);
-  const cap = CAP_CONSTANTS.SALARY_CAP;
+  const cap = getEffectiveSalaryCap(GameState.settings && GameState.settings.capLevel);
   const pct = Math.min(100, Math.round((payroll / cap) * 100));
   const overCap = payroll > cap;
   const day = GameState.season && GameState.season.currentDay >= 0 ? GameState.season.currentDay : '—';
