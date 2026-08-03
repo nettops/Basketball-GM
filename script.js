@@ -187,6 +187,7 @@ const BUILT_VIEWS = {
   playerComparison: renderPlayerComparison,
   news: renderLeagueNews,
   salarycap: renderSalaryCap,
+  finances: renderTeamFinances,
   playerDashboard: function (container) {
     renderPlayerDashboard(container, GameState.controlledPlayerId);
   },

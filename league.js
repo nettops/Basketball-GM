@@ -10,12 +10,13 @@ var _LEAGUE_DATA = (typeof require !== 'undefined')
 // cycle entirely: by call time every module has finished loading.
 function _simDeps() {
   return (typeof require !== 'undefined')
-    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js'), morale: require('./morale.js') }
+    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js'), morale: require('./morale.js'), finances: require('./finances.js') }
     : {
         simEngine: { getActiveEngine: getActiveEngine },
         fatigue: { applyFatigueForGame: applyFatigueForGame, decayFatigueForRest: decayFatigueForRest },
         injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame, INJURY_SEVERITY_TIER: INJURY_SEVERITY_TIER, GAMES_TO_DAYS: GAMES_TO_DAYS },
-        morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
+        morale: { tickMoraleForTeamGame: tickMoraleForTeamGame },
+        finances: { tickFinancesForTeamGame: tickFinancesForTeamGame }
       };
 }
 
@@ -111,6 +112,10 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
 
     recordGameResult(game);
 
+    const homeWon = game.homeScore > game.awayScore;
+    deps.finances.tickFinancesForTeamGame(game.homeTeamId, homeWon, _LEAGUE_DATA.teams.getTeamById);
+    deps.finances.tickFinancesForTeamGame(game.awayTeamId, !homeWon, _LEAGUE_DATA.teams.getTeamById);
+
     if (result.boxScore) {
       Object.keys(result.boxScore).forEach(function (playerId) {
         accumulateSeasonStats(playerId, result.boxScore[playerId]);
@@ -121,7 +126,6 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
       const isBackToBackAway = season.games.some(function (g) { return g.played && (g.homeTeamId === game.awayTeamId || g.awayTeamId === game.awayTeamId) && g.day === dayIndex - 1; });
       deps.fatigue.applyFatigueForGame(game.homeTeamId, minutesByPlayerId, isBackToBackHome);
       deps.fatigue.applyFatigueForGame(game.awayTeamId, minutesByPlayerId, isBackToBackAway);
-      const homeWon = game.homeScore > game.awayScore;
       deps.morale.tickMoraleForTeamGame(game.homeTeamId, homeWon, minutesByPlayerId);
       deps.morale.tickMoraleForTeamGame(game.awayTeamId, !homeWon, minutesByPlayerId);
     }

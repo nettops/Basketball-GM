@@ -1,12 +1,13 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
-      data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap },
+      data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap, getEffectiveSalaryFloor: getEffectiveSalaryFloor },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
       rosterMoves: { getFreeAgents: getFreeAgents },
-      careerHistory: { recordContractInHistory: recordContractInHistory }
+      careerHistory: { recordContractInHistory: recordContractInHistory },
+      finances: { budgetSpendMultiplier: budgetSpendMultiplier }
     };
 
 // Higher score = more playing-time opportunity: wide open at the position,
@@ -71,12 +72,22 @@ function generateAIOffer(team, player, rng) {
   if (_FA_DATA.league.getTeamRoster(team.id).length >= 15) return null;
   const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
   const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
-  const capSpace = _FA_DATA.data.getEffectiveSalaryCap(capLevel) - _FA_DATA.league.getTeamPayroll(team.id);
+  const payroll = _FA_DATA.league.getTeamPayroll(team.id);
+  const capSpace = _FA_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
   if (!capDisabled && capSpace < 1200000) return null;
+
+  // A team still below the salary floor needs to keep spending regardless of
+  // owner mood or marginal interest — it's on the hook for the shortfall as
+  // a floor tax at season end either way (finances.js's applySeasonEndFinances),
+  // so it may as well spend that money on a roster spot instead.
+  const belowFloor = payroll < _FA_DATA.data.getEffectiveSalaryFloor(capLevel);
+  const spendMultiplier = belowFloor ? 1 : _FA_DATA.finances.budgetSpendMultiplier(team);
+
   const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
-  if (interest < 40) return null;
+  if (interest < (belowFloor ? 25 : 40)) return null;
   const fair = estimateFairSalary(player);
-  const salary = Math.max(1200000, Math.min(capDisabled ? Infinity : capSpace, Math.round(fair * (0.85 + rng() * 0.3))));
+  const budgetCappedSpace = capDisabled ? Infinity : capSpace * spendMultiplier;
+  const salary = Math.max(1200000, Math.min(budgetCappedSpace, Math.round(fair * (0.85 + rng() * 0.3))));
   const years = 1 + Math.floor(rng() * 4);
   return { teamId: team.id, salary: salary, yearsRemaining: years };
 }

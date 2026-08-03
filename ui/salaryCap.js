@@ -1,8 +1,6 @@
-// Real NBA luxury tax is a graduated bracket system; this is a deliberately
-// simple flat-rate approximation (consistent with this project's "simplified
-// contract system" decision from the Phase 1 design) purely for a rough
-// dollar estimate, not exact enforcement.
-const LUXURY_TAX_RATE = 1.5;
+// Sourced from data.js's CAP_CONSTANTS so finances.js's season-end tax
+// deduction and this mid-season estimate never drift apart.
+const LUXURY_TAX_RATE = CAP_CONSTANTS.LUXURY_TAX_RATE;
 
 function estimateLuxuryTax(payroll, capLevel) {
   const taxLine = getEffectiveLuxuryTaxLine(capLevel);

@@ -4,19 +4,22 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       teams: require('./teams.js'),
       players: require('./players-2026.js'),
       awards: require('./awards.js'),
-      careerHistory: require('./careerHistory.js')
+      careerHistory: require('./careerHistory.js'),
+      finances: require('./finances.js')
     }
   : {
       league: {
         SEASON_STAT_KEYS: SEASON_STAT_KEYS,
         getPlayerAverages: getPlayerAverages,
         getTeamRoster: getTeamRoster,
-        getPlayerById: getPlayerById
+        getPlayerById: getPlayerById,
+        getTeamPayroll: getTeamPayroll
       },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       players: { PLAYERS_2026: PLAYERS_2026 },
       awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS },
-      careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory }
+      careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory },
+      finances: { applySeasonEndFinances: applySeasonEndFinances }
     };
 
 const LEAGUE_HISTORY = {
@@ -257,10 +260,14 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   });
   LEAGUE_HISTORY.awardsHistory.push(seasonAwards);
 
+  // GameState is a browser global from script.js — guarded since history.js
+  // also runs standalone under Node in scripts/validate-*.js.
+  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : undefined;
   _HISTORY_DATA.teams.TEAMS.forEach(function (team) {
     team.allTimeWins = (team.allTimeWins || 0) + team.record.wins;
     team.allTimeLosses = (team.allTimeLosses || 0) + team.record.losses;
     team.lastSeasonWins = team.record.wins;
+    _HISTORY_DATA.finances.applySeasonEndFinances(team, _HISTORY_DATA.league.getTeamPayroll(team.id), capLevel);
   });
 
   archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, sink);

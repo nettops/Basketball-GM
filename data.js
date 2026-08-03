@@ -16,7 +16,14 @@ const DIVISIONS = {
 
 const CAP_CONSTANTS = {
   SALARY_CAP: 154000000,
-  LUXURY_TAX_LINE: 187000000
+  LUXURY_TAX_LINE: 187000000,
+  // Real NBA floor sits at 90% of the cap — teams under it owe the
+  // shortfall to their own roster at season end (see finances.js).
+  SALARY_FLOOR: 138600000,
+  // Real NBA luxury tax is a graduated bracket system; this is a
+  // deliberately simple flat-rate approximation, purely for a rough dollar
+  // estimate/deduction, not exact bracket enforcement.
+  LUXURY_TAX_RATE: 1.5
 };
 
 // capLevel is a settings-driven multiplier (default 1.0) on the base cap
@@ -28,6 +35,10 @@ function getEffectiveSalaryCap(capLevel) {
 
 function getEffectiveLuxuryTaxLine(capLevel) {
   return Math.round(CAP_CONSTANTS.LUXURY_TAX_LINE * (capLevel || 1));
+}
+
+function getEffectiveSalaryFloor(capLevel) {
+  return Math.round(CAP_CONSTANTS.SALARY_FLOOR * (capLevel || 1));
 }
 
 const RATING_MIN = 25;
@@ -75,6 +86,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ATTRIBUTE_KEYS, POSITIONS, CONFERENCES, DIVISIONS,
     CAP_CONSTANTS, RATING_MIN, RATING_MAX, PLAYER_ARCHETYPES,
-    getEffectiveSalaryCap, getEffectiveLuxuryTaxLine
+    getEffectiveSalaryCap, getEffectiveLuxuryTaxLine, getEffectiveSalaryFloor
   };
 }
