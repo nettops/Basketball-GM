@@ -20,19 +20,25 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
     };
 
-function clampRating(v) {
-  return Math.max(_COMMISSIONER_DATA.data.RATING_MIN, Math.min(_COMMISSIONER_DATA.data.RATING_MAX, v));
+// Named distinctly from progression.js's clampRating (not commissionerClampRating2
+// or similar) because both files load as plain global scripts in the browser —
+// a same-named `function` declaration here previously shadowed progression.js's
+// rounding version for every caller, including progressPlayer, silently leaving
+// every rostered player's overall/potential as an un-rounded float after any
+// offseason. Keep these two names distinct.
+function commissionerClampRating(v) {
+  return Math.max(_COMMISSIONER_DATA.data.RATING_MIN, Math.min(_COMMISSIONER_DATA.data.RATING_MAX, Math.round(v)));
 }
 
 function editPlayerRatings(playerId, changes) {
   const player = _COMMISSIONER_DATA.league.getPlayerById(playerId);
   if (!player) return { success: false, reason: 'Player not found.' };
-  if (changes.overall !== undefined) player.overall = clampRating(changes.overall);
-  if (changes.potential !== undefined) player.potential = clampRating(changes.potential);
+  if (changes.overall !== undefined) player.overall = commissionerClampRating(changes.overall);
+  if (changes.potential !== undefined) player.potential = commissionerClampRating(changes.potential);
   if (changes.attributes) {
     Object.keys(changes.attributes).forEach(function (key) {
       if (_COMMISSIONER_DATA.data.ATTRIBUTE_KEYS.indexOf(key) === -1) return;
-      player.attributes[key] = clampRating(changes.attributes[key]);
+      player.attributes[key] = commissionerClampRating(changes.attributes[key]);
     });
   }
   return { success: true };
@@ -73,8 +79,8 @@ function fairSalaryForOverall(overall) {
 // empty stubs — this project's recurring "truthy empty object" bug pattern
 // starts with exactly that kind of stub.
 function createPlayer(details) {
-  const overall = clampRating(details.overall);
-  const potential = Math.max(overall, clampRating(details.potential));
+  const overall = commissionerClampRating(details.overall);
+  const potential = Math.max(overall, commissionerClampRating(details.potential));
   const player = _COMMISSIONER_DATA.prospects.mkProspect(
     details.name, details.age, 78, 210, details.position, overall, potential, details.archetype, 0, 'Commissioner-created'
   );
@@ -170,7 +176,7 @@ function createExpansionTeam(details, rng) {
     id: id, name: details.name, conference: placement.conference, division: placement.division,
     colors: { primary: details.primaryColor, secondary: details.secondaryColor },
     prestige: 40, fanHappiness: 60, ownerHappiness: 60, chemistry: 60,
-    timeline: 'rebuilding', marketSize: clampRating(details.marketSize),
+    timeline: 'rebuilding', marketSize: commissionerClampRating(details.marketSize),
     record: { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 },
     draftPicks: [
       { round: 1, originalTeamId: id, currentOwnerId: id },
@@ -207,6 +213,50 @@ function createExpansionTeam(details, rng) {
   return team;
 }
 
+// Renames/rebrands a team in place — conference, division, roster, and
+// record are untouched (changing those would mean regenerating the season
+// schedule mid-season, which nothing else in this codebase does). Fan
+// sentiment resets to a neutral "new market, clean slate" baseline rather
+// than carrying over the old city's dissatisfaction.
+function relocateTeam(teamId, details) {
+  const team = _COMMISSIONER_DATA.teams.TEAMS.find(function (t) { return t.id === teamId; });
+  if (!team) return { success: false, reason: 'Team not found.' };
+  team.name = details.name;
+  team.colors = { primary: details.primaryColor, secondary: details.secondaryColor };
+  team.marketSize = commissionerClampRating(details.marketSize);
+  team.fanHappiness = 60;
+  team.ownerHappiness = Math.min(99, team.ownerHappiness + 10);
+  return { success: true, team: team };
+}
+
+const AUTO_EXPANSION_CITY_NAMES = ['Seattle Sasquatch', 'Vancouver Voyagers', 'Kansas City Kings', 'St. Louis Statesmen', 'Louisville Legends'];
+const AUTO_EXPANSION_MAX_TEAMS = 32;
+const AUTO_EXPANSION_MIN_AVG_FAN_HAPPINESS = 70;
+const AUTO_EXPANSION_CHANCE_WHEN_ELIGIBLE = 0.15;
+
+// Checked once per season (history.js's finalizeSeasonHistory, gated behind
+// settings.autoExpansionEnabled — off by default so existing saves aren't
+// surprised by a new team appearing). A simple leaguewide-health gate, not a
+// real franchise-value simulation: healthy average fan sentiment, room under
+// the team cap, and a random per-season chance so it's a rare event even
+// once eligible, not a guaranteed trigger the moment the bar is cleared.
+function checkAutoExpansion(rng) {
+  if (_COMMISSIONER_DATA.teams.TEAMS.length >= AUTO_EXPANSION_MAX_TEAMS) return null;
+  const avgFanHappiness = _COMMISSIONER_DATA.teams.TEAMS.reduce(function (s, t) { return s + t.fanHappiness; }, 0) / _COMMISSIONER_DATA.teams.TEAMS.length;
+  if (avgFanHappiness < AUTO_EXPANSION_MIN_AVG_FAN_HAPPINESS) return null;
+  if (rng() > AUTO_EXPANSION_CHANCE_WHEN_ELIGIBLE) return null;
+  const usedNames = new Set(_COMMISSIONER_DATA.teams.TEAMS.map(function (t) { return t.name; }));
+  const cityName = AUTO_EXPANSION_CITY_NAMES.find(function (n) { return !usedNames.has(n); });
+  if (!cityName) return null;
+  const details = {
+    name: cityName,
+    primaryColor: '#' + Math.floor(rng() * 0xffffff).toString(16).padStart(6, '0'),
+    secondaryColor: '#' + Math.floor(rng() * 0xffffff).toString(16).padStart(6, '0'),
+    marketSize: 40 + Math.round(rng() * 40)
+  };
+  return createExpansionTeam(details, rng);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     editPlayerRatings: editPlayerRatings,
@@ -214,6 +264,9 @@ if (typeof module !== 'undefined' && module.exports) {
     createPlayer: createPlayer,
     CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES,
     forceTrade: forceTrade,
-    createExpansionTeam: createExpansionTeam
+    createExpansionTeam: createExpansionTeam,
+    relocateTeam: relocateTeam,
+    checkAutoExpansion: checkAutoExpansion,
+    AUTO_EXPANSION_MAX_TEAMS: AUTO_EXPANSION_MAX_TEAMS
   };
 }

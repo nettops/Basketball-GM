@@ -20,6 +20,7 @@ const GameState = {
     capLevel: 1,
     injuryFrequency: 1,
     playInEnabled: false,
+    autoExpansionEnabled: false,
     leagueYear: 2026
   }
 };
@@ -129,11 +130,30 @@ function runWeeklyTradeGeneration(dayIndex) {
   }
 }
 
+// Weekly, independent of play mode (including spectator, where
+// runWeeklyTradeGeneration above is a no-op) — AI teams besides the user's
+// own now propose and execute trades among themselves, using the same
+// generateTradeOffer/evaluateTrade logic already used for AI-vs-user trades.
+// The user's team is excluded from the partner search (see autoGM.js's
+// generateTradeOffer excludeTeamId comment) since this pass auto-executes
+// with no inbox/approval step.
+function runWeeklyAIToAITradeGeneration(dayIndex) {
+  const week = currentWeek(dayIndex);
+  if (GameState.lastAIToAITradeWeek === week) return;
+  GameState.lastAIToAITradeWeek = week;
+  TEAMS.filter(function (t) { return t.id !== GameState.userTeamId; }).forEach(function (team) {
+    const offer = generateTradeOffer(team, GameState.rng, GameState.userTeamId);
+    if (!offer) return;
+    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
+  });
+}
+
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);
   runWeeklyTradeGeneration(dayIndex);
+  runWeeklyAIToAITradeGeneration(dayIndex);
 }
 
 function switchPlayMode(newMode, teamId) {
@@ -166,6 +186,7 @@ const BUILT_VIEWS = {
   dashboard: renderDashboard,
   roster: renderRoster,
   standings: renderStandings,
+  powerRankings: renderPowerRankings,
   schedule: renderSchedule,
   playoffs: renderPlayoffs,
   allStarWeekend: renderAllStarWeekend,

@@ -24,6 +24,20 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       coaches: { tickCoachTenure: tickCoachTenure }
     };
 
+// Lazily resolved (mirrors league.js's _historyDeps()/_simDeps() pattern) —
+// commissioner.js's <script> tag loads AFTER history.js's in index.html (it
+// needs trade.js/tradeEvaluator.js/draftProspects.js, which load after this
+// file), so referencing checkAutoExpansion eagerly at file-load time in the
+// browser-global fallback above would throw a ReferenceError before it's
+// defined, aborting the rest of this file's evaluation (which is exactly
+// what left ZERO_AVERAGES permanently in its temporal dead zone the one time
+// this was tried).
+function _commissionerDep() {
+  return (typeof require !== 'undefined')
+    ? require('./commissioner.js')
+    : { checkAutoExpansion: checkAutoExpansion };
+}
+
 const LEAGUE_HISTORY = {
   retiredPlayers: [],
   trades: [],
@@ -283,6 +297,12 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   _HISTORY_DATA.players.PLAYERS_2026.forEach(function (p) {
     rollSeasonIntoCareerStats(p, leagueYear, sink);
   });
+
+  const autoExpansionEnabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.autoExpansionEnabled;
+  if (autoExpansionEnabled && typeof GameState !== 'undefined' && GameState.rng) {
+    const expansionTeam = _commissionerDep().checkAutoExpansion(GameState.rng);
+    if (expansionTeam) sink(expansionTeam.name + ' join the league as an expansion team, starting next season.');
+  }
 }
 
 function careerLeaders(statKey, count) {

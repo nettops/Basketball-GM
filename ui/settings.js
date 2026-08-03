@@ -70,6 +70,9 @@ function renderSettings(container) {
     '<label class="toggle-row"><input type="checkbox" id="settings-play-in-enabled"' +
     (GameState.settings.playInEnabled ? ' checked' : '') +
     '> Play-In Tournament (7-10 seeds play in for the final two spots, instead of a straight top-8 cutoff)</label>' +
+    '<label class="toggle-row"><input type="checkbox" id="settings-auto-expansion-enabled"' +
+    (GameState.settings.autoExpansionEnabled ? ' checked' : '') +
+    '> Auto-Expansion (a new team can occasionally join the league once every market is healthy)</label>' +
   '</div></div>';
 
   if (GameState.playMode !== 'spectator') {
@@ -140,6 +143,10 @@ function renderSettings(container) {
 
   document.getElementById('settings-play-in-enabled').addEventListener('change', function (e) {
     GameState.settings.playInEnabled = e.target.checked;
+  });
+
+  document.getElementById('settings-auto-expansion-enabled').addEventListener('change', function (e) {
+    GameState.settings.autoExpansionEnabled = e.target.checked;
   });
 }
 

@@ -65,28 +65,47 @@ function autoAllocateScoutPoints(scoutingState, ownRosterIds, watchlistedProspec
 // whose salary clears the same salaryOk band tradeEvaluator.js already uses
 // for every other trade in the game. Returns the first mutually-accepted
 // match, or null if none exists this call.
-function generateTradeOffer(team, rng) {
-  const roster = _AUTOGM_DATA.league.getTeamRoster(team.id);
-  if (roster.length <= 12) return null;
-
-  // needMultiplier only takes 4 discrete values (1.3/1.15/1.0/0.9 — see
-  // tradeEvaluator.js), and the "genuinely desperate" 1.3/1.15 bands are rare
-  // on real, mostly-balanced rosters. Treating "not a screaming need" (<=1.0)
-  // as surplus, and "not already well-stocked" (>=1.0) as a real target for
-  // the return side, keeps the generator directionally sound (never trades
-  // away an actual need, never targets a position already deep) without
-  // being so narrow it almost never finds a match.
+//
+// excludeTeamId lets the AI-to-AI autonomous pass (script.js's
+// runWeeklyAIToAITradeGeneration) keep the user's team out of the partner
+// search entirely — that path auto-executes whatever it finds with no
+// inbox/approval step, so a mutually-accepted match involving the user's
+// roster would otherwise trade their players away without them ever seeing
+// an offer. The user-initiated path (runWeeklyTradeGeneration) doesn't pass
+// this — it calls generateTradeOffer with `team` already the user's own
+// team, so evaluateTrade's evaluateUserLeg=true is what keeps that one honest.
+// needMultiplier only takes 4 discrete values (1.3/1.15/1.0/0.9 — see
+// tradeEvaluator.js), and the "genuinely desperate" 1.3/1.15 bands are rare
+// on real, mostly-balanced rosters. Treating "not a screaming need" (<=1.0)
+// as surplus, and "not already well-stocked" (>=1.0) as a real target for
+// the return side, keeps the generator directionally sound (never trades
+// away an actual need, never targets a position already deep) without
+// being so narrow it almost never finds a match. Exported separately from
+// generateTradeOffer so the onTradeBlock bias is unit-testable without
+// depending on a full partner match also being found.
+function selectSurplusCandidate(team, roster) {
   let candidate = null;
   let candidateSurplus = -Infinity;
   roster.forEach(function (p) {
     const need = _AUTOGM_DATA.tradeEvaluator.needMultiplier(p.position, team);
     if (need > 1.0) return; // this position is a real need — don't trade it away
-    const surplus = (1 - need) - _AUTOGM_DATA.tradeEvaluator.adjustedPlayerValue(p, team) / 200;
+    let surplus = (1 - need) - _AUTOGM_DATA.tradeEvaluator.adjustedPlayerValue(p, team) / 200;
+    // A player the team has explicitly shopped (ui/tradeCenter.js's Trading
+    // Block toggle) is strongly preferred as the outgoing piece.
+    if (p.onTradeBlock) surplus += 0.5;
     if (surplus > candidateSurplus) { candidate = p; candidateSurplus = surplus; }
   });
+  return candidate;
+}
+
+function generateTradeOffer(team, rng, excludeTeamId) {
+  const roster = _AUTOGM_DATA.league.getTeamRoster(team.id);
+  if (roster.length <= 12) return null;
+
+  const candidate = selectSurplusCandidate(team, roster);
   if (!candidate) return null;
 
-  const partners = _AUTOGM_DATA.teams.TEAMS.filter(function (t) { return t.id !== team.id; }).slice();
+  const partners = _AUTOGM_DATA.teams.TEAMS.filter(function (t) { return t.id !== team.id && t.id !== excludeTeamId; }).slice();
   for (let i = partners.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     const tmp = partners[i]; partners[i] = partners[j]; partners[j] = tmp;
@@ -122,6 +141,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     autoEnforceRosterSize: autoEnforceRosterSize,
     autoAllocateScoutPoints: autoAllocateScoutPoints,
-    generateTradeOffer: generateTradeOffer
+    generateTradeOffer: generateTradeOffer,
+    selectSurplusCandidate: selectSurplusCandidate
   };
 }

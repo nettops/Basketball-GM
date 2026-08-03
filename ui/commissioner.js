@@ -12,7 +12,9 @@ function renderCommissioner(container, userTeamId) {
     deleteConfirming: false,
     deleteMessage: null,
     createMessage: null,
-    expansionResult: null
+    expansionResult: null,
+    relocateTeamId: null,
+    relocateMessage: null
   };
 
   function draw() {
@@ -21,11 +23,13 @@ function renderCommissioner(container, userTeamId) {
     html += renderDeletePlayerSection(state);
     html += renderCreatePlayerSection(state);
     html += renderExpansionTeamSection(state);
+    html += renderRelocateTeamSection(state);
     container.innerHTML = html;
     wireEditPlayerEvents(state, draw);
     wireDeletePlayerEvents(state, draw);
     wireCreatePlayerEvents(state, draw);
     wireExpansionTeamEvents(state, draw);
+    wireRelocateTeamEvents(state, draw);
   }
 
   draw();
@@ -220,6 +224,57 @@ function wireExpansionTeamEvents(state, redraw) {
     state.expansionResult = createExpansionTeam(details, GameState.rng);
     redraw();
   });
+}
+
+function renderRelocateTeamSection(state) {
+  let html = '<div class="panel"><div class="panel-header">Relocate Team</div><div class="panel-body">';
+  html += '<div class="toolbar"><select id="commissioner-relocate-select" style="min-width:220px;"><option value="">Choose a team...</option>';
+  TEAMS.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (t) {
+    const selected = state.relocateTeamId === t.id ? ' selected' : '';
+    html += '<option value="' + t.id + '"' + selected + '>' + t.name + '</option>';
+  });
+  html += '</select></div>';
+
+  if (state.relocateTeamId) {
+    const team = getTeamById(state.relocateTeamId);
+    html += '<div class="form-grid">';
+    html += '<label>New Name</label><input type="text" id="commissioner-relocate-name" value="' + team.name + '">';
+    html += '<label>Primary Color</label><input type="color" id="commissioner-relocate-primary" value="' + team.colors.primary + '">';
+    html += '<label>Secondary Color</label><input type="color" id="commissioner-relocate-secondary" value="' + team.colors.secondary + '">';
+    html += '<label>Market Size (1-100)</label><input type="number" id="commissioner-relocate-market" min="1" max="100" value="' + team.marketSize + '">';
+    html += '</div><div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-relocate-btn" class="btn-primary">Relocate</button>';
+    if (state.relocateMessage) html += '<span class="kpi-sub">' + state.relocateMessage + '</span>';
+    html += '</div>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function wireRelocateTeamEvents(state, redraw) {
+  const select = document.getElementById('commissioner-relocate-select');
+  if (select) {
+    select.addEventListener('change', function (e) {
+      state.relocateTeamId = e.target.value || null;
+      state.relocateMessage = null;
+      redraw();
+    });
+  }
+  const btn = document.getElementById('commissioner-relocate-btn');
+  if (btn) {
+    btn.addEventListener('click', function () {
+      const name = document.getElementById('commissioner-relocate-name').value.trim();
+      if (!name) { state.relocateMessage = 'Name is required.'; redraw(); return; }
+      const details = {
+        name: name,
+        primaryColor: document.getElementById('commissioner-relocate-primary').value,
+        secondaryColor: document.getElementById('commissioner-relocate-secondary').value,
+        marketSize: Number(document.getElementById('commissioner-relocate-market').value)
+      };
+      relocateTeam(state.relocateTeamId, details);
+      state.relocateMessage = 'Relocated to ' + name + '.';
+      redraw();
+    });
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

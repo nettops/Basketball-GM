@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { id: 'playoffs', label: 'Playoffs', group: 'Team' },
   { id: 'allStarWeekend', label: 'All-Star Weekend', group: 'League' },
   { id: 'standings', label: 'Standings', group: 'League' },
+  { id: 'powerRankings', label: 'Power Rankings', group: 'League' },
   { id: 'awards', label: 'Awards', group: 'League' },
   { id: 'history', label: 'History', group: 'League' },
   { id: 'careerLedger', label: 'Career Ledger', group: 'League' },

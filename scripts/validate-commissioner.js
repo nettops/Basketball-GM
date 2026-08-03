@@ -135,4 +135,81 @@ function checkExpansionTeamSurvivesSaveLoad() {
 
 checkExpansionTeamSurvivesSaveLoad();
 
+function checkRelocateTeam() {
+  const team = teamsModule.TEAMS.find(function (t) { return t.id === 'CHA'; });
+  team.fanHappiness = 20;
+  team.ownerHappiness = 50;
+
+  const missing = commissionerModule.relocateTeam('not-a-real-team', { name: 'X', primaryColor: '#000000', secondaryColor: '#ffffff', marketSize: 50 });
+  assert.strictEqual(missing.success, false, 'relocating an unknown team id should fail cleanly');
+
+  const result = commissionerModule.relocateTeam('CHA', { name: 'Seattle Supersonics', primaryColor: '#006747', secondaryColor: '#FFC200', marketSize: 80 });
+  assert.strictEqual(result.success, true);
+  assert.strictEqual(team.name, 'Seattle Supersonics');
+  assert.strictEqual(team.colors.primary, '#006747');
+  assert.strictEqual(team.marketSize, 80);
+  assert.strictEqual(team.fanHappiness, 60, 'relocation should reset fan happiness to a neutral baseline');
+  assert.strictEqual(team.ownerHappiness, 60, 'relocation should bump owner happiness (was 50, +10)');
+  assert.strictEqual(team.conference, 'Eastern', 'relocation should not change conference/division');
+  assert.strictEqual(team.id, 'CHA', 'relocation should not change the team id');
+
+  console.log('checkRelocateTeam: OK');
+}
+
+checkRelocateTeam();
+
+function checkAutoExpansionGating() {
+  // Earlier tests in this file (checkCreateExpansionTeam,
+  // checkExpansionTeamSurvivesSaveLoad) each add their own expansion team to
+  // the shared TEAMS array — strip those back out so this test starts from
+  // the real 30-team baseline instead of however many happen to be left over.
+  const nonExpansionTeams = teamsModule.TEAMS.filter(function (t) { return t.id.indexOf('EXP-') !== 0; });
+  teamsModule.TEAMS.length = 0;
+  nonExpansionTeams.forEach(function (t) { teamsModule.TEAMS.push(t); });
+  assert.strictEqual(teamsModule.TEAMS.length, 30, 'test setup should start from the real 30-team baseline');
+
+  const originalTeamsSnapshot = teamsModule.TEAMS.slice();
+
+  // Below the fan-happiness bar: should never trigger regardless of rng.
+  teamsModule.TEAMS.forEach(function (t) { t.fanHappiness = 30; });
+  const belowBar = commissionerModule.checkAutoExpansion(makeRng(1));
+  assert.strictEqual(belowBar, null, 'auto-expansion should not trigger when average fan happiness is low');
+
+  // Above the bar but rng lands outside the trigger chance: a seed search
+  // over a small range should find at least one non-triggering roll.
+  teamsModule.TEAMS.forEach(function (t) { t.fanHappiness = 95; });
+  let foundNonTrigger = false;
+  let foundTrigger = false;
+  for (let seed = 1; seed < 200 && !(foundNonTrigger && foundTrigger); seed++) {
+    const before = teamsModule.TEAMS.length;
+    const result = commissionerModule.checkAutoExpansion(makeRng(seed));
+    if (result === null) {
+      foundNonTrigger = true;
+    } else {
+      foundTrigger = true;
+      assert.strictEqual(teamsModule.TEAMS.length, before + 1, 'a triggered expansion should add exactly one team');
+      // Undo so later seeds in this loop still see the original 30-team league.
+      teamsModule.TEAMS.length = 0;
+      originalTeamsSnapshot.forEach(function (t) { teamsModule.TEAMS.push(t); });
+    }
+  }
+  assert.ok(foundNonTrigger, 'eligible-but-unlucky seasons should be common, not guaranteed to expand');
+  assert.ok(foundTrigger, 'eligible seasons should sometimes actually trigger an expansion');
+
+  // At the team cap: should never trigger even when otherwise eligible.
+  const originalMax = commissionerModule.AUTO_EXPANSION_MAX_TEAMS;
+  while (teamsModule.TEAMS.length < originalMax) {
+    teamsModule.TEAMS.push(Object.assign({}, teamsModule.TEAMS[0], { id: 'FILLER-' + teamsModule.TEAMS.length, name: 'Filler ' + teamsModule.TEAMS.length }));
+  }
+  const atCap = commissionerModule.checkAutoExpansion(makeRng(1));
+  assert.strictEqual(atCap, null, 'auto-expansion should not trigger once the team cap is reached');
+
+  teamsModule.TEAMS.length = 0;
+  originalTeamsSnapshot.forEach(function (t) { teamsModule.TEAMS.push(t); });
+
+  console.log('checkAutoExpansionGating: OK');
+}
+
+checkAutoExpansionGating();
+
 console.log('All commissioner validations passed');

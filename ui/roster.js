@@ -48,11 +48,17 @@ function ratingTier(value) {
 }
 
 function renderRoster(container, teamId) {
-  let roster = getTeamRoster(teamId).slice();
   let sortKey = 'overall';
   let sortDir = -1; // descending by default
+  const filters = { position: 'all', minOverall: 0, injuredOnly: false };
 
   function draw() {
+    let roster = getTeamRoster(teamId).slice().filter(function (p) {
+      if (filters.position !== 'all' && p.position !== filters.position) return false;
+      if (p.overall < filters.minOverall) return false;
+      if (filters.injuredOnly && !p.status.injury) return false;
+      return true;
+    });
     roster.sort(function (a, b) {
       const av = rosterCellValue(a, sortKey);
       const bv = rosterCellValue(b, sortKey);
@@ -61,7 +67,19 @@ function renderRoster(container, teamId) {
       return 0;
     });
 
-    let html = '<div class="view-header"><h2>Roster</h2><span class="view-sub">' + roster.length + ' players</span></div>';
+    const fullRosterSize = getTeamRoster(teamId).length;
+    let html = '<div class="view-header"><h2>Roster</h2><span class="view-sub">' +
+      (roster.length === fullRosterSize ? roster.length + ' players' : roster.length + ' of ' + fullRosterSize + ' players') + '</span></div>';
+
+    html += '<div class="panel"><div class="panel-body toolbar">' +
+      '<label>Position: <select id="roster-filter-position">' +
+      ['all'].concat(POSITIONS).map(function (pos) {
+        return '<option value="' + pos + '"' + (filters.position === pos ? ' selected' : '') + '>' + (pos === 'all' ? 'All' : pos) + '</option>';
+      }).join('') + '</select></label> ' +
+      '<label>Min OVR: <input type="number" id="roster-filter-min-overall" value="' + filters.minOverall + '" min="0" max="99" style="width:60px;"></label> ' +
+      '<label><input type="checkbox" id="roster-filter-injured"' + (filters.injuredOnly ? ' checked' : '') + '> Injured only</label>' +
+      '</div></div>';
+
     html += '<div class="panel"><table class="data-table"><thead><tr>';
     ROSTER_COLUMNS.forEach(function (col) {
       const numeric = col.key !== 'name' && col.key !== 'position';
@@ -126,9 +144,21 @@ function renderRoster(container, teamId) {
           alert(result.reason);
           return;
         }
-        roster = getTeamRoster(teamId).slice();
         draw();
       });
+    });
+
+    document.getElementById('roster-filter-position').addEventListener('change', function (e) {
+      filters.position = e.target.value;
+      draw();
+    });
+    document.getElementById('roster-filter-min-overall').addEventListener('change', function (e) {
+      filters.minOverall = Number(e.target.value) || 0;
+      draw();
+    });
+    document.getElementById('roster-filter-injured').addEventListener('change', function (e) {
+      filters.injuredOnly = e.target.checked;
+      draw();
     });
 
     container.querySelectorAll('button[data-scout-id]').forEach(function (btn) {

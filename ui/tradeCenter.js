@@ -1,3 +1,22 @@
+// Browsable list of every player leaguewide flagged onTradeBlock (toggled
+// per-team below, in the trade grid) — AI teams' generateTradeOffer
+// (autoGM.js) already weighs these players more favorably as trade targets,
+// so this panel is what lets the user see what's actually available before
+// building a proposal.
+function leagueTradingBlockHtml(userTeamId) {
+  const flagged = TEAMS.reduce(function (all, t) { return all.concat(getTeamRoster(t.id)); }, [])
+    .filter(function (p) { return p.onTradeBlock; })
+    .sort(function (a, b) { return b.overall - a.overall; });
+  if (flagged.length === 0) return '';
+  return '<div class="panel"><div class="panel-header">League Trading Block <span class="pill pill-mute">' + flagged.length + '</span></div>' +
+    '<table class="data-table"><thead><tr><th>Player</th><th>Team</th><th class="num">OVR</th><th class="num">Salary</th></tr></thead><tbody>' +
+    flagged.map(function (p) {
+      const rowClass = p.teamId === userTeamId ? ' class="row-user"' : '';
+      return '<tr' + rowClass + '><td class="col-name">' + p.name + '</td><td>' + teamLogoImgHtml(p.teamId, 16) + ' ' + getTeamById(p.teamId).name + '</td>' +
+        '<td class="num">' + p.overall + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
 function handlePropose(state, userTeamId, redraw) {
   if (state.assignments.length === 0 && state.pickAssignments.length === 0) {
     document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
@@ -87,6 +106,8 @@ function renderTradeCenter(container, userTeamId) {
       html += '</ul></div>';
     }
 
+    html += leagueTradingBlockHtml(userTeamId);
+
     html += '<div class="toolbar"><span class="dock-label">Add participant</span>' +
       '<select id="add-team-select"><option value="">Add a team...</option>';
     TEAMS.forEach(function (t) {
@@ -125,10 +146,14 @@ function renderTradeCenter(container, userTeamId) {
         '<div class="balance-value">$' + Math.round(outgoingSalary / 1e6) + 'M → $' + Math.round(incomingSalary / 1e6) + 'M</div></div>' +
         '</div>';
 
-      html += '<table class="data-table"><thead><tr><th>Player</th><th class="num">In</th><th>Send to</th></tr></thead><tbody>';
+      html += '<table class="data-table"><thead><tr><th>Player</th>' +
+        (teamId === userTeamId ? '<th class="num">Block</th>' : '') +
+        '<th class="num">In</th><th>Send to</th></tr></thead><tbody>';
       roster.forEach(function (p) {
         const assignment = state.assignments.find(function (a) { return a.playerId === p.id; });
-        html += '<tr><td class="col-name">' + p.name + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+        html += '<tr><td class="col-name">' + p.name + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span>' +
+          (p.onTradeBlock && teamId !== userTeamId ? ' <span class="pill pill-gold">On Block</span>' : '') + '</td>' +
+          (teamId === userTeamId ? '<td class="num"><input type="checkbox" data-trade-block-id="' + p.id + '"' + (p.onTradeBlock ? ' checked' : '') + '></td>' : '') +
           '<td class="num"><input type="checkbox" data-player-id="' + p.id + '" data-from-team="' + teamId + '"' + (assignment ? ' checked' : '') + '></td>' +
           '<td><select data-dest-for="' + p.id + '"' + (assignment ? '' : ' disabled') + '>';
         state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
@@ -175,6 +200,14 @@ function renderTradeCenter(container, userTeamId) {
         state.participants.push(e.target.value);
         draw();
       }
+    });
+
+    container.querySelectorAll('input[type="checkbox"][data-trade-block-id]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        const player = getPlayerById(cb.getAttribute('data-trade-block-id'));
+        player.onTradeBlock = cb.checked;
+        draw();
+      });
     });
 
     container.querySelectorAll('input[type="checkbox"][data-player-id]').forEach(function (cb) {
