@@ -9,6 +9,20 @@ function saveSlotLabel(slot) {
   return label + ': ' + slot.name + ' — ' + slot.teamName + ' (' + slot.wins + '-' + slot.losses + ', ' + (slot.leagueYear || 2026) + ') — saved ' + formatSavedAt(slot.savedAt);
 }
 
+function downloadSaveFile(slotId, teamNameForFilename) {
+  const raw = getRawSlotPayload(slotId);
+  if (!raw) return;
+  const blob = new Blob([raw], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'nba-gm-save-' + (teamNameForFilename || 'league').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.json';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function renderSaveSlotRow(slot, opts) {
   const label = slot.slotId === 'autosave' ? 'Autosave' : 'Slot ' + slot.slotId;
   let html = '<div class="save-slot' + (slot.empty ? ' is-empty' : '') + '"><div class="save-slot-info">';
@@ -26,6 +40,10 @@ function renderSaveSlotRow(slot, opts) {
   }
   if (opts.showDeleteButton && !slot.empty) {
     html += '<button class="btn-danger" data-delete-slot="' + slot.slotId + '">Delete</button>';
+  }
+  if (opts.showFileButtons && !slot.empty) {
+    html += '<button class="btn-ghost" data-export-slot="' + slot.slotId + '">Export</button>' +
+      '<button class="btn-ghost" data-clone-slot="' + slot.slotId + '">Clone</button>';
   }
   html += '</div>';
   return html;
@@ -56,9 +74,19 @@ function renderSaveLoad(container) {
       '<input type="text" id="save-name-input" value="' + defaultName + '" style="width:320px;"></div></div>';
     html += '<div class="panel"><div class="panel-header">Slots</div><div id="save-slots">';
     slots.forEach(function (slot) {
-      html += renderSaveSlotRow(slot, { showSaveButton: slot.slotId !== 'autosave', showDeleteButton: slot.slotId !== 'autosave' });
+      html += renderSaveSlotRow(slot, { showSaveButton: slot.slotId !== 'autosave', showDeleteButton: slot.slotId !== 'autosave', showFileButtons: slot.slotId !== 'autosave' });
     });
     html += '</div></div>';
+
+    html += '<div class="panel"><div class="panel-header">Import League File</div><div class="panel-body">' +
+      '<p class="kpi-sub">Load a league exported from this game (or another session) into an empty slot below.</p>' +
+      '<div class="toolbar"><input type="file" id="save-import-input" accept="application/json,.json"> ' +
+      '<select id="save-import-target">' +
+      slots.filter(function (s) { return s.slotId !== 'autosave'; }).map(function (s) {
+        return '<option value="' + s.slotId + '">Slot ' + s.slotId + (s.empty ? ' (empty)' : ' (overwrite ' + s.name + ')') + '</option>';
+      }).join('') + '</select> ' +
+      '<button id="save-import-btn" class="btn-primary">Import</button></div></div></div>';
+
     html += '<div id="save-message" class="kpi-sub"></div>';
 
     container.innerHTML = html;
@@ -96,6 +124,55 @@ function renderSaveLoad(container) {
         deleteSlot(slotId);
         draw();
       });
+    });
+
+    container.querySelectorAll('button[data-export-slot]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const slotId = Number(btn.getAttribute('data-export-slot'));
+        const slot = slots.find(function (s) { return s.slotId === slotId; });
+        downloadSaveFile(slotId, slot ? slot.teamName : null);
+      });
+    });
+
+    container.querySelectorAll('button[data-clone-slot]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const sourceSlotId = Number(btn.getAttribute('data-clone-slot'));
+        const emptySlot = slots.find(function (s) { return s.slotId !== 'autosave' && s.slotId !== sourceSlotId && s.empty; });
+        if (!emptySlot) {
+          document.getElementById('save-message').textContent = 'No empty slot available to clone into — delete one first.';
+          return;
+        }
+        const source = slots.find(function (s) { return s.slotId === sourceSlotId; });
+        const result = cloneSlot(sourceSlotId, emptySlot.slotId, source ? source.name + ' (Copy)' : undefined);
+        document.getElementById('save-message').textContent = result.success ? 'Cloned into Slot ' + emptySlot.slotId + '.' : result.reason;
+        draw();
+      });
+    });
+
+    document.getElementById('save-import-btn').addEventListener('click', function () {
+      const fileInput = document.getElementById('save-import-input');
+      const targetSlotId = Number(document.getElementById('save-import-target').value);
+      const file = fileInput.files[0];
+      if (!file) {
+        document.getElementById('save-message').textContent = 'Choose a file to import first.';
+        return;
+      }
+      const existing = slots.find(function (s) { return s.slotId === targetSlotId; });
+      if (existing && !existing.empty && !confirm('Overwrite this save slot?')) return;
+      const reader = new FileReader();
+      reader.onload = function () {
+        let payload;
+        try {
+          payload = JSON.parse(reader.result);
+        } catch (e) {
+          document.getElementById('save-message').textContent = 'That file is not valid JSON.';
+          return;
+        }
+        const result = importPayloadToSlot(targetSlotId, payload);
+        document.getElementById('save-message').textContent = result.success ? 'Imported into Slot ' + targetSlotId + '.' : result.reason;
+        draw();
+      };
+      reader.readAsText(file);
     });
   }
 

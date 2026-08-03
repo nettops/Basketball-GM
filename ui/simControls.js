@@ -188,6 +188,10 @@ function renderSimControls(container) {
       '<button id="sim-to-end">Sim to End of ' + stageLabel + '</button>' +
     '</div>' +
     '<div class="dock-group">' +
+      '<button id="sim-undo-btn" class="btn-ghost" title="Undo the last trade or free agent signing"' + (canUndo(GameState) ? '' : ' disabled') + '>Undo</button>' +
+      '<button id="sim-redo-btn" class="btn-ghost"' + (canRedo(GameState) ? '' : ' disabled') + '>Redo</button>' +
+    '</div>' +
+    '<div class="dock-group">' +
       '<span class="dock-label">Skip to</span>' +
       '<button id="sim-to-deadline" class="btn-ghost">Trade Deadline</button>' +
       '<button id="sim-to-draft" class="btn-ghost">Draft</button>' +
@@ -228,6 +232,15 @@ function renderSimControls(container) {
   });
   document.getElementById('sim-speed').addEventListener('change', function (e) {
     GameState.settings.simSpeed = e.target.value;
+  });
+
+  document.getElementById('sim-undo-btn').addEventListener('click', function () {
+    performUndo(GameState);
+    renderView(GameState.currentView);
+  });
+  document.getElementById('sim-redo-btn').addEventListener('click', function () {
+    performRedo(GameState);
+    renderView(GameState.currentView);
   });
 }
 

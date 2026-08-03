@@ -76,6 +76,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
       draw(result);
     });
     document.getElementById('accept-bid-btn').addEventListener('click', function () {
+      pushUndoSnapshot(GameState);
       const outcome = finalizeBidding(state, true);
       if (outcome.signed) signingLog.push(getTeamById(outcome.teamId).name + ' signed ' + player.name);
       if (outcome.signed && GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
@@ -83,6 +84,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
       redrawParent();
     });
     document.getElementById('withdraw-bid-btn').addEventListener('click', function () {
+      pushUndoSnapshot(GameState);
       const outcome = finalizeBidding(state, false);
       if (outcome.signed) signingLog.push(getTeamById(outcome.teamId).name + ' signed ' + player.name + ' (you withdrew)');
       container.innerHTML = '';

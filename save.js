@@ -218,6 +218,92 @@ function deleteSlot(slotId) {
   writeSaveIndex(index);
 }
 
+// Raw JSON string for a slot — what ui/saveLoad.js's Export button hands to
+// Blob/URL.createObjectURL for a file download (same pattern as
+// ui/careerLedger.js's CSV export).
+function getRawSlotPayload(slotId) {
+  return _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
+}
+
+// Writes an already-serialized payload directly to a slot — shared by
+// file import (ui/saveLoad.js's Import button) and league cloning below,
+// neither of which starts from a live GameState the way saveToSlot does.
+function importPayloadToSlot(slotId, payload) {
+  if (!payload || typeof payload !== 'object' || !payload.players || !payload.teams) {
+    return { success: false, reason: 'That file does not look like a valid save.' };
+  }
+  try {
+    _SAVE_DATA.storage.setItem(saveSlotKey(slotId), JSON.stringify(payload));
+  } catch (e) {
+    return { success: false, reason: 'Import failed: storage is full. Delete an old save and try again.' };
+  }
+  const index = readSaveIndex().filter(function (entry) { return entry.slotId !== slotId; });
+  index.push(slotMetadata(slotId, payload));
+  writeSaveIndex(index);
+  return { success: true };
+}
+
+// Duplicates a save slot's raw payload into another slot under a new name —
+// doesn't touch the live GameState at all, so cloning the slot you're
+// currently playing doesn't affect your current session.
+function cloneSlot(sourceSlotId, targetSlotId, newName) {
+  const raw = _SAVE_DATA.storage.getItem(saveSlotKey(sourceSlotId));
+  if (!raw) return { success: false, reason: 'No save found in that slot.' };
+  const payload = JSON.parse(raw);
+  payload.name = newName || (payload.name + ' (Copy)');
+  payload.savedAt = Date.now();
+  return importPayloadToSlot(targetSlotId, payload);
+}
+
+const UNDO_STACK_LIMIT = 10;
+
+// serializeGameState copies nested fields (team.record, etc.) by reference,
+// not by value — the real save/load path naturally gets an independent copy
+// because it round-trips the payload through localStorage as a JSON string,
+// but an in-memory undo/redo snapshot has no such round-trip by default. A
+// snapshot that still shares objects with the live GameState isn't a
+// snapshot at all: mutating "live" state after the fact would silently
+// mutate the "saved" one too. JSON round-tripping in memory here is what
+// actually decouples them.
+function snapshotGameState(gameState, name) {
+  return JSON.parse(JSON.stringify(serializeGameState(gameState, name)));
+}
+
+// Called right before a user-initiated irreversible action (trade execution,
+// contract signing — see ui/tradeCenter.js and ui/freeAgency.js's call
+// sites). Deliberately NOT wired into automated/bulk-sim paths (AI-to-AI
+// trades, multi-season fast-forward): those can fire hundreds of times in a
+// single click, and a full serializeGameState snapshot per action would be
+// both slow and memory-heavy at that volume.
+function pushUndoSnapshot(gameState) {
+  if (!gameState.undoStack) gameState.undoStack = [];
+  if (!gameState.redoStack) gameState.redoStack = [];
+  gameState.undoStack.push(snapshotGameState(gameState, 'undo-snapshot'));
+  if (gameState.undoStack.length > UNDO_STACK_LIMIT) gameState.undoStack.shift();
+  gameState.redoStack.length = 0; // a fresh action invalidates any pending redo
+}
+
+function canUndo(gameState) { return !!(gameState.undoStack && gameState.undoStack.length > 0); }
+function canRedo(gameState) { return !!(gameState.redoStack && gameState.redoStack.length > 0); }
+
+function performUndo(gameState) {
+  if (!canUndo(gameState)) return { success: false, reason: 'Nothing to undo.' };
+  if (!gameState.redoStack) gameState.redoStack = [];
+  gameState.redoStack.push(snapshotGameState(gameState, 'redo-snapshot'));
+  const snapshot = gameState.undoStack.pop();
+  applySavedState(snapshot, gameState);
+  return { success: true };
+}
+
+function performRedo(gameState) {
+  if (!canRedo(gameState)) return { success: false, reason: 'Nothing to redo.' };
+  if (!gameState.undoStack) gameState.undoStack = [];
+  gameState.undoStack.push(snapshotGameState(gameState, 'undo-snapshot'));
+  const snapshot = gameState.redoStack.pop();
+  applySavedState(snapshot, gameState);
+  return { success: true };
+}
+
 function listSaves() {
   const bySlot = {};
   readSaveIndex().forEach(function (entry) { bySlot[entry.slotId] = entry; });
@@ -250,6 +336,14 @@ if (typeof module !== 'undefined' && module.exports) {
     loadFromSlot: loadFromSlot,
     deleteSlot: deleteSlot,
     listSaves: listSaves,
-    autosave: autosave
+    autosave: autosave,
+    getRawSlotPayload: getRawSlotPayload,
+    importPayloadToSlot: importPayloadToSlot,
+    cloneSlot: cloneSlot,
+    pushUndoSnapshot: pushUndoSnapshot,
+    canUndo: canUndo,
+    canRedo: canRedo,
+    performUndo: performUndo,
+    performRedo: performRedo
   };
 }

@@ -22,6 +22,7 @@ function handlePropose(state, userTeamId, redraw) {
     document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
     return;
   }
+  pushUndoSnapshot(GameState); // before the (possibly irreversible) trade executes
   const result = proposeTrade(state, userTeamId, false, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }); // the user always controls their own accept/reject when building a trade by hand
   const resultEl = document.getElementById('trade-result');
 
@@ -59,6 +60,7 @@ function handleForceTrade(state, redraw) {
     document.getElementById('trade-result').innerHTML = '<p>Add at least one player or draft pick to the trade first.</p>';
     return;
   }
+  pushUndoSnapshot(GameState);
   const result = forceTrade(state, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
   const resultEl = document.getElementById('trade-result');
   if (!result.success) {
@@ -270,6 +272,7 @@ function renderTradeCenter(container, userTeamId) {
     container.querySelectorAll('button[data-accept-offer]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         const i = Number(btn.getAttribute('data-accept-offer'));
+        pushUndoSnapshot(GameState);
         executeTrade(GameState.tradeOffers[i].proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
         GameState.tradeOffers.splice(i, 1);
         draw();

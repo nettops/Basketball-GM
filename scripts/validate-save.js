@@ -242,4 +242,102 @@ function checkTeamFinancesCoachAndStrategyRoundTrip() {
 
 checkTeamFinancesCoachAndStrategyRoundTrip();
 
+// Phase F: file-based import writes an already-serialized payload directly
+// to a slot (no live GameState involved) — the path ui/saveLoad.js's Import
+// button uses after reading a File via FileReader.
+function checkImportPayloadToSlot() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+
+  const invalid = saveModule.importPayloadToSlot(1, { not: 'a save' });
+  assert.strictEqual(invalid.success, false, 'a payload missing players/teams should be rejected');
+
+  const gs = makeFakeGameState({});
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gs, 'Imported League')));
+  const result = saveModule.importPayloadToSlot(2, payload);
+  assert.strictEqual(result.success, true);
+
+  const loaded = saveModule.loadFromSlot(2, {});
+  assert.strictEqual(loaded.success, true);
+
+  const listed = saveModule.listSaves().find(function (s) { return s.slotId === 2; });
+  assert.strictEqual(listed.name, 'Imported League', 'imported save should appear in the slot index');
+
+  saveModule.deleteSlot(2);
+  console.log('checkImportPayloadToSlot: OK');
+}
+
+checkImportPayloadToSlot();
+
+// Phase F: league cloning duplicates a slot's raw payload into another slot
+// under a new name, without touching any live GameState.
+function checkCloneSlot() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+
+  const missing = saveModule.cloneSlot(99, 3, 'Clone');
+  assert.strictEqual(missing.success, false, 'cloning an empty source slot should fail cleanly');
+
+  const gs = makeFakeGameState({});
+  saveModule.saveToSlot(3, 'Original League', gs);
+  const result = saveModule.cloneSlot(3, 4, 'Cloned League');
+  assert.strictEqual(result.success, true);
+
+  const original = saveModule.listSaves().find(function (s) { return s.slotId === 3; });
+  const clone = saveModule.listSaves().find(function (s) { return s.slotId === 4; });
+  assert.strictEqual(original.name, 'Original League', 'source slot should be untouched');
+  assert.strictEqual(clone.name, 'Cloned League');
+  assert.notStrictEqual(clone.savedAt, original.savedAt, 'clone should get its own timestamp');
+
+  saveModule.deleteSlot(3);
+  saveModule.deleteSlot(4);
+  console.log('checkCloneSlot: OK');
+}
+
+checkCloneSlot();
+
+// Phase F: undo/redo — pushUndoSnapshot captures a restorable snapshot;
+// undo restores it and stacks the pre-undo state onto redo; redo reverses that.
+function checkUndoRedo() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const teamsModule = require(path.join(__dirname, '..', 'teams.js'));
+
+  const gs = makeFakeGameState({});
+  const team = teamsModule.getTeamById('BOS');
+  const originalWins = team.record.wins;
+
+  assert.strictEqual(saveModule.canUndo(gs), false, 'a fresh GameState should have nothing to undo');
+  const noop = saveModule.performUndo(gs);
+  assert.strictEqual(noop.success, false);
+
+  saveModule.pushUndoSnapshot(gs);
+  assert.strictEqual(saveModule.canUndo(gs), true);
+
+  team.record.wins = originalWins + 10; // simulate an irreversible action's side effect
+  const undoResult = saveModule.performUndo(gs);
+  assert.strictEqual(undoResult.success, true);
+  assert.strictEqual(team.record.wins, originalWins, 'undo should restore the pre-action state');
+  assert.strictEqual(saveModule.canRedo(gs), true, 'undoing should populate the redo stack');
+
+  const redoResult = saveModule.performRedo(gs);
+  assert.strictEqual(redoResult.success, true);
+  assert.strictEqual(team.record.wins, originalWins + 10, 'redo should restore the undone action');
+
+  // A fresh action after an undo should clear any pending redo.
+  saveModule.pushUndoSnapshot(gs);
+  assert.strictEqual(saveModule.canRedo(gs), false, 'a new snapshot should invalidate stale redo history');
+
+  console.log('checkUndoRedo: OK');
+}
+
+checkUndoRedo();
+
+function checkUndoStackIsBounded() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gs = makeFakeGameState({});
+  for (let i = 0; i < 15; i++) saveModule.pushUndoSnapshot(gs);
+  assert.strictEqual(gs.undoStack.length, 10, 'the undo stack should be capped at UNDO_STACK_LIMIT (10)');
+  console.log('checkUndoStackIsBounded: OK');
+}
+
+checkUndoStackIsBounded();
+
 console.log('All save/load validations passed');
