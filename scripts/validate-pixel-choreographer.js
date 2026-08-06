@@ -104,4 +104,25 @@ function checkClockNeverRunsBackward() {
 }
 checkClockNeverRunsBackward();
 
+function checkPlayerSeparation() {
+  // Collision pass invariant: no two sprites ever stack. 8px (not the full
+  // 11px separation target) because clampToCourt can pinch pairs at the
+  // court edges after separation runs.
+  const built = buildSession(12);
+  const tl = choreo.buildTimeline(built.session);
+  tl.keyframes.forEach(function (kf) {
+    const ids = Object.keys(kf.pos);
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = kf.pos[ids[i]];
+        const b = kf.pos[ids[j]];
+        const d = Math.sqrt(Math.pow(a[0] - b[0], 2) + Math.pow(a[1] - b[1], 2));
+        assert.ok(d >= 8, 'players must not stack: ' + ids[i] + ' and ' + ids[j] + ' at distance ' + d.toFixed(1));
+      }
+    }
+  });
+  console.log('checkPlayerSeparation: OK');
+}
+checkPlayerSeparation();
+
 console.log('All pixel choreographer validations passed');

@@ -143,6 +143,61 @@ function cutPositions(pos, excludeId, seed) {
 // Finishing flavor for made inside shots, picked deterministically.
 const INSIDE_FINISHES = ['Slams it home!', 'Lays it in!', 'Finishes inside!'];
 
+// Minimum center-to-center spacing between sprites (~sprite width) — keeps
+// drives and paint scrums from stacking players on the same pixels.
+const MIN_PLAYER_DIST = 11;
+
+// Collision pass run on every keyframe: pairs closer than MIN_PLAYER_DIST
+// repel each other over a few relaxation iterations. The ball handler (or
+// shooter) is immovable so a drive still arrives exactly at the rim — the
+// defenders yield around him, which is also what real bodies do.
+function separatePositions(pos, protectedId) {
+  const out = {};
+  const ids = Object.keys(pos);
+  ids.forEach(function (pid) { out[pid] = [pos[pid][0], pos[pid][1]]; });
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = out[ids[i]];
+        const b = out[ids[j]];
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let d = Math.sqrt(dx * dx + dy * dy);
+        if (d >= MIN_PLAYER_DIST) continue;
+        if (d < 0.01) { dx = ((i + j) % 2) ? 1 : -1; dy = ((i * 3 + j) % 2) ? 1 : -1; d = 1.4; }
+        const need = (MIN_PLAYER_DIST - d) / d;
+        const aShare = ids[i] === protectedId ? 0 : (ids[j] === protectedId ? 1 : 0.5);
+        const bShare = ids[j] === protectedId ? 0 : (ids[i] === protectedId ? 1 : 0.5);
+        a[0] -= dx * need * aShare; a[1] -= dy * need * aShare;
+        b[0] += dx * need * bShare; b[1] += dy * need * bShare;
+      }
+    }
+  }
+  ids.forEach(function (pid) { out[pid] = clampToCourt(out[pid][0], out[pid][1]); });
+  return out;
+}
+
+// While a shot is in the air nobody stands and watches: players near the
+// paint crash hard toward the rim (boxing out / chasing the board), players
+// farther out drift in a step. The shooter holds his follow-through.
+function crashPositions(pos, shooterId, hoop, seed) {
+  const out = {};
+  let i = 0;
+  Object.keys(pos).forEach(function (pid) {
+    i += 1;
+    if (pid === shooterId) { out[pid] = pos[pid]; return; }
+    const dx = hoop.x - pos[pid][0];
+    const dy = hoop.y - pos[pid][1];
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const step = d < 130 ? Math.min(24, d * 0.3) : 8;
+    out[pid] = clampToCourt(
+      pos[pid][0] + (dx / d) * step + cutJitter(seed + i, 4),
+      pos[pid][1] + (dy / d) * step + cutJitter(seed + i * 3, 4)
+    );
+  });
+  return out;
+}
+
 function buildTimeline(session) {
   const events = session.events;
   const rosters = { home: session.homeRoster, away: session.awayRoster };
@@ -216,7 +271,10 @@ function buildTimeline(session) {
 
   function push(dt, pos, ball, quarter, clock, text) {
     t += dt;
-    keyframes.push({ t: t, pos: pos, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '' });
+    // Every keyframe goes through the collision pass so sprites never stack;
+    // the current ball holder is the protected (immovable) body.
+    const resolved = separatePositions(pos, ball.holder);
+    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '' });
   }
 
   possessions.forEach(function (poss, pi) {
@@ -258,6 +316,11 @@ function buildTimeline(session) {
 
     const hoop = attackingHoop(poss.team);
 
+    // Positions carried between beats within this possession, so a rebound
+    // scramble continues from the crashed-glass positions rather than
+    // yanking everyone back to their formation spots.
+    let curPos = pos;
+
     poss.plays.forEach(function (ev, ei) {
       if (ev.type === 'turnover') {
         const cutPos = cutPositions(pos, poss.handlerId, pi + ei);
@@ -283,6 +346,14 @@ function buildTimeline(session) {
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
         const shooterOn = !!shotPos[ev.playerId];
+        // the shot defender closes out to contest — collision keeps him a
+        // body's width off the shooter instead of inside him
+        if (ev.defenderId && shotPos[ev.defenderId]) {
+          const cdx = hoop.x - sp[0];
+          const cdy = hoop.y - sp[1];
+          const cd = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
+          shotPos[ev.defenderId] = clampToCourt(sp[0] + (cdx / cd) * 9, sp[1] + (cdy / cd) * 9);
+        }
         // pass flight: ball leaves the passer's hands and travels to the
         // shooter (the release keyframe is what makes it fly — see BEAT).
         if (shooterOn && ev.playerId !== poss.handlerId) {
@@ -309,26 +380,31 @@ function buildTimeline(session) {
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
         // release: ball leaves the hands...
         push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, poss.quarter, clock, '');
-        // ...and actually flies to the rim, high arc for threes, flat for slams
-        push(flightBeat(ev.zone), releasePos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
+        // ...and flies to the rim while everyone crashes the glass — the
+        // floor keeps moving for the whole flight instead of freezing
+        const crashPos = crashPositions(releasePos, ev.playerId, hoop, pi + ei);
+        push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           ev.made ? madeLabel : '');
+        curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
-          push(BEAT.bounce, releasePos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, poss.quarter, clock, '');
+          push(BEAT.bounce, crashPos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, poss.quarter, clock, '');
         }
       } else if (ev.type === 'rebound') {
         const rp = clampToCourt(hoop.x + (poss.team === 'home' ? -22 : 22), hoop.y + ((pi % 2) ? 18 : -18));
-        const rpos = Object.assign({}, pos);
+        const rpos = Object.assign({}, curPos);
         if (rpos[ev.playerId]) rpos[ev.playerId] = rp;
         push(BEAT.resolve, rpos, { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock,
           ev.offensive ? 'Offensive board' : '');
+        curPos = rpos;
       } else if (ev.type === 'foul-ft') {
         const ftLine = clampToCourt(hoop.x + (poss.team === 'home' ? -58 : 58), hoop.y);
-        const fpos = Object.assign({}, pos);
+        const fpos = Object.assign({}, curPos);
         if (fpos[ev.playerId]) fpos[ev.playerId] = ftLine;
         if (ev.team === 'home') score[0] += ev.points; else score[1] += ev.points;
         push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           'FTs: ' + ev.made + ' of ' + ev.attempts);
+        curPos = fpos;
       }
     });
   });
