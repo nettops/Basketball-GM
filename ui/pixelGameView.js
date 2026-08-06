@@ -51,7 +51,11 @@ function renderPixelGame(container) {
     events: session.events,
     homeRoster: homeRoster,
     awayRoster: awayRoster,
-    boxScore: session.boxScore
+    boxScore: session.boxScore,
+    homeName: homeTeam.name,
+    awayName: awayTeam.name,
+    homeAbbr: homeTeam.id,
+    awayAbbr: awayTeam.id
   });
 
   const playerById = {};
@@ -68,6 +72,7 @@ function renderPixelGame(container) {
       '</div>' +
       '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + PIXEL_STAGE.w + '" height="' + PIXEL_STAGE.h + '"></canvas></div>' +
       '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
+      '<div class="pixel-commentary" id="pixel-commentary"></div>' +
       '<div class="pixel-controls">' +
         '<button id="pixel-play-pause">Pause</button>' +
         PIXEL_SPEEDS.map(function (s) {
@@ -116,6 +121,21 @@ function renderPixelGame(container) {
   let excitementStartMs = -Infinity;
   let lastBigPlayKfT = -1;
 
+  // Broadcast feed: each keyframe's commentary line is appended once
+  // (newest on top, last six kept). escapeHtml because the lines embed
+  // player and team names, same as every other feed in the app.
+  let lastCommentaryKfT = -1;
+  function pushCommentary(kf) {
+    if (!kf.commentary || kf.t === lastCommentaryKfT) return;
+    lastCommentaryKfT = kf.t;
+    const feed = document.getElementById('pixel-commentary');
+    const line = document.createElement('div');
+    line.className = 'pixel-commentary-line';
+    line.textContent = kf.commentary;
+    feed.insertBefore(line, feed.firstChild);
+    while (feed.children.length > 6) feed.removeChild(feed.lastChild);
+  }
+
   function draw() {
     const fr = currentFrame();
     ctx.drawImage(courtCanvas, 0, 0);
@@ -126,6 +146,7 @@ function renderPixelGame(container) {
     }
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
     drawCrowd(ctx, playbackMs, excitement);
+    pushCommentary(fr.a);
 
     // players: lerp positions between keyframes; draw top-to-bottom for overlap
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });

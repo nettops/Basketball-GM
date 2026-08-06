@@ -143,6 +143,81 @@ function cutPositions(pos, excludeId, seed) {
 // Finishing flavor for made inside shots, picked deterministically.
 const INSIDE_FINISHES = ['Slams it home!', 'Lays it in!', 'Finishes inside!'];
 
+// Broadcast commentary templates. Picked deterministically by possession
+// seed — variety without touching any rng. {s}=shooter, {h}=handler,
+// {d}=defender, {r}=rebounder, {a}=assister, {team}=team name.
+const COMMENT = {
+  bringUp: [
+    '{h} brings it up the floor',
+    '{h} walks it up, surveying the defense',
+    '{h} pushes the pace for the {team}',
+    '{h} calls the set at the top of the key'
+  ],
+  threeMake: [
+    '{s} drills the three! The bench loves it',
+    '{s} lets it fly from deep... BANG!',
+    '{s} splashes one from beyond the arc',
+    'Kick-out to {s} — knocks down the triple'
+  ],
+  midMake: [
+    '{s} pulls up from the elbow... good!',
+    '{s} rises and fires — count it',
+    'Smooth midrange jumper from {s}',
+    '{s} with the pull-up, right in rhythm'
+  ],
+  insideMake: [
+    '{s} muscles it in at the rim!',
+    '{s} finishes strong through contact',
+    '{s} with the slick finish inside',
+    '{s} throws it DOWN!'
+  ],
+  miss: [
+    "{s}'s shot rims out",
+    '{s} misfires — no good',
+    "Can't connect — {s} leaves it short",
+    "{s}'s look rattles in and out"
+  ],
+  block: [
+    '{d} says NOT TODAY — huge rejection!',
+    '{d} swats it away!',
+    '{s} gets stuffed by {d} at the summit',
+    '{d} with the emphatic block'
+  ],
+  steal: [
+    '{d} picks his pocket! Turnover',
+    '{d} jumps the passing lane for the steal',
+    'Careless from {h} — {d} takes it away',
+    '{d} with the takeaway, going the other way'
+  ],
+  turnover: [
+    '{h} coughs it up',
+    '{h} loses the handle — turnover',
+    'Sloppy possession — they give it away'
+  ],
+  oreb: [
+    '{r} crashes the glass — second chance!',
+    '{r} keeps the possession alive',
+    'Offensive board! {r} out-works everybody'
+  ],
+  dreb: [
+    '{r} cleans the glass',
+    '{r} boxes out and secures it',
+    '{r} ends the possession with the board'
+  ],
+  ft: [
+    '{s} knocks down {made} of {att} at the line',
+    '{s} goes {made}-for-{att} from the stripe'
+  ]
+};
+
+function fillT(arr, seed, vars) {
+  let line = arr[((seed % arr.length) + arr.length) % arr.length];
+  Object.keys(vars).forEach(function (k) {
+    line = line.split('{' + k + '}').join(vars[k]);
+  });
+  return line;
+}
+
 // Minimum center-to-center spacing between sprites (~sprite width) — keeps
 // drives and paint scrums from stacking players on the same pixels.
 const MIN_PLAYER_DIST = 11;
@@ -207,6 +282,16 @@ function buildTimeline(session) {
     away: startingFive(session.awayRoster, boxScore)
   };
 
+  // Broadcast-feed name/team lookups (optional in session — Node validate
+  // scripts don't pass them).
+  const teamNames = { home: session.homeName || 'home side', away: session.awayName || 'road side' };
+  const abbrs = { home: session.homeAbbr || 'HOME', away: session.awayAbbr || 'AWAY' };
+  const nameById = {};
+  session.homeRoster.concat(session.awayRoster).forEach(function (p) { nameById[p.id] = p.name; });
+  function ln(pid) {
+    return nameById[pid] ? nameById[pid].split(' ').pop() : 'the big man';
+  }
+
   // Group events into possessions: a 'possession' event opens one; terminal
   // events (turnover/block/shot) close it; rebound/foul-ft trail the terminal.
   const possessions = [];
@@ -269,12 +354,12 @@ function buildTimeline(session) {
     return pos;
   }
 
-  function push(dt, pos, ball, quarter, clock, text) {
+  function push(dt, pos, ball, quarter, clock, text, commentary) {
     t += dt;
     // Every keyframe goes through the collision pass so sprites never stack;
     // the current ball holder is the protected (immovable) body.
     const resolved = separatePositions(pos, ball.holder);
-    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '' });
+    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '' });
   }
 
   possessions.forEach(function (poss, pi) {
@@ -308,9 +393,21 @@ function buildTimeline(session) {
     const transPos = transitionFor(poss.team);
     const transHandler = transPos[poss.handlerId] || handlerPos;
 
+    // Broadcast color on the way up the floor: usually nothing (dead air is
+    // realistic), sometimes a bring-up line, periodically the score.
+    let transComment = '';
+    if (pi % 9 === 4) {
+      const mins = Math.floor(clockStart / 60);
+      const secs = Math.round(clockStart % 60);
+      transComment = abbrs.home + ' ' + score[0] + ', ' + abbrs.away + ' ' + score[1] +
+        ' — ' + mins + ':' + (secs < 10 ? '0' : '') + secs + ' to go in Q' + poss.quarter;
+    } else if (pi % 4 === 1) {
+      transComment = fillT(COMMENT.bringUp, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
+    }
+
     // Beat 1: transition — defense gets back and sets while the offense is
     // still strung out in the backcourt, handler dribbling it up.
-    push(BEAT.transition, transPos, { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
+    push(BEAT.transition, transPos, { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '', transComment);
     // Beat 2: the offense flows into its set against the waiting defense.
     push(BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
 
@@ -329,9 +426,11 @@ function buildTimeline(session) {
         if (stealer) {
           // pocket picked: ball pops loose, then the stealer collects it
           push(BEAT.release, cutPos, { x: handlerCut[0], y: handlerCut[1] - 6, holder: null }, poss.quarter, clock, '');
-          push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, poss.quarter, clock, 'Steal!');
+          push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, poss.quarter, clock, 'Steal!',
+            fillT(COMMENT.steal, pi + ei, { d: ln(stealer), h: ln(poss.handlerId) }));
         } else {
-          push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, poss.quarter, clock, 'Turnover');
+          push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, poss.quarter, clock, 'Turnover',
+            fillT(COMMENT.turnover, pi + ei, { h: ln(poss.handlerId) }));
         }
       } else if (ev.type === 'block') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
@@ -340,7 +439,8 @@ function buildTimeline(session) {
         push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
         push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, '');
         // swatted sideways, not through the net
-        push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, poss.quarter, clock, 'Blocked!');
+        push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, poss.quarter, clock, 'Blocked!',
+          fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }));
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
@@ -354,13 +454,32 @@ function buildTimeline(session) {
           const cd = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
           shotPos[ev.defenderId] = clampToCourt(sp[0] + (cdx / cd) * 9, sp[1] + (cdy / cd) * 9);
         }
-        // pass flight: ball leaves the passer's hands and travels to the
-        // shooter (the release keyframe is what makes it fly — see BEAT).
-        if (shooterOn && ev.playerId !== poss.handlerId) {
-          const passerId = (ev.assistPlayerId && pos[ev.assistPlayerId]) ? ev.assistPlayerId : poss.handlerId;
-          const from = pos[passerId] || handlerPos;
+        // Ball movement: swing it around the perimeter before the look. The
+        // chain runs handler -> 1-2 teammates -> (recorded assister) ->
+        // shooter, so an assisted make's final pass always comes from the
+        // player the box score credits.
+        const offenseIds = five[poss.team].map(function (p) { return p.id; }).filter(function (id) { return shotPos[id]; });
+        const chain = [poss.handlerId];
+        const swings = 1 + ((pi + ei) % 2);
+        for (let s = 0; s < swings; s++) {
+          const cands = offenseIds.filter(function (id) {
+            return id !== chain[chain.length - 1] && id !== ev.playerId && id !== ev.assistPlayerId;
+          });
+          if (cands.length === 0) break;
+          chain.push(cands[(pi * 7 + ei * 3 + s * 5) % cands.length]);
+        }
+        if (ev.assistPlayerId && shotPos[ev.assistPlayerId] && chain[chain.length - 1] !== ev.assistPlayerId) {
+          chain.push(ev.assistPlayerId);
+        }
+        if (shooterOn && chain[chain.length - 1] !== ev.playerId) {
+          chain.push(ev.playerId);
+        }
+        for (let c = 0; c < chain.length - 1; c++) {
+          const from = shotPos[chain[c]] || pos[chain[c]] || handlerPos;
+          const to = shotPos[chain[c + 1]];
+          if (!to) continue;
           push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, poss.quarter, clock, '');
-          push(BEAT.pass, shotPos, { x: sp[0], y: sp[1] - 8, holder: ev.playerId }, poss.quarter, clock, '');
+          push(BEAT.pass, shotPos, { x: to[0], y: to[1] - 8, holder: chain[c + 1] }, poss.quarter, clock, '');
         }
         // windup: shooter gathers, everyone else finishes their cuts
         push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null }, poss.quarter, clock, '');
@@ -383,8 +502,15 @@ function buildTimeline(session) {
         // ...and flies to the rim while everyone crashes the glass — the
         // floor keeps moving for the whole flight instead of freezing
         const crashPos = crashPositions(releasePos, ev.playerId, hoop, pi + ei);
+        const shotTemplates = ev.zone === 'three' ? COMMENT.threeMake : (ev.zone === 'mid' ? COMMENT.midMake : COMMENT.insideMake);
+        let shotComment = ev.made
+          ? fillT(shotTemplates, pi + ei, { s: ln(ev.playerId) })
+          : fillT(COMMENT.miss, pi + ei, { s: ln(ev.playerId) });
+        if (ev.made && ev.assistPlayerId && (pi + ei) % 2 === 0) {
+          shotComment += ' (' + ln(ev.assistPlayerId) + ' with the dime)';
+        }
         push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
-          ev.made ? madeLabel : '');
+          ev.made ? madeLabel : '', shotComment);
         curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
@@ -394,8 +520,11 @@ function buildTimeline(session) {
         const rp = clampToCourt(hoop.x + (poss.team === 'home' ? -22 : 22), hoop.y + ((pi % 2) ? 18 : -18));
         const rpos = Object.assign({}, curPos);
         if (rpos[ev.playerId]) rpos[ev.playerId] = rp;
+        const rebComment = ev.offensive
+          ? fillT(COMMENT.oreb, pi + ei, { r: ln(ev.playerId) })
+          : (pi % 3 === 0 ? fillT(COMMENT.dreb, pi + ei, { r: ln(ev.playerId) }) : '');
         push(BEAT.resolve, rpos, { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock,
-          ev.offensive ? 'Offensive board' : '');
+          ev.offensive ? 'Offensive board' : '', rebComment);
         curPos = rpos;
       } else if (ev.type === 'foul-ft') {
         const ftLine = clampToCourt(hoop.x + (poss.team === 'home' ? -58 : 58), hoop.y);
@@ -403,7 +532,8 @@ function buildTimeline(session) {
         if (fpos[ev.playerId]) fpos[ev.playerId] = ftLine;
         if (ev.team === 'home') score[0] += ev.points; else score[1] += ev.points;
         push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
-          'FTs: ' + ev.made + ' of ' + ev.attempts);
+          'FTs: ' + ev.made + ' of ' + ev.attempts,
+          fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }));
         curPos = fpos;
       }
     });
