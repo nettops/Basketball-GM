@@ -477,3 +477,22 @@ table { border-collapse: collapse; width: 100%; }
 .schedule-row.is-expanded td { background: var(--accent-soft); border-bottom-color: var(--accent); }
 .schedule-row.is-expanded .schedule-chevron { color: var(--accent); font-weight: 700; }
 .select-actions { text-align: center; margin-bottom: 26px; }
+
+/* ---- Pixel game view (Watch Game) ---- */
+.pixel-game { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pixel-scoreboard {
+  display: flex; gap: 16px; align-items: center; font-family: monospace;
+  font-size: 1.1rem; font-weight: bold; letter-spacing: 1px;
+  background: #14171c; padding: 6px 14px; border-radius: 4px;
+}
+.pixel-score-team { border-bottom: 3px solid; padding: 2px 6px; }
+.pixel-clock { opacity: 0.85; }
+.pixel-canvas-wrap { width: 100%; display: flex; justify-content: center; }
+#pixel-canvas {
+  image-rendering: pixelated;
+  width: min(100%, 960px);
+  border: 2px solid #14171c; border-radius: 2px;
+}
+.pixel-ticker { font-family: monospace; min-height: 1.2em; opacity: 0.9; }
+.pixel-controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pixel-controls .pixel-speed.active { outline: 2px solid #4a90d9; }
