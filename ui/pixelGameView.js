@@ -205,10 +205,8 @@ function renderPixelGame(container) {
   // Bench run-ins/run-offs: a player newly appearing on court jogs in from
   // the near sideline (which also gives the opening tip a "teams take the
   // floor" moment); a swapped-out player jogs off before vanishing.
-  const ENTRY_MS = 600;
   const EXIT_MS = 500;
   const sidelineY = PIXEL_STAGE.court.y + PIXEL_STAGE.court.h + 14;
-  const entryById = {};         // pid -> playbackMs the run-in started
   const lastPosById = {};       // pid -> last drawn [x, y]
   let onCourtPrev = {};         // pids drawn last frame
   const leavers = [];           // { pid, x, y, t0 }
@@ -231,6 +229,34 @@ function renderPixelGame(container) {
   function easeInOut(f) { return f * f * (3 - 2 * f); }
   function easeOut(f) { return 1 - (1 - f) * (1 - f); }
 
+  // --- Continuous motion model -------------------------------------------
+  // Interpolating each keyframe segment with its own ease curve made every
+  // player decelerate to a dead stop and re-accelerate at EVERY beat — two
+  // or three full stops a second, which is what read as "stiff". Instead the
+  // drawn position chases the keyframe position through a critically damped
+  // spring: velocity carries ACROSS keyframe boundaries, so a player only
+  // stops when the play actually stops. Integrated in timeline-ms (not real
+  // ms) so the feel is identical at 1x and 8x.
+  const smooth = {};   // pid -> { x, y, vx, vy, omega }
+  const SNAP_DIST = 70; // farther than this is a substitution, not a run
+
+  function springAxis(x, v, target, omega, h) {
+    const f = 1 + 2 * h * omega;
+    const oo = omega * omega;
+    const hoo = h * oo;
+    const hhoo = h * hoo;
+    const detInv = 1 / (f + hhoo);
+    return [(f * x + h * v + hhoo * target) * detInv, (v + hoo * (target - x)) * detInv];
+  }
+
+  // Defenders keep continuous pressure on the ball rather than standing on
+  // a fixed spot: a small live offset toward the ball, which also means
+  // there is always motion on the floor between discrete events.
+  const teamById = {};
+  homeRoster.forEach(function (p) { teamById[p.id] = 'home'; });
+  awayRoster.forEach(function (p) { teamById[p.id] = 'away'; });
+  let lastOffenseTeam = 'home';
+
   function distToNearestHoop(pt) {
     const L = PIXEL_STAGE.hoops.left;
     const R = PIXEL_STAGE.hoops.right;
@@ -248,10 +274,12 @@ function renderPixelGame(container) {
     el.classList.add('pop');
   }
 
-  function draw() {
+  function draw(realDt) {
     const fr = currentFrame();
-    const fP = easeInOut(fr.f); // players accelerate and decelerate
-    const fB = easeOut(fr.f);   // loose balls zip out then settle
+    // Linear target: the spring below supplies all the smoothing, so no
+    // per-segment ease (that is what caused the stop-start stiffness).
+    const fP = fr.f;
+    const fB = easeOut(fr.f);   // a released ball is a projectile, not a spring
 
     // one-shot effects when a new keyframe becomes current
     if (fr.a.t !== lastEffectKfT) {
@@ -294,41 +322,102 @@ function renderPixelGame(container) {
     const lookAhead = kfs[Math.min(kfIndex + 2, kfs.length - 1)];
     const shotComing = lookAhead.ball.holder === null && distToNearestHoop(lookAhead.ball) < 20;
 
-    // players: eased lerp, sorted top-to-bottom for overlap
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
-    ids.sort(function (i1, i2) {
-      return pixelLerp(fr.a.pos[i1][1], fr.b.pos[i1][1], fP) - pixelLerp(fr.a.pos[i2][1], fr.b.pos[i2][1], fP);
-    });
-    const span = Math.max(1, fr.b.t - fr.a.t);
     const onCourtNow = {};
+
+    // Track who is on offense so defenders know which way to pressure.
+    if (fr.a.ball.holder && teamById[fr.a.ball.holder]) lastOffenseTeam = teamById[fr.a.ball.holder];
+    // Live ball position from the previous frame drives defensive pressure.
+    const ballRef = fr.a.ball.holder && smooth[fr.a.ball.holder]
+      ? { x: smooth[fr.a.ball.holder].x, y: smooth[fr.a.ball.holder].y }
+      : { x: fr.a.ball.x, y: fr.a.ball.y };
+
+    // Advance every player's spring toward its keyframe target.
+    const dtTimeline = Math.min(80, realDt * speed) / 1000; // seconds, clamped for tab stalls
     ids.forEach(function (pid) {
       const pa = fr.a.pos[pid];
       const pb = fr.b.pos[pid];
-      let x = pixelLerp(pa[0], pb[0], fP);
-      let y = pixelLerp(pa[1], pb[1], fP);
-      const travel = Math.abs(pb[0] - pa[0]) + Math.abs(pb[1] - pa[1]);
-      const speed = travel / span; // px per timeline-ms
-      let moving = speed > 0.012;
-      if (pb[0] - pa[0] > 2) facingById[pid] = 1;
-      else if (pa[0] - pb[0] > 2) facingById[pid] = -1;
+      let tx = pixelLerp(pa[0], pb[0], fP);
+      let ty = pixelLerp(pa[1], pb[1], fP);
 
-      // run-in from the sideline for players entering the game
-      if (!onCourtPrev[pid] && !suppressEntries && entryById[pid] === undefined) entryById[pid] = playbackMs;
-      if (entryById[pid] !== undefined) {
-        const el = (playbackMs - entryById[pid]) / ENTRY_MS;
-        if (el >= 0 && el < 1 && !suppressEntries) {
-          y = pixelLerp(sidelineY, y, easeOut(el));
-          moving = true;
-        } else {
-          delete entryById[pid];
-        }
+      // defenders shade toward the ball; the effect is small but constant,
+      // so the weak side is never frozen between events
+      if (teamById[pid] && teamById[pid] !== lastOffenseTeam) {
+        const ddx = ballRef.x - tx;
+        const ddy = ballRef.y - ty;
+        const dd = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
+        const pull = Math.min(7, dd * 0.09);
+        tx += (ddx / dd) * pull;
+        ty += (ddy / dd) * pull;
       }
 
+      let s = smooth[pid];
+      if (!s) {
+        // new on court: start at the sideline so entering players jog on
+        // (on the opening possession this is the whole team taking the floor)
+        s = smooth[pid] = {
+          x: tx, y: suppressEntries ? ty : sidelineY, vx: 0, vy: 0,
+          omega: 15 + (pid.charCodeAt(0) % 5) * 0.9 // slight per-player variation
+        };
+      }
+      if (Math.abs(tx - s.x) + Math.abs(ty - s.y) > SNAP_DIST) { s.x = tx; s.y = ty; s.vx = 0; s.vy = 0; }
+      const rx = springAxis(s.x, s.vx, tx, s.omega, dtTimeline);
+      const ry = springAxis(s.y, s.vy, ty, s.omega, dtTimeline);
+      s.x = rx[0]; s.vx = rx[1];
+      s.y = ry[0]; s.vy = ry[1];
+      onCourtNow[pid] = true;
+    });
+
+    // The choreographer guarantees separation at keyframe positions, but the
+    // springs interpolate independently and can pass bodies through each
+    // other in between — so re-separate the DRAWN positions each frame.
+    // Pushing s.x/s.y (not a copy) means the shove persists and players
+    // actually jostle instead of snapping back.
+    const holderId = fr.a.ball.holder;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          const A = smooth[ids[i]];
+          const B = smooth[ids[j]];
+          let dx = B.x - A.x;
+          let dy = B.y - A.y;
+          let d = Math.sqrt(dx * dx + dy * dy);
+          if (d >= 11) continue;
+          if (d < 0.01) { dx = 1; dy = ((i + j) % 2) ? 1 : -1; d = 1.4; }
+          const need = (11 - d) / d * 0.5;
+          const aShare = ids[i] === holderId ? 0 : (ids[j] === holderId ? 1 : 0.5);
+          const bShare = ids[j] === holderId ? 0 : (ids[i] === holderId ? 1 : 0.5);
+          A.x -= dx * need * aShare; A.y -= dy * need * aShare;
+          B.x += dx * need * bShare; B.y += dy * need * bShare;
+        }
+      }
+    }
+
+    // sorted top-to-bottom so nearer sprites overlap farther ones
+    ids.sort(function (i1, i2) { return smooth[i1].y - smooth[i2].y; });
+
+    ids.forEach(function (pid) {
+      const s = smooth[pid];
+      // real velocity drives the gait, so animation matches actual motion
+      const vmag = Math.sqrt(s.vx * s.vx + s.vy * s.vy); // px per timeline-second
+      const moving = vmag > 6;
+      if (s.vx > 4) facingById[pid] = 1;
+      else if (s.vx < -4) facingById[pid] = -1;
+
       const phase = (pid.charCodeAt(0) * 131 + pid.length * 37) % 977;
-      const stride = speed > 0.05 ? 110 : 170;
+      const stride = Math.max(80, 260 - vmag * 1.6); // faster feet when moving faster
+      // players are never perfectly still: a slow weight shift on an
+      // individual period keeps standing bodies alive
+      const sway = moving ? 0 : Math.sin((playbackMs + phase * 3) / 900) * 0.7;
+      const x = s.x + sway;
+      const y = s.y;
+
       const isHolder = fr.a.ball.holder === pid;
       const shooting = isHolder && fr.b.ball.holder === null && shotComing;
-      const jumpLift = shooting ? Math.round(Math.sin(fr.f * Math.PI) * 4) : 0;
+      // anticipation: dip into the legs before rising into the shot
+      const jumpLift = shooting
+        ? Math.round(fr.f < 0.18 ? -(fr.f / 0.18) * 1.5 : Math.sin(((fr.f - 0.18) / 0.82) * Math.PI) * 5)
+        : 0;
       // ground shadow stays planted even when the sprite lifts
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
@@ -340,18 +429,17 @@ function renderPixelGame(container) {
         facing: facingById[pid] || 0,
         moving: moving
       });
-      onCourtNow[pid] = true;
       lastPosById[pid] = [x, y];
     });
 
     // players swapped out jog off to the sideline before disappearing
-    if (!suppressEntries) {
-      Object.keys(onCourtPrev).forEach(function (pid) {
-        if (!onCourtNow[pid] && lastPosById[pid]) {
-          leavers.push({ pid: pid, x: lastPosById[pid][0], y: lastPosById[pid][1], t0: playbackMs });
-        }
-      });
-    }
+    Object.keys(onCourtPrev).forEach(function (pid) {
+      if (onCourtNow[pid]) return;
+      if (!suppressEntries && lastPosById[pid]) {
+        leavers.push({ pid: pid, x: lastPosById[pid][0], y: lastPosById[pid][1], t0: playbackMs });
+      }
+      delete smooth[pid]; // a later re-entry jogs back in from the sideline
+    });
     onCourtPrev = onCourtNow;
     for (let i = leavers.length - 1; i >= 0; i--) {
       const L = leavers[i];
@@ -372,17 +460,18 @@ function renderPixelGame(container) {
     // flight with a distance-scaled arc and its own ground shadow
     let bx, by, groundY;
     const holder = fr.a.ball.holder;
-    if (holder && fr.a.pos[holder]) {
-      const ha = fr.a.pos[holder];
-      const hb = fr.b.pos[holder] || ha;
-      const hx = pixelLerp(ha[0], hb[0], fP);
-      const hy = pixelLerp(ha[1], hb[1], fP);
+    if (holder && smooth[holder]) {
+      // attach to the SMOOTHED hand position, or the ball detaches from the
+      // body it belongs to
+      const hs = smooth[holder];
+      const hx = hs.x;
+      const hy = hs.y;
       const holderShooting = fr.b.ball.holder === null && shotComing;
       if (holderShooting) {
         bx = hx;
         by = hy - 24; // gathered overhead for the release
       } else {
-        const holderMoving = (Math.abs(hb[0] - ha[0]) + Math.abs(hb[1] - ha[1])) / span > 0.012;
+        const holderMoving = Math.sqrt(hs.vx * hs.vx + hs.vy * hs.vy) > 6;
         const bouncePeriod = holderMoving ? 95 : 140;
         bx = hx + (facingById[holder] || 1) * 6;
         by = hy - 1 - Math.abs(Math.sin(playbackMs / bouncePeriod)) * 10; // dribble: hand to floor
@@ -426,8 +515,8 @@ function renderPixelGame(container) {
     }
 
     // ball-handler name label
-    if (holder && playerById[holder] && fr.a.pos[holder]) {
-      const hp = fr.a.pos[holder];
+    if (holder && playerById[holder] && smooth[holder]) {
+      const hp = [smooth[holder].x, smooth[holder].y];
       const label = playerById[holder].name;
       ctx.font = '8px monospace';
       const w = ctx.measureText(label).width + 4;
@@ -464,7 +553,11 @@ function renderPixelGame(container) {
 
   function showFinal() {
     playbackMs = timeline.durationMs;
-    draw();
+    // Drop the springs so the final frame is composed exactly, rather than
+    // sprites drifting in from wherever playback happened to be.
+    suppressEntries = true;
+    Object.keys(smooth).forEach(function (pid) { delete smooth[pid]; });
+    draw(16);
     document.getElementById('pixel-ticker').textContent =
       'FINAL: ' + homeTeam.id + ' ' + session.homeScore + ' — ' + awayTeam.id + ' ' + session.awayScore;
     document.getElementById('pixel-play-pause').disabled = true;
@@ -480,7 +573,7 @@ function renderPixelGame(container) {
       else playbackMs += dt * speed;
     }
     if (playbackMs >= timeline.durationMs) { showFinal(); _rafId = null; return; }
-    draw();
+    draw(dt);
     _rafId = requestAnimationFrame(tick);
   }
 
