@@ -46,23 +46,28 @@ function drawPixelNumber(ctx, x, y, number, color) {
   }
 }
 
-// ~10 wide x 24 tall, anchored center-bottom at (x, y). frame toggles the leg
-// bob; shooting raises the arms; highlight draws the ball-handler ring.
+// ~10 wide x 24 tall, anchored center-bottom at (x, y).
+// opts: frame (0|1, leg/arm cycle — only meaningful while moving),
+// shooting (arms up), highlight (ball-handler ring), facing (-1 left,
+// 0 camera, 1 right — leans the head into the run direction), moving
+// (enables the leg cycle and arm swing; still players stand planted).
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   opts = opts || {};
   const left = Math.round(x) - 5;
   const top = Math.round(y) - 24;
+  const facing = opts.facing || 0;
 
   if (opts.highlight) {
     ctx.fillStyle = 'rgba(255, 235, 59, 0.9)';
     ctx.fillRect(left - 1, Math.round(y) - 1, 12, 2);
   }
 
-  // legs (2-frame bob)
+  // legs: 2-frame stride while moving, planted when still
   ctx.fillStyle = colors.skin;
-  const bob = opts.frame ? 1 : 0;
+  const bob = opts.moving && opts.frame ? 1 : 0;
+  const bob2 = opts.moving ? 1 - bob : 0;
   ctx.fillRect(left + 2, top + 18 + bob, 2, 6 - bob);
-  ctx.fillRect(left + 6, top + 18 + (1 - bob), 2, 6 - (1 - bob));
+  ctx.fillRect(left + 6, top + 18 + bob2, 2, 6 - bob2);
   // shorts
   ctx.fillStyle = colors.jersey;
   ctx.fillRect(left + 1, top + 15, 8, 4);
@@ -70,19 +75,22 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   ctx.fillRect(left + 1, top + 8, 8, 8);
   ctx.fillStyle = colors.trim;
   ctx.fillRect(left + 1, top + 8, 8, 1); // shoulder trim
-  // arms
+  // arms: raised when shooting, swinging opposite the legs when running
   ctx.fillStyle = colors.skin;
   if (opts.shooting) {
     ctx.fillRect(left, top + 2, 2, 7);
     ctx.fillRect(left + 8, top + 2, 2, 7);
+  } else if (opts.moving) {
+    ctx.fillRect(left, top + 9 - bob2, 2, 6);
+    ctx.fillRect(left + 8, top + 9 - bob, 2, 6);
   } else {
     ctx.fillRect(left, top + 9, 2, 6);
     ctx.fillRect(left + 8, top + 9, 2, 6);
   }
-  // head + hair
-  ctx.fillRect(left + 3, top + 2, 4, 5);
+  // head + hair, leaning 1px into the direction of travel
+  ctx.fillRect(left + 3 + facing, top + 2, 4, 5);
   ctx.fillStyle = colors.hair;
-  ctx.fillRect(left + 2, top, 6, 3);
+  ctx.fillRect(left + 2 + facing, top, 6, 3);
   // jersey number (single digit centered, two digits offset)
   const numStr = String(number == null ? '' : number);
   if (numStr.length > 0) {

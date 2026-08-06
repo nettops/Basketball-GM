@@ -505,3 +505,11 @@ table { border-collapse: collapse; width: 100%; }
 }
 .pixel-commentary-line { color: var(--text-mute); }
 .pixel-commentary-line:first-child { color: var(--text, #e8e8e8); }
+
+/* Scoreboard number pop when the score changes */
+.pixel-score-team span { display: inline-block; }
+@keyframes pixel-score-pop {
+  0% { transform: scale(1.65); color: #ffe45c; }
+  100% { transform: scale(1); }
+}
+.pixel-scoreboard .pop { animation: pixel-score-pop .35s ease-out; }

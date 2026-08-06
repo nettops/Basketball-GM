@@ -136,51 +136,142 @@ function renderPixelGame(container) {
     while (feed.children.length > 6) feed.removeChild(feed.lastChild);
   }
 
+  // Motion-quality state: per-player facing persists so standing players
+  // keep looking the way they last ran; shake/hitch/quarter-card timers
+  // drive the impact feedback.
+  const facingById = {};
+  let shakeStartMs = -Infinity;
+  let hitchMs = 0;              // freeze-frame remaining (real ms, unscaled)
+  let lastEffectKfT = -1;
+  let lastQuarterSeen = 1;
+  let quarterCard = null;       // { text, scoreLine } while a break card shows
+  let lastScoreShown = ['', ''];
+
+  function easeInOut(f) { return f * f * (3 - 2 * f); }
+  function easeOut(f) { return 1 - (1 - f) * (1 - f); }
+
+  function distToNearestHoop(pt) {
+    const L = PIXEL_STAGE.hoops.left;
+    const R = PIXEL_STAGE.hoops.right;
+    return Math.min(Math.abs(pt.x - L.x) + Math.abs(pt.y - L.y), Math.abs(pt.x - R.x) + Math.abs(pt.y - R.y));
+  }
+
+  function setScore(elId, value, side) {
+    const el = document.getElementById(elId);
+    const v = String(value);
+    if (lastScoreShown[side] === v) return;
+    lastScoreShown[side] = v;
+    el.textContent = v;
+    el.classList.remove('pop');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('pop');
+  }
+
   function draw() {
     const fr = currentFrame();
+    const fP = easeInOut(fr.f); // players accelerate and decelerate
+    const fB = easeOut(fr.f);   // loose balls zip out then settle
+
+    // one-shot effects when a new keyframe becomes current
+    if (fr.a.t !== lastEffectKfT) {
+      if (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1) {
+        excitementStartMs = playbackMs;
+        lastBigPlayKfT = fr.a.t;
+      }
+      if (fr.a.text === 'Slams it home!' || fr.a.text === 'Blocked!') shakeStartMs = playbackMs;
+      if (MAKE_LABELS.indexOf(fr.a.text) !== -1) hitchMs = Math.max(hitchMs, 120);
+      if (fr.a.quarter > lastQuarterSeen) {
+        quarterCard = {
+          text: 'END OF Q' + lastQuarterSeen,
+          scoreLine: homeTeam.id + ' ' + fr.a.score[0] + ' — ' + awayTeam.id + ' ' + fr.a.score[1]
+        };
+        lastQuarterSeen = fr.a.quarter;
+        hitchMs = Math.max(hitchMs, 1500);
+      }
+      lastEffectKfT = fr.a.t;
+    }
+
+    // impact shake: everything on the canvas jolts for ~150ms
+    let shakeX = 0, shakeY = 0;
+    if (playbackMs - shakeStartMs < 150) {
+      shakeX = Math.round(Math.sin(playbackMs / 9) * 2);
+      shakeY = Math.round(Math.cos(playbackMs / 7));
+    }
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
     ctx.drawImage(courtCanvas, 0, 0);
 
-    if (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1 && fr.a.t !== lastBigPlayKfT) {
-      lastBigPlayKfT = fr.a.t;
-      excitementStartMs = playbackMs;
-    }
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
     drawCrowd(ctx, playbackMs, excitement);
     pushCommentary(fr.a);
 
-    // players: lerp positions between keyframes; draw top-to-bottom for overlap
+    // is the current ball sequence a shot (heading to a rim) or a pass?
+    const lookAhead = kfs[Math.min(kfIndex + 2, kfs.length - 1)];
+    const shotComing = lookAhead.ball.holder === null && distToNearestHoop(lookAhead.ball) < 20;
+
+    // players: eased lerp, sorted top-to-bottom for overlap
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     ids.sort(function (i1, i2) {
-      return pixelLerp(fr.a.pos[i1][1], fr.b.pos[i1][1], fr.f) - pixelLerp(fr.a.pos[i2][1], fr.b.pos[i2][1], fr.f);
+      return pixelLerp(fr.a.pos[i1][1], fr.b.pos[i1][1], fP) - pixelLerp(fr.a.pos[i2][1], fr.b.pos[i2][1], fP);
     });
-    const walkFrame = Math.floor(playbackMs / 180) % 2;
+    const span = Math.max(1, fr.b.t - fr.a.t);
     ids.forEach(function (pid) {
-      const x = pixelLerp(fr.a.pos[pid][0], fr.b.pos[pid][0], fr.f);
-      const y = pixelLerp(fr.a.pos[pid][1], fr.b.pos[pid][1], fr.f);
+      const pa = fr.a.pos[pid];
+      const pb = fr.b.pos[pid];
+      const x = pixelLerp(pa[0], pb[0], fP);
+      const y = pixelLerp(pa[1], pb[1], fP);
+      const travel = Math.abs(pb[0] - pa[0]) + Math.abs(pb[1] - pa[1]);
+      const speed = travel / span; // px per timeline-ms
+      const moving = speed > 0.012;
+      if (pb[0] - pa[0] > 2) facingById[pid] = 1;
+      else if (pa[0] - pb[0] > 2) facingById[pid] = -1;
+      const phase = (pid.charCodeAt(0) * 131 + pid.length * 37) % 977;
+      const stride = speed > 0.05 ? 110 : 170;
       const isHolder = fr.a.ball.holder === pid;
+      const shooting = isHolder && fr.b.ball.holder === null && shotComing;
+      const jumpLift = shooting ? Math.round(Math.sin(fr.f * Math.PI) * 4) : 0;
+      // ground shadow stays planted even when the sprite lifts
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
       const p = playerById[pid];
-      drawPlayerSprite(ctx, x, y, colorsById[pid], p ? p.jerseyNumber : '', {
-        frame: walkFrame,
-        shooting: fr.b.ball.holder === null && isHolder,
-        highlight: isHolder
+      drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
+        frame: Math.floor((playbackMs + phase) / stride) % 2,
+        shooting: shooting,
+        highlight: isHolder,
+        facing: facingById[pid] || 0,
+        moving: moving
       });
     });
 
-    // ball: follows holder, otherwise lerps with a small flight arc
-    let bx, by;
+    // ball: dribbled by the holder, held high when shooting, otherwise in
+    // flight with a distance-scaled arc and its own ground shadow
+    let bx, by, groundY;
     const holder = fr.a.ball.holder;
     if (holder && fr.a.pos[holder]) {
-      const hb = fr.b.pos[holder] || fr.a.pos[holder];
-      bx = pixelLerp(fr.a.pos[holder][0], hb[0], fr.f) + 6;
-      by = pixelLerp(fr.a.pos[holder][1], hb[1], fr.f) - 10;
+      const ha = fr.a.pos[holder];
+      const hb = fr.b.pos[holder] || ha;
+      const hx = pixelLerp(ha[0], hb[0], fP);
+      const hy = pixelLerp(ha[1], hb[1], fP);
+      const holderShooting = fr.b.ball.holder === null && shotComing;
+      if (holderShooting) {
+        bx = hx;
+        by = hy - 24; // gathered overhead for the release
+      } else {
+        const holderMoving = (Math.abs(hb[0] - ha[0]) + Math.abs(hb[1] - ha[1])) / span > 0.012;
+        const bouncePeriod = holderMoving ? 95 : 140;
+        bx = hx + (facingById[holder] || 1) * 6;
+        by = hy - 1 - Math.abs(Math.sin(playbackMs / bouncePeriod)) * 10; // dribble: hand to floor
+      }
+      groundY = hy;
     } else {
-      // Arc height scales with flight distance: threes rainbow, short
-      // put-backs and dunks stay flat — depth without any extra data.
       const flightDist = Math.abs(fr.b.ball.x - fr.a.ball.x) + Math.abs(fr.b.ball.y - fr.a.ball.y);
       const arcHeight = Math.max(4, Math.min(32, flightDist * 0.3));
-      bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fr.f);
-      by = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f) - Math.sin(fr.f * Math.PI) * arcHeight;
+      bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fB);
+      by = pixelLerp(fr.a.ball.y, fr.b.ball.y, fB) - Math.sin(fB * Math.PI) * arcHeight;
+      groundY = pixelLerp(fr.a.ball.y, fr.b.ball.y, fB);
     }
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
     drawBall(ctx, bx, by);
 
     // Make flash: an expanding ring at the rim while a made-basket keyframe
@@ -205,9 +296,27 @@ function renderPixelGame(container) {
       ctx.fillStyle = '#ffffff';
       ctx.fillText(label, hp[0] - w / 2 + 2, hp[1] + 11);
     }
+    ctx.restore();
 
-    document.getElementById('pixel-score-home').textContent = fr.a.score[0];
-    document.getElementById('pixel-score-away').textContent = fr.a.score[1];
+    // quarter-break card, drawn unshaken over everything
+    if (quarterCard && hitchMs > 0) {
+      ctx.fillStyle = 'rgba(10, 12, 16, 0.72)';
+      ctx.fillRect(90, 100, PIXEL_STAGE.w - 180, 66);
+      ctx.strokeStyle = '#f4ead8';
+      ctx.strokeRect(90.5, 100.5, PIXEL_STAGE.w - 181, 65);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(quarterCard.text, PIXEL_STAGE.w / 2, 128);
+      ctx.font = '11px monospace';
+      ctx.fillText(quarterCard.scoreLine, PIXEL_STAGE.w / 2, 148);
+      ctx.textAlign = 'start';
+    } else if (quarterCard && hitchMs <= 0) {
+      quarterCard = null;
+    }
+
+    setScore('pixel-score-home', fr.a.score[0], 0);
+    setScore('pixel-score-away', fr.a.score[1], 1);
     document.getElementById('pixel-quarter').textContent = 'Q' + fr.a.quarter;
     document.getElementById('pixel-clock').textContent = fmtClock(fr.a.clock);
     if (fr.a.text) document.getElementById('pixel-ticker').textContent = fr.a.text;
@@ -225,7 +334,11 @@ function renderPixelGame(container) {
     if (lastFrameTs === null) lastFrameTs = ts;
     const dt = ts - lastFrameTs;
     lastFrameTs = ts;
-    if (!paused) playbackMs += dt * speed;
+    if (!paused) {
+      // hitchMs freezes the whole scene (make freeze-frames, quarter cards)
+      if (hitchMs > 0) hitchMs -= dt;
+      else playbackMs += dt * speed;
+    }
     if (playbackMs >= timeline.durationMs) { showFinal(); _rafId = null; return; }
     draw();
     _rafId = requestAnimationFrame(tick);
@@ -244,6 +357,8 @@ function renderPixelGame(container) {
   });
   document.getElementById('pixel-skip').addEventListener('click', function () {
     stopPixelPlayback();
+    hitchMs = 0;
+    quarterCard = null;
     showFinal();
   });
   document.getElementById('pixel-exit').addEventListener('click', function () {
