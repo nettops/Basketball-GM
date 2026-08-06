@@ -108,7 +108,7 @@ function ensureOnCourt(five, roster, boxScore, neededIds) {
 // holder-null keyframe at the moment the ball leaves the hands, a pass or
 // shot never flies — it teleports to its destination at the next keyframe.
 const BEAT = {
-  transition: 700, formation: 650, pass: 340, windup: 300, drive: 500,
+  transition: 700, formation: 650, fastBreak: 420, pass: 340, windup: 300, drive: 500,
   release: 60, flight3: 850, flightMid: 650, flightIn: 420,
   resolve: 600, bounce: 350, ft: 700
 };
@@ -140,8 +140,28 @@ function cutPositions(pos, excludeId, seed) {
   return moved;
 }
 
-// Finishing flavor for made inside shots, picked deterministically.
-const INSIDE_FINISHES = ['Slams it home!', 'Lays it in!', 'Finishes inside!'];
+// Finishing flavor for made inside shots. Explosive leapers dunk it, ground
+// finishers lay it in — same information the sim already has (vertical,
+// strength, height), just surfaced on screen.
+const DUNK_FINISHES = ['Slams it home!', 'Throws it down!', 'Rises up and JAMS it!'];
+const LAYUP_FINISHES = ['Lays it in!', 'Finishes inside!', 'Kisses it off the glass'];
+
+// The threshold is calibrated against the ACTUAL player pool, not a 0-100
+// scale: everyone in this league is elite, so an absolute cutoff picked off
+// raw rating numbers marked ~95% of them as dunkers (30 dunks to 1 layup in
+// a test game). 82 sits near the pool's 65th percentile, so roughly the top
+// third of finishers throw it down and the rest lay it in.
+const DUNK_LIFT_THRESHOLD = 82;
+
+function dunkLift(player) {
+  const a = player.attributes;
+  return (a.vertical || 50) * 0.6 + (a.strength || 50) * 0.25 + ((player.heightIn || 78) - 72) * 2;
+}
+
+function isDunker(player) {
+  if (!player || !player.attributes) return false;
+  return dunkLift(player) >= DUNK_LIFT_THRESHOLD;
+}
 
 // Broadcast commentary templates. Picked deterministically by possession
 // seed — variety without touching any rng. {s}=shooter, {h}=handler,
@@ -188,6 +208,12 @@ const COMMENT = {
     '{d} jumps the passing lane for the steal',
     'Careless from {h} — {d} takes it away',
     '{d} with the takeaway, going the other way'
+  ],
+  fastBreak: [
+    '{h} pushes it in transition — numbers advantage!',
+    'Out on the break, {h} leading it',
+    '{h} is off to the races',
+    'The {team} get out and run'
   ],
   turnover: [
     '{h} coughs it up',
@@ -287,7 +313,8 @@ function buildTimeline(session) {
   const teamNames = { home: session.homeName || 'home side', away: session.awayName || 'road side' };
   const abbrs = { home: session.homeAbbr || 'HOME', away: session.awayAbbr || 'AWAY' };
   const nameById = {};
-  session.homeRoster.concat(session.awayRoster).forEach(function (p) { nameById[p.id] = p.name; });
+  const playerById = {};
+  session.homeRoster.concat(session.awayRoster).forEach(function (p) { nameById[p.id] = p.name; playerById[p.id] = p; });
   function ln(pid) {
     return nameById[pid] ? nameById[pid].split(' ').pop() : 'the big man';
   }
@@ -298,7 +325,17 @@ function buildTimeline(session) {
   let current = null;
   events.forEach(function (ev) {
     if (ev.type === 'possession') {
-      current = { team: ev.team, quarter: ev.quarter, handlerId: ev.playerId, plays: [] };
+      // A possession that begins right after the other team lost the ball
+      // live — a steal or a defensive board — is a fast break: the defense
+      // has NOT had time to set, so the transition beat plays differently.
+      const prev = possessions[possessions.length - 1];
+      let fastBreak = false;
+      if (prev && prev.team !== ev.team && prev.plays.length > 0) {
+        const lastPlay = prev.plays[prev.plays.length - 1];
+        fastBreak = (lastPlay.type === 'turnover' && !!lastPlay.defenderId) ||
+                    (lastPlay.type === 'rebound' && !lastPlay.offensive);
+      }
+      current = { team: ev.team, quarter: ev.quarter, handlerId: ev.playerId, plays: [], fastBreak: fastBreak };
       possessions.push(current);
     } else if (ev.type === 'tiebreak') {
       possessions.push({ team: ev.team, quarter: 4, handlerId: ev.playerId, plays: [ev], tiebreak: true });
@@ -334,7 +371,10 @@ function buildTimeline(session) {
   // toward its own half, about to flow in. This replaces the old single
   // formation keyframe that slid both entire teams across the floor in one
   // synchronized lerp.
-  function transitionFor(offenseTeam) {
+  // On a fast break the roles invert: the OFFENSE is already streaking toward
+  // the rim while the DEFENSE is the group scrambling back from the other
+  // end, which is what makes a break read as a break rather than a walk-up.
+  function transitionFor(offenseTeam, fastBreak) {
     const pos = {};
     const hoop = attackingHoop(offenseTeam);
     const dir = offenseTeam === 'home' ? -1 : 1;
@@ -342,10 +382,18 @@ function buildTimeline(session) {
       const slots = assignSlots(five[side]);
       POSITION_ORDER.forEach(function (posName) {
         const p = slots[posName];
+        const spot = OFFENSE_SPOTS[posName];
         if (side === offenseTeam) {
-          const spot = OFFENSE_SPOTS[posName];
-          const trail = posName === 'PG' ? 140 : 95; // ball handler brings it up last
+          // half-court: strung out behind the ball. break: already ahead of it.
+          const trail = fastBreak
+            ? (posName === 'PG' ? 55 : 20)
+            : (posName === 'PG' ? 140 : 95);
           pos[p.id] = clampToCourt(hoop.x + dir * (spot.dx + trail), hoop.y + spot.dy);
+        } else if (fastBreak) {
+          // scrambling back: still well behind their spots, and only the two
+          // quickest are close enough to contest
+          const behind = (posName === 'PG' || posName === 'SG') ? 40 : 105;
+          pos[p.id] = clampToCourt(hoop.x + dir * (spot.dx + behind), hoop.y + spot.dy * 0.8);
         } else {
           pos[p.id] = formationSpot(side, posName, offenseTeam);
         }
@@ -442,7 +490,7 @@ function buildTimeline(session) {
 
     const pos = positionsFor(poss.team);
     const handlerPos = pos[poss.handlerId] || formationSpot(poss.team, 'PG', poss.team);
-    const transPos = transitionFor(poss.team);
+    const transPos = transitionFor(poss.team, poss.fastBreak);
     const transHandler = transPos[poss.handlerId] || handlerPos;
 
     // Broadcast color on the way up the floor: usually nothing (dead air is
@@ -457,11 +505,16 @@ function buildTimeline(session) {
       transComment = fillT(COMMENT.bringUp, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
     }
 
-    // Beat 1: transition — defense gets back and sets while the offense is
-    // still strung out in the backcourt, handler dribbling it up.
-    push(BEAT.transition, transPos, { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '', transComment);
+    // Beat 1: transition. Half-court: the defense is already set and the
+    // offense walks into it. Fast break: the offense is gone and the defense
+    // is chasing — and it happens quicker.
+    if (poss.fastBreak) {
+      transComment = transComment || fillT(COMMENT.fastBreak, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
+    }
+    push(poss.fastBreak ? BEAT.fastBreak : BEAT.transition, transPos,
+      { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '', transComment);
     // Beat 2: the offense flows into its set against the waiting defense.
-    push(BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
+    push(poss.fastBreak ? BEAT.fastBreak : BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
 
     const hoop = attackingHoop(poss.team);
 
@@ -549,8 +602,12 @@ function buildTimeline(session) {
           score[ev.team === 'home' ? 0 : 1] += ev.points;
           addPoints(ev.playerId, ev.points);
         }
+        const shooterPlayer = playerById[ev.playerId];
+        const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
         const madeLabel = ev.zone === 'inside'
-          ? INSIDE_FINISHES[(pi + ei) % INSIDE_FINISHES.length]
+          ? (dunking
+              ? DUNK_FINISHES[(pi + ei) % DUNK_FINISHES.length]
+              : LAYUP_FINISHES[(pi + ei) % LAYUP_FINISHES.length])
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
         // release: ball leaves the hands...
         push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, poss.quarter, clock, '');
@@ -566,7 +623,7 @@ function buildTimeline(session) {
         }
         push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           ev.made ? madeLabel : '', shotComment,
-          ev.made ? (ev.zone === 'inside' ? 'dunk' : 'swish') : 'clang');
+          ev.made ? (dunking ? 'dunk' : 'swish') : 'clang');
         curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {

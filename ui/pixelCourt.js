@@ -71,6 +71,32 @@ function buildCourtCanvas(homeTeam, awayTeam, logoImg) {
     ctx.fillRect(hoop.x - 1, hoop.y - 1, 3, 3);
   });
 
+  // Benches and coaches along the baseline strip below the court. These are
+  // static scenery drawn once into the court canvas (unlike the crowd, which
+  // animates), so they cost nothing per frame.
+  const benchY = c.y + c.h + 8;
+  ctx.fillStyle = '#2a2f38';
+  ctx.fillRect(c.x, benchY - 4, c.w, 14);
+  [[homeTeam, c.x + 24, 1], [awayTeam, c.x + c.w - 96, -1]].forEach(function (side) {
+    const team = side[0];
+    const startX = side[1];
+    for (let i = 0; i < 6; i++) {
+      const bx = startX + i * 12;
+      ctx.fillStyle = '#e2c4ae';            // head
+      ctx.fillRect(bx + 1, benchY, 4, 4);
+      ctx.fillStyle = team.colors.primary;   // warmups
+      ctx.fillRect(bx, benchY + 4, 6, 6);
+      ctx.fillStyle = team.colors.secondary;
+      ctx.fillRect(bx, benchY + 4, 6, 1);
+    }
+    // coach in a dark suit at the end of the bench
+    const cx2 = startX + (side[2] === 1 ? -14 : 78);
+    ctx.fillStyle = '#e2c4ae';
+    ctx.fillRect(cx2 + 1, benchY - 2, 4, 4);
+    ctx.fillStyle = '#20242c';
+    ctx.fillRect(cx2, benchY + 2, 6, 9);
+  });
+
   // center-court logo: existing team logo PNG, pixel-scaled, subtle
   if (logoImg && logoImg.complete && logoImg.naturalWidth > 0) {
     ctx.imageSmoothingEnabled = false;

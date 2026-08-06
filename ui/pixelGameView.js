@@ -123,7 +123,13 @@ const PIXEL_SPEEDS = [1, 2, 4, 8];
 const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it in!', 'Finishes inside!'];
 
 // The subset of plays the crowd goes wild for.
-const BIG_PLAY_LABELS = ['Three-pointer!', 'Slams it home!', 'Blocked!', 'Steal!', 'Late free throw decides it!'];
+const BIG_PLAY_LABELS = [
+  'Three-pointer!', 'Blocked!', 'Steal!', 'Late free throw decides it!',
+  'Slams it home!', 'Throws it down!', 'Rises up and JAMS it!'
+];
+
+// Referee sprite: monochrome stripes, no jersey number.
+const REF_COLORS = { skin: '#d9b38c', hair: '#2b2b2b', jersey: '#e8e8e8', trim: '#222222' };
 
 // Recently watched games, newest first, so a game can be replayed from the
 // view's own controls. Memory-only and capped: event logs are big and
@@ -351,6 +357,14 @@ function renderPixelGame(container) {
   let lastBallActor = null;     // last player to hold the ball
   let lastBouncePhase = 1;      // for detecting dribble floor contact
   let lastSnapRendered = null;  // avoids rebuilding the info strip every frame
+  let refX = PIXEL_STAGE.w / 2;
+  let refY = PIXEL_STAGE.court.y + PIXEL_STAGE.court.h - 12;
+
+  // Respect the OS "reduce motion" setting: the impact effects (shake,
+  // freeze-frames, net splash, crowd jumping, rim flex) are exactly the kind
+  // of motion that setting exists to suppress. Play still runs; only the
+  // punctuation is dropped.
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let rimShakeStart = -Infinity; // set when a shot goes through
   let rimShakeSide = 'right';
 
@@ -390,23 +404,31 @@ function renderPixelGame(container) {
           ? (teamById[actor] !== lastOffenseTeam ? 'home' : 'away') === 'home'
           : lastOffenseTeam === 'home';
       }
-      if (fr.a.text === 'Slams it home!' || fr.a.text === 'Blocked!') shakeStartMs = playbackMs;
+      if (!reduceMotion && (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1 && fr.a.text !== 'Steal!' && fr.a.text !== 'Three-pointer!')) {
+        shakeStartMs = playbackMs;
+      }
       if (MAKE_LABELS.indexOf(fr.a.text) !== -1) {
-        hitchMs = Math.max(hitchMs, 120);
-        spawnNetSplash(fr.a.ball.x, fr.a.ball.y);
-        rimShakeStart = playbackMs;
-        rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
+        if (!reduceMotion) {
+          hitchMs = Math.max(hitchMs, 120);
+          spawnNetSplash(fr.a.ball.x, fr.a.ball.y);
+          rimShakeStart = playbackMs;
+          rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
+        }
       }
       // Event audio. Above 4x the beats blur together into a machine-gun
       // rattle, so the one-shots drop out and only the crowd bed remains.
       if (fr.a.sfx && speed <= 4) playPixelSfx(fr.a.sfx);
       if (fr.a.quarter > lastQuarterSeen) {
-        quarterCard = {
-          text: 'END OF Q' + lastQuarterSeen,
-          scoreLine: homeTeam.id + ' ' + fr.a.score[0] + ' — ' + awayTeam.id + ' ' + fr.a.score[1]
-        };
+        // The quarter always advances and the horn always sounds; only the
+        // card and the pause it forces are motion effects.
+        if (!reduceMotion) {
+          quarterCard = {
+            text: 'END OF Q' + lastQuarterSeen,
+            scoreLine: homeTeam.id + ' ' + fr.a.score[0] + ' — ' + awayTeam.id + ' ' + fr.a.score[1]
+          };
+          hitchMs = Math.max(hitchMs, 1500);
+        }
         lastQuarterSeen = fr.a.quarter;
-        hitchMs = Math.max(hitchMs, 1500);
         playPixelSfx('buzzer');
       }
       lastEffectKfT = fr.a.t;
@@ -423,7 +445,7 @@ function renderPixelGame(container) {
     ctx.drawImage(courtCanvas, 0, 0);
 
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
-    drawCrowd(ctx, playbackMs, excitement, excitementIsHome ? 1 : 0);
+    drawCrowd(ctx, playbackMs, reduceMotion ? 0 : excitement, excitementIsHome ? 1 : 0);
     pixelAudioExcitement(excitement * (excitementIsHome ? 1 : 0.25));
     pushCommentary(fr.a);
 
@@ -607,6 +629,20 @@ function renderPixelGame(container) {
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
     drawBall(ctx, bx, by, holder ? undefined : ballSpin);
+
+    // Referee: trails the play along the baseline side, always a step behind
+    // the ball, which is both what officials do and a cheap way to keep the
+    // edge of the frame alive.
+    refX += ((bx - 26) - refX) * Math.min(1, dtTimeline * 3);
+    refY += ((PIXEL_STAGE.court.y + PIXEL_STAGE.court.h - 12) - refY) * Math.min(1, dtTimeline * 3);
+    const refClamped = Math.max(PIXEL_STAGE.court.x + 4, Math.min(PIXEL_STAGE.court.x + PIXEL_STAGE.court.w - 4, refX));
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.fillRect(Math.round(refClamped) - 3, Math.round(refY) - 1, 6, 2);
+    drawPlayerSprite(ctx, refClamped, refY, REF_COLORS, '', {
+      frame: Math.floor(playbackMs / 200) % 2,
+      moving: Math.abs((bx - 26) - refX) > 3,
+      facing: 0
+    });
 
     // Net splash: pixel flecks falling out of the net after a make.
     for (let i = particles.length - 1; i >= 0; i--) {
