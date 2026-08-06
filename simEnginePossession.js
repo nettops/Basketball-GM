@@ -7,7 +7,7 @@
 // than the box-score engine by design — that's the point of offering it as
 // an alternative, not a bug.
 var _POSS_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), simEngine: require('./simEngine.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js') }
+  ? { league: require('./league.js'), simEngine: require('./simEngine.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js'), composite: require('./compositeRatings.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
       simEngine: { registerEngine: registerEngine },
@@ -15,7 +15,8 @@ var _POSS_DATA = (typeof require !== 'undefined')
       box: {
         distributeInt: distributeInt, scoringWeight: scoringWeight, reboundWeight: reboundWeight,
         assistWeight: assistWeight, stealWeight: stealWeight, blockWeight: blockWeight, minutesWeight: minutesWeight
-      }
+      },
+      composite: { computeComposite: computeComposite, computeTeamSynergy: computeTeamSynergy }
     };
 
 // Real NBA teams average roughly 100 possessions each per game; this keeps
@@ -40,14 +41,57 @@ function weightedPick(players, weightFn, rng) {
 }
 
 function ballHandlingWeight(player) {
-  const a = player.attributes;
-  return Math.max(1, (a.ballHandling + a.passing) / 2 + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
+  return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
 }
 
-function perimDefenseWeight(player) { return Math.max(1, player.attributes.perimeterDefense); }
+function perimDefenseWeight(player) { return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'defensePerimeter')); }
+
+function reboundCompositeWeight(player) {
+  return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'rebounding') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
+}
 
 function initBoxLine() {
-  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0 };
+  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0 };
+}
+
+// In-game stamina, separate from status.fatigue (fatigue.js's cross-game,
+// season-long accumulation used by the box-score engine's team rating).
+// This resets every game and only exists for the length of one
+// simulatePossessionGame call — it's what makes a heavily-used player look a
+// little worse in the fourth quarter of THIS game, not a lingering effect.
+// Floor of 0.85x (rather than letting effectiveness collapse toward zero)
+// mirrors real players never truly bottoming out — they're gassed, not
+// incapacitated.
+function energyMultiplier(energy) { return 0.85 + 0.15 * energy; }
+
+// Higher workEthic (this game's proxy for conditioning — there's no
+// dedicated stamina/endurance rating in ATTRIBUTE_KEYS) drains slower.
+function drainEnergy(box, player) {
+  const drainRate = 0.02 - (player.attributes.workEthic - 50) / 5000;
+  box.energy = Math.max(0.4, box.energy - drainRate);
+}
+
+// NBA foul-out is 6; a player deep in foul trouble plays far more
+// cautiously on defense well before actually fouling out, so the penalty
+// ramps up starting at 4.
+function foulTroubleMultiplier(fouls) {
+  if (fouls >= 6) return 0.3;
+  if (fouls >= 4) return 0.75;
+  return 1;
+}
+
+// Wraps a base selection-weight function so it also accounts for this
+// game's accumulated energy drain and foul trouble — used for every
+// weightedPick call in simulatePossession so a gassed or foul-plagued
+// player gradually stops being picked as the primary option, which is this
+// engine's stand-in for a coach going to a fresher body (see the module
+// comment on why there's no explicit on-court/bench rotation).
+function energyAware(baseWeightFn, box, applyFoulTrouble) {
+  return function (p) {
+    const line = box[p.id];
+    const mult = energyMultiplier(line.energy) * (applyFoulTrouble ? foulTroubleMultiplier(line.fouls) : 1);
+    return Math.max(1, baseWeightFn(p) * mult);
+  };
 }
 
 // Shot zone from the shooter's hidden shot-mix tendencies (traits.js's
@@ -66,44 +110,93 @@ function pickShotZone(shooter, rng) {
   return 'inside';
 }
 
-function shotMakeProbability(shooter, defender, zone) {
-  const a = shooter.attributes;
-  let base, shootAttr, defAttr;
-  if (zone === 'three') { base = 0.36; shootAttr = a.threePoint; defAttr = defender.attributes.perimeterDefense; }
-  else if (zone === 'mid') { base = 0.42; shootAttr = a.midRange; defAttr = defender.attributes.perimeterDefense; }
-  else { base = 0.56; shootAttr = (a.insideScoring + a.postScoring) / 2; defAttr = defender.attributes.interiorDefense; }
-  const skillAdj = (shootAttr - 50) / 250;
-  const defAdj = (defAttr - 50) / 350;
-  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj));
+// offenseSynergy/defenseSynergy are the shooting team's and defending team's
+// per-game synergy multipliers (computeTeamSynergy, computed once per game —
+// see simulatePossessionGame) rather than anything derived from this one
+// shooter/defender pairing: a team full of shooters raises everyone's look
+// quality (floor spacing), and a team full of good defenders suppresses it,
+// independent of who specifically is on the floor for this possession.
+// shooterEnergyMult/defenderEnergyMult (from energyMultiplier, 0.85-1.0)
+// scale down how much each side's skill edge actually shows up on this
+// possession — a tired shooter's touch suffers, a tired defender's
+// contest is a beat late — without erasing the underlying rating gap.
+function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
+  let base, shootComposite, defComposite;
+  if (zone === 'three') { base = 0.36; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingThree'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
+  else if (zone === 'mid') { base = 0.42; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingMid'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
+  else { base = 0.56; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingInside'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defenseInterior'); }
+  const skillAdj = (shootComposite - 50) / 250 * (shooterEnergyMult !== undefined ? shooterEnergyMult : 1);
+  const defAdj = (defComposite - 50) / 350 * (defenderEnergyMult !== undefined ? defenderEnergyMult : 1);
+  const synergyAdj = (offenseSynergy || 1) - (defenseSynergy || 1);
+  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synergyAdj));
+}
+
+// Appends a play-by-play line if `log` was supplied (simulatePossessionGame
+// always supplies one — see the module comment there on why play-by-play is
+// always generated and pruned at save time instead of gated behind a flag).
+function logPlay(log, text) {
+  if (log) log.push(text);
+}
+
+// Structured-event twin of logPlay for the pixel game view (see
+// docs/superpowers/specs/2026-08-06-pixel-game-view-design.md). eventCtx is
+// { events, team, quarter } or null; pushing events never touches the rng,
+// so capture-on and capture-off runs are bit-identical
+// (scripts/validate-pixel-events.js proves this).
+function pushEvent(eventCtx, ev) {
+  if (!eventCtx) return;
+  ev.team = eventCtx.team;
+  ev.quarter = eventCtx.quarter;
+  eventCtx.events.push(ev);
 }
 
 // Simulates one team's single possession against the given defense, mutating
 // both teams' box-line accumulators in place. Returns the points scored.
-function simulatePossession(offense, offenseBox, defense, defenseBox, rng) {
-  const handler = weightedPick(offense, ballHandlingWeight, rng);
-  const onBallDefender = weightedPick(defense, perimDefenseWeight, rng);
+// `synergy` is { offense: {offense,defense,rebound}, defense: {...} } — the
+// two teams' per-game synergy multipliers computed once by
+// simulatePossessionGame (see computeTeamSynergy), not recomputed here.
+// `log`, if supplied, gets a human-readable line appended for whatever
+// happened this possession.
+function simulatePossession(offense, offenseBox, defense, defenseBox, rng, synergy, log, eventCtx) {
+  const offSyn = synergy ? synergy.offense : { offense: 1, defense: 1, rebound: 1 };
+  const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
+
+  const handler = weightedPick(offense, energyAware(ballHandlingWeight, offenseBox, false), rng);
+  const onBallDefender = weightedPick(defense, energyAware(perimDefenseWeight, defenseBox, true), rng);
+  drainEnergy(offenseBox[handler.id], handler);
+  drainEnergy(defenseBox[onBallDefender.id], onBallDefender);
+  pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
 
   const turnoverChance = Math.max(0.04, Math.min(0.22,
-    0.11 + (onBallDefender.attributes.steal - handler.attributes.ballHandling) / 400));
+    0.11 + (onBallDefender.attributes.steal - handler.attributes.ballHandling) / 400 + (defSyn.defense - offSyn.offense) * 0.3));
   if (rng() < turnoverChance) {
-    if (rng() < 0.5) defenseBox[onBallDefender.id].steals += 1;
+    const stolen = rng() < 0.5;
+    if (stolen) defenseBox[onBallDefender.id].steals += 1;
+    logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''));
+    pushEvent(eventCtx, { type: 'turnover', playerId: handler.id, defenderId: stolen ? onBallDefender.id : null });
     return 0;
   }
 
-  const shooter = weightedPick(offense, _POSS_DATA.box.scoringWeight, rng);
+  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng);
   const zone = pickShotZone(shooter, rng);
-  const defenderAttr = zone === 'inside' ? 'interiorDefense' : 'perimeterDefense';
-  const shotDefender = weightedPick(defense, function (p) { return Math.max(1, p.attributes[defenderAttr]); }, rng);
+  const defComposite = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
+  const shotDefender = weightedPick(defense, energyAware(function (p) { return _POSS_DATA.composite.computeComposite(p, defComposite); }, defenseBox, true), rng);
+  drainEnergy(offenseBox[shooter.id], shooter);
+  drainEnergy(defenseBox[shotDefender.id], shotDefender);
+  const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
 
   const blockChance = zone === 'three' ? 0.01 : Math.max(0, (shotDefender.attributes.block - 50) / 900);
   if (rng() < blockChance) {
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
+    logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name);
+    pushEvent(eventCtx, { type: 'block', playerId: shooter.id, defenderId: shotDefender.id, zone: zone });
     return 0;
   }
 
-  const makeProb = shotMakeProbability(shooter, shotDefender, zone);
+  const makeProb = shotMakeProbability(shooter, shotDefender, zone, offSyn.offense, defSyn.defense,
+    energyMultiplier(offenseBox[shooter.id].energy), energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls));
   const made = rng() < makeProb;
   const shotValue = zone === 'three' ? 3 : 2;
   offenseBox[shooter.id].fga += 1;
@@ -115,25 +208,46 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng) {
     if (zone === 'three') offenseBox[shooter.id].tpm += 1;
     offenseBox[shooter.id].points += shotValue;
     points += shotValue;
+    let assistLine = '';
+    let assistPlayerId = null;
     if (rng() < 0.6) {
-      const passer = weightedPick(offense.filter(function (p) { return p.id !== shooter.id; }), ballHandlingWeight, rng);
-      if (passer) offenseBox[passer.id].assists += 1;
+      const passer = weightedPick(offense.filter(function (p) { return p.id !== shooter.id; }), energyAware(ballHandlingWeight, offenseBox, false), rng);
+      if (passer) {
+        offenseBox[passer.id].assists += 1;
+        assistLine = ' (assist: ' + passer.name + ')';
+        assistPlayerId = passer.id;
+      }
     }
+    logPlay(log, shooter.name + ' makes ' + zoneLabel + assistLine);
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId });
   } else {
-    const offReboundChance = 0.25;
+    logPlay(log, shooter.name + ' misses ' + zoneLabel);
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null });
+    const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
-      const rebounder = weightedPick(offense, _POSS_DATA.box.reboundWeight, rng);
+      const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng);
       offenseBox[rebounder.id].rebounds += 1;
+      logPlay(log, rebounder.name + ' grabs the offensive rebound');
+      pushEvent(eventCtx, { type: 'rebound', playerId: rebounder.id, offensive: true });
     } else {
-      const rebounder = weightedPick(defense, _POSS_DATA.box.reboundWeight, rng);
+      const rebounder = weightedPick(defense, energyAware(reboundCompositeWeight, defenseBox, false), rng);
       defenseBox[rebounder.id].rebounds += 1;
+      logPlay(log, rebounder.name + ' grabs the defensive rebound');
+      // A defensive rebounder is on the OTHER side from the possession's
+      // offense, and pushEvent stamps ev.team from the context — so this one
+      // event goes through a side-flipped context.
+      pushEvent(eventCtx && { events: eventCtx.events, team: eventCtx.team === 'home' ? 'away' : 'home', quarter: eventCtx.quarter },
+        { type: 'rebound', playerId: rebounder.id, offensive: false });
     }
   }
 
   // Shooting foul: a flat chance of 2 bonus free throws on top of the field
   // goal attempt above (and-1s and non-shooting fouls folded into the same
   // rough rate — this is a pace-of-play approximation, not a foul model).
+  // Charged to the shot defender, feeding foulTroubleMultiplier above for
+  // the rest of the game.
   if (rng() < 0.11) {
+    defenseBox[shotDefender.id].fouls += 1;
     const ftAttempts = 2;
     const ftPct = Math.max(0.55, Math.min(0.95, shooter.attributes.freeThrow / 105));
     let made2 = 0;
@@ -142,6 +256,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng) {
     offenseBox[shooter.id].ftm += made2;
     offenseBox[shooter.id].points += made2;
     points += made2;
+    logPlay(log, 'Foul on ' + shotDefender.name + ' — ' + shooter.name + ' makes ' + made2 + ' of ' + ftAttempts + ' free throws');
+    pushEvent(eventCtx, { type: 'foul-ft', playerId: shooter.id, defenderId: shotDefender.id, made: made2, attempts: ftAttempts, points: made2 });
   }
 
   return points;
@@ -154,39 +270,71 @@ function simulateTeamMinutes(roster) {
   return byId;
 }
 
-function simulateGame(homeTeamId, awayTeamId, rng) {
+// Named distinctly from simEngineBoxScore.js's own simulateGame — see that
+// file's comment on this same function name for why. Play-by-play is always
+// generated (the string-building cost is negligible next to the possession
+// math that already runs regardless) rather than gated behind a flag —
+// storage is what's expensive, and that's pruned at save time the same way
+// save.js already prunes box scores down to just the user's own games.
+function simulatePossessionGame(homeTeamId, awayTeamId, rng, options) {
   const homeRoster = eligibleRoster(homeTeamId);
   const awayRoster = eligibleRoster(awayTeamId);
 
+  // teamId stamps which side each line belongs to — see simEngineBoxScore.js's
+  // comment for why the player's current teamId isn't good enough.
   const homeBox = {};
-  homeRoster.forEach(function (p) { homeBox[p.id] = initBoxLine(); });
+  homeRoster.forEach(function (p) { homeBox[p.id] = Object.assign(initBoxLine(), { teamId: homeTeamId }); });
   const awayBox = {};
-  awayRoster.forEach(function (p) { awayBox[p.id] = initBoxLine(); });
+  awayRoster.forEach(function (p) { awayBox[p.id] = Object.assign(initBoxLine(), { teamId: awayTeamId }); });
 
   const homeMinutes = simulateTeamMinutes(homeRoster);
   const awayMinutes = simulateTeamMinutes(awayRoster);
   homeRoster.forEach(function (p) { homeBox[p.id].minutes = homeMinutes[p.id]; });
   awayRoster.forEach(function (p) { awayBox[p.id].minutes = awayMinutes[p.id]; });
 
+  // Synergy depends only on roster composition, not anything that changes
+  // possession-to-possession, so it's computed once per game rather than
+  // once per possession.
+  const homeSynergy = _POSS_DATA.composite.computeTeamSynergy(homeRoster);
+  const awaySynergy = _POSS_DATA.composite.computeTeamSynergy(awayRoster);
+
+  const playByPlay = [];
+  const POSSESSIONS_PER_QUARTER = Math.ceil(POSSESSIONS_PER_TEAM / 4);
+  // Structured events for the pixel game view — only collected when the
+  // caller asks (Watch Next Game passes { events: [] }); a normal season sim
+  // never pays the allocation cost.
+  const captureEvents = options && options.events ? options.events : null;
+
   let homeScore = 0;
   let awayScore = 0;
   for (let i = 0; i < POSSESSIONS_PER_TEAM; i++) {
-    homeScore += simulatePossession(homeRoster, homeBox, awayRoster, awayBox, rng);
-    awayScore += simulatePossession(awayRoster, awayBox, homeRoster, homeBox, rng);
+    const quarter = Math.floor(i / POSSESSIONS_PER_QUARTER) + 1;
+    if (i % POSSESSIONS_PER_QUARTER === 0) {
+      playByPlay.push('--- Q' + quarter + ' ---');
+    }
+    const homeCtx = captureEvents ? { events: captureEvents, team: 'home', quarter: quarter } : null;
+    const awayCtx = captureEvents ? { events: captureEvents, team: 'away', quarter: quarter } : null;
+    homeScore += simulatePossession(homeRoster, homeBox, awayRoster, awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
+    awayScore += simulatePossession(awayRoster, awayBox, homeRoster, homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
   }
 
   if (homeScore === awayScore) {
     // NBA games can't end in a tie — nudge whichever team had more makes.
     const homeMakes = Object.keys(homeBox).reduce(function (s, id) { return s + homeBox[id].fgm; }, 0);
     const awayMakes = Object.keys(awayBox).reduce(function (s, id) { return s + awayBox[id].fgm; }, 0);
-    if (homeMakes >= awayMakes) { homeBox[homeRoster[0].id].points += 1; homeScore += 1; }
-    else { awayBox[awayRoster[0].id].points += 1; awayScore += 1; }
+    if (homeMakes >= awayMakes) {
+      homeBox[homeRoster[0].id].points += 1; homeScore += 1;
+      if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'home', quarter: 4, playerId: homeRoster[0].id, points: 1 });
+    } else {
+      awayBox[awayRoster[0].id].points += 1; awayScore += 1;
+      if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'away', quarter: 4, playerId: awayRoster[0].id, points: 1 });
+    }
   }
 
-  return { homeScore: homeScore, awayScore: awayScore, boxScore: Object.assign({}, homeBox, awayBox) };
+  return { homeScore: homeScore, awayScore: awayScore, boxScore: Object.assign({}, homeBox, awayBox), playByPlay: playByPlay };
 }
 
-_POSS_DATA.simEngine.registerEngine('possession', { simulateGame: simulateGame });
+_POSS_DATA.simEngine.registerEngine('possession', { simulateGame: simulatePossessionGame });
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -195,6 +343,6 @@ if (typeof module !== 'undefined' && module.exports) {
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,
     simulatePossession: simulatePossession,
-    simulateGame: simulateGame
+    simulateGame: simulatePossessionGame
   };
 }
