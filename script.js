@@ -1,6 +1,12 @@
 const GameState = {
   userTeamId: null,
   currentView: 'dashboard',
+  // Set by clicking a team in Standings/Power Rankings to browse their
+  // roster; null means "show my own team". Deliberately not persisted in
+  // save.js (same as profilePlayerId) — it's per-session navigation state,
+  // not save data. Cleared whenever the Roster nav item itself is clicked
+  // (ui/nav.js), so the sidebar link always means "my roster".
+  inspectTeamId: null,
   season: null,
   playoffBracket: null,
   playMode: 'gm', // 'gm' | 'commissioner' | 'spectator'
@@ -13,6 +19,12 @@ const GameState = {
   playerCareerController: null,
   narrativeSystem: null,
   controlledPlayerId: null,
+  // Explicit, opt-in cheat/debug toolkit (godMode.js) — `enabled` gates the
+  // UI panel itself, `autoWinEnabled` is the one flag with an always-on
+  // background effect (checked from league.js/playoffs.js every game
+  // simulated). Persisted like automation flags below, so a save remembers
+  // it was on.
+  godMode: { enabled: false, autoWinEnabled: false },
   settings: {
     simEngine: 'boxscore', simSpeed: 'normal',
     pauseOn: { madePlayoffs: false, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: false },
@@ -62,6 +74,8 @@ function initSeason() {
 
   ensureHiddenPlayerData(PLAYERS_2026);
   ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
+  ensurePlayerFace(PLAYERS_2026);
+  ensurePlayerFace(DRAFT_PROSPECTS_2026);
   ensureCareerData(PLAYERS_2026);
   ensureAllTeamsHaveCoaches(GameState.rng);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
@@ -164,9 +178,25 @@ function handleDayComplete(dayIndex, todaysGames, newInjuries) {
 
 function switchPlayMode(newMode, teamId) {
   if (newMode === 'spectator') {
+    // Spectator forces everything automatic, but the user's own toggles are
+    // stashed first — previously they were overwritten with `true` and never
+    // restored, so switching back to GM left auto free agency / auto draft /
+    // auto trade permanently on with no way to tell that had happened.
+    if (GameState.playMode !== 'spectator') {
+      GameState.automationBeforeSpectator = Object.assign({}, GameState.automation);
+    }
     Object.keys(GameState.automation).forEach(function (k) { GameState.automation[k] = true; });
-  } else if (!GameState.userTeamId && teamId) {
-    GameState.userTeamId = teamId;
+  } else {
+    if (!GameState.userTeamId && teamId) {
+      GameState.userTeamId = teamId;
+    }
+    if (GameState.playMode === 'spectator') {
+      const restored = GameState.automationBeforeSpectator;
+      Object.keys(GameState.automation).forEach(function (k) {
+        GameState.automation[k] = restored ? !!restored[k] : false;
+      });
+      GameState.automationBeforeSpectator = null;
+    }
   }
   GameState.playMode = newMode;
   renderView(GameState.currentView);
@@ -190,7 +220,9 @@ function spectateLeague() {
 // falls back to the placeholder view.
 const BUILT_VIEWS = {
   dashboard: renderDashboard,
-  roster: renderRoster,
+  roster: function (container) {
+    renderRoster(container, GameState.inspectTeamId || GameState.userTeamId);
+  },
   standings: renderStandings,
   powerRankings: renderPowerRankings,
   schedule: renderSchedule,
@@ -212,6 +244,7 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
+  seasonSummary: renderSeasonSummary,
   frivolities: renderFrivolities,
   playerProfile: renderPlayerProfile,
   careerLedger: renderCareerLedger,
@@ -223,7 +256,9 @@ const BUILT_VIEWS = {
   playerDashboard: function (container) {
     renderPlayerDashboard(container, GameState.controlledPlayerId);
   },
-  legacy: renderLegacyView
+  legacy: renderLegacyView,
+  godMode: renderGodMode,
+  pixelGame: renderPixelGame
 };
 
 function isRegularSeasonAndPlayoffsComplete() {
@@ -231,29 +266,51 @@ function isRegularSeasonAndPlayoffsComplete() {
     && GameState.playoffBracket && GameState.playoffBracket.finals.length > 0 && GameState.playoffBracket.finals[0].complete;
 }
 
-function handleAdvanceToOffseason() {
+// showSummary is true only from the manual "Advance to Offseason" button
+// (script.js's renderView wiring) — the two "Skip to Draft/FA" dock shortcuts
+// (ui/simControls.js) call this with no argument because the user explicitly
+// asked to jump past the recap screen there, straight to the stage they named.
+function handleAdvanceToOffseason(showSummary) {
+  // Idempotence guard. The "Skip to Draft"/"Skip to Free Agency" controls
+  // (ui/simControls.js) both call this unconditionally and stay clickable, so
+  // without this a second click re-ran finalizeSeasonHistory for the same year:
+  // duplicate entries in LEAGUE_HISTORY.awardsHistory and every winner's
+  // awardsWon, allTimeWins/allTimeLosses counted twice, career stats rolled up
+  // twice, and leagueYear bumped twice.
+  if (GameState.offseasonStage) return;
+
   // Snapshot before anything about the season that just finished changes —
   // this is what a commissioner's "Rewind to Season N" (ui/commissioner.js)
   // restores.
   pushSeasonSnapshot(GameState);
 
+  // Pending offers reference a roster that retirement, the draft, and free
+  // agency are all about to reshape — carrying them into the new league year
+  // would let the user accept a trade for a player who no longer exists.
+  GameState.tradeOffers = [];
+
+  // Captured before the leagueYear increment below — this is the season whose
+  // champion/awards finalizeSeasonHistory is about to archive, and what the
+  // season summary screen (if shown) should display.
+  const finishedLeagueYear = GameState.leagueYear || 2026;
+
   // Runs BEFORE the leagueYear increment and before retirement, so
   // finalizeSeasonHistory's award/career-stat rollup reflects the season
   // that just finished, and retirees archived immediately after this see
   // their fully-updated careerStats/awardsWon.
-  finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
+  finalizeSeasonHistory(finishedLeagueYear, GameState.playoffBracket, function (text) { pushToFeed(text); });
 
-  setLeagueYear((GameState.leagueYear || 2026) + 1);
+  setLeagueYear(finishedLeagueYear + 1);
   const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
 
   if (autoDraftEffective) {
-    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear);
+    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear, GameState.settings.lotteryFormat);
     GameState.lastDraftResults = result.draftResults;
     GameState.draftSession = null;
     archiveDraftClass(GameState.leagueYear, result.draftResults);
   } else {
     runOffseasonPreDraft(GameState.rng, GameState.leagueYear);
-    const draftOrder = buildDraftOrder(GameState.playoffBracket, GameState.rng);
+    const draftOrder = buildDraftOrder(GameState.playoffBracket, GameState.rng, GameState.settings.lotteryFormat);
     GameState.draftSession = startDraftSession(draftOrder, GameState.upcomingDraftClass);
     advanceDraftUntilUserTurn(GameState.draftSession, GameState.userTeamId, false);
     if (!currentPick(GameState.draftSession)) {
@@ -264,7 +321,12 @@ function handleAdvanceToOffseason() {
   }
 
   GameState.offseasonStage = 'draft';
-  renderView('draft');
+  if (showSummary === true) {
+    GameState.summarySeasonYear = finishedLeagueYear;
+    renderView('seasonSummary');
+  } else {
+    renderView('draft');
+  }
   autosave(GameState);
 
   if (GameState.gameMode === 'playerCareer') {
@@ -280,7 +342,13 @@ function handleAdvanceToOffseason() {
 // narrative event for the season ahead. Overrides the 'draft' view
 // handleAdvanceToOffseason already rendered, since a career-mode player
 // doesn't need to see the league's rookie draft results.
-function handlePlayerCareerOffseasonFollowup() {
+// Returns true when it rendered a scene the user has to acknowledge (a
+// retirement ceremony or a pending random event). runMultiSeason uses that to
+// stop fast-forwarding rather than simming straight past it.
+// `quiet` suppresses the fall-through renderView for callers driving a loop
+// (runMultiSeason) — re-rendering the whole app once per simulated season is
+// both wasteful and visibly re-enables the sim dock mid-run.
+function handlePlayerCareerOffseasonFollowup(quiet) {
   const container = document.getElementById('view-content');
   const player = getPlayerById(GameState.controlledPlayerId);
 
@@ -295,8 +363,17 @@ function handlePlayerCareerOffseasonFollowup() {
         championshipsWon: record.championshipsWon,
         hallOfFameEligible: record.hallOfFame
       });
+      return true;
     }
-    return;
+    return false;
+  }
+
+  // An All-Star nod is the one in-career milestone the league already computes,
+  // so it's what the all_star scene keys off. Checked before the random-event
+  // roll so a standout season leads with the good news.
+  if (wasNamedAllStar(player)) {
+    renderMilestoneScene(container, 'all_star', { playerName: player.name, season: GameState.leagueYear });
+    return true;
   }
 
   if (!GameState.randomEventSystem) {
@@ -306,16 +383,63 @@ function handlePlayerCareerOffseasonFollowup() {
   if (event) {
     GameState.pendingRandomEvent = event;
     renderRandomEventScene(container, event);
-  } else {
-    renderView('playerDashboard');
+    return true;
   }
+  if (!quiet) renderView('playerDashboard');
+  return false;
+}
+
+// Fires once, at the moment the bracket is drawn, when the controlled player's
+// team made the playoffs. This is what renderPlayoffScene (ui/narrativeScenes.js)
+// exists for — it was written but never called, so the only milestone a career
+// player ever saw was their own retirement. Returns true if a scene was shown.
+function handlePlayerCareerPlayoffIntro() {
+  if (GameState.gameMode !== 'playerCareer' || !GameState.playoffBracket) return false;
+  const player = getPlayerById(GameState.controlledPlayerId);
+  if (!player || !player.teamId) return false;
+
+  const series = GameState.playoffBracket.first.find(function (s) {
+    return s.higherSeed === player.teamId || s.lowerSeed === player.teamId;
+  });
+  if (!series) return false;
+
+  const opponentId = series.higherSeed === player.teamId ? series.lowerSeed : series.higherSeed;
+  const opponent = getTeamById(opponentId);
+  renderMilestoneScene(document.getElementById('view-content'), 'playoff', {
+    playerName: player.name,
+    season: GameState.leagueYear || 2026,
+    opponent: opponent ? opponent.name : opponentId,
+    round: 'Round 1'
+  });
+  return true;
+}
+
+// allStarWeekend.js owns selection. GameState.allStarWeekend is only populated
+// lazily when the user actually opens that view, so this recomputes the roster
+// for the player's own conference rather than depending on the user having
+// visited the page. selectAllStars returns { starters, reserves } — both are
+// arrays of player objects directly, not { player, team } wrappers.
+function wasNamedAllStar(player) {
+  if (!player || !player.teamId) return false;
+  const team = getTeamById(player.teamId);
+  if (!team) return false;
+  const roster = selectAllStars(team.conference);
+  return roster.starters.concat(roster.reserves).some(function (p) {
+    return p && p.id === player.id;
+  });
 }
 
 function retireCareerPlayer() {
   const transition = new PlayerToGMTransition(GameState);
-  transition.retirePlayer(GameState.controlledPlayerId);
+  const record = transition.retirePlayer(GameState.controlledPlayerId);
+  // retirePlayer returns null if the player is already gone (e.g. the offseason
+  // retirement roll got there first). GameState.playerLegacy would then be
+  // stale or absent, and every field read below would throw.
+  if (!record) {
+    renderView('legacy');
+    return;
+  }
   const container = document.getElementById('view-content');
-  const record = GameState.playerLegacy;
   renderMilestoneScene(container, 'retirement', {
     playerName: record.name,
     careerStats: record.careerStats,
@@ -348,6 +472,15 @@ function handleUserDraftPick(prospectId) {
 }
 
 function handleAdvanceToNewSeason() {
+  // Unconditional, not gated on autoFreeAgency. That setting governs whether
+  // the USER's free agency is automated, but AI teams have to start the season
+  // with a legal roster either way — a user who clicks straight past the free
+  // agency stage would otherwise begin the new season with most of the league
+  // under the 12-man floor (measured: 26 of 30 teams, one down to 4 players),
+  // which breaks roster-size validation for every trade and hands the remaining
+  // players 30-plus minutes a night in the box-score engine.
+  enforceRosterFloors();
+
   const result = generateNewSeason(GameState.rng);
   GameState.season = { games: result.games, currentDay: -1 };
   GameState.upcomingDraftClass = result.nextDraftClass;
@@ -371,7 +504,7 @@ function renderView(viewName) {
   } else {
     renderPlaceholder(container);
   }
-  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode);
+  renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderTopBar(document.getElementById('app-topbar'));
   if (GameState.season) {
     renderSimControls(document.getElementById('sim-controls'));
@@ -380,7 +513,7 @@ function renderView(viewName) {
   const simControlsEl = document.getElementById('sim-controls');
   if (isRegularSeasonAndPlayoffsComplete() && !GameState.offseasonStage) {
     simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-offseason-btn">Advance to Offseason</button>');
-    document.getElementById('advance-offseason-btn').addEventListener('click', handleAdvanceToOffseason);
+    document.getElementById('advance-offseason-btn').addEventListener('click', function () { handleAdvanceToOffseason(true); });
   } else if (GameState.offseasonStage === 'draft') {
     simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-to-fa-btn">Go to Free Agency</button>');
     document.getElementById('advance-to-fa-btn').addEventListener('click', function () {
@@ -435,16 +568,40 @@ function initPlayerCareerMode() {
   });
 }
 
+// The custom player enters the league through the same executePick path every
+// drafted prospect uses. Setting only teamId (the original behavior) left him
+// on createCustomPlayer's placeholder {salary: 0, yearsRemaining: 0} contract,
+// so decrementContracts released him to free agency after his first season —
+// and pushed his team to 16 players, which permanently failed trade.js's 12-15
+// roster band for every trade that team tried to make.
 function renderDraftPhase() {
   const container = document.getElementById('view-content');
-  const team = TEAMS[Math.floor(Math.random() * TEAMS.length)];
+  if (!GameState.rng) GameState.rng = makeRng(Date.now());
+  const team = TEAMS[Math.floor(GameState.rng() * TEAMS.length)];
   const player = getPlayerById(GameState.controlledPlayerId);
-  player.teamId = team.id;
+
+  // Make room BEFORE the pick rather than trimming after: autoEnforceRosterSize
+  // waives the lowest-value player on the roster, and a rookie on a rookie deal
+  // can easily be that player — it would happily waive the career player the
+  // moment he was added.
+  const roster = getTeamRoster(team.id);
+  if (roster.length >= 15) {
+    const worst = roster.slice().sort(function (a, b) {
+      return adjustedPlayerValue(a, team) - adjustedPlayerValue(b, team);
+    })[0];
+    waivePlayer(worst.id);
+  }
+
+  // Mid-first-round slot: a plausible landing spot that carries a real rookie
+  // contract and a free jersey number rather than a hand-rolled stub.
+  const pickNumber = 8 + Math.floor(GameState.rng() * 16);
+  executePick(team.id, player, pickNumber, TEAMS.length);
 
   container.innerHTML =
     '<div class="view-header"><h2>Draft Night</h2></div>' +
     '<div class="panel">' +
-    '<p>You are selected by the ' + team.name + '...</p>' +
+    '<p>With pick #' + pickNumber + ', you are selected by the ' + escapeHtml(team.name) + '...</p>' +
+    '<p class="kpi-sub">Rookie contract: $' + player.contract.salary.toLocaleString() + '/yr for ' + player.contract.yearsRemaining + ' years.</p>' +
     '<p style="margin-top: 20px;"><button class="btn btn-primary" onclick="startFirstSeason()">Accept Draft</button></p>' +
     '</div>';
 }

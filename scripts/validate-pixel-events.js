@@ -91,4 +91,35 @@ function checkEventIntegrity() {
 }
 checkEventIntegrity();
 
+function checkSimulateDateWatchPath() {
+  const schedule = require(path.join(__dirname, '..', 'schedule.js'));
+  require(path.join(__dirname, '..', 'fatigue.js'));
+  require(path.join(__dirname, '..', 'injuries.js'));
+  require(path.join(__dirname, '..', 'morale.js'));
+  const rng = makeRng(777);
+  const games = schedule.generateSeasonGames(rng, TEAMS).map(function (g) {
+    return { id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day, played: false, homeScore: null, awayScore: null, boxScore: null, isPlayoff: false, seriesId: null };
+  });
+  const season = { games: games, currentDay: -1 };
+  const day0Games = games.filter(function (g) { return g.day === 0; });
+  assert.ok(day0Games.length > 0, 'day 0 should have games');
+  const watched = day0Games[0];
+  const events = [];
+  // Active engine is boxscore — the watched game must still go through possession.
+  league.simulateDate(season, 0, { simEngine: 'boxscore' }, rng, null, { gameId: watched.id, events: events });
+  assert.ok(watched.played, 'watched game was played');
+  assert.ok(events.length > 0, 'watched game captured events');
+  assert.ok(watched.playByPlay && watched.playByPlay.length > 0, 'watched game has possession play-by-play');
+  const others = day0Games.filter(function (g) { return g.id !== watched.id; });
+  others.forEach(function (g) {
+    assert.ok(g.played, 'other games still played');
+    assert.strictEqual(g.playByPlay, null, 'other games used the boxscore engine (no play-by-play)');
+  });
+  let homePts = 0;
+  events.forEach(function (ev) { if (ev.team === 'home') homePts += (ev.points || 0); });
+  assert.strictEqual(homePts, watched.homeScore, 'watched game event points match recorded score');
+  console.log('checkSimulateDateWatchPath: OK');
+}
+checkSimulateDateWatchPath();
+
 console.log('All pixel event validations passed');

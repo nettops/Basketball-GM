@@ -94,7 +94,78 @@ function getPlayerAverages(player) {
   };
 }
 
-function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
+// godMode.js requires league.js back (getTeamRoster), so this is resolved
+// lazily like _simDeps()/_workerDeps() to avoid a load-order deadlock.
+function _godModeDeps() {
+  return (typeof require !== 'undefined')
+    ? require('./godMode.js')
+    : { applyAutoWin: applyAutoWin };
+}
+
+// Shared by simulateDate (sync) and simulateDateAsync (worker-backed) —
+// everything AFTER a game's result is known (bookkeeping: score recording,
+// finances, season stats, fatigue, morale, injuries) is identical either
+// way; only HOW `result` was obtained differs between the two callers. A
+// single shared implementation means the two paths can't drift out of sync
+// with each other over time.
+function applyGameResult(game, result, deps, season, dayIndex, leagueYear, playingTeamIds, newInjuries, rng) {
+  _godModeDeps().applyAutoWin(game.homeTeamId, game.awayTeamId, result, rng);
+  game.played = true;
+  game.homeScore = result.homeScore;
+  game.awayScore = result.awayScore;
+  game.boxScore = result.boxScore;
+  // Only the possession engine produces this (simEngineBoxScore.js's
+  // simulateGame result has no playByPlay field, so this is undefined —
+  // and stays undefined — for games simmed under that engine).
+  game.playByPlay = result.playByPlay || null;
+
+  recordGameResult(game);
+
+  const homeWon = game.homeScore > game.awayScore;
+  deps.finances.tickFinancesForTeamGame(game.homeTeamId, homeWon, _LEAGUE_DATA.teams.getTeamById);
+  deps.finances.tickFinancesForTeamGame(game.awayTeamId, !homeWon, _LEAGUE_DATA.teams.getTeamById);
+
+  if (result.boxScore) {
+    Object.keys(result.boxScore).forEach(function (playerId) {
+      accumulateSeasonStats(playerId, result.boxScore[playerId]);
+    });
+    const minutesByPlayerId = {};
+    Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
+    const isBackToBackHome = season.games.some(function (g) { return g.played && (g.homeTeamId === game.homeTeamId || g.awayTeamId === game.homeTeamId) && g.day === dayIndex - 1; });
+    const isBackToBackAway = season.games.some(function (g) { return g.played && (g.homeTeamId === game.awayTeamId || g.awayTeamId === game.awayTeamId) && g.day === dayIndex - 1; });
+    deps.fatigue.applyFatigueForGame(game.homeTeamId, minutesByPlayerId, isBackToBackHome);
+    deps.fatigue.applyFatigueForGame(game.awayTeamId, minutesByPlayerId, isBackToBackAway);
+    deps.morale.tickMoraleForTeamGame(game.homeTeamId, homeWon, minutesByPlayerId);
+    deps.morale.tickMoraleForTeamGame(game.awayTeamId, !homeWon, minutesByPlayerId);
+  }
+
+  [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {
+    const rosterBeforeDecrement = getTeamRoster(teamId).map(function (p) {
+      return { player: p, injuryBefore: p.status.injury };
+    });
+    deps.injuries.decrementInjuriesForTeamGame(teamId);
+    rosterBeforeDecrement.forEach(function (entry) {
+      if (entry.injuryBefore && !entry.player.status.injury) {
+        const actualRecoveryDays = entry.injuryBefore.gamesOut * deps.injuries.GAMES_TO_DAYS;
+        _historyDeps().careerHistory.recordInjuryReturn(entry.player, leagueYear, actualRecoveryDays);
+      }
+    });
+    getTeamRoster(teamId).forEach(function (p) {
+      const wasInjured = !!p.status.injury;
+      deps.injuries.rollInjury(p, rng);
+      if (!wasInjured && p.status.injury) {
+        newInjuries.push({ playerId: p.id, teamId: teamId, severity: p.status.injury.severity });
+        const tier = deps.injuries.INJURY_SEVERITY_TIER[p.status.injury.severity] || 'minor';
+        const estimatedRecoveryDays = p.status.injury.gamesOut >= 999 ? null : p.status.injury.gamesOut * deps.injuries.GAMES_TO_DAYS;
+        const record = _historyDeps().careerHistory.recordInjuryInHistory(p, 'In-game injury', tier, estimatedRecoveryDays, leagueYear);
+        if (record) record.gamesOut = p.status.injury.gamesOut;
+      }
+    });
+    playingTeamIds[teamId] = true;
+  });
+}
+
+function simulateDate(season, dayIndex, settings, rng, onDayComplete, watchOptions) {
   const deps = _simDeps();
   const leagueYear = (settings && settings.leagueYear) || 2026;
   const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
@@ -102,59 +173,60 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete) {
   const newInjuries = [];
 
   todaysGames.forEach(function (game) {
-    const engine = deps.simEngine.getActiveEngine(settings);
-    const result = engine.simulateGame(game.homeTeamId, game.awayTeamId, rng);
-
-    game.played = true;
-    game.homeScore = result.homeScore;
-    game.awayScore = result.awayScore;
-    game.boxScore = result.boxScore;
-
-    recordGameResult(game);
-
-    const homeWon = game.homeScore > game.awayScore;
-    deps.finances.tickFinancesForTeamGame(game.homeTeamId, homeWon, _LEAGUE_DATA.teams.getTeamById);
-    deps.finances.tickFinancesForTeamGame(game.awayTeamId, !homeWon, _LEAGUE_DATA.teams.getTeamById);
-
-    if (result.boxScore) {
-      Object.keys(result.boxScore).forEach(function (playerId) {
-        accumulateSeasonStats(playerId, result.boxScore[playerId]);
-      });
-      const minutesByPlayerId = {};
-      Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
-      const isBackToBackHome = season.games.some(function (g) { return g.played && (g.homeTeamId === game.homeTeamId || g.awayTeamId === game.homeTeamId) && g.day === dayIndex - 1; });
-      const isBackToBackAway = season.games.some(function (g) { return g.played && (g.homeTeamId === game.awayTeamId || g.awayTeamId === game.awayTeamId) && g.day === dayIndex - 1; });
-      deps.fatigue.applyFatigueForGame(game.homeTeamId, minutesByPlayerId, isBackToBackHome);
-      deps.fatigue.applyFatigueForGame(game.awayTeamId, minutesByPlayerId, isBackToBackAway);
-      deps.morale.tickMoraleForTeamGame(game.homeTeamId, homeWon, minutesByPlayerId);
-      deps.morale.tickMoraleForTeamGame(game.awayTeamId, !homeWon, minutesByPlayerId);
+    // The watched game (Watch Next Game — ui/pixelGameView.js) always sims
+    // through the possession engine regardless of the active engine setting:
+    // a game simmed without possessions can't be watched. Event capture is
+    // proven drift-free by scripts/validate-pixel-events.js, so the recorded
+    // result is a normal possession-engine result.
+    let result;
+    if (watchOptions && game.id === watchOptions.gameId) {
+      const watchEngine = deps.simEngine.getActiveEngine({ simEngine: 'possession' });
+      result = watchEngine.simulateGame(game.homeTeamId, game.awayTeamId, rng, { events: watchOptions.events });
+    } else {
+      const engine = deps.simEngine.getActiveEngine(settings);
+      result = engine.simulateGame(game.homeTeamId, game.awayTeamId, rng);
     }
-
-    [game.homeTeamId, game.awayTeamId].forEach(function (teamId) {
-      const rosterBeforeDecrement = getTeamRoster(teamId).map(function (p) {
-        return { player: p, injuryBefore: p.status.injury };
-      });
-      deps.injuries.decrementInjuriesForTeamGame(teamId);
-      rosterBeforeDecrement.forEach(function (entry) {
-        if (entry.injuryBefore && !entry.player.status.injury) {
-          const actualRecoveryDays = entry.injuryBefore.gamesOut * deps.injuries.GAMES_TO_DAYS;
-          _historyDeps().careerHistory.recordInjuryReturn(entry.player, leagueYear, actualRecoveryDays);
-        }
-      });
-      getTeamRoster(teamId).forEach(function (p) {
-        const wasInjured = !!p.status.injury;
-        deps.injuries.rollInjury(p, rng);
-        if (!wasInjured && p.status.injury) {
-          newInjuries.push({ playerId: p.id, teamId: teamId, severity: p.status.injury.severity });
-          const tier = deps.injuries.INJURY_SEVERITY_TIER[p.status.injury.severity] || 'minor';
-          const estimatedRecoveryDays = p.status.injury.gamesOut >= 999 ? null : p.status.injury.gamesOut * deps.injuries.GAMES_TO_DAYS;
-          const record = _historyDeps().careerHistory.recordInjuryInHistory(p, 'In-game injury', tier, estimatedRecoveryDays, leagueYear);
-          if (record) record.gamesOut = p.status.injury.gamesOut;
-        }
-      });
-      playingTeamIds[teamId] = true;
-    });
+    applyGameResult(game, result, deps, season, dayIndex, leagueYear, playingTeamIds, newInjuries, rng);
   });
+
+  _LEAGUE_DATA.teams.TEAMS.forEach(function (team) {
+    if (!playingTeamIds[team.id]) {
+      deps.fatigue.decayFatigueForRest(team.id, 1);
+    }
+  });
+
+  if (onDayComplete) onDayComplete(dayIndex, todaysGames, newInjuries);
+  return todaysGames;
+}
+
+// Worker-backed twin of simulateDate — see simWorkerClient.js's module
+// comment for the full rationale and the correctness argument for why
+// dispatching games to the worker strictly one-at-a-time (never in
+// parallel) keeps this bit-for-bit equivalent to the synchronous path.
+// Browser-only (simWorkerClient.js's isWorkerSimAvailable/simulateGameViaWorker
+// aren't defined for Node) and always opt-in — ui/simControls.js only calls
+// this when GameState.settings.useWorkerSim is on AND a Worker is available;
+// every existing caller of simulateDate/simulateThroughDate is completely
+// unaffected by this function's mere existence.
+function _workerDeps() {
+  return (typeof require !== 'undefined')
+    ? require('./simWorkerClient.js')
+    : { simulateGameViaWorker: simulateGameViaWorker };
+}
+
+async function simulateDateAsync(season, dayIndex, settings, rng, onDayComplete) {
+  const deps = _simDeps();
+  const worker = _workerDeps();
+  const leagueYear = (settings && settings.leagueYear) || 2026;
+  const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
+  const playingTeamIds = {};
+  const newInjuries = [];
+
+  for (let i = 0; i < todaysGames.length; i++) {
+    const game = todaysGames[i];
+    const result = await worker.simulateGameViaWorker(game.homeTeamId, game.awayTeamId, rng, settings, getTeamRoster, _LEAGUE_DATA.teams.getTeamById);
+    applyGameResult(game, result, deps, season, dayIndex, leagueYear, playingTeamIds, newInjuries, rng);
+  }
 
   _LEAGUE_DATA.teams.TEAMS.forEach(function (team) {
     if (!playingTeamIds[team.id]) {
@@ -188,6 +260,16 @@ function simulateThroughDate(season, currentDay, targetDay, settings, rng, onDay
   return day;
 }
 
+// Worker-backed twin of simulateThroughDate — see simulateDateAsync above.
+async function simulateThroughDateAsync(season, currentDay, targetDay, settings, rng, onDayComplete) {
+  let day = currentDay;
+  while (day < targetDay) {
+    day += 1;
+    await simulateDateAsync(season, day, settings, rng, onDayComplete);
+  }
+  return day;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SEASON_STAT_KEYS: SEASON_STAT_KEYS,
@@ -198,8 +280,10 @@ if (typeof module !== 'undefined' && module.exports) {
     accumulateSeasonStats: accumulateSeasonStats,
     getPlayerAverages: getPlayerAverages,
     simulateDate: simulateDate,
+    simulateDateAsync: simulateDateAsync,
     getNextGameDay: getNextGameDay,
     simulateNextDay: simulateNextDay,
-    simulateThroughDate: simulateThroughDate
+    simulateThroughDate: simulateThroughDate,
+    simulateThroughDateAsync: simulateThroughDateAsync
   };
 }
