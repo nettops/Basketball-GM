@@ -99,9 +99,36 @@ function ensureOnCourt(five, roster, boxScore, neededIds) {
   });
 }
 
-// Beat durations at 1x (ms). One possession pair ≈ 1.4s → a 90-pair game plays
-// in roughly 4–5 minutes including free-throw pauses, matching the spec.
-const BEAT = { formation: 550, action: 450, resolve: 400, ft: 500 };
+// Beat durations at 1x (ms). Deliberately unhurried — a possession pair runs
+// ≈ 2.2s so half-court sets read as basketball rather than pinball; viewers
+// who want the old tempo have the 2x/4x/8x buttons.
+const BEAT = { formation: 900, action: 700, drive: 500, resolve: 600, bounce: 300, ft: 700 };
+
+// Deterministic per-possession jitter for off-ball cuts — same idea as
+// shotSpot's jitter: variety without touching any rng.
+function cutJitter(seed, spread) {
+  return (((seed * 31) % (2 * spread + 1)) - spread);
+}
+
+// Off-ball movement: everyone except the ball handler/shooter drifts to a
+// slightly different spot mid-possession (a cut, a relocation, a defensive
+// shadow-step), so the floor is never a frozen diorama between events.
+function cutPositions(pos, excludeId, seed) {
+  const moved = {};
+  let i = 0;
+  Object.keys(pos).forEach(function (pid) {
+    i += 1;
+    if (pid === excludeId) { moved[pid] = pos[pid]; return; }
+    moved[pid] = clampToCourt(
+      pos[pid][0] + cutJitter(seed + i, 10),
+      pos[pid][1] + cutJitter(seed + i * 7, 8)
+    );
+  });
+  return moved;
+}
+
+// Finishing flavor for made inside shots, picked deterministically.
+const INSIDE_FINISHES = ['Slams it home!', 'Lays it in!', 'Finishes inside!'];
 
 function buildTimeline(session) {
   const events = session.events;
@@ -182,34 +209,50 @@ function buildTimeline(session) {
     const pos = positionsFor(poss.team);
     const handlerPos = pos[poss.handlerId] || formationSpot(poss.team, 'PG', poss.team);
 
-    // Beat 1: formation — everyone at spots, handler has the ball.
+    // Beat 1: formation — everyone flows to spots, handler brings the ball up.
     push(BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
 
     const hoop = attackingHoop(poss.team);
 
     poss.plays.forEach(function (ev, ei) {
       if (ev.type === 'turnover') {
-        const stealerPos = ev.defenderId && pos[ev.defenderId] ? pos[ev.defenderId] : [hoop.x, hoop.y];
-        push(BEAT.action, pos, { x: stealerPos[0], y: stealerPos[1], holder: ev.defenderId && pos[ev.defenderId] ? ev.defenderId : null }, poss.quarter, clock,
+        const cutPos = cutPositions(pos, poss.handlerId, pi + ei);
+        const stealerPos = ev.defenderId && cutPos[ev.defenderId] ? cutPos[ev.defenderId] : [hoop.x, hoop.y];
+        push(BEAT.action, cutPos, { x: stealerPos[0], y: stealerPos[1], holder: ev.defenderId && cutPos[ev.defenderId] ? ev.defenderId : null }, poss.quarter, clock,
           ev.defenderId ? 'Steal!' : 'Turnover');
       } else if (ev.type === 'block') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
-        const shotPos = Object.assign({}, pos);
+        const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
         push(BEAT.action, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
         push(BEAT.resolve, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, 'Blocked!');
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
-        const shotPos = Object.assign({}, pos);
+        const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
-        // pass beat (only when someone else creates the shot)
+        // pass/relocate beat: ball finds the shooter while everyone cuts
         if (ev.assistPlayerId || ev.playerId !== poss.handlerId) {
           push(BEAT.action, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
         }
+        // inside shots get a drive beat: shooter attacks the rim before finishing
+        let releasePos = shotPos;
+        if (ev.zone === 'inside' && shotPos[ev.playerId]) {
+          const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -8 : 8), hoop.y + cutJitter(pi + ei, 6));
+          releasePos = Object.assign({}, shotPos);
+          releasePos[ev.playerId] = rimSpot;
+          push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, poss.quarter, clock, '');
+        }
         if (ev.made) score[ev.team === 'home' ? 0 : 1] += ev.points;
-        // ball arcs to the hoop
-        push(BEAT.resolve, shotPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
-          ev.made ? (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!') : '');
+        const madeLabel = ev.zone === 'inside'
+          ? INSIDE_FINISHES[(pi + ei) % INSIDE_FINISHES.length]
+          : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
+        // ball arcs (or slams) to the hoop
+        push(BEAT.resolve, releasePos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
+          ev.made ? madeLabel : '');
+        // missed shots rattle off the rim before the board scramble
+        if (!ev.made) {
+          push(BEAT.bounce, releasePos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, poss.quarter, clock, '');
+        }
       } else if (ev.type === 'rebound') {
         const rp = clampToCourt(hoop.x + (poss.team === 'home' ? -22 : 22), hoop.y + ((pi % 2) ? 18 : -18));
         const rpos = Object.assign({}, pos);

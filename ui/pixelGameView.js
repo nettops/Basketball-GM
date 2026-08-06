@@ -11,6 +11,10 @@ let _rafId = null;
 
 const PIXEL_SPEEDS = [1, 2, 4, 8];
 
+// Keyframe texts that mean "the ball just went in" — drives the rim flash.
+// Must stay in sync with the made-shot labels in ui/pixelChoreographer.js.
+const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it in!', 'Finishes inside!'];
+
 function setWatchSession(session) { _watchSession = session; }
 
 function stopPixelPlayback() {
@@ -134,10 +138,25 @@ function renderPixelGame(container) {
       bx = pixelLerp(fr.a.pos[holder][0], hb[0], fr.f) + 6;
       by = pixelLerp(fr.a.pos[holder][1], hb[1], fr.f) - 10;
     } else {
+      // Arc height scales with flight distance: threes rainbow, short
+      // put-backs and dunks stay flat — depth without any extra data.
+      const flightDist = Math.abs(fr.b.ball.x - fr.a.ball.x) + Math.abs(fr.b.ball.y - fr.a.ball.y);
+      const arcHeight = Math.max(4, Math.min(32, flightDist * 0.3));
       bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fr.f);
-      by = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f) - Math.sin(fr.f * Math.PI) * 18;
+      by = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f) - Math.sin(fr.f * Math.PI) * arcHeight;
     }
     drawBall(ctx, bx, by);
+
+    // Make flash: an expanding ring at the rim while a made-basket keyframe
+    // is current (its ball position sits on the hoop).
+    if (MAKE_LABELS.indexOf(fr.a.text) !== -1 && fr.f < 0.6) {
+      const r = 3 + fr.f * 10;
+      ctx.strokeStyle = 'rgba(255, 235, 59, ' + (1 - fr.f / 0.6).toFixed(2) + ')';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(fr.a.ball.x, fr.a.ball.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
 
     // ball-handler name label
     if (holder && playerById[holder] && fr.a.pos[holder]) {
