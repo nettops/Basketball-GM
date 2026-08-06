@@ -43,11 +43,56 @@ async function handleNextGame() {
 // game sims through the possession engine with event capture and the pixel
 // view opens on the result. Regular season only (the playoff sim path is
 // separate — spec lists playoff watching as a follow-up).
-async function handleWatchNextGame() {
+// Playoff twin of handleWatchNextGame. The bracket sims games one at a time
+// in round order, so this plays forward through other series (exactly as the
+// regular-season path sims the rest of the day's games) until it reaches one
+// involving the user's team, then opens the pixel view on it.
+async function handleWatchNextPlayoffGame() {
   const container = document.getElementById('sim-controls');
-  if (GameState.playoffBracket) return;
-  const targetDay = getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay);
-  if (targetDay === null) return;
+  const statusEl = document.getElementById('sim-status');
+  container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+  if (statusEl) statusEl.textContent = 'Simulating...';
+
+  const events = [];
+  let game = null;
+  let guard = 0;
+  // Guard: a full bracket is at most 105 games; the cap only exists so a
+  // malformed bracket can't spin forever.
+  while (guard++ < 200) {
+    game = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng,
+      { teamId: GameState.userTeamId, events: events });
+    if (game === null) break;          // champion already crowned
+    if (events.length > 0) break;      // this was the user's game
+  }
+
+  if (statusEl) statusEl.textContent = '';
+  if (!game || events.length === 0) {
+    if (statusEl) statusEl.textContent = game ? 'No remaining games for your team to watch.' : 'The playoffs are over.';
+    renderView(GameState.currentView);
+    autosave(GameState);
+    return;
+  }
+
+  setWatchSession({
+    homeTeamId: game.homeTeamId,
+    awayTeamId: game.awayTeamId,
+    events: events,
+    boxScore: game.boxScore,
+    homeScore: game.homeScore,
+    awayScore: game.awayScore,
+    isPlayoff: true
+  });
+  autosave(GameState);
+  renderView('pixelGame');
+}
+
+// Sims forward to `targetDay` and watches the user's game that day. Shared by
+// the dock's Watch Next Game and the Schedule view's per-game Watch button
+// (which passes a specific future day), so both paths advance the league
+// identically — only WHICH day they stop on differs.
+async function watchGameOnDay(targetDay) {
+  const container = document.getElementById('sim-controls');
+  if (targetDay === null || targetDay === undefined) return;
 
   container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
   const statusEl = document.getElementById('sim-status');
@@ -84,6 +129,11 @@ async function handleWatchNextGame() {
   });
   autosave(GameState);
   renderView('pixelGame');
+}
+
+async function handleWatchNextGame() {
+  if (GameState.playoffBracket) return handleWatchNextPlayoffGame();
+  return watchGameOnDay(getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay));
 }
 
 async function handleNextDay() {
@@ -307,7 +357,7 @@ function renderSimControls(container) {
   container.innerHTML =
     '<div class="dock-group dock-primary">' +
       '<button id="sim-next-game" class="btn-primary">Next Game</button>' +
-      '<button id="sim-watch-game"' + (GameState.playoffBracket ? ' disabled title="Regular season only"' : '') + '>Watch Next Game</button>' +
+      '<button id="sim-watch-game">Watch Next Game</button>' +
       '<button id="sim-next-day">Next Day</button>' +
       '<button id="sim-to-end">Sim to End of ' + stageLabel + '</button>' +
     '</div>' +
@@ -370,5 +420,5 @@ function renderSimControls(container) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderSimControls: renderSimControls, runMultiSeason: runMultiSeason, SIM_SPEED_DELAYS_MS: SIM_SPEED_DELAYS_MS };
+  module.exports = { renderSimControls: renderSimControls, runMultiSeason: runMultiSeason, watchGameOnDay: watchGameOnDay, SIM_SPEED_DELAYS_MS: SIM_SPEED_DELAYS_MS };
 }

@@ -71,6 +71,15 @@ function initSeason() {
     };
   });
   GameState.season = { games: games, currentDay: -1 };
+  // Postseason state has to be cleared alongside the new schedule, the same
+  // way the season-rollover paths do it (ui/simControls.js's runMultiSeason,
+  // handleAdvanceToNewSeason). Without this, starting a new game in a session
+  // that already finished one inherited the OLD bracket: the dock read
+  // "Playoffs" over a day -1 regular season, the Playoffs view showed the
+  // previous league's series, and Watch Next Game took the playoff path.
+  GameState.playoffBracket = null;
+  GameState.offseasonStage = null;
+  GameState.allStarWeekend = null;
 
   ensureHiddenPlayerData(PLAYERS_2026);
   ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);

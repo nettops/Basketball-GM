@@ -1,11 +1,12 @@
 var _PLAYOFF_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js'), morale: require('./morale.js') }
+  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js'), morale: require('./morale.js'), godMode: require('./godMode.js') }
   : {
       data: { CONFERENCES: CONFERENCES },
       teams: { TEAMS: TEAMS },
       simEngine: { getActiveEngine: getActiveEngine },
       league: { recordGameResult: recordGameResult, accumulateSeasonStats: accumulateSeasonStats },
-      morale: { tickMoraleForTeamGame: tickMoraleForTeamGame }
+      morale: { tickMoraleForTeamGame: tickMoraleForTeamGame },
+      godMode: { applyAutoWin: applyAutoWin }
     };
 
 function getPlayoffSeeds(conference, count) {
@@ -61,6 +62,14 @@ function resolvePlayInForConference(conference, settings, rng) {
   return { seventhSeed: winner1, eighthSeed: finalEighth, games: [game1, game2, game3] };
 }
 
+// DELIBERATE, NOT A BUG: simulatePlayInGame above and simulateSeriesGame below
+// both route through league.js's recordGameResult and accumulateSeasonStats, so
+// postseason results roll into team.record and player.seasonStats rather than
+// into separate playoff totals. That means standings, allTimeWins, prestige,
+// next year's lastSeasonWins, draft lottery weights, and the award races in
+// awards.js all reflect regular season PLUS postseason. This is the intended
+// simplification for this project — there is no separate playoffRecord /
+// playoffStats anywhere. Don't "fix" it without changing that decision first.
 let _seriesIdCounter = 0;
 function createSeries(higherSeedTeamId, lowerSeedTeamId) {
   _seriesIdCounter += 1;
@@ -114,15 +123,26 @@ function isSeriesComplete(series) {
   return series.winsHigher === 4 || series.winsLower === 4;
 }
 
-function simulateSeriesGame(series, settings, rng) {
+// watchOptions, when supplied as { teamId, events }, makes THIS game sim
+// through the possession engine with structured event capture if it involves
+// teamId — the playoff twin of league.js's simulateDate watch path, and the
+// same reasoning applies: a game simmed without possessions can't be watched.
+function simulateSeriesGame(series, settings, rng, watchOptions) {
   const gameNumber = series.winsHigher + series.winsLower; // 0-indexed into HOME_PATTERN
   const homeIsHigher = HOME_PATTERN[gameNumber] === 'higher';
   const homeTeamId = homeIsHigher ? series.higherSeed : series.lowerSeed;
   const awayTeamId = homeIsHigher ? series.lowerSeed : series.higherSeed;
 
-  const engine = _PLAYOFF_DATA.simEngine.getActiveEngine(settings);
-  const result = engine.simulateGame(homeTeamId, awayTeamId, rng);
-  const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, isPlayoff: true, seriesId: series.id };
+  const watched = !!(watchOptions && watchOptions.events &&
+    (homeTeamId === watchOptions.teamId || awayTeamId === watchOptions.teamId));
+  const engine = watched
+    ? _PLAYOFF_DATA.simEngine.getActiveEngine({ simEngine: 'possession' })
+    : _PLAYOFF_DATA.simEngine.getActiveEngine(settings);
+  const result = watched
+    ? engine.simulateGame(homeTeamId, awayTeamId, rng, { events: watchOptions.events })
+    : engine.simulateGame(homeTeamId, awayTeamId, rng);
+  _PLAYOFF_DATA.godMode.applyAutoWin(homeTeamId, awayTeamId, result, rng);
+  const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, playByPlay: result.playByPlay || null, isPlayoff: true, seriesId: series.id };
 
   _PLAYOFF_DATA.league.recordGameResult(game);
   const homeWon = result.homeScore > result.awayScore;
@@ -174,17 +194,17 @@ function getCurrentRoundSeries(bracket) {
   return bracket.first;
 }
 
-function simulateNextPlayoffGame(bracket, settings, rng) {
+function simulateNextPlayoffGame(bracket, settings, rng, watchOptions) {
   const round = getCurrentRoundSeries(bracket);
   if (!round) return null; // champion already crowned
 
   const activeSeries = round.find(function (s) { return !s.complete; });
   if (!activeSeries) {
     advanceBracketIfRoundComplete(bracket);
-    return simulateNextPlayoffGame(bracket, settings, rng);
+    return simulateNextPlayoffGame(bracket, settings, rng, watchOptions);
   }
 
-  const game = simulateSeriesGame(activeSeries, settings, rng);
+  const game = simulateSeriesGame(activeSeries, settings, rng, watchOptions);
   advanceBracketIfRoundComplete(bracket);
   return game;
 }
@@ -196,6 +216,7 @@ if (typeof module !== 'undefined' && module.exports) {
     generateBracket: generateBracket,
     ROUND1_SEED_PAIRS: ROUND1_SEED_PAIRS,
     simulateNextPlayoffGame: simulateNextPlayoffGame,
+    simulateSeriesGame: simulateSeriesGame,
     getCurrentRoundSeries: getCurrentRoundSeries,
     resolvePlayInForConference: resolvePlayInForConference,
     simulatePlayInGame: simulatePlayInGame

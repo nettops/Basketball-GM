@@ -122,4 +122,43 @@ function checkSimulateDateWatchPath() {
 }
 checkSimulateDateWatchPath();
 
+function checkPlayoffWatchPath() {
+  const playoffs = require(path.join(__dirname, '..', 'playoffs.js'));
+  require(path.join(__dirname, '..', 'morale.js'));
+  const rng = makeRng(4242);
+  // Give every team a record so seeding is deterministic enough to build a bracket.
+  TEAMS.forEach(function (t, i) { t.record.wins = 60 - i; t.record.losses = 22 + i; });
+  const bracket = playoffs.generateBracket(rng, { playIn: false });
+  const firstSeries = bracket.first[0];
+  const watchTeam = firstSeries.higherSeed;
+
+  const events = [];
+  const game = playoffs.simulateNextPlayoffGame(bracket, { simEngine: 'boxscore' }, rng,
+    { teamId: watchTeam, events: events });
+
+  assert.ok(game, 'a playoff game should have been simulated');
+  assert.ok(game.homeTeamId === watchTeam || game.awayTeamId === watchTeam, 'first game involves the watched team');
+  assert.ok(events.length > 0, 'watched playoff game captured events even though the active engine is boxscore');
+  assert.ok(game.playByPlay && game.playByPlay.length > 0, 'watched playoff game has possession play-by-play');
+
+  let homePts = 0, awayPts = 0;
+  events.forEach(function (ev) {
+    if (ev.team === 'home') homePts += (ev.points || 0); else awayPts += (ev.points || 0);
+  });
+  assert.strictEqual(homePts, game.homeScore, 'playoff event points match the recorded home score');
+  assert.strictEqual(awayPts, game.awayScore, 'playoff event points match the recorded away score');
+
+  // A game NOT involving the watched team must not capture into the same array.
+  const before = events.length;
+  let other = null, guard = 0;
+  while (guard++ < 40) {
+    other = playoffs.simulateNextPlayoffGame(bracket, { simEngine: 'boxscore' }, rng, { teamId: watchTeam, events: [] });
+    if (!other) break;
+    if (other.homeTeamId !== watchTeam && other.awayTeamId !== watchTeam) break;
+  }
+  assert.strictEqual(events.length, before, 'other teams\' playoff games do not append to the watched log');
+  console.log('checkPlayoffWatchPath: OK');
+}
+checkPlayoffWatchPath();
+
 console.log('All pixel event validations passed');

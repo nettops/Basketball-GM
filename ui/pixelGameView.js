@@ -125,7 +125,22 @@ const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it
 // The subset of plays the crowd goes wild for.
 const BIG_PLAY_LABELS = ['Three-pointer!', 'Slams it home!', 'Blocked!', 'Steal!', 'Late free throw decides it!'];
 
-function setWatchSession(session) { _watchSession = session; }
+// Recently watched games, newest first, so a game can be replayed from the
+// view's own controls. Memory-only and capped: event logs are big and
+// playback-only, so they never enter GameState or a save file (see the
+// module comment above).
+const _replayHistory = [];
+const REPLAY_LIMIT = 8;
+
+function setWatchSession(session) {
+  _watchSession = session;
+  if (session) {
+    _replayHistory.unshift(session);
+    if (_replayHistory.length > REPLAY_LIMIT) _replayHistory.length = REPLAY_LIMIT;
+  }
+}
+
+function getReplayHistory() { return _replayHistory; }
 
 function stopPixelPlayback() {
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null; }
@@ -138,7 +153,22 @@ function renderPixelGame(container) {
   stopPixelPlayback();
   if (!_watchSession) {
     container.innerHTML = '<div class="view-header"><h2>Watch Game</h2></div>' +
-      '<div class="empty-state">No game to watch. Use "Watch Next Game" in the sim dock.</div>';
+      (_replayHistory.length === 0
+        ? '<div class="empty-state">No game to watch. Use "Watch Next Game" in the sim dock.</div>'
+        : '<div class="panel"><div class="panel-header">Recently Watched</div><div class="panel-body">' +
+          '<table class="data-table"><tbody>' + _replayHistory.map(function (s, i) {
+            const h = getTeamById(s.homeTeamId), a = getTeamById(s.awayTeamId);
+            return '<tr><td class="col-name">' + escapeHtml(h.id) + ' ' + s.homeScore +
+              ' — ' + escapeHtml(a.id) + ' ' + s.awayScore + '</td>' +
+              '<td>' + (s.isPlayoff ? '<span class="pill pill-gold">Playoffs</span>' : '') + '</td>' +
+              '<td><button class="pixel-replay-btn" data-idx="' + i + '">Replay</button></td></tr>';
+          }).join('') + '</tbody></table></div></div>');
+    Array.prototype.forEach.call(container.querySelectorAll('.pixel-replay-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        _watchSession = _replayHistory[Number(btn.getAttribute('data-idx'))];
+        renderPixelGame(container);
+      });
+    });
     return;
   }
   const session = _watchSession;
@@ -189,6 +219,7 @@ function renderPixelGame(container) {
           return '<button class="pixel-speed' + (s === 1 ? ' active' : '') + '" data-speed="' + s + '">' + s + '×</button>';
         }).join('') +
         '<button id="pixel-skip">Skip to Final</button>' +
+        '<button id="pixel-replay">Replay</button>' +
         '<button id="pixel-mute">Sound: On</button>' +
         '<button id="pixel-exit">Exit</button>' +
       '</div>' +
@@ -747,6 +778,10 @@ function renderPixelGame(container) {
     particles.length = 0;
     leavers.length = 0;
     showFinal();
+  });
+  document.getElementById('pixel-replay').addEventListener('click', function () {
+    stopPixelPlayback();
+    renderPixelGame(container); // same session, fresh from tip-off
   });
   document.getElementById('pixel-exit').addEventListener('click', function () {
     stopPixelPlayback();
