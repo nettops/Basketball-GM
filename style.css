@@ -513,3 +513,9 @@ table { border-collapse: collapse; width: 100%; }
   100% { transform: scale(1); }
 }
 .pixel-scoreboard .pop { animation: pixel-score-pop .35s ease-out; }
+
+/* Scoreboard now lives inside the canvas; the DOM copy stays for a11y */
+.pixel-sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

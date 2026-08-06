@@ -119,7 +119,9 @@ function renderPixelGame(container) {
 
   container.innerHTML =
     '<div class="pixel-game">' +
-      '<div class="pixel-scoreboard">' +
+      // The real scoreboard is drawn inside the canvas; this copy stays in
+      // the DOM (visually hidden) so screen readers still get the score.
+      '<div class="pixel-scoreboard pixel-sr-only">' +
         '<span class="pixel-score-team" style="border-color:' + homeTeam.colors.primary + '">' + escapeHtml(homeTeam.id) + ' <span id="pixel-score-home">0</span></span>' +
         '<span class="pixel-clock"><span id="pixel-quarter">Q1</span> <span id="pixel-clock">12:00</span></span>' +
         '<span class="pixel-score-team" style="border-color:' + awayTeam.colors.primary + '">' + escapeHtml(awayTeam.id) + ' <span id="pixel-score-away">0</span></span>' +
@@ -201,6 +203,7 @@ function renderPixelGame(container) {
   let lastQuarterSeen = 1;
   let quarterCard = null;       // { text, scoreLine } while a break card shows
   let lastScoreShown = ['', ''];
+  const scorePopAt = [-Infinity, -Infinity]; // playbackMs of the last change
 
   // Bench run-ins/run-offs: a player newly appearing on court jogs in from
   // the near sideline (which also gives the opening tip a "teams take the
@@ -226,8 +229,9 @@ function renderPixelGame(container) {
     }
   }
 
+  // Only the run-off animation eases now; everything on court is spring
+  // driven and the ball is a projectile.
   function easeInOut(f) { return f * f * (3 - 2 * f); }
-  function easeOut(f) { return 1 - (1 - f) * (1 - f); }
 
   // --- Continuous motion model -------------------------------------------
   // Interpolating each keyframe segment with its own ease curve made every
@@ -256,6 +260,11 @@ function renderPixelGame(container) {
   homeRoster.forEach(function (p) { teamById[p.id] = 'home'; });
   awayRoster.forEach(function (p) { teamById[p.id] = 'away'; });
   let lastOffenseTeam = 'home';
+  let ballSpin = 0;             // accumulated tumble, advanced during flight
+  let excitementIsHome = true;  // which side the arena is reacting for
+  let lastBallActor = null;     // last player to hold the ball
+  let rimShakeStart = -Infinity; // set when a shot goes through
+  let rimShakeSide = 'right';
 
   function distToNearestHoop(pt) {
     const L = PIXEL_STAGE.hoops.left;
@@ -263,15 +272,16 @@ function renderPixelGame(container) {
     return Math.min(Math.abs(pt.x - L.x) + Math.abs(pt.y - L.y), Math.abs(pt.x - R.x) + Math.abs(pt.y - R.y));
   }
 
+  // Keeps the (visually hidden) DOM scoreboard in sync for screen readers,
+  // and records when each side last scored so the canvas board can pop.
   function setScore(elId, value, side) {
     const el = document.getElementById(elId);
     const v = String(value);
     if (lastScoreShown[side] === v) return;
+    const first = lastScoreShown[side] === '';
     lastScoreShown[side] = v;
     el.textContent = v;
-    el.classList.remove('pop');
-    void el.offsetWidth; // restart the CSS animation
-    el.classList.add('pop');
+    if (!first) scorePopAt[side] = playbackMs;
   }
 
   function draw(realDt) {
@@ -279,18 +289,25 @@ function renderPixelGame(container) {
     // Linear target: the spring below supplies all the smoothing, so no
     // per-segment ease (that is what caused the stop-start stiffness).
     const fP = fr.f;
-    const fB = easeOut(fr.f);   // a released ball is a projectile, not a spring
 
     // one-shot effects when a new keyframe becomes current
     if (fr.a.t !== lastEffectKfT) {
       if (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1) {
         excitementStartMs = playbackMs;
         lastBigPlayKfT = fr.a.t;
+        // the building only erupts for the home team; a road basket draws a
+        // pocket of travelling fans and silence from everyone else
+        const actor = fr.a.ball.holder || lastBallActor;
+        excitementIsHome = (fr.a.text === 'Blocked!' || fr.a.text === 'Steal!')
+          ? (teamById[actor] !== lastOffenseTeam ? 'home' : 'away') === 'home'
+          : lastOffenseTeam === 'home';
       }
       if (fr.a.text === 'Slams it home!' || fr.a.text === 'Blocked!') shakeStartMs = playbackMs;
       if (MAKE_LABELS.indexOf(fr.a.text) !== -1) {
         hitchMs = Math.max(hitchMs, 120);
         spawnNetSplash(fr.a.ball.x, fr.a.ball.y);
+        rimShakeStart = playbackMs;
+        rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
       }
       if (fr.a.quarter > lastQuarterSeen) {
         quarterCard = {
@@ -314,8 +331,8 @@ function renderPixelGame(container) {
     ctx.drawImage(courtCanvas, 0, 0);
 
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
-    drawCrowd(ctx, playbackMs, excitement);
-    pixelAudioExcitement(excitement);
+    drawCrowd(ctx, playbackMs, excitement, excitementIsHome ? 1 : 0);
+    pixelAudioExcitement(excitement * (excitementIsHome ? 1 : 0.25));
     pushCommentary(fr.a);
 
     // is the current ball sequence a shot (heading to a rim) or a pass?
@@ -326,7 +343,10 @@ function renderPixelGame(container) {
     const onCourtNow = {};
 
     // Track who is on offense so defenders know which way to pressure.
-    if (fr.a.ball.holder && teamById[fr.a.ball.holder]) lastOffenseTeam = teamById[fr.a.ball.holder];
+    if (fr.a.ball.holder && teamById[fr.a.ball.holder]) {
+      lastOffenseTeam = teamById[fr.a.ball.holder];
+      lastBallActor = fr.a.ball.holder;
+    }
     // Live ball position from the previous frame drives defensive pressure.
     const ballRef = fr.a.ball.holder && smooth[fr.a.ball.holder]
       ? { x: smooth[fr.a.ball.holder].x, y: smooth[fr.a.ball.holder].y }
@@ -478,15 +498,19 @@ function renderPixelGame(container) {
       }
       groundY = hy;
     } else {
+      // A released ball is a projectile: constant horizontal velocity with a
+      // parabolic rise and fall. (Easing the horizontal axis made shots
+      // visibly brake in mid-air.)
       const flightDist = Math.abs(fr.b.ball.x - fr.a.ball.x) + Math.abs(fr.b.ball.y - fr.a.ball.y);
       const arcHeight = Math.max(4, Math.min(32, flightDist * 0.3));
-      bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fB);
-      by = pixelLerp(fr.a.ball.y, fr.b.ball.y, fB) - Math.sin(fB * Math.PI) * arcHeight;
-      groundY = pixelLerp(fr.a.ball.y, fr.b.ball.y, fB);
+      bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fr.f);
+      groundY = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f);
+      by = groundY - Math.sin(fr.f * Math.PI) * arcHeight;
+      ballSpin += (Math.abs(fr.b.ball.x - fr.a.ball.x) > 2 ? 0.6 : 0.25) * (fr.b.ball.x >= fr.a.ball.x ? 1 : -1);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
-    drawBall(ctx, bx, by);
+    drawBall(ctx, bx, by, holder ? undefined : ballSpin);
 
     // Net splash: pixel flecks falling out of the net after a make.
     for (let i = particles.length - 1; i >= 0; i--) {
@@ -501,6 +525,24 @@ function renderPixelGame(container) {
         1, 1
       );
       ctx.globalAlpha = 1;
+    }
+
+    // Rim flex: the hoop itself springs after a make (harder on a dunk),
+    // redrawn over the static court art.
+    const rimAge = playbackMs - rimShakeStart;
+    if (rimAge >= 0 && rimAge < 340) {
+      const hoop = PIXEL_STAGE.hoops[rimShakeSide];
+      const flex = Math.sin(rimAge / 34) * Math.max(0, 1 - rimAge / 340) * 2;
+      ctx.fillStyle = '#c9974f'; // clear the painted rim
+      ctx.fillRect(hoop.x - 3, hoop.y - 3, 7, 7);
+      ctx.fillStyle = '#e05a2b';
+      ctx.fillRect(hoop.x - 2, hoop.y - 2 + flex, 5, 5);
+      ctx.fillStyle = '#c9974f';
+      ctx.fillRect(hoop.x - 1, hoop.y - 1 + flex, 3, 3);
+      // net swaying under the rim
+      ctx.fillStyle = 'rgba(244,234,216,0.75)';
+      ctx.fillRect(Math.round(hoop.x - 1 + flex), hoop.y + 3, 1, 3);
+      ctx.fillRect(Math.round(hoop.x + 1 + flex * 0.6), hoop.y + 3, 1, 2);
     }
 
     // Make flash: an expanding ring at the rim while a made-basket keyframe
@@ -526,6 +568,41 @@ function renderPixelGame(container) {
       ctx.fillText(label, hp[0] - w / 2 + 2, hp[1] + 11);
     }
     ctx.restore();
+
+    // In-scene pixel scoreboard, drawn unshaken in the same pixel grid as
+    // the court (an HTML bar above the canvas read as chrome bolted onto
+    // the art rather than part of the arena).
+    const boardW = 150, boardH = 26, boardX = Math.round((PIXEL_STAGE.w - boardW) / 2), boardY = 3;
+    ctx.fillStyle = 'rgba(8, 10, 14, 0.92)';
+    ctx.fillRect(boardX, boardY, boardW, boardH);
+    ctx.strokeStyle = '#4a5262';
+    ctx.strokeRect(boardX + 0.5, boardY + 0.5, boardW - 1, boardH - 1);
+    // team color chips either side
+    ctx.fillStyle = homeTeam.colors.primary;
+    ctx.fillRect(boardX + 3, boardY + 3, 3, boardH - 6);
+    ctx.fillStyle = awayTeam.colors.primary;
+    ctx.fillRect(boardX + boardW - 6, boardY + 3, 3, boardH - 6);
+
+    drawPixelText(ctx, boardX + 10, boardY + 5, homeTeam.id, '#cfd6e4', 1);
+    drawPixelText(ctx, boardX + boardW - 10 - pixelTextWidth(awayTeam.id, 1), boardY + 5, awayTeam.id, '#cfd6e4', 1);
+
+    // scores pop (scale up briefly) when they change
+    const homeScoreStr = String(fr.a.score[0]);
+    const awayScoreStr = String(fr.a.score[1]);
+    const popAgeH = playbackMs - scorePopAt[0];
+    const popAgeA = playbackMs - scorePopAt[1];
+    const hScale = popAgeH >= 0 && popAgeH < 320 ? 3 : 2;
+    const aScale = popAgeA >= 0 && popAgeA < 320 ? 3 : 2;
+    const hColor = hScale === 3 ? '#ffe45c' : '#ffffff';
+    const aColor = aScale === 3 ? '#ffe45c' : '#ffffff';
+    drawPixelText(ctx, boardX + 10, boardY + 12, homeScoreStr, hColor, hScale);
+    drawPixelText(ctx, boardX + boardW - 10 - pixelTextWidth(awayScoreStr, aScale), boardY + 12, awayScoreStr, aColor, aScale);
+
+    // quarter + clock down the middle
+    const qText = 'Q' + fr.a.quarter;
+    drawPixelText(ctx, boardX + (boardW - pixelTextWidth(qText, 1)) / 2, boardY + 4, qText, '#8fa0bd', 1);
+    const clockText = fmtClock(fr.a.clock).replace(':', ':');
+    drawPixelText(ctx, boardX + (boardW - pixelTextWidth(clockText, 2)) / 2, boardY + 13, clockText, '#cfd6e4', 2);
 
     // quarter-break card, drawn unshaken over everything
     if (quarterCard && hitchMs > 0) {

@@ -38,4 +38,32 @@ function checkDigitFont() {
 }
 checkDigitFont();
 
+function checkLetterFont() {
+  // The in-canvas scoreboard needs every letter of every team abbreviation
+  // plus the clock separator, all on the same 3x5 grid as the digits.
+  Object.keys(sprites.LETTER_FONT).forEach(function (ch) {
+    const glyph = sprites.LETTER_FONT[ch];
+    assert.ok(Array.isArray(glyph) && glyph.length === 5, 'glyph ' + ch + ' is 5 rows');
+    glyph.forEach(function (row) {
+      assert.strictEqual(row.length, 3, 'glyph ' + ch + ' rows are 3 cols');
+      assert.ok(/^[01]{3}$/.test(row), 'glyph ' + ch + ' rows are bitmaps');
+    });
+  });
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function (ch) {
+    assert.ok(sprites.LETTER_FONT[ch], 'missing letter ' + ch);
+  });
+  assert.ok(sprites.LETTER_FONT[':'], 'missing clock separator');
+  console.log('checkLetterFont: OK');
+}
+checkLetterFont();
+
+function checkPixelTextWidth() {
+  // Width must match what drawPixelText actually paints, or the scoreboard
+  // centering and right-alignment drift.
+  assert.strictEqual(sprites.pixelTextWidth('BOS', 1), 11); // 3 glyphs: 3+1+3+1+3
+  assert.strictEqual(sprites.pixelTextWidth('88', 2), 14);  // 2 glyphs at scale 2
+  console.log('checkPixelTextWidth: OK');
+}
+checkPixelTextWidth();
+
 console.log('All pixel sprite validations passed');

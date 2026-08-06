@@ -107,13 +107,20 @@ function crowdPeople(width) {
 // Animated crowd strip, drawn every frame. excitement is 0..1: at 0 the fans
 // idle-sway; near 1 (right after a big play) they jump with arms up, each on
 // their own phase so the wave ripples instead of pogoing in lockstep.
-function drawCrowd(ctx, tMs, excitement) {
+// homeBias 1 = the home team just did something good (full arena reaction),
+// 0 = the visitors did (a scattered pocket of travelling fans, and the rest
+// of the building sits on its hands).
+function drawCrowd(ctx, tMs, excitement, homeBias) {
   const people = crowdPeople(PIXEL_STAGE.w);
+  const bias = homeBias === undefined ? 1 : homeBias;
   for (let i = 0; i < people.length; i++) {
     const p = people[i];
     const idleBob = Math.sin(tMs / 700 + p.phase) > 0.7 ? 1 : 0;
-    const jump = excitement > 0.05
-      ? Math.round(Math.max(0, Math.sin(tMs / 110 + p.phase)) * 3 * excitement * p.pep)
+    // when the road team scores only the ~15% "away fans" react
+    const reacts = bias > 0.5 || (i % 7 === 0);
+    const localExcite = reacts ? excitement : excitement * 0.12;
+    const jump = localExcite > 0.05
+      ? Math.round(Math.max(0, Math.sin(tMs / 110 + p.phase)) * 3 * localExcite * p.pep)
       : 0;
     const y = p.y - jump + (jump === 0 ? idleBob : 0);
     ctx.fillStyle = p.shirt;

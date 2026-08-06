@@ -17,6 +17,41 @@ const DIGIT_FONT = {
   '9': ['111', '101', '111', '001', '111']
 };
 
+// 3x5 uppercase glyphs so the in-scene scoreboard is drawn in the same
+// pixel grid as everything else (canvas fillText would anti-alias and break
+// the aesthetic). Only the characters a scoreboard needs.
+const LETTER_FONT = {
+  A: ['010', '101', '111', '101', '101'],
+  B: ['110', '101', '110', '101', '110'],
+  C: ['011', '100', '100', '100', '011'],
+  D: ['110', '101', '101', '101', '110'],
+  E: ['111', '100', '110', '100', '111'],
+  F: ['111', '100', '110', '100', '100'],
+  G: ['011', '100', '101', '101', '011'],
+  H: ['101', '101', '111', '101', '101'],
+  I: ['111', '010', '010', '010', '111'],
+  J: ['001', '001', '001', '101', '010'],
+  K: ['101', '101', '110', '101', '101'],
+  L: ['100', '100', '100', '100', '111'],
+  M: ['101', '111', '111', '101', '101'],
+  N: ['101', '111', '101', '101', '101'],
+  O: ['010', '101', '101', '101', '010'],
+  P: ['110', '101', '110', '100', '100'],
+  Q: ['010', '101', '101', '111', '011'],
+  R: ['110', '101', '110', '101', '101'],
+  S: ['011', '100', '010', '001', '110'],
+  T: ['111', '010', '010', '010', '010'],
+  U: ['101', '101', '101', '101', '111'],
+  V: ['101', '101', '101', '010', '010'],
+  W: ['101', '101', '111', '111', '101'],
+  X: ['101', '101', '010', '101', '101'],
+  Y: ['101', '101', '010', '010', '010'],
+  Z: ['111', '001', '010', '100', '111'],
+  ':': ['000', '010', '000', '010', '000'],
+  '-': ['000', '000', '111', '000', '000'],
+  ' ': ['000', '000', '000', '000', '000']
+};
+
 const FALLBACK_SKIN = '#bb876f';
 const FALLBACK_HAIR = '#272421';
 
@@ -44,6 +79,33 @@ function drawPixelNumber(ctx, x, y, number, color) {
       }
     }
   }
+}
+
+// Draws text in the 3x5 pixel grid. scale>1 blocks up each pixel so the
+// scoreboard can be bigger than a jersey number without going blurry.
+// Returns the drawn width so callers can center or right-align.
+function pixelTextWidth(text, scale) {
+  const s = scale || 1;
+  return text.length * 4 * s - s;
+}
+
+function drawPixelText(ctx, x, y, text, color, scale) {
+  const s = scale || 1;
+  const up = String(text).toUpperCase();
+  ctx.fillStyle = color;
+  for (let i = 0; i < up.length; i++) {
+    const ch = up[i];
+    const glyph = LETTER_FONT[ch] || DIGIT_FONT[ch];
+    if (!glyph) continue;
+    for (let row = 0; row < 5; row++) {
+      for (let col = 0; col < 3; col++) {
+        if (glyph[row][col] === '1') {
+          ctx.fillRect(x + (i * 4 + col) * s, y + row * s, s, s);
+        }
+      }
+    }
+  }
+  return pixelTextWidth(up, s);
 }
 
 // ~10 wide x 24 tall, anchored center-bottom at (x, y).
@@ -99,18 +161,34 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   }
 }
 
-function drawBall(ctx, x, y) {
+// spin (radians) rotates the seam stripe so the ball visibly tumbles in
+// flight instead of sliding through the air as a static blob.
+function drawBall(ctx, x, y, spin) {
+  const bx = Math.round(x);
+  const by = Math.round(y);
   ctx.fillStyle = '#e8760e';
-  ctx.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3);
+  ctx.fillRect(bx - 1, by - 1, 3, 3);
   ctx.fillStyle = '#8a4207';
-  ctx.fillRect(Math.round(x), Math.round(y) - 1, 1, 3);
+  if (spin === undefined) {
+    ctx.fillRect(bx, by - 1, 1, 3);
+    return;
+  }
+  // four seam orientations across a half-turn: |, /, -, \
+  const phase = ((Math.round(spin / (Math.PI / 4)) % 4) + 4) % 4;
+  if (phase === 0) ctx.fillRect(bx, by - 1, 1, 3);
+  else if (phase === 2) ctx.fillRect(bx - 1, by, 3, 1);
+  else if (phase === 1) { ctx.fillRect(bx - 1, by + 1, 1, 1); ctx.fillRect(bx, by, 1, 1); ctx.fillRect(bx + 1, by - 1, 1, 1); }
+  else { ctx.fillRect(bx - 1, by - 1, 1, 1); ctx.fillRect(bx, by, 1, 1); ctx.fillRect(bx + 1, by + 1, 1, 1); }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DIGIT_FONT: DIGIT_FONT,
+    LETTER_FONT: LETTER_FONT,
     spriteColorsForPlayer: spriteColorsForPlayer,
     drawPixelNumber: drawPixelNumber,
+    drawPixelText: drawPixelText,
+    pixelTextWidth: pixelTextWidth,
     drawPlayerSprite: drawPlayerSprite,
     drawBall: drawBall
   };
