@@ -354,12 +354,16 @@ function buildTimeline(session) {
     return pos;
   }
 
-  function push(dt, pos, ball, quarter, clock, text, commentary) {
+  // `sfx` names the sound this beat should trigger (see ui/pixelGameView.js's
+  // synth). Naming it here rather than sniffing the display text keeps the
+  // audio honest: a miss and a make are different events even though both
+  // end with the ball at the rim.
+  function push(dt, pos, ball, quarter, clock, text, commentary, sfx) {
     t += dt;
     // Every keyframe goes through the collision pass so sprites never stack;
     // the current ball holder is the protected (immovable) body.
     const resolved = separatePositions(pos, ball.holder);
-    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '' });
+    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '', sfx: sfx || '' });
   }
 
   possessions.forEach(function (poss, pi) {
@@ -427,7 +431,7 @@ function buildTimeline(session) {
           // pocket picked: ball pops loose, then the stealer collects it
           push(BEAT.release, cutPos, { x: handlerCut[0], y: handlerCut[1] - 6, holder: null }, poss.quarter, clock, '');
           push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, poss.quarter, clock, 'Steal!',
-            fillT(COMMENT.steal, pi + ei, { d: ln(stealer), h: ln(poss.handlerId) }));
+            fillT(COMMENT.steal, pi + ei, { d: ln(stealer), h: ln(poss.handlerId) }), 'squeak');
         } else {
           push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, poss.quarter, clock, 'Turnover',
             fillT(COMMENT.turnover, pi + ei, { h: ln(poss.handlerId) }));
@@ -440,7 +444,7 @@ function buildTimeline(session) {
         push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, '');
         // swatted sideways, not through the net
         push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, poss.quarter, clock, 'Blocked!',
-          fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }));
+          fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }), 'block');
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
@@ -510,7 +514,8 @@ function buildTimeline(session) {
           shotComment += ' (' + ln(ev.assistPlayerId) + ' with the dime)';
         }
         push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
-          ev.made ? madeLabel : '', shotComment);
+          ev.made ? madeLabel : '', shotComment,
+          ev.made ? (ev.zone === 'inside' ? 'dunk' : 'swish') : 'clang');
         curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
@@ -533,7 +538,7 @@ function buildTimeline(session) {
         if (ev.team === 'home') score[0] += ev.points; else score[1] += ev.points;
         push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           'FTs: ' + ev.made + ' of ' + ev.attempts,
-          fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }));
+          fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }), 'whistle');
         curPos = fpos;
       }
     });

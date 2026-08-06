@@ -51,6 +51,60 @@ function ensurePixelAudio() {
   return _audio;
 }
 
+// One-shot sound effects, synthesized on the shared context — no assets.
+// Every voice is a short noise burst or oscillator shaped by a gain
+// envelope; nothing is sampled, so this stays zero-dependency.
+function sfxNoise(a, dur, type, freq, q, gain) {
+  const frames = Math.max(1, Math.floor(a.actx.sampleRate * dur));
+  const buf = a.actx.createBuffer(1, frames, a.actx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < frames; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+  const src = a.actx.createBufferSource();
+  src.buffer = buf;
+  const filt = a.actx.createBiquadFilter();
+  filt.type = type;
+  filt.frequency.value = freq;
+  filt.Q.value = q;
+  const g = a.actx.createGain();
+  const now = a.actx.currentTime;
+  g.gain.setValueAtTime(gain, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  src.connect(filt); filt.connect(g); g.connect(a.master);
+  src.start(now);
+  src.stop(now + dur);
+}
+
+function sfxTone(a, freq, dur, type, gain, endFreq) {
+  const osc = a.actx.createOscillator();
+  const g = a.actx.createGain();
+  const now = a.actx.currentTime;
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, now);
+  if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, now + dur);
+  g.gain.setValueAtTime(gain, now);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+  osc.connect(g); g.connect(a.master);
+  osc.start(now);
+  osc.stop(now + dur);
+}
+
+function playPixelSfx(name) {
+  const a = _audio;
+  if (!a || a.muted || a.actx.state !== 'running') return;
+  switch (name) {
+    case 'swish':   sfxNoise(a, 0.16, 'highpass', 2600, 0.7, 0.16); break;
+    case 'dunk':    sfxNoise(a, 0.22, 'bandpass', 900, 1.2, 0.22); sfxTone(a, 160, 0.18, 'square', 0.10, 70); break;
+    case 'clang':   sfxTone(a, 780, 0.20, 'triangle', 0.13, 520); sfxNoise(a, 0.14, 'bandpass', 1800, 3, 0.10); break;
+    case 'block':   sfxNoise(a, 0.13, 'lowpass', 700, 0.9, 0.24); break;
+    case 'squeak':  sfxNoise(a, 0.10, 'highpass', 3200, 2.5, 0.09); break;
+    case 'whistle': sfxTone(a, 2700, 0.28, 'square', 0.05, 2500); break;
+    case 'buzzer':  sfxTone(a, 210, 0.75, 'square', 0.10); break;
+    // quietest voice by far: it fires several times a second, so it sits
+    // under the action rather than competing with it
+    case 'dribble': sfxNoise(a, 0.05, 'lowpass', 380, 0.8, 0.06); break;
+  }
+}
+
 function pixelAudioExcitement(level) {
   if (!_audio || _audio.muted) return;
   const now = _audio.actx.currentTime;
@@ -263,6 +317,7 @@ function renderPixelGame(container) {
   let ballSpin = 0;             // accumulated tumble, advanced during flight
   let excitementIsHome = true;  // which side the arena is reacting for
   let lastBallActor = null;     // last player to hold the ball
+  let lastBouncePhase = 1;      // for detecting dribble floor contact
   let rimShakeStart = -Infinity; // set when a shot goes through
   let rimShakeSide = 'right';
 
@@ -309,6 +364,9 @@ function renderPixelGame(container) {
         rimShakeStart = playbackMs;
         rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
       }
+      // Event audio. Above 4x the beats blur together into a machine-gun
+      // rattle, so the one-shots drop out and only the crowd bed remains.
+      if (fr.a.sfx && speed <= 4) playPixelSfx(fr.a.sfx);
       if (fr.a.quarter > lastQuarterSeen) {
         quarterCard = {
           text: 'END OF Q' + lastQuarterSeen,
@@ -316,6 +374,7 @@ function renderPixelGame(container) {
         };
         lastQuarterSeen = fr.a.quarter;
         hitchMs = Math.max(hitchMs, 1500);
+        playPixelSfx('buzzer');
       }
       lastEffectKfT = fr.a.t;
     }
@@ -494,7 +553,11 @@ function renderPixelGame(container) {
         const holderMoving = Math.sqrt(hs.vx * hs.vx + hs.vy * hs.vy) > 6;
         const bouncePeriod = holderMoving ? 95 : 140;
         bx = hx + (facingById[holder] || 1) * 6;
-        by = hy - 1 - Math.abs(Math.sin(playbackMs / bouncePeriod)) * 10; // dribble: hand to floor
+        const bouncePhase = Math.abs(Math.sin(playbackMs / bouncePeriod));
+        by = hy - 1 - bouncePhase * 10; // dribble: hand to floor
+        // thud on the floor contact, keyed off the same phase the eye sees
+        if (speed <= 2 && bouncePhase < 0.12 && lastBouncePhase >= 0.12) playPixelSfx('dribble');
+        lastBouncePhase = bouncePhase;
       }
       groundY = hy;
     } else {
