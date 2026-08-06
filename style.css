@@ -496,9 +496,6 @@ table { border-collapse: collapse; width: 100%; }
 .pixel-ticker { font-family: monospace; min-height: 1.2em; opacity: 0.9; }
 .pixel-controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .pixel-controls .pixel-speed.active { outline: 2px solid #4a90d9; }
-.pixel-ticker { font-family: monospace; min-height: 1.2em; opacity: 0.9; }
-.pixel-controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-.pixel-controls .pixel-speed.active { outline: 2px solid #4a90d9; }
 
 /* Broadcast commentary feed under the pixel game canvas */
 .pixel-commentary {
