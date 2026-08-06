@@ -363,10 +363,57 @@ function buildTimeline(session) {
     // Every keyframe goes through the collision pass so sprites never stack;
     // the current ball holder is the protected (immovable) body.
     const resolved = separatePositions(pos, ball.holder);
-    keyframes.push({ t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '', sfx: sfx || '' });
+    keyframes.push({
+      t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter,
+      clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '',
+      sfx: sfx || '',
+      // index into timeline.snapshots (running leaders / foul trouble) and
+      // which possession this beat belongs to, used to derive a shot clock
+      snap: snapshots.length - 1,
+      possIdx: possCounter
+    });
   }
 
+  // Running scoring and fouls. Snapshots are pushed only when something
+  // changes (roughly 200 times a game) and keyframes point at the current
+  // one, so per-keyframe stat data stays cheap.
+  const runPts = {};
+  const runFouls = {};
+  const snapshots = [];
+  let possCounter = -1;
+
+  function snapshot() {
+    const scorers = Object.keys(runPts)
+      .map(function (id) { return { id: id, pts: runPts[id], team: teamOfPlayer(id) }; })
+      .sort(function (a, b) { return b.pts - a.pts; })
+      .slice(0, 4);
+    const trouble = Object.keys(runFouls)
+      .filter(function (id) { return runFouls[id] >= 4; })
+      .map(function (id) { return { id: id, fouls: runFouls[id] }; })
+      .sort(function (a, b) { return b.fouls - a.fouls; });
+    snapshots.push({ leaders: scorers, foulTrouble: trouble });
+  }
+
+  function teamOfPlayer(id) {
+    return session.homeRoster.some(function (p) { return p.id === id; }) ? 'home' : 'away';
+  }
+
+  function addPoints(id, n) {
+    if (!n) return;
+    runPts[id] = (runPts[id] || 0) + n;
+    snapshot();
+  }
+
+  function addFoul(id) {
+    if (!id) return;
+    runFouls[id] = (runFouls[id] || 0) + 1;
+    if (runFouls[id] >= 4) snapshot();
+  }
+
+  snapshot(); // index 0: empty board at tip-off
+
   possessions.forEach(function (poss, pi) {
+    possCounter = pi;
     quarterSeen[poss.quarter] = (quarterSeen[poss.quarter] || 0) + 1;
     const clock = 720 - (quarterSeen[poss.quarter] / perQuarter[poss.quarter]) * 720;
     const clockStart = 720 - ((quarterSeen[poss.quarter] - 1) / perQuarter[poss.quarter]) * 720;
@@ -374,6 +421,7 @@ function buildTimeline(session) {
     if (poss.tiebreak) {
       const ev = poss.plays[0];
       score[ev.team === 'home' ? 0 : 1] += ev.points;
+      addPoints(ev.playerId, ev.points);
       const pos = positionsFor(ev.team);
       const hoop = attackingHoop(ev.team);
       push(BEAT.resolve, pos, { x: hoop.x, y: hoop.y, holder: null }, 4, 0, 'Late free throw decides it!');
@@ -497,7 +545,10 @@ function buildTimeline(session) {
           relSpot = rimSpot;
           push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, poss.quarter, clock, '');
         }
-        if (ev.made) score[ev.team === 'home' ? 0 : 1] += ev.points;
+        if (ev.made) {
+          score[ev.team === 'home' ? 0 : 1] += ev.points;
+          addPoints(ev.playerId, ev.points);
+        }
         const madeLabel = ev.zone === 'inside'
           ? INSIDE_FINISHES[(pi + ei) % INSIDE_FINISHES.length]
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
@@ -536,6 +587,8 @@ function buildTimeline(session) {
         const fpos = Object.assign({}, curPos);
         if (fpos[ev.playerId]) fpos[ev.playerId] = ftLine;
         if (ev.team === 'home') score[0] += ev.points; else score[1] += ev.points;
+        addFoul(ev.defenderId);
+        addPoints(ev.playerId, ev.points);
         push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           'FTs: ' + ev.made + ' of ' + ev.attempts,
           fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }), 'whistle');
@@ -544,7 +597,42 @@ function buildTimeline(session) {
     });
   });
 
-  return { keyframes: keyframes, durationMs: t };
+  // Shot clock: the engine has no clock concept, so it's derived from how far
+  // each possession has progressed — 24 at the inbound, ticking toward 0 at
+  // the shot. Needs the possession's full span, so it's a post-pass.
+  const possBounds = {};
+  keyframes.forEach(function (kf) {
+    const b = possBounds[kf.possIdx];
+    if (!b) possBounds[kf.possIdx] = { start: kf.t, end: kf.t };
+    else b.end = kf.t;
+  });
+  keyframes.forEach(function (kf) {
+    const b = possBounds[kf.possIdx];
+    const span = Math.max(1, b.end - b.start);
+    kf.shotClock = Math.max(0, Math.round(24 - 24 * ((kf.t - b.start) / span)));
+  });
+
+  // Quarter-by-quarter line score, read off the running score at each break.
+  const lineScore = [];
+  let prevQuarter = 1;
+  let atQuarterStart = [0, 0];
+  keyframes.forEach(function (kf) {
+    if (kf.quarter !== prevQuarter) {
+      lineScore.push({ quarter: prevQuarter, home: kf.score[0] - atQuarterStart[0], away: kf.score[1] - atQuarterStart[1] });
+      atQuarterStart = kf.score.slice();
+      prevQuarter = kf.quarter;
+    }
+  });
+  const finalScore = keyframes.length ? keyframes[keyframes.length - 1].score : [0, 0];
+  lineScore.push({ quarter: prevQuarter, home: finalScore[0] - atQuarterStart[0], away: finalScore[1] - atQuarterStart[1] });
+
+  return {
+    keyframes: keyframes,
+    durationMs: t,
+    snapshots: snapshots,
+    lineScore: lineScore,
+    finalStats: { points: runPts, fouls: runFouls }
+  };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

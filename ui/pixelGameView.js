@@ -212,6 +212,7 @@ function renderPixelGame(container) {
       '</div>' +
       '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + PIXEL_STAGE.w + '" height="' + PIXEL_STAGE.h + '"></canvas></div>' +
       '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
+      '<div class="pixel-infostrip" id="pixel-infostrip"></div>' +
       '<div class="pixel-commentary" id="pixel-commentary"></div>' +
       '<div class="pixel-controls">' +
         '<button id="pixel-play-pause">Pause</button>' +
@@ -349,6 +350,7 @@ function renderPixelGame(container) {
   let excitementIsHome = true;  // which side the arena is reacting for
   let lastBallActor = null;     // last player to hold the ball
   let lastBouncePhase = 1;      // for detecting dribble floor contact
+  let lastSnapRendered = null;  // avoids rebuilding the info strip every frame
   let rimShakeStart = -Infinity; // set when a shot goes through
   let rimShakeSide = 'right';
 
@@ -695,8 +697,34 @@ function renderPixelGame(container) {
     // quarter + clock down the middle
     const qText = 'Q' + fr.a.quarter;
     drawPixelText(ctx, boardX + (boardW - pixelTextWidth(qText, 1)) / 2, boardY + 4, qText, '#8fa0bd', 1);
-    const clockText = fmtClock(fr.a.clock).replace(':', ':');
-    drawPixelText(ctx, boardX + (boardW - pixelTextWidth(clockText, 2)) / 2, boardY + 13, clockText, '#cfd6e4', 2);
+    const clockText = fmtClock(fr.a.clock);
+    drawPixelText(ctx, boardX + (boardW - pixelTextWidth(clockText, 2)) / 2, boardY + 12, clockText, '#cfd6e4', 2);
+    // shot clock, small and amber, under the game clock; turns red late
+    const scText = String(fr.a.shotClock === undefined ? '' : fr.a.shotClock);
+    if (scText) {
+      drawPixelText(ctx, boardX + (boardW - pixelTextWidth(scText, 1)) / 2, boardY + 20, scText,
+        fr.a.shotClock <= 5 ? '#ff6b5c' : '#d8a13c', 1);
+    }
+
+    // Broadcast info strip: live scoring leaders and anyone in foul trouble.
+    const snap = timeline.snapshots[fr.a.snap] || timeline.snapshots[0];
+    if (snap && snap !== lastSnapRendered) {
+      lastSnapRendered = snap;
+      const leadHtml = snap.leaders.map(function (l) {
+        const p = playerById[l.id];
+        const t = getTeamById(l.team === 'home' ? session.homeTeamId : session.awayTeamId);
+        return '<span class="pixel-leader"><i style="background:' + t.colors.primary + '"></i>' +
+          escapeHtml(p ? p.name : l.id) + ' <b>' + l.pts + '</b></span>';
+      }).join('');
+      const troubleHtml = snap.foulTrouble.map(function (f) {
+        const p = playerById[f.id];
+        return '<span class="pixel-foul' + (f.fouls >= 6 ? ' is-out' : '') + '">' +
+          escapeHtml(p ? p.name : f.id) + ' ' + f.fouls + (f.fouls >= 6 ? ' — FOULED OUT' : ' fouls') + '</span>';
+      }).join('');
+      document.getElementById('pixel-infostrip').innerHTML =
+        '<span class="pixel-strip-label">Leaders</span>' + leadHtml +
+        (troubleHtml ? '<span class="pixel-strip-label">Foul trouble</span>' + troubleHtml : '');
+    }
 
     // quarter-break card, drawn unshaken over everything
     if (quarterCard && hitchMs > 0) {
@@ -732,6 +760,37 @@ function renderPixelGame(container) {
     document.getElementById('pixel-ticker').textContent =
       'FINAL: ' + homeTeam.id + ' ' + session.homeScore + ' — ' + awayTeam.id + ' ' + session.awayScore;
     document.getElementById('pixel-play-pause').disabled = true;
+
+    // Post-game card: line score plus the night's top performers, so the game
+    // ends on a result rather than just stopping.
+    const pts = timeline.finalStats.points;
+    const top = Object.keys(pts)
+      .map(function (id) { return { id: id, pts: pts[id] }; })
+      .sort(function (a, b) { return b.pts - a.pts; })
+      .slice(0, 5);
+    const q = timeline.lineScore;
+    const homeWon = session.homeScore > session.awayScore;
+    document.getElementById('pixel-infostrip').innerHTML =
+      '<div class="pixel-final">' +
+        '<div class="pixel-final-head">' + escapeHtml(homeTeam.name) + ' ' + session.homeScore +
+          ' — ' + escapeHtml(awayTeam.name) + ' ' + session.awayScore +
+          ' <span class="pill ' + (homeWon ? 'pill-win' : 'pill-loss') + '">' +
+          escapeHtml((homeWon ? homeTeam : awayTeam).id) + ' win</span></div>' +
+        '<table class="data-table pixel-linescore"><thead><tr><th></th>' +
+          q.map(function (r) { return '<th class="num">Q' + r.quarter + '</th>'; }).join('') +
+          '<th class="num">F</th></tr></thead><tbody>' +
+          '<tr><td class="col-name">' + escapeHtml(homeTeam.id) + '</td>' +
+            q.map(function (r) { return '<td class="num">' + r.home + '</td>'; }).join('') +
+            '<td class="num"><b>' + session.homeScore + '</b></td></tr>' +
+          '<tr><td class="col-name">' + escapeHtml(awayTeam.id) + '</td>' +
+            q.map(function (r) { return '<td class="num">' + r.away + '</td>'; }).join('') +
+            '<td class="num"><b>' + session.awayScore + '</b></td></tr>' +
+        '</tbody></table>' +
+        '<div class="pixel-final-top">' + top.map(function (t) {
+          const p = playerById[t.id];
+          return '<span class="pixel-leader">' + escapeHtml(p ? p.name : t.id) + ' <b>' + t.pts + '</b></span>';
+        }).join('') + '</div>' +
+      '</div>';
   }
 
   function tick(ts) {

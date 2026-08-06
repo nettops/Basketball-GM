@@ -125,4 +125,40 @@ function checkPlayerSeparation() {
 }
 checkPlayerSeparation();
 
+function checkStatsAndLineScore() {
+  const built = buildSession(9);
+  const tl = choreo.buildTimeline(built.session);
+
+  // Running leaders must agree with the engine's own box score at the end.
+  const finalSnap = tl.snapshots[tl.keyframes[tl.keyframes.length - 1].snap];
+  const enginePts = built.result.boxScore;
+  finalSnap.leaders.forEach(function (l) {
+    assert.ok(enginePts[l.id], 'leader ' + l.id + ' should be in the box score');
+    assert.strictEqual(l.pts, enginePts[l.id].points,
+      'leader points must match the engine box score for ' + l.id);
+  });
+  for (let i = 1; i < finalSnap.leaders.length; i++) {
+    assert.ok(finalSnap.leaders[i - 1].pts >= finalSnap.leaders[i].pts, 'leaders are sorted');
+  }
+
+  // Line score must add up to the final score, quarter by quarter.
+  const sumHome = tl.lineScore.reduce(function (s, r) { return s + r.home; }, 0);
+  const sumAway = tl.lineScore.reduce(function (s, r) { return s + r.away; }, 0);
+  assert.strictEqual(sumHome, built.result.homeScore, 'line score sums to the home final');
+  assert.strictEqual(sumAway, built.result.awayScore, 'line score sums to the away final');
+  tl.lineScore.forEach(function (r) {
+    assert.ok(r.home >= 0 && r.away >= 0, 'no negative quarter scores');
+  });
+
+  // Shot clock stays in a legal range and resets between possessions.
+  let sawReset = false;
+  tl.keyframes.forEach(function (kf, i) {
+    assert.ok(kf.shotClock >= 0 && kf.shotClock <= 24, 'shot clock within 0-24: ' + kf.shotClock);
+    if (i > 0 && kf.shotClock > tl.keyframes[i - 1].shotClock) sawReset = true;
+  });
+  assert.ok(sawReset, 'the shot clock must reset on a new possession');
+  console.log('checkStatsAndLineScore: OK');
+}
+checkStatsAndLineScore();
+
 console.log('All pixel choreographer validations passed');
