@@ -9,6 +9,59 @@
 let _watchSession = null;   // set by the Watch Next Game handler, cleared on exit
 let _rafId = null;
 
+// Procedural crowd audio — generated noise, zero assets. One AudioContext
+// reused across watch sessions (suspended when the view closes). A filtered
+// noise loop is the arena murmur; a bandpass branch of the same noise swells
+// with crowd excitement on big plays. Math.random here is fine: audio is
+// decoration and never touches the game rng.
+let _audio = null;
+function ensurePixelAudio() {
+  if (_audio) return _audio;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  const actx = new AC();
+  const buf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  const src = actx.createBufferSource();
+  src.buffer = buf;
+  src.loop = true;
+  const lowpass = actx.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = 480;
+  const bedGain = actx.createGain();
+  bedGain.gain.value = 0.05;
+  const bandpass = actx.createBiquadFilter();
+  bandpass.type = 'bandpass';
+  bandpass.frequency.value = 1100;
+  bandpass.Q.value = 0.7;
+  const swellGain = actx.createGain();
+  swellGain.gain.value = 0;
+  const master = actx.createGain();
+  master.gain.value = 1;
+  src.connect(lowpass);
+  lowpass.connect(bedGain);
+  bedGain.connect(master);
+  src.connect(bandpass);
+  bandpass.connect(swellGain);
+  swellGain.connect(master);
+  master.connect(actx.destination);
+  src.start();
+  _audio = { actx: actx, bedGain: bedGain, swellGain: swellGain, master: master, muted: false };
+  return _audio;
+}
+
+function pixelAudioExcitement(level) {
+  if (!_audio || _audio.muted) return;
+  const now = _audio.actx.currentTime;
+  _audio.swellGain.gain.setTargetAtTime(level * 0.28, now, 0.08);
+  _audio.bedGain.gain.setTargetAtTime(0.05 + level * 0.06, now, 0.15);
+}
+
+function suspendPixelAudio() {
+  if (_audio && _audio.actx.state === 'running') _audio.actx.suspend();
+}
+
 const PIXEL_SPEEDS = [1, 2, 4, 8];
 
 // Keyframe texts that mean "the ball just went in" — drives the rim flash.
@@ -22,6 +75,7 @@ function setWatchSession(session) { _watchSession = session; }
 
 function stopPixelPlayback() {
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null; }
+  suspendPixelAudio();
 }
 
 function pixelLerp(a, b, f) { return a + (b - a) * f; }
@@ -79,6 +133,7 @@ function renderPixelGame(container) {
           return '<button class="pixel-speed' + (s === 1 ? ' active' : '') + '" data-speed="' + s + '">' + s + '×</button>';
         }).join('') +
         '<button id="pixel-skip">Skip to Final</button>' +
+        '<button id="pixel-mute">Sound: On</button>' +
         '<button id="pixel-exit">Exit</button>' +
       '</div>' +
     '</div>';
@@ -147,6 +202,32 @@ function renderPixelGame(container) {
   let quarterCard = null;       // { text, scoreLine } while a break card shows
   let lastScoreShown = ['', ''];
 
+  // Bench run-ins/run-offs: a player newly appearing on court jogs in from
+  // the near sideline (which also gives the opening tip a "teams take the
+  // floor" moment); a swapped-out player jogs off before vanishing.
+  const ENTRY_MS = 600;
+  const EXIT_MS = 500;
+  const sidelineY = PIXEL_STAGE.court.y + PIXEL_STAGE.court.h + 14;
+  const entryById = {};         // pid -> playbackMs the run-in started
+  const lastPosById = {};       // pid -> last drawn [x, y]
+  let onCourtPrev = {};         // pids drawn last frame
+  const leavers = [];           // { pid, x, y, t0 }
+  let suppressEntries = false;  // set by Skip to Final — no run-ins on a jump
+
+  // Net-splash particles spawned when a make keyframe starts.
+  const particles = [];         // { x0, y0, vx, vy, t0, color }
+  function spawnNetSplash(x, y) {
+    for (let i = 0; i < 5; i++) {
+      particles.push({
+        x0: x, y0: y + 2,
+        vx: (i - 2) * 0.014,
+        vy: 0.008 + (i % 3) * 0.01,
+        t0: playbackMs,
+        color: i % 2 ? '#f4ead8' : '#e8760e'
+      });
+    }
+  }
+
   function easeInOut(f) { return f * f * (3 - 2 * f); }
   function easeOut(f) { return 1 - (1 - f) * (1 - f); }
 
@@ -179,7 +260,10 @@ function renderPixelGame(container) {
         lastBigPlayKfT = fr.a.t;
       }
       if (fr.a.text === 'Slams it home!' || fr.a.text === 'Blocked!') shakeStartMs = playbackMs;
-      if (MAKE_LABELS.indexOf(fr.a.text) !== -1) hitchMs = Math.max(hitchMs, 120);
+      if (MAKE_LABELS.indexOf(fr.a.text) !== -1) {
+        hitchMs = Math.max(hitchMs, 120);
+        spawnNetSplash(fr.a.ball.x, fr.a.ball.y);
+      }
       if (fr.a.quarter > lastQuarterSeen) {
         quarterCard = {
           text: 'END OF Q' + lastQuarterSeen,
@@ -203,6 +287,7 @@ function renderPixelGame(container) {
 
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
     drawCrowd(ctx, playbackMs, excitement);
+    pixelAudioExcitement(excitement);
     pushCommentary(fr.a);
 
     // is the current ball sequence a shot (heading to a rim) or a pass?
@@ -215,16 +300,30 @@ function renderPixelGame(container) {
       return pixelLerp(fr.a.pos[i1][1], fr.b.pos[i1][1], fP) - pixelLerp(fr.a.pos[i2][1], fr.b.pos[i2][1], fP);
     });
     const span = Math.max(1, fr.b.t - fr.a.t);
+    const onCourtNow = {};
     ids.forEach(function (pid) {
       const pa = fr.a.pos[pid];
       const pb = fr.b.pos[pid];
-      const x = pixelLerp(pa[0], pb[0], fP);
-      const y = pixelLerp(pa[1], pb[1], fP);
+      let x = pixelLerp(pa[0], pb[0], fP);
+      let y = pixelLerp(pa[1], pb[1], fP);
       const travel = Math.abs(pb[0] - pa[0]) + Math.abs(pb[1] - pa[1]);
       const speed = travel / span; // px per timeline-ms
-      const moving = speed > 0.012;
+      let moving = speed > 0.012;
       if (pb[0] - pa[0] > 2) facingById[pid] = 1;
       else if (pa[0] - pb[0] > 2) facingById[pid] = -1;
+
+      // run-in from the sideline for players entering the game
+      if (!onCourtPrev[pid] && !suppressEntries && entryById[pid] === undefined) entryById[pid] = playbackMs;
+      if (entryById[pid] !== undefined) {
+        const el = (playbackMs - entryById[pid]) / ENTRY_MS;
+        if (el >= 0 && el < 1 && !suppressEntries) {
+          y = pixelLerp(sidelineY, y, easeOut(el));
+          moving = true;
+        } else {
+          delete entryById[pid];
+        }
+      }
+
       const phase = (pid.charCodeAt(0) * 131 + pid.length * 37) % 977;
       const stride = speed > 0.05 ? 110 : 170;
       const isHolder = fr.a.ball.holder === pid;
@@ -241,7 +340,33 @@ function renderPixelGame(container) {
         facing: facingById[pid] || 0,
         moving: moving
       });
+      onCourtNow[pid] = true;
+      lastPosById[pid] = [x, y];
     });
+
+    // players swapped out jog off to the sideline before disappearing
+    if (!suppressEntries) {
+      Object.keys(onCourtPrev).forEach(function (pid) {
+        if (!onCourtNow[pid] && lastPosById[pid]) {
+          leavers.push({ pid: pid, x: lastPosById[pid][0], y: lastPosById[pid][1], t0: playbackMs });
+        }
+      });
+    }
+    onCourtPrev = onCourtNow;
+    for (let i = leavers.length - 1; i >= 0; i--) {
+      const L = leavers[i];
+      const el = (playbackMs - L.t0) / EXIT_MS;
+      if (el >= 1 || el < 0) { leavers.splice(i, 1); continue; }
+      const ly = pixelLerp(L.y, sidelineY, easeInOut(el));
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(Math.round(L.x) - 4, Math.round(ly) - 1, 8, 2);
+      const lp = playerById[L.pid];
+      drawPlayerSprite(ctx, L.x, ly, colorsById[L.pid], lp ? lp.jerseyNumber : '', {
+        frame: Math.floor(playbackMs / 110) % 2,
+        moving: true,
+        facing: 0
+      });
+    }
 
     // ball: dribbled by the holder, held high when shooting, otherwise in
     // flight with a distance-scaled arc and its own ground shadow
@@ -273,6 +398,21 @@ function renderPixelGame(container) {
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
     drawBall(ctx, bx, by);
+
+    // Net splash: pixel flecks falling out of the net after a make.
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const q = particles[i];
+      const age = playbackMs - q.t0;
+      if (age < 0 || age > 700) { particles.splice(i, 1); continue; }
+      ctx.fillStyle = q.color;
+      ctx.globalAlpha = Math.max(0, 1 - age / 700);
+      ctx.fillRect(
+        Math.round(q.x0 + q.vx * age),
+        Math.round(q.y0 + q.vy * age + 0.00002 * age * age), // gravity
+        1, 1
+      );
+      ctx.globalAlpha = 1;
+    }
 
     // Make flash: an expanding ring at the rim while a made-basket keyframe
     // is current (its ball position sits on the hoop).
@@ -348,6 +488,14 @@ function renderPixelGame(container) {
     paused = !paused;
     this.textContent = paused ? 'Play' : 'Pause';
   });
+  document.getElementById('pixel-mute').addEventListener('click', function () {
+    const a = ensurePixelAudio();
+    if (!a) { this.disabled = true; this.textContent = 'Sound: N/A'; return; }
+    a.muted = !a.muted;
+    a.master.gain.value = a.muted ? 0 : 1;
+    if (!a.muted && a.actx.state === 'suspended') a.actx.resume();
+    this.textContent = a.muted ? 'Sound: Off' : 'Sound: On';
+  });
   Array.prototype.forEach.call(container.querySelectorAll('.pixel-speed'), function (btn) {
     btn.addEventListener('click', function () {
       speed = Number(btn.getAttribute('data-speed'));
@@ -359,6 +507,12 @@ function renderPixelGame(container) {
     stopPixelPlayback();
     hitchMs = 0;
     quarterCard = null;
+    // Jumping to the end would otherwise stage a run-in for all ten players
+    // (every sprite is "new" relative to the last drawn frame) and a swarm
+    // of leavers; the final frame is a still, so suppress both.
+    suppressEntries = true;
+    particles.length = 0;
+    leavers.length = 0;
     showFinal();
   });
   document.getElementById('pixel-exit').addEventListener('click', function () {
@@ -366,6 +520,19 @@ function renderPixelGame(container) {
     _watchSession = null;
     renderView('dashboard');
   });
+
+  // Browsers won't start an AudioContext without a user gesture. The click
+  // that opened this view doesn't count (it happened in another view), so
+  // arm the arena sound on the first interaction anywhere in the view and
+  // reflect the real state on the button.
+  function startAudioOnGesture() {
+    const a = ensurePixelAudio();
+    const btn = document.getElementById('pixel-mute');
+    if (!a) { if (btn) { btn.disabled = true; btn.textContent = 'Sound: N/A'; } return; }
+    if (a.actx.state === 'suspended') a.actx.resume();
+  }
+  container.addEventListener('click', startAudioOnGesture, { once: true });
+  startAudioOnGesture();
 
   _rafId = requestAnimationFrame(tick);
 }
