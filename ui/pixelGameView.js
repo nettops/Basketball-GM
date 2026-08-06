@@ -15,6 +15,9 @@ const PIXEL_SPEEDS = [1, 2, 4, 8];
 // Must stay in sync with the made-shot labels in ui/pixelChoreographer.js.
 const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it in!', 'Finishes inside!'];
 
+// The subset of plays the crowd goes wild for.
+const BIG_PLAY_LABELS = ['Three-pointer!', 'Slams it home!', 'Blocked!', 'Steal!', 'Late free throw decides it!'];
+
 function setWatchSession(session) { _watchSession = session; }
 
 function stopPixelPlayback() {
@@ -108,9 +111,21 @@ function renderPixelGame(container) {
     return m + ':' + (s < 10 ? '0' : '') + s;
   }
 
+  // Crowd excitement: spikes when a big-play keyframe starts, decays over
+  // ~1.8s. Tracked by keyframe timestamp so pausing doesn't re-trigger it.
+  let excitementStartMs = -Infinity;
+  let lastBigPlayKfT = -1;
+
   function draw() {
     const fr = currentFrame();
     ctx.drawImage(courtCanvas, 0, 0);
+
+    if (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1 && fr.a.t !== lastBigPlayKfT) {
+      lastBigPlayKfT = fr.a.t;
+      excitementStartMs = playbackMs;
+    }
+    const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
+    drawCrowd(ctx, playbackMs, excitement);
 
     // players: lerp positions between keyframes; draw top-to-bottom for overlap
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });

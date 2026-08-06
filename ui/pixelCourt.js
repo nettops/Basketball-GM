@@ -21,20 +21,10 @@ function buildCourtCanvas(homeTeam, awayTeam, logoImg) {
   const ctx = canvas.getContext('2d');
   const c = PIXEL_STAGE.court;
 
-  // arena backdrop + crowd strip (top band above the court)
+  // arena backdrop (the crowd itself is animated — drawn every frame by
+  // drawCrowd below, on top of this dark band)
   ctx.fillStyle = '#1c2026';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const rng = crowdRng(0xC0FFEE);
-  for (let row = 0; row < 3; row++) {
-    for (let cx = 4; cx < canvas.width - 4; cx += 10) {
-      const px = cx + Math.floor(rng() * 3);
-      const py = 8 + row * 16;
-      ctx.fillStyle = CROWD_SHIRT[Math.floor(rng() * CROWD_SHIRT.length)];
-      ctx.fillRect(px, py + 4, 6, 8);
-      ctx.fillStyle = CROWD_SKIN[Math.floor(rng() * CROWD_SKIN.length)];
-      ctx.fillRect(px + 1, py, 4, 4);
-    }
-  }
 
   // parquet floor (alternating tan tiles)
   for (let ty = c.y - 8; ty < c.y + c.h + 8; ty += 16) {
@@ -92,6 +82,51 @@ function buildCourtCanvas(homeTeam, awayTeam, logoImg) {
   return canvas;
 }
 
+// Crowd layout is deterministic (fixed seed) so the same fans sit in the
+// same seats all game; only their pose changes frame to frame.
+let _crowdPeople = null;
+function crowdPeople(width) {
+  if (_crowdPeople) return _crowdPeople;
+  const rng = crowdRng(0xC0FFEE);
+  _crowdPeople = [];
+  for (let row = 0; row < 3; row++) {
+    for (let cx = 4; cx < width - 4; cx += 10) {
+      _crowdPeople.push({
+        x: cx + Math.floor(rng() * 3),
+        y: 8 + row * 16,
+        shirt: CROWD_SHIRT[Math.floor(rng() * CROWD_SHIRT.length)],
+        skin: CROWD_SKIN[Math.floor(rng() * CROWD_SKIN.length)],
+        phase: rng() * Math.PI * 2,
+        pep: 0.5 + rng() * 0.5 // some fans jump higher than others
+      });
+    }
+  }
+  return _crowdPeople;
+}
+
+// Animated crowd strip, drawn every frame. excitement is 0..1: at 0 the fans
+// idle-sway; near 1 (right after a big play) they jump with arms up, each on
+// their own phase so the wave ripples instead of pogoing in lockstep.
+function drawCrowd(ctx, tMs, excitement) {
+  const people = crowdPeople(PIXEL_STAGE.w);
+  for (let i = 0; i < people.length; i++) {
+    const p = people[i];
+    const idleBob = Math.sin(tMs / 700 + p.phase) > 0.7 ? 1 : 0;
+    const jump = excitement > 0.05
+      ? Math.round(Math.max(0, Math.sin(tMs / 110 + p.phase)) * 3 * excitement * p.pep)
+      : 0;
+    const y = p.y - jump + (jump === 0 ? idleBob : 0);
+    ctx.fillStyle = p.shirt;
+    ctx.fillRect(p.x, y + 4, 6, 8);
+    ctx.fillStyle = p.skin;
+    ctx.fillRect(p.x + 1, y, 4, 4);
+    if (jump >= 2) { // arms up
+      ctx.fillRect(p.x - 1, y + 3, 1, 3);
+      ctx.fillRect(p.x + 6, y + 3, 1, 3);
+    }
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildCourtCanvas: buildCourtCanvas };
+  module.exports = { buildCourtCanvas: buildCourtCanvas, drawCrowd: drawCrowd };
 }

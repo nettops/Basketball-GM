@@ -99,10 +99,23 @@ function ensureOnCourt(five, roster, boxScore, neededIds) {
   });
 }
 
-// Beat durations at 1x (ms). Deliberately unhurried — a possession pair runs
-// ≈ 2.2s so half-court sets read as basketball rather than pinball; viewers
-// who want the old tempo have the 2x/4x/8x buttons.
-const BEAT = { formation: 900, action: 700, drive: 500, resolve: 600, bounce: 300, ft: 700 };
+// Beat durations at 1x (ms). Deliberately unhurried — a possession runs about
+// three seconds so half-court sets read as basketball rather than pinball;
+// viewers who want tempo have the 2x/4x/8x buttons.
+//
+// The `release` beat is load-bearing, not cosmetic: the view pins the ball to
+// a keyframe's holder for that keyframe's whole span, so without a short
+// holder-null keyframe at the moment the ball leaves the hands, a pass or
+// shot never flies — it teleports to its destination at the next keyframe.
+const BEAT = {
+  transition: 700, formation: 650, pass: 340, windup: 300, drive: 500,
+  release: 60, flight3: 850, flightMid: 650, flightIn: 420,
+  resolve: 600, bounce: 350, ft: 700
+};
+
+function flightBeat(zone) {
+  return zone === 'three' ? BEAT.flight3 : (zone === 'mid' ? BEAT.flightMid : BEAT.flightIn);
+}
 
 // Deterministic per-possession jitter for off-ball cuts — same idea as
 // shotSpot's jitter: variety without touching any rng.
@@ -175,6 +188,32 @@ function buildTimeline(session) {
     return pos;
   }
 
+  // Possession-start snapshot: the DEFENSE is already back at its formation
+  // spots (they hold those same spots through the formation beat, so they
+  // read as a set defense waiting), while the offense is still strung out
+  // toward its own half, about to flow in. This replaces the old single
+  // formation keyframe that slid both entire teams across the floor in one
+  // synchronized lerp.
+  function transitionFor(offenseTeam) {
+    const pos = {};
+    const hoop = attackingHoop(offenseTeam);
+    const dir = offenseTeam === 'home' ? -1 : 1;
+    ['home', 'away'].forEach(function (side) {
+      const slots = assignSlots(five[side]);
+      POSITION_ORDER.forEach(function (posName) {
+        const p = slots[posName];
+        if (side === offenseTeam) {
+          const spot = OFFENSE_SPOTS[posName];
+          const trail = posName === 'PG' ? 140 : 95; // ball handler brings it up last
+          pos[p.id] = clampToCourt(hoop.x + dir * (spot.dx + trail), hoop.y + spot.dy);
+        } else {
+          pos[p.id] = formationSpot(side, posName, offenseTeam);
+        }
+      });
+    });
+    return pos;
+  }
+
   function push(dt, pos, ball, quarter, clock, text) {
     t += dt;
     keyframes.push({ t: t, pos: pos, ball: ball, score: score.slice(), quarter: quarter, clock: Math.max(0, Math.round(clock)), text: text || '' });
@@ -208,8 +247,13 @@ function buildTimeline(session) {
 
     const pos = positionsFor(poss.team);
     const handlerPos = pos[poss.handlerId] || formationSpot(poss.team, 'PG', poss.team);
+    const transPos = transitionFor(poss.team);
+    const transHandler = transPos[poss.handlerId] || handlerPos;
 
-    // Beat 1: formation — everyone flows to spots, handler brings the ball up.
+    // Beat 1: transition — defense gets back and sets while the offense is
+    // still strung out in the backcourt, handler dribbling it up.
+    push(BEAT.transition, transPos, { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
+    // Beat 2: the offense flows into its set against the waiting defense.
     push(BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
 
     const hoop = attackingHoop(poss.team);
@@ -217,37 +261,56 @@ function buildTimeline(session) {
     poss.plays.forEach(function (ev, ei) {
       if (ev.type === 'turnover') {
         const cutPos = cutPositions(pos, poss.handlerId, pi + ei);
-        const stealerPos = ev.defenderId && cutPos[ev.defenderId] ? cutPos[ev.defenderId] : [hoop.x, hoop.y];
-        push(BEAT.action, cutPos, { x: stealerPos[0], y: stealerPos[1], holder: ev.defenderId && cutPos[ev.defenderId] ? ev.defenderId : null }, poss.quarter, clock,
-          ev.defenderId ? 'Steal!' : 'Turnover');
+        const handlerCut = cutPos[poss.handlerId] || handlerPos;
+        const stealer = ev.defenderId && cutPos[ev.defenderId] ? ev.defenderId : null;
+        if (stealer) {
+          // pocket picked: ball pops loose, then the stealer collects it
+          push(BEAT.release, cutPos, { x: handlerCut[0], y: handlerCut[1] - 6, holder: null }, poss.quarter, clock, '');
+          push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, poss.quarter, clock, 'Steal!');
+        } else {
+          push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, poss.quarter, clock, 'Turnover');
+        }
       } else if (ev.type === 'block') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
-        push(BEAT.action, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
-        push(BEAT.resolve, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, 'Blocked!');
+        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
+        push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, '');
+        // swatted sideways, not through the net
+        push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, poss.quarter, clock, 'Blocked!');
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
-        // pass/relocate beat: ball finds the shooter while everyone cuts
-        if (ev.assistPlayerId || ev.playerId !== poss.handlerId) {
-          push(BEAT.action, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
+        const shooterOn = !!shotPos[ev.playerId];
+        // pass flight: ball leaves the passer's hands and travels to the
+        // shooter (the release keyframe is what makes it fly — see BEAT).
+        if (shooterOn && ev.playerId !== poss.handlerId) {
+          const passerId = (ev.assistPlayerId && pos[ev.assistPlayerId]) ? ev.assistPlayerId : poss.handlerId;
+          const from = pos[passerId] || handlerPos;
+          push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, poss.quarter, clock, '');
+          push(BEAT.pass, shotPos, { x: sp[0], y: sp[1] - 8, holder: ev.playerId }, poss.quarter, clock, '');
         }
-        // inside shots get a drive beat: shooter attacks the rim before finishing
+        // windup: shooter gathers, everyone else finishes their cuts
+        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null }, poss.quarter, clock, '');
+        // inside shots drive to the rim before finishing
         let releasePos = shotPos;
-        if (ev.zone === 'inside' && shotPos[ev.playerId]) {
+        let relSpot = sp;
+        if (ev.zone === 'inside' && shooterOn) {
           const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -8 : 8), hoop.y + cutJitter(pi + ei, 6));
           releasePos = Object.assign({}, shotPos);
           releasePos[ev.playerId] = rimSpot;
+          relSpot = rimSpot;
           push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, poss.quarter, clock, '');
         }
         if (ev.made) score[ev.team === 'home' ? 0 : 1] += ev.points;
         const madeLabel = ev.zone === 'inside'
           ? INSIDE_FINISHES[(pi + ei) % INSIDE_FINISHES.length]
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
-        // ball arcs (or slams) to the hoop
-        push(BEAT.resolve, releasePos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
+        // release: ball leaves the hands...
+        push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, poss.quarter, clock, '');
+        // ...and actually flies to the rim, high arc for threes, flat for slams
+        push(flightBeat(ev.zone), releasePos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
           ev.made ? madeLabel : '');
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
