@@ -337,8 +337,6 @@ function buildTimeline(session) {
       }
       current = { team: ev.team, quarter: ev.quarter, handlerId: ev.playerId, plays: [], fastBreak: fastBreak };
       possessions.push(current);
-    } else if (ev.type === 'tiebreak') {
-      possessions.push({ team: ev.team, quarter: 4, handlerId: ev.playerId, plays: [ev], tiebreak: true });
     } else if (current) {
       current.plays.push(ev);
     }
@@ -465,16 +463,6 @@ function buildTimeline(session) {
     quarterSeen[poss.quarter] = (quarterSeen[poss.quarter] || 0) + 1;
     const clock = 720 - (quarterSeen[poss.quarter] / perQuarter[poss.quarter]) * 720;
     const clockStart = 720 - ((quarterSeen[poss.quarter] - 1) / perQuarter[poss.quarter]) * 720;
-
-    if (poss.tiebreak) {
-      const ev = poss.plays[0];
-      score[ev.team === 'home' ? 0 : 1] += ev.points;
-      addPoints(ev.playerId, ev.points);
-      const pos = positionsFor(ev.team);
-      const hoop = attackingHoop(ev.team);
-      push(BEAT.resolve, pos, { x: hoop.x, y: hoop.y, holder: null }, 4, 0, 'Late free throw decides it!');
-      return;
-    }
 
     const neededIds = [poss.handlerId];
     poss.plays.forEach(function (ev) {

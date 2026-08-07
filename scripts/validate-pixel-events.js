@@ -16,7 +16,7 @@ const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'))
 const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 
-const EVENT_TYPES = ['possession', 'turnover', 'block', 'shot', 'rebound', 'foul-ft', 'tiebreak'];
+const EVENT_TYPES = ['possession', 'turnover', 'block', 'shot', 'rebound', 'foul-ft'];
 
 function checkNoRngDrift() {
   // Same seed, capture on vs off: identical results.

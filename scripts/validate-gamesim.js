@@ -201,4 +201,42 @@ function checkScoringStaysRealistic() {
 }
 checkScoringStaysRealistic();
 
+// A tie at the end of regulation must be settled by playing basketball, not
+// by awarding a phantom point to whoever made more field goals.
+function checkOvertimeResolvesTies() {
+  let sawOvertime = false;
+  for (let seed = 100; seed < 260; seed++) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    while (!sim.done) sim.step();
+    const r = sim.result();
+    assert.notStrictEqual(r.homeScore, r.awayScore, 'a finished game is never tied (seed ' + seed + ')');
+    if (sim.period > 4) {
+      sawOvertime = true;
+      const otLines = r.playByPlay.filter(function (l) { return l.indexOf('--- OT') === 0; });
+      assert.ok(otLines.length >= 1, 'an overtime game must log an OT period header');
+      // Five players for five extra minutes is 25 extra player-minutes a side.
+      let homeMin = 0;
+      Object.keys(r.boxScore).forEach(function (id) {
+        if (r.boxScore[id].teamId === 'BOS') homeMin += r.boxScore[id].minutes;
+      });
+      assert.ok(homeMin > 243, 'an overtime game must exceed regulation minutes, got ' + homeMin);
+    }
+  }
+  assert.ok(sawOvertime, 'at least one of 160 seeded games should have reached overtime');
+  console.log('checkOvertimeResolvesTies: OK');
+}
+checkOvertimeResolvesTies();
+
+// The tiebreak hack must be gone entirely.
+function checkNoTiebreakEvents() {
+  for (let seed = 300; seed < 340; seed++) {
+    const events = [];
+    gameSim.simulateGame('BOS', 'LAL', makeRng(seed), { events: events });
+    const tiebreaks = events.filter(function (e) { return e.type === 'tiebreak'; });
+    assert.strictEqual(tiebreaks.length, 0, 'no tiebreak events should be emitted (seed ' + seed + ')');
+  }
+  console.log('checkNoTiebreakEvents: OK');
+}
+checkNoTiebreakEvents();
+
 console.log('All game sim validations passed');

@@ -124,7 +124,7 @@ const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it
 
 // The subset of plays the crowd goes wild for.
 const BIG_PLAY_LABELS = [
-  'Three-pointer!', 'Blocked!', 'Steal!', 'Late free throw decides it!',
+  'Three-pointer!', 'Blocked!', 'Steal!',
   'Slams it home!', 'Throws it down!', 'Rises up and JAMS it!'
 ];
 

@@ -138,29 +138,20 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   };
 
   function endPeriod() {
-    if (sim.period < REGULATION_PERIODS) {
+    const regulationOver = sim.period >= REGULATION_PERIODS;
+    if (!regulationOver) {
       sim.period += 1;
       sim.clock = PERIOD_SECONDS;
       return;
     }
-    // Task 7 replaces this with real overtime.
-    resolveTie();
-    sim.done = true;
-  }
-
-  function resolveTie() {
-    if (sim.homeScore !== sim.awayScore) return;
-    // NBA games can't end in a tie — nudge whichever team had more makes.
-    // (Task 7 replaces this with real overtime.)
-    const homeMakes = Object.keys(homeBox).reduce(function (s, id) { return s + homeBox[id].fgm; }, 0);
-    const awayMakes = Object.keys(awayBox).reduce(function (s, id) { return s + awayBox[id].fgm; }, 0);
-    if (homeMakes >= awayMakes) {
-      homeBox[homeRoster[0].id].points += 1; sim.homeScore += 1;
-      if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'home', quarter: 4, playerId: homeRoster[0].id, points: 1 });
-    } else {
-      awayBox[awayRoster[0].id].points += 1; sim.awayScore += 1;
-      if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'away', quarter: 4, playerId: awayRoster[0].id, points: 1 });
+    if (sim.homeScore === sim.awayScore) {
+      // Real overtime, rather than awarding a phantom point. Each extra
+      // period is a full five minutes and both teams keep playing.
+      sim.period += 1;
+      sim.clock = OVERTIME_SECONDS;
+      return;
     }
+    sim.done = true;
   }
 
   sim.applySubstitutions = function (team, swaps) {
