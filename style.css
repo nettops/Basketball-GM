@@ -117,10 +117,37 @@ select { cursor: pointer; }
   overflow-y: auto;
 }
 .app-main {
-  display: grid; grid-template-rows: auto 1fr auto;
+  /* Four children: topbar, view tabs, content, sim dock. The tab row is auto
+     and collapses to nothing when #view-tabs is empty. */
+  display: grid; grid-template-rows: auto auto 1fr auto;
   min-width: 0; min-height: 0;
 }
 #view-content { overflow-y: auto; padding: 22px 26px; min-height: 0; }
+
+/* The active hub's sub-views. :empty collapses the row entirely, so a
+   single-view hub like Dashboard shows no vestigial one-tab bar and loses no
+   vertical space to it. */
+#view-tabs {
+  display: flex; gap: 2px;
+  padding: 0 26px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+#view-tabs:empty { display: none; }
+.view-tab {
+  padding: 10px 14px;
+  background: none; border: none; border-radius: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim); font-size: .85rem; white-space: nowrap;
+}
+.view-tab:hover:not(:disabled) {
+  color: var(--text); background: var(--surface-3);
+  border-color: transparent; border-bottom-color: var(--line-strong);
+}
+.view-tab.active {
+  color: var(--text); border-bottom-color: var(--accent); font-weight: 650;
+}
 
 .sidebar-brand {
   padding: 18px 18px 14px;

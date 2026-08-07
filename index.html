@@ -15,6 +15,10 @@
       </aside>
       <div class="app-main">
         <div id="app-topbar"></div>
+        <!-- Sibling of #view-content, never a child: every view renderer owns
+             #view-content and assigns container.innerHTML, which would destroy
+             a tab strip rendered inside it. -->
+        <div id="view-tabs"></div>
         <div id="view-content"></div>
         <div id="sim-controls"></div>
       </div>

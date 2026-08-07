@@ -574,6 +574,7 @@ function renderView(viewName) {
     renderPlaceholder(container);
   }
   renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
+  renderViewTabs(document.getElementById('view-tabs'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderTopBar(document.getElementById('app-topbar'));
   if (GameState.season) {
     renderSimControls(document.getElementById('sim-controls'));

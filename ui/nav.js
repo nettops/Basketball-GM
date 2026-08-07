@@ -95,6 +95,35 @@ function navLabelFor(viewId) {
   return item ? item.label : viewId;
 }
 
+// Renders the active hub's sibling views as tabs. Leaves the container empty
+// (and so collapsed, via #view-tabs:empty) when there is nothing worth showing:
+// a hub with one visible view, a view with no hub at all (pixelGame), or a
+// `related` view like playerProfile that highlights a hub without belonging to
+// its tab strip.
+function renderViewTabs(container, activeView, onNavigate, playMode, gameMode, hasLegacy) {
+  container.innerHTML = '';
+  const hub = hubForView(activeView);
+  if (!hub) return;
+  if (hub.views.indexOf(activeView) === -1) return;
+
+  const views = visibleHubViews(hub, playMode, gameMode, hasLegacy);
+  if (views.length < 2) return;
+
+  views.forEach(function (viewId) {
+    const btn = document.createElement('button');
+    btn.textContent = navLabelFor(viewId);
+    btn.className = viewId === activeView ? 'view-tab active' : 'view-tab';
+    btn.setAttribute('data-view', viewId);
+    btn.addEventListener('click', function () {
+      // Same rule the sidebar has always had: choosing Roster means MY team,
+      // clearing any team being inspected from Standings or Power Rankings.
+      if (viewId === 'roster') GameState.inspectTeamId = null;
+      onNavigate(viewId);
+    });
+    container.appendChild(btn);
+  });
+}
+
 const NAV_GROUP_ORDER = ['Team', 'League', 'Transactions', 'System'];
 
 // hasLegacy surfaces the Player Legacy view after a career-mode player retires.
@@ -146,6 +175,7 @@ if (typeof module !== 'undefined' && module.exports) {
     navViewIsVisible: navViewIsVisible,
     visibleHubViews: visibleHubViews,
     navLabelFor: navLabelFor,
+    renderViewTabs: renderViewTabs,
     renderNav: renderNav
   };
 }
