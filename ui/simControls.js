@@ -303,43 +303,24 @@ async function runMultiSeason(mode, target) {
     }
     if (GameState.pauseRequested) { seasonsRun += 1; break; }
 
-    // This loop is a second, independent season-rollover path alongside
-    // script.js's handleAdvanceToOffseason (used by the manual "Next..."
-    // buttons) — it drives every fast-forward control (Sim N Seasons, Sim
-    // Until Championship, Sim Custom Days), which is precisely the
-    // "long unattended multi-season sim" use case Phase 8's history/awards
-    // tracking exists for, so it needs the same finalizeSeasonHistory /
-    // archiveDraftClass wiring, not just the manual single-step path. Same
-    // reasoning applies to the season-snapshot rewind feature.
-    pushSeasonSnapshot(GameState);
-    // Same reason script.js's handleAdvanceToOffseason clears these: the
-    // offseason below retires players out of PLAYERS_2026, so any offer still
-    // in the inbox can name someone who no longer exists.
-    GameState.tradeOffers = [];
-    finalizeSeasonHistory(GameState.leagueYear || 2026, GameState.playoffBracket, function (text) { pushToFeed(text); });
-    setLeagueYear((GameState.leagueYear || 2026) + 1);
-    const draftResult = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear, GameState.settings.lotteryFormat);
-    GameState.lastDraftResults = draftResult.draftResults;
-    archiveDraftClass(GameState.leagueYear, draftResult.draftResults);
-    runFreeAgencySilently(GameState.rng);
-    autoEnforceRosterSize(getTeamById(GameState.userTeamId));
-
-    // Career mode's own offseason step. This loop is a separate rollover path
-    // from script.js's handleAdvanceToOffseason, and it never ran the career
-    // followup — so fast-forwarding skipped every retirement ceremony and
-    // random event, and could retire the controlled player straight out of
-    // PLAYERS_2026 leaving the Career view reading "Player not found".
-    let careerSceneShown = false;
-    if (GameState.gameMode === 'playerCareer') {
-      careerSceneShown = handlePlayerCareerOffseasonFollowup(true);
-    }
-
-    const seasonResult = generateNewSeason(GameState.rng);
-    GameState.season = { games: seasonResult.games, currentDay: -1 };
-    GameState.upcomingDraftClass = seasonResult.nextDraftClass;
-    GameState.playoffBracket = null;
-    GameState.offseasonStage = null;
-    GameState.allStarWeekend = null;
+    // The full rollover — history, draft, free agency, next schedule. This
+    // drives every fast-forward control (Sim N Seasons, Until Championship,
+    // Sim Custom Days), the long unattended runs Phase 8's history/awards
+    // tracking exists for, so it needs the same wiring as the manual path and
+    // not a cut-down version. It used to BE a second, independent copy of
+    // that wiring alongside script.js's handleAdvanceToOffseason; both now
+    // call seasonRollover.js, so they cannot drift apart.
+    const rollover = runOffseasonRollover(GameState, {
+      onFeed: function (text) { pushToFeed(text); },
+      // Career mode's own offseason step. This loop never ran it before the
+      // extraction, so fast-forwarding skipped every retirement ceremony and
+      // could retire the controlled player out of PLAYERS_2026, leaving the
+      // Career view reading "Player not found".
+      onCareerFollowup: GameState.gameMode === 'playerCareer'
+        ? function () { return handlePlayerCareerOffseasonFollowup(true); }
+        : null
+    });
+    const careerSceneShown = rollover.careerSceneShown;
     seasonsRun += 1;
 
     // A scene the user has to acknowledge ends the fast-forward. Returning

@@ -97,6 +97,16 @@
   <script src="ui/playerComparison.js"></script>
   <script src="ui/draft.js"></script>
   <script src="freeAgency.js"></script>
+  <!-- seasonRollover.js captures its dependencies (pushSeasonSnapshot,
+       finalizeSeasonHistory, runOffseasonThroughDraft, runFreeAgencySilently,
+       autoEnforceRosterSize, generateNewSeason, getTeamById) into a data
+       block at LOAD time, so every one of them must already be defined —
+       freeAgency.js above is the last of them. It is loaded here rather than
+       next to ui/simControls.js, which calls it: that call happens at click
+       time, long after every script has run. Loading it earlier would capture
+       runFreeAgencySilently as undefined, exactly the way gameCoach.js broke
+       when it was placed before simEngineBoxScore.js. -->
+  <script src="seasonRollover.js"></script>
   <script src="freeAgencyBidding.js"></script>
   <script src="ui/freeAgency.js"></script>
   <script src="ui/scouting.js"></script>
