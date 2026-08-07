@@ -263,6 +263,7 @@ async function runMultiSeason(mode, target) {
   const maxSeasons = mode === 'championship' ? 15 : (mode === 'seasons' ? target : Infinity);
   let daysRemaining = mode === 'days' ? target : Infinity;
   GameState.pauseRequested = false;
+  GameState.pauseReason = null;
 
   while (seasonsRun < maxSeasons && daysRemaining > 0 && !GameState.pauseRequested) {
     const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
@@ -291,6 +292,7 @@ async function runMultiSeason(mode, target) {
       const madePlayoffs = GameState.playoffBracket.first.some(function (s) { return s.higherSeed === GameState.userTeamId || s.lowerSeed === GameState.userTeamId; });
       if ((madePlayoffs && GameState.settings.pauseOn.madePlayoffs) || (!madePlayoffs && GameState.settings.pauseOn.missedPlayoffs)) {
         GameState.pauseRequested = true;
+        GameState.pauseReason = madePlayoffs ? 'You made the playoffs' : 'You missed the playoffs';
       }
     }
     let g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
@@ -299,6 +301,7 @@ async function runMultiSeason(mode, target) {
     if (mode === 'championship' && GameState.playoffBracket.finals[0].winner === GameState.userTeamId) {
       seasonsRun += 1;
       GameState.pauseRequested = true;
+      GameState.pauseReason = 'You won the title';
       break;
     }
     if (GameState.pauseRequested) { seasonsRun += 1; break; }

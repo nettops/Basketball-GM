@@ -37,6 +37,11 @@ const GameState = {
   draftSession: null,
   tradeOffers: [],
   pauseRequested: false,
+  // Why the run stopped, for the dock's status line. pauseRequested alone is
+  // a bare boolean: it can halt a fast-forward but cannot say what happened,
+  // leaving the player to work out for themselves why the game stopped. Set
+  // wherever pauseRequested is set, cleared wherever it is cleared.
+  pauseReason: null,
   gameMode: null, // null (GM mode) | 'playerCareer'
   playerCareerController: null,
   narrativeSystem: null,
@@ -49,7 +54,15 @@ const GameState = {
   godMode: { enabled: false, autoWinEnabled: false },
   settings: {
     simEngine: 'boxscore', simSpeed: 'normal',
-    pauseOn: { madePlayoffs: false, missedPlayoffs: false, tradeOfferReceived: false, keyInjury: false },
+    // madePlayoffs/missedPlayoffs fire once a season and keyInjury is rare —
+    // each is the game telling you something, so they default on. Continue
+    // would otherwise sail past every notable moment in silence.
+    //
+    // tradeOfferReceived does NOT: offers generate weekly, so it would stop a
+    // fast-forward roughly 26 times a season. Offers now expire on their own
+    // with a visible countdown (trade.js), so the inbox no longer needs to
+    // interrupt in order to be noticed.
+    pauseOn: { madePlayoffs: true, missedPlayoffs: true, tradeOfferReceived: false, keyInjury: true },
     capDisabled: false,
     capLevel: 1,
     injuryFrequency: 1,
@@ -158,6 +171,7 @@ function pushInjuriesToFeed(newInjuries, dayIndex) {
     pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity, dayIndex);
     if (isUserPlayer && player.overall >= 80 && GameState.settings.pauseOn.keyInjury) {
       GameState.pauseRequested = true;
+      GameState.pauseReason = player.name + ' injured';
     }
   });
 }
@@ -180,7 +194,10 @@ function runWeeklyTradeGeneration(dayIndex) {
     // inbox for the rest of the career.
     offer.dayReceived = dayIndex;
     GameState.tradeOffers.push(offer);
-    if (GameState.settings.pauseOn.tradeOfferReceived) GameState.pauseRequested = true;
+    if (GameState.settings.pauseOn.tradeOfferReceived) {
+      GameState.pauseRequested = true;
+      GameState.pauseReason = 'New trade offer';
+    }
   }
 }
 
