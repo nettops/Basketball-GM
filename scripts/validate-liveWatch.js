@@ -153,4 +153,48 @@ function checkRecordedResultIsTheGameThatWasPlayed() {
 }
 checkRecordedResultIsTheGameThatWasPlayed();
 
+// --- Task 10: the playoff path ------------------------------------------
+
+const playoffs = require(path.join(__dirname, '..', 'playoffs.js'));
+
+function checkPlayoffGameIsDeferred() {
+  // A bracket is seeded from TEAMS records, so a season has to actually be
+  // played before one can be generated.
+  const season = freshSeason(105);
+  const lastDay = season.games.reduce(function (m, g) { return Math.max(m, g.day); }, 0);
+  const rng = makeRng(9);
+  for (let d = 0; d <= lastDay; d++) league.simulateDate(season, d, {}, rng, null, null);
+
+  const bracket = playoffs.generateBracket(rng, {});
+  const firstSeries = playoffs.getCurrentRoundSeries(bracket)[0];
+  const teamId = firstSeries.higherSeed;   // whoever is in it plays the "user"
+
+  const watch = { teamId: teamId, events: [], live: true };
+  let guard = 0;
+  while (guard++ < 200) {
+    const g = playoffs.simulateNextPlayoffGame(bracket, {}, rng, watch);
+    if (watch.liveGame) break;
+    if (g === null) break;
+  }
+  assert.ok(watch.liveGame, 'a live playoff game handle is returned');
+  assert.strictEqual(watch.liveGame.sim.done, false, 'the sim has not been stepped');
+  assert.ok(watch.liveGame.game.isPlayoff, 'it is flagged as a playoff game');
+
+  const winsBefore = firstSeries.winsHigher + firstSeries.winsLower;
+  assert.strictEqual(winsBefore, 0, 'the series has NOT advanced past an undecided game');
+
+  while (!watch.liveGame.sim.done) watch.liveGame.sim.step();
+  assert.strictEqual(watch.liveGame.finish(), true, 'finish applies the result');
+
+  assert.strictEqual(firstSeries.winsHigher + firstSeries.winsLower, 1,
+    'the series advanced by exactly one game, and only after finish()');
+  assert.ok(watch.liveGame.game.homeScore > 0 && watch.liveGame.game.awayScore > 0,
+    'the game has real scores');
+  assert.ok(watch.events.length > 100, 'events were captured');
+  assert.strictEqual(watch.liveGame.finish(), false, 'a second finish is a no-op');
+
+  console.log('checkPlayoffGameIsDeferred: OK');
+}
+checkPlayoffGameIsDeferred();
+
 console.log('validate-liveWatch: all checks passed');

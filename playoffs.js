@@ -1,12 +1,16 @@
 var _PLAYOFF_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js'), morale: require('./morale.js'), godMode: require('./godMode.js') }
+  ? { data: require('./data.js'), teams: require('./teams.js'), simEngine: require('./simEngine.js'), league: require('./league.js'), morale: require('./morale.js'), godMode: require('./godMode.js'), gameSim: require('./gameSim.js'), rng: require('./rng.js') }
   : {
       data: { CONFERENCES: CONFERENCES },
       teams: { TEAMS: TEAMS },
       simEngine: { getActiveEngine: getActiveEngine },
       league: { recordGameResult: recordGameResult, accumulateSeasonStats: accumulateSeasonStats },
       morale: { tickMoraleForTeamGame: tickMoraleForTeamGame },
-      godMode: { applyAutoWin: applyAutoWin }
+      godMode: { applyAutoWin: applyAutoWin },
+      // Unlike league.js, the eager block is correct here: nothing gameSim.js
+      // pulls in requires playoffs.js back, so there is no cycle to defer.
+      gameSim: { createGameSim: createGameSim },
+      rng: { makeRng: makeRng }
     };
 
 function getPlayoffSeeds(conference, count) {
@@ -135,14 +139,49 @@ function simulateSeriesGame(series, settings, rng, watchOptions) {
 
   const watched = !!(watchOptions && watchOptions.events &&
     (homeTeamId === watchOptions.teamId || awayTeamId === watchOptions.teamId));
+
+  // Live-watched: hand back an unstepped sim and defer everything that
+  // records the game. The series (and therefore the bracket) must not move
+  // until the game is actually decided, so all of it goes in finish().
+  if (watched && watchOptions.live) {
+    const watchRng = _PLAYOFF_DATA.rng.makeRng(Math.floor(rng() * 2147483647));
+    const sim = _PLAYOFF_DATA.gameSim.createGameSim(homeTeamId, awayTeamId, watchRng,
+      { events: watchOptions.events });
+    const pending = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, isPlayoff: true, seriesId: series.id };
+    let finished = false;
+    watchOptions.liveGame = {
+      sim: sim,
+      game: pending,
+      finish: function () {
+        if (finished) return false;
+        finished = true;
+        recordSeriesGameResult(series, pending, sim.result(), homeIsHigher, rng);
+        return true;
+      }
+    };
+    return null;
+  }
+
   const engine = watched
     ? _PLAYOFF_DATA.simEngine.getActiveEngine({ simEngine: 'possession' })
     : _PLAYOFF_DATA.simEngine.getActiveEngine(settings);
   const result = watched
     ? engine.simulateGame(homeTeamId, awayTeamId, rng, { events: watchOptions.events })
     : engine.simulateGame(homeTeamId, awayTeamId, rng);
-  _PLAYOFF_DATA.godMode.applyAutoWin(homeTeamId, awayTeamId, result, rng);
-  const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, playByPlay: result.playByPlay || null, isPlayoff: true, seriesId: series.id };
+  const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, isPlayoff: true, seriesId: series.id };
+  recordSeriesGameResult(series, game, result, homeIsHigher, rng);
+  return game;
+}
+
+// Everything that turns a simulated result into a recorded playoff game.
+// Extracted so the live-watched path can run it later — after the user has
+// finished coaching the game — without duplicating any of it.
+function recordSeriesGameResult(series, game, result, homeIsHigher, rng) {
+  _PLAYOFF_DATA.godMode.applyAutoWin(game.homeTeamId, game.awayTeamId, result, rng);
+  game.homeScore = result.homeScore;
+  game.awayScore = result.awayScore;
+  game.boxScore = result.boxScore;
+  game.playByPlay = result.playByPlay || null;
 
   _PLAYOFF_DATA.league.recordGameResult(game);
   const homeWon = result.homeScore > result.awayScore;
@@ -152,8 +191,8 @@ function simulateSeriesGame(series, settings, rng, watchOptions) {
     });
     const minutesByPlayerId = {};
     Object.keys(result.boxScore).forEach(function (playerId) { minutesByPlayerId[playerId] = result.boxScore[playerId].minutes; });
-    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(homeTeamId, homeWon, minutesByPlayerId);
-    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(awayTeamId, !homeWon, minutesByPlayerId);
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(game.homeTeamId, homeWon, minutesByPlayerId);
+    _PLAYOFF_DATA.morale.tickMoraleForTeamGame(game.awayTeamId, !homeWon, minutesByPlayerId);
   }
 
   const higherWonThisGame = homeWon === homeIsHigher;
@@ -205,6 +244,11 @@ function simulateNextPlayoffGame(bracket, settings, rng, watchOptions) {
   }
 
   const game = simulateSeriesGame(activeSeries, settings, rng, watchOptions);
+  if (watchOptions && watchOptions.liveGame) {
+    // The bracket cannot advance past a game that has not been played yet.
+    // The caller advances it after calling liveGame.finish().
+    return null;
+  }
   advanceBracketIfRoundComplete(bracket);
   return game;
 }
@@ -217,6 +261,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ROUND1_SEED_PAIRS: ROUND1_SEED_PAIRS,
     simulateNextPlayoffGame: simulateNextPlayoffGame,
     simulateSeriesGame: simulateSeriesGame,
+    advanceBracketIfRoundComplete: advanceBracketIfRoundComplete,
     getCurrentRoundSeries: getCurrentRoundSeries,
     resolvePlayInForConference: resolvePlayInForConference,
     simulatePlayInGame: simulatePlayInGame

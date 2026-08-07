@@ -54,35 +54,40 @@ async function handleWatchNextPlayoffGame() {
   if (statusEl) statusEl.textContent = 'Simulating...';
 
   const events = [];
-  let game = null;
+  const watch = { teamId: GameState.userTeamId, events: events, live: true };
   let guard = 0;
   // Guard: a full bracket is at most 105 games; the cap only exists so a
   // malformed bracket can't spin forever.
   while (guard++ < 200) {
-    game = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng,
-      { teamId: GameState.userTeamId, events: events });
+    const game = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng, watch);
+    if (watch.liveGame) break;         // reached the user's game
     if (game === null) break;          // champion already crowned
-    if (events.length > 0) break;      // this was the user's game
   }
 
   if (statusEl) statusEl.textContent = '';
-  if (!game || events.length === 0) {
-    if (statusEl) statusEl.textContent = game ? 'No remaining games for your team to watch.' : 'The playoffs are over.';
+  if (!watch.liveGame) {
+    if (statusEl) statusEl.textContent = 'No remaining games for your team to watch.';
     renderView(GameState.currentView);
     autosave(GameState);
     return;
   }
 
-  setWatchSession({
-    homeTeamId: game.homeTeamId,
-    awayTeamId: game.awayTeamId,
-    events: events,
-    boxScore: game.boxScore,
-    homeScore: game.homeScore,
-    awayScore: game.awayScore,
-    isPlayoff: true
-  });
   autosave(GameState);
+  setLiveWatchSession({
+    homeTeamId: watch.liveGame.game.homeTeamId,
+    awayTeamId: watch.liveGame.game.awayTeamId,
+    events: events,
+    sim: watch.liveGame.sim,
+    userTeamId: GameState.userTeamId,
+    isPlayoff: true,
+    onFinish: function () {
+      watch.liveGame.finish();
+      // The bracket advance was deferred along with the result — do it now
+      // that the series actually contains this game.
+      advanceBracketIfRoundComplete(GameState.playoffBracket);
+      autosave(GameState);
+    }
+  });
   renderView('pixelGame');
 }
 
