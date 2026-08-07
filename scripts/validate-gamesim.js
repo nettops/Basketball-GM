@@ -45,4 +45,44 @@ function checkGoldenMaster() {
 }
 checkGoldenMaster();
 
+// If a caller drives step() by hand, it must land on exactly the same game as
+// the batch loop. This is the contract the live-stepped watch flow depends on.
+function checkManualSteppingMatchesBatch() {
+  const cases = [{ seed: 21, home: 'BOS', away: 'MIA' }, { seed: 34, home: 'DEN', away: 'GSW' }];
+  cases.forEach(function (c) {
+    const batch = possEngine.simulateGame(c.home, c.away, makeRng(c.seed));
+
+    const sim = possEngine.createGameSim(c.home, c.away, makeRng(c.seed));
+    let guard = 0;
+    while (!sim.done) {
+      sim.step();
+      assert.ok(guard++ < 5000, 'step() must terminate');
+    }
+    const stepped = sim.result();
+
+    assert.strictEqual(stepped.homeScore, batch.homeScore, 'stepped home score must equal batch');
+    assert.strictEqual(stepped.awayScore, batch.awayScore, 'stepped away score must equal batch');
+    assert.strictEqual(boxChecksum(stepped.boxScore), boxChecksum(batch.boxScore), 'stepped box score must equal batch');
+    assert.deepStrictEqual(stepped.playByPlay, batch.playByPlay, 'stepped play-by-play must equal batch');
+  });
+  console.log('checkManualSteppingMatchesBatch: OK');
+}
+checkManualSteppingMatchesBatch();
+
+// step() after completion must be a no-op, so an over-eager driver cannot
+// corrupt a finished game.
+function checkStepAfterDoneIsNoop() {
+  const sim = possEngine.createGameSim('BOS', 'LAL', makeRng(77));
+  while (!sim.done) sim.step();
+  const before = sim.result();
+  sim.step();
+  sim.step();
+  const after = sim.result();
+  assert.strictEqual(after.homeScore, before.homeScore, 'score must not move after done');
+  assert.strictEqual(after.awayScore, before.awayScore, 'score must not move after done');
+  assert.strictEqual(after.playByPlay.length, before.playByPlay.length, 'play-by-play must not grow after done');
+  console.log('checkStepAfterDoneIsNoop: OK');
+}
+checkStepAfterDoneIsNoop();
+
 console.log('All game sim validations passed');
