@@ -276,7 +276,12 @@ function simulateTeamMinutes(roster) {
 // math that already runs regardless) rather than gated behind a flag —
 // storage is what's expensive, and that's pruned at save time the same way
 // save.js already prunes box scores down to just the user's own games.
-function simulatePossessionGame(homeTeamId, awayTeamId, rng, options) {
+// The game-level state machine. step() advances exactly one possession pair
+// (home, then away) — the same unit the old for-loop body covered, so RNG
+// consumption order is unchanged. simulatePossessionGame below is now just a
+// loop over it, which means batch sims and (later) live-stepped watched games
+// run through ONE code path and cannot drift apart.
+function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const homeRoster = eligibleRoster(homeTeamId);
   const awayRoster = eligibleRoster(awayTeamId);
 
@@ -293,8 +298,7 @@ function simulatePossessionGame(homeTeamId, awayTeamId, rng, options) {
   awayRoster.forEach(function (p) { awayBox[p.id].minutes = awayMinutes[p.id]; });
 
   // Synergy depends only on roster composition, not anything that changes
-  // possession-to-possession, so it's computed once per game rather than
-  // once per possession.
+  // possession-to-possession, so it's computed once per game.
   const homeSynergy = _POSS_DATA.composite.computeTeamSynergy(homeRoster);
   const awaySynergy = _POSS_DATA.composite.computeTeamSynergy(awayRoster);
 
@@ -305,33 +309,78 @@ function simulatePossessionGame(homeTeamId, awayTeamId, rng, options) {
   // never pays the allocation cost.
   const captureEvents = options && options.events ? options.events : null;
 
-  let homeScore = 0;
-  let awayScore = 0;
-  for (let i = 0; i < POSSESSIONS_PER_TEAM; i++) {
+  const sim = {
+    homeTeamId: homeTeamId,
+    awayTeamId: awayTeamId,
+    homeRoster: homeRoster,
+    awayRoster: awayRoster,
+    homeBox: homeBox,
+    awayBox: awayBox,
+    homeScore: 0,
+    awayScore: 0,
+    possessionIndex: 0,
+    quarter: 1,
+    done: false,
+    playByPlay: playByPlay
+  };
+
+  sim.step = function () {
+    if (sim.done) return;
+    const i = sim.possessionIndex;
     const quarter = Math.floor(i / POSSESSIONS_PER_QUARTER) + 1;
+    sim.quarter = quarter;
     if (i % POSSESSIONS_PER_QUARTER === 0) {
       playByPlay.push('--- Q' + quarter + ' ---');
     }
     const homeCtx = captureEvents ? { events: captureEvents, team: 'home', quarter: quarter } : null;
     const awayCtx = captureEvents ? { events: captureEvents, team: 'away', quarter: quarter } : null;
-    homeScore += simulatePossession(homeRoster, homeBox, awayRoster, awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
-    awayScore += simulatePossession(awayRoster, awayBox, homeRoster, homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
-  }
+    sim.homeScore += simulatePossession(homeRoster, homeBox, awayRoster, awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
+    sim.awayScore += simulatePossession(awayRoster, awayBox, homeRoster, homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
 
-  if (homeScore === awayScore) {
+    sim.possessionIndex += 1;
+    if (sim.possessionIndex >= POSSESSIONS_PER_TEAM) {
+      resolveTie();
+      sim.done = true;
+    }
+  };
+
+  function resolveTie() {
+    if (sim.homeScore !== sim.awayScore) return;
     // NBA games can't end in a tie — nudge whichever team had more makes.
+    // (Task 7 replaces this with real overtime.)
     const homeMakes = Object.keys(homeBox).reduce(function (s, id) { return s + homeBox[id].fgm; }, 0);
     const awayMakes = Object.keys(awayBox).reduce(function (s, id) { return s + awayBox[id].fgm; }, 0);
     if (homeMakes >= awayMakes) {
-      homeBox[homeRoster[0].id].points += 1; homeScore += 1;
+      homeBox[homeRoster[0].id].points += 1; sim.homeScore += 1;
       if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'home', quarter: 4, playerId: homeRoster[0].id, points: 1 });
     } else {
-      awayBox[awayRoster[0].id].points += 1; awayScore += 1;
+      awayBox[awayRoster[0].id].points += 1; sim.awayScore += 1;
       if (captureEvents) captureEvents.push({ type: 'tiebreak', team: 'away', quarter: 4, playerId: awayRoster[0].id, points: 1 });
     }
   }
 
-  return { homeScore: homeScore, awayScore: awayScore, boxScore: Object.assign({}, homeBox, awayBox), playByPlay: playByPlay };
+  sim.result = function () {
+    return {
+      homeScore: sim.homeScore,
+      awayScore: sim.awayScore,
+      boxScore: Object.assign({}, homeBox, awayBox),
+      playByPlay: playByPlay
+    };
+  };
+
+  return sim;
+}
+
+// Named distinctly from simEngineBoxScore.js's own simulateGame — see that
+// file's comment on this same function name for why. Play-by-play is always
+// generated (the string-building cost is negligible next to the possession
+// math that already runs regardless) rather than gated behind a flag —
+// storage is what's expensive, and that's pruned at save time the same way
+// save.js already prunes box scores down to just the user's own games.
+function simulatePossessionGame(homeTeamId, awayTeamId, rng, options) {
+  const sim = createGameSim(homeTeamId, awayTeamId, rng, options);
+  while (!sim.done) sim.step();
+  return sim.result();
 }
 
 _POSS_DATA.simEngine.registerEngine('possession', { simulateGame: simulatePossessionGame });
@@ -343,6 +392,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,
     simulatePossession: simulatePossession,
+    createGameSim: createGameSim,
     simulateGame: simulatePossessionGame
   };
 }
