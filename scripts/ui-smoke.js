@@ -75,6 +75,15 @@ const UI_SMOKE = (function () {
     ids.forEach(function (id) {
       try {
         renderView(id);
+        // renderView can REFUSE to navigate — it now asks before abandoning a
+        // live watched game. Without this postcondition check every assertion
+        // below runs against whatever is still on screen and passes, which is
+        // precisely the kind of false green this file exists to prevent.
+        if (GameState.currentView !== id) {
+          results.push(ok('view:' + id, false,
+            'navigation refused — a live watched game is holding it; finish or exit that game first'));
+          return;
+        }
         const vc = viewContent();
         const text = vc.textContent.trim();
         const isPlaceholder = text.indexOf('Coming in a later phase') !== -1;
@@ -286,6 +295,27 @@ const UI_SMOKE = (function () {
         pixelRenderNudge(slot, null);   // leave the slot as we found it
         results.push(ok('live:nudge-slot-restored', !slot.querySelector('.pixel-nudge')));
       }
+    }
+
+    // Leaving a live game finishes it irreversibly, so it must ask first —
+    // on EVERY exit route, including the sidebar. Raised directly here rather
+    // than by actually navigating, so the check cannot strand the suite on
+    // another view.
+    const confirmEl = view.querySelector('#pixel-leave-confirm');
+    results.push(ok('live:leave-confirm-exists', !!confirmEl));
+    results.push(ok('live:leave-confirm-hidden-by-default',
+      !!confirmEl && confirmEl.hidden));
+    if (confirmEl && typeof confirmLeaveLiveGame === 'function') {
+      const proceeded = confirmLeaveLiveGame('dashboard');
+      results.push(ok('live:leaving-is-gated', proceeded === false,
+        proceeded === true ? 'navigation was allowed without asking' : null));
+      results.push(ok('live:leave-confirm-visible-when-raised', !confirmEl.hidden));
+      const stay = view.querySelector('#pixel-leave-stay');
+      const go = view.querySelector('#pixel-leave-go');
+      results.push(ok('live:leave-confirm-buttons-reachable',
+        isHitTestable(stay) && isHitTestable(go)));
+      if (stay) stay.click();   // dismiss; must not leave the game
+      results.push(ok('live:keep-watching-dismisses', confirmEl.hidden));
     }
 
     return results;

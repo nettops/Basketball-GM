@@ -654,3 +654,22 @@ table { border-collapse: collapse; width: 100%; }
 .pixel-nudge-x:hover:not(:disabled) { color: var(--text, #e8e8e8); border-color: #4a5262; }
 .pixel-nudge-run { border-color: #d8a13c; }
 .pixel-nudge-text { color: var(--text, #e8e8e8); }
+
+/* Leave-a-live-game confirmation (ui/pixelHud.js). Overlays the court like
+   the sub panel, so it is visible wherever the page is scrolled. */
+.pixel-confirm {
+  position: absolute; inset: 0; z-index: 8;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 8, 12, 0.72);
+}
+.pixel-confirm[hidden] { display: none; }
+.pixel-confirm-box {
+  width: min(90%, 380px);
+  padding: 14px 16px; border-radius: 5px;
+  background: var(--surface-2, #14181f); border: 1px solid #4a5262;
+  text-align: center;
+}
+.pixel-confirm-title { font-weight: 700; margin-bottom: 6px; }
+.pixel-confirm-text { font-size: 0.85rem; color: var(--text-mute); margin-bottom: 12px; }
+.pixel-confirm-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+#pixel-leave-go { background: var(--loss, #c0392b); border-color: var(--loss, #c0392b); color: #fff; font-weight: 600; }

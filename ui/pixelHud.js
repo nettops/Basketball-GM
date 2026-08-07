@@ -43,6 +43,21 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
         '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + stageW + '" height="' + stageH + '"></canvas></div>' +
         '<div class="pixel-nudge-slot" id="pixel-nudge-slot"></div>' +
         '<div class="pixel-subpanel" id="pixel-subpanel" hidden></div>' +
+        // Leaving a live game finishes it, which is not obvious and cannot be
+        // undone — so it asks first. An in-view overlay rather than a native
+        // confirm(): ui/commissioner.js records why this codebase avoids
+        // those (invisible to browser automation, so neither the smoke suite
+        // nor any verification pass could see it).
+        '<div class="pixel-confirm" id="pixel-leave-confirm" hidden>' +
+          '<div class="pixel-confirm-box">' +
+            '<div class="pixel-confirm-title">Leave this game?</div>' +
+            '<div class="pixel-confirm-text">Your assistant coach will simulate the rest of it. The final score counts, and you cannot come back to coach it.</div>' +
+            '<div class="pixel-confirm-actions">' +
+              '<button id="pixel-leave-stay">Keep watching</button>' +
+              '<button id="pixel-leave-go">Leave &amp; sim the rest</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
       // Controls sit directly under the court, ABOVE the ticker, info strip
       // and commentary feed. Last in the stack they were pushed past

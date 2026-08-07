@@ -18,6 +18,21 @@ let _rafId = null;
 // the way out so every exit path completes the game.
 let _pendingLiveRunOut = null;
 
+// Where the user was heading when the leave-confirm interrupted them.
+let _pendingLeaveTarget = null;
+
+// Gate for every exit route. Returns true if leaving may proceed right now,
+// false if the confirmation has been raised instead and the caller should
+// stand down — the overlay's own buttons resume or cancel the navigation.
+function confirmLeaveLiveGame(targetView) {
+  if (!_pendingLiveRunOut) return true;        // nothing live to lose
+  const overlay = document.getElementById('pixel-leave-confirm');
+  if (!overlay) return true;                   // view is gone; don't trap the user
+  _pendingLeaveTarget = targetView || 'dashboard';
+  overlay.hidden = false;
+  return false;
+}
+
 function finishPendingPixelGame() {
   const runOut = _pendingLiveRunOut;
   _pendingLiveRunOut = null;
@@ -937,12 +952,27 @@ function renderPixelGame(container) {
     leavers.length = 0;
     showFinal();
   });
+  document.getElementById('pixel-leave-stay').addEventListener('click', function () {
+    document.getElementById('pixel-leave-confirm').hidden = true;
+    _pendingLeaveTarget = null;
+  });
+  document.getElementById('pixel-leave-go').addEventListener('click', function () {
+    const target = _pendingLeaveTarget || 'dashboard';
+    _pendingLeaveTarget = null;
+    document.getElementById('pixel-leave-confirm').hidden = true;
+    // Finishes and records the game, which also clears _pendingLiveRunOut —
+    // so the renderView below sees nothing live and does not re-prompt.
+    finishPendingPixelGame();
+    _watchSession = null;
+    renderView(target);
+  });
   document.getElementById('pixel-replay').addEventListener('click', function () {
     if (session.live) return;   // nothing to replay yet — the game is still happening
     stopPixelPlayback();
     renderPixelGame(container); // same session, fresh from tip-off
   });
   document.getElementById('pixel-exit').addEventListener('click', function () {
+    if (!confirmLeaveLiveGame('dashboard')) return;
     // Leaving mid-game still records a COMPLETE game (spec: a half-played
     // game is never recorded) — the rest is played out under the auto-coach.
     runOutLiveGame();
@@ -972,6 +1002,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setWatchSession: setWatchSession,
     setLiveWatchSession: setLiveWatchSession,
     finishPendingPixelGame: finishPendingPixelGame,
+    confirmLeaveLiveGame: confirmLeaveLiveGame,
     renderPixelGame: renderPixelGame,
     stopPixelPlayback: stopPixelPlayback
   };

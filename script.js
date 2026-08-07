@@ -511,6 +511,10 @@ function renderView(viewName) {
   // and records it, exactly as Exit does. Without this, navigating away left
   // a permanently unplayed game sitting on a past day in the schedule.
   if (GameState.currentView === 'pixelGame' && viewName !== 'pixelGame') {
+    // Ask before finishing a live game. Returning false means the confirm is
+    // now on screen and this navigation is cancelled; the overlay's own
+    // buttons either resume it or keep the user watching.
+    if (!confirmLeaveLiveGame(viewName)) return;
     finishPendingPixelGame();
   }
   GameState.currentView = viewName;
