@@ -9,10 +9,11 @@ function leagueTradingBlockHtml(userTeamId) {
     .sort(function (a, b) { return b.overall - a.overall; });
   if (flagged.length === 0) return '';
   return '<div class="panel"><div class="panel-header">League Trading Block <span class="pill pill-mute">' + flagged.length + '</span></div>' +
-    '<table class="data-table"><thead><tr><th>Player</th><th>Team</th><th class="num">OVR</th><th class="num">Salary</th></tr></thead><tbody>' +
+    '<table class="data-table"><thead><tr><th></th><th>Player</th><th>Team</th><th class="num">OVR</th><th class="num">Salary</th></tr></thead><tbody>' +
     flagged.map(function (p) {
       const rowClass = p.teamId === userTeamId ? ' class="row-user"' : '';
-      return '<tr' + rowClass + '><td class="col-name">' + p.name + '</td><td>' + teamLogoImgHtml(p.teamId, 16) + ' ' + getTeamById(p.teamId).name + '</td>' +
+      const pTeam = getTeamById(p.teamId);
+      return '<tr' + rowClass + '><td>' + playerFaceHtml(p, pTeam, 24) + '</td><td class="col-name">' + escapeHtml(p.name) + '</td><td>' + teamLogoImgHtml(p.teamId, 16) + ' ' + escapeHtml(pTeam.name) + '</td>' +
         '<td class="num">' + p.overall + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -48,7 +49,7 @@ function handlePropose(state, userTeamId, redraw) {
   Object.keys(result.legs).forEach(function (teamId) {
     const leg = result.legs[teamId];
     if (!leg.accepted && !leg.isUser) {
-      html += '<li>' + getTeamById(teamId).name + ': ' + (leg.suggestion || 'not enough value or salary mismatch') + '</li>';
+      html += '<li>' + escapeHtml(getTeamById(teamId).name) + ': ' + (leg.suggestion || 'not enough value or salary mismatch') + '</li>';
     }
   });
   html += '</ul><p>Adjust the proposal above and propose again.</p>';
@@ -100,8 +101,18 @@ function renderTradeCenter(container, userTeamId) {
         const partner = getTeamById(partnerId);
         const mine = offer.proposal.assignments.find(function (a) { return a.fromTeamId === userTeamId; });
         const theirs = offer.proposal.assignments.find(function (a) { return a.fromTeamId === partnerId; });
-        html += '<li>' + teamLogoImgHtml(partnerId, 18) + ' <strong>' + partner.name + '</strong> offers ' +
-          getPlayerById(theirs.playerId).name + ' for your ' + getPlayerById(mine.playerId).name +
+        // Offers lapse after TRADE_OFFER_EXPIRY_DAYS (trade.js). Showing the
+        // countdown is what makes ignoring one a decision rather than an
+        // accident — the offer disappears silently, so the deadline has to be
+        // visible while it still matters.
+        const daysLeft = typeof offer.dayReceived === 'number'
+          ? TRADE_OFFER_EXPIRY_DAYS - (GameState.season.currentDay - offer.dayReceived)
+          : TRADE_OFFER_EXPIRY_DAYS;
+        const expiryHtml = ' <span class="offer-expiry' + (daysLeft <= 2 ? ' is-urgent' : '') + '">' +
+          (daysLeft <= 1 ? 'expires today' : 'expires in ' + daysLeft + ' days') + '</span>';
+        html += '<li>' + teamLogoImgHtml(partnerId, 18) + ' <strong>' + escapeHtml(partner.name) + '</strong> offers ' +
+          escapeHtml(getPlayerById(theirs.playerId).name) + ' for your ' + escapeHtml(getPlayerById(mine.playerId).name) +
+          expiryHtml +
           ' <button class="btn-primary" data-accept-offer="' + i + '">Accept</button> ' +
           '<button class="btn-ghost" data-decline-offer="' + i + '">Decline</button></li>';
       });
@@ -114,7 +125,7 @@ function renderTradeCenter(container, userTeamId) {
       '<select id="add-team-select"><option value="">Add a team...</option>';
     TEAMS.forEach(function (t) {
       if (state.participants.indexOf(t.id) === -1) {
-        html += '<option value="' + t.id + '">' + t.name + '</option>';
+        html += '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>';
       }
     });
     html += '</select></div>';
@@ -139,7 +150,7 @@ function renderTradeCenter(container, userTeamId) {
         .reduce(function (s, pa) { const pick = findPick(pa.fromTeamId, pa.round); return s + (pick ? estimateFuturePickValue(pa.round, getTeamById(pick.originalTeamId)) : 0); }, 0);
 
       html += '<div class="trade-team-panel panel" data-team-id="' + teamId + '">';
-      html += '<div class="panel-header">' + teamLogoImgHtml(teamId, 20) + ' ' + team.name +
+      html += '<div class="panel-header">' + teamLogoImgHtml(teamId, 20) + ' ' + escapeHtml(team.name) +
         (teamId === userTeamId ? ' <span class="pill pill-mute">You</span>' : '') + '</div>';
       html += '<div class="balance">' +
         '<div class="balance-item"><div class="balance-label">Value Out / In</div>' +
@@ -153,14 +164,14 @@ function renderTradeCenter(container, userTeamId) {
         '<th class="num">In</th><th>Send to</th></tr></thead><tbody>';
       roster.forEach(function (p) {
         const assignment = state.assignments.find(function (a) { return a.playerId === p.id; });
-        html += '<tr><td class="col-name">' + p.name + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span>' +
+        html += '<tr><td class="col-name">' + playerFaceHtml(p, team, 22) + ' ' + escapeHtml(p.name) + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span>' +
           (p.onTradeBlock && teamId !== userTeamId ? ' <span class="pill pill-gold">On Block</span>' : '') + '</td>' +
           (teamId === userTeamId ? '<td class="num"><input type="checkbox" data-trade-block-id="' + p.id + '"' + (p.onTradeBlock ? ' checked' : '') + '></td>' : '') +
           '<td class="num"><input type="checkbox" data-player-id="' + p.id + '" data-from-team="' + teamId + '"' + (assignment ? ' checked' : '') + '></td>' +
           '<td><select data-dest-for="' + p.id + '"' + (assignment ? '' : ' disabled') + '>';
         state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
           const selected = assignment && assignment.toTeamId === destId ? ' selected' : '';
-          html += '<option value="' + destId + '"' + selected + '>' + getTeamById(destId).name + '</option>';
+          html += '<option value="' + destId + '"' + selected + '>' + escapeHtml(getTeamById(destId).name) + '</option>';
         });
         html += '</select></td></tr>';
       });
@@ -176,7 +187,7 @@ function renderTradeCenter(container, userTeamId) {
         html += '<select data-pick-dest-round="' + round + '" data-pick-dest-from="' + teamId + '"' + (pickAssignment ? '' : ' disabled') + '>';
         state.participants.filter(function (t) { return t !== teamId; }).forEach(function (destId) {
           const selected = pickAssignment && pickAssignment.toTeamId === destId ? ' selected' : '';
-          html += '<option value="' + destId + '"' + selected + '>' + getTeamById(destId).name + '</option>';
+          html += '<option value="' + destId + '"' + selected + '>' + escapeHtml(getTeamById(destId).name) + '</option>';
         });
         html += '</select></div>';
       });

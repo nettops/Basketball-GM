@@ -673,3 +673,8 @@ table { border-collapse: collapse; width: 100%; }
 .pixel-confirm-text { font-size: 0.85rem; color: var(--text-mute); margin-bottom: 12px; }
 .pixel-confirm-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 #pixel-leave-go { background: var(--loss, #c0392b); border-color: var(--loss, #c0392b); color: #fff; font-weight: 600; }
+
+/* Trade-offer deadline (ui/tradeCenter.js). Offers lapse on their own, so the
+   countdown has to be visible while the player can still act on it. */
+.offer-expiry { font-size: 0.78rem; color: var(--text-mute); }
+.offer-expiry.is-urgent { color: #d8a13c; font-weight: 600; }

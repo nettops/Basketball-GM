@@ -79,10 +79,35 @@ function describeTradeForFeed(proposal) {
   }).join('; ');
 }
 
+function reassignJerseyIfTaken(player, teamId) {
+  const team = _TRADE_DATA.teams.getTeamById(teamId);
+  const taken = new Set(
+    _TRADE_DATA.league.getTeamRoster(teamId)
+      .filter(function (p) { return p.id !== player.id; })
+      .map(function (p) { return p.jerseyNumber; })
+      .concat((team && team.retiredNumbers) || [])
+  );
+  if (player.jerseyNumber !== null && player.jerseyNumber !== undefined && !taken.has(player.jerseyNumber)) return;
+  let jersey = 0;
+  while (taken.has(jersey)) jersey++;
+  player.jerseyNumber = jersey;
+}
+
 function executeTrade(proposal, historySink, dayIndex) {
   proposal.assignments.forEach(function (a) {
     const player = _TRADE_DATA.league.getPlayerById(a.playerId);
+    // A proposal can outlive the player it names — an offer sitting in the
+    // inbox across an offseason references someone who may since have retired
+    // (spliced out of PLAYERS_2026 by runOffseasonPreDraft). Same guard
+    // archiveTrade already applies on its own pass over these assignments.
+    if (!player) return;
     player.teamId = a.toTeamId;
+    // A traded player keeps his old number by default, which can collide with a
+    // teammate's or with one the new team has retired. Same free-number scan
+    // draft.js's executePick and freeAgency.js's signPlayer already use — only
+    // applied when the existing number is actually taken, so a player who can
+    // keep his number does.
+    reassignJerseyIfTaken(player, a.toTeamId);
     // High-ego, high-loyalty players take being traded harder.
     if (player.hiddenPersonality && player.hiddenPersonality.ego !== undefined && player.status) {
       const moraleHit = 3 + (player.hiddenPersonality.ego + player.hiddenPersonality.loyalty) / 20;
@@ -113,8 +138,40 @@ function proposeTrade(proposal, userTeamId, evaluateUserLeg, historySink) {
   return Object.assign({ rosterErrors: [] }, evaluation);
 }
 
+// Incoming AI offers used to sit in the inbox forever. They are generated
+// weekly, so over a career they accumulated without bound — a list that only
+// ever grows is a standing obligation, and the player is never caught up.
+// A week matches the generation cadence, so at most one or two are ever live
+// and the inbox stays a snapshot of what is actually on the table rather than
+// an archive of everything ever offered.
+//
+// Letting an offer lapse is a real answer, not a failure to answer: the
+// Trade Center shows each one's remaining days, so ignoring it is a choice
+// the player makes with the deadline in front of them.
+const TRADE_OFFER_EXPIRY_DAYS = 7;
+
+// Drops offers whose window has closed. Returns how many were removed.
+// Tolerates a missing inbox so callers need no guard.
+function pruneExpiredTradeOffers(gameState, dayIndex) {
+  if (!gameState || !Array.isArray(gameState.tradeOffers)) return 0;
+  const before = gameState.tradeOffers.length;
+  gameState.tradeOffers = gameState.tradeOffers.filter(function (offer) {
+    // Offers saved before this feature carry no dayReceived. Stamping them on
+    // first sight gives them a full window; treating undefined as day 0 would
+    // silently bin every pending offer the moment such a save was loaded.
+    if (typeof offer.dayReceived !== 'number') {
+      offer.dayReceived = dayIndex;
+      return true;
+    }
+    return dayIndex - offer.dayReceived < TRADE_OFFER_EXPIRY_DAYS;
+  });
+  return before - gameState.tradeOffers.length;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    TRADE_OFFER_EXPIRY_DAYS: TRADE_OFFER_EXPIRY_DAYS,
+    pruneExpiredTradeOffers: pruneExpiredTradeOffers,
     validateRosterSizes: validateRosterSizes,
     evaluateTrade: evaluateTrade,
     executeTrade: executeTrade,

@@ -189,4 +189,67 @@ function checkPickTrading() {
 }
 
 checkPickTrading();
+
+// --- Trade offers expire ---------------------------------------------------
+// An inbox that only ever grows is a standing obligation: offers were
+// generated weekly and never removed, so they accumulated for a whole career.
+function checkTradeOffersExpire() {
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+  const EXPIRY = tradeModule.TRADE_OFFER_EXPIRY_DAYS;
+  assert.ok(EXPIRY > 0, 'expiry window is a positive number of days');
+
+  const gs = { tradeOffers: [
+    { dayReceived: 10, proposal: { participants: ['BOS', 'LAL'] } },   // fresh
+    { dayReceived: 0, proposal: { participants: ['BOS', 'MIA'] } }     // stale
+  ] };
+
+  // One day short of the fresh offer's own deadline: only the stale one goes.
+  const dropped = tradeModule.pruneExpiredTradeOffers(gs, 10 + EXPIRY - 1);
+  assert.strictEqual(dropped, 1, 'exactly the stale offer is dropped');
+  assert.strictEqual(gs.tradeOffers.length, 1, 'one offer survives');
+  assert.strictEqual(gs.tradeOffers[0].proposal.participants[1], 'LAL', 'the fresh one survives');
+
+  // The survivor goes when its own window closes.
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(gs, 10 + EXPIRY), 1, 'the last offer expires too');
+  assert.strictEqual(gs.tradeOffers.length, 0, 'inbox empties');
+
+  console.log('checkTradeOffersExpire: OK');
+}
+checkTradeOffersExpire();
+
+function checkOffersExpireOnTheirLastDayNotBefore() {
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+  const EXPIRY = tradeModule.TRADE_OFFER_EXPIRY_DAYS;
+  const gs = { tradeOffers: [{ dayReceived: 5, proposal: { participants: ['BOS', 'NYK'] } }] };
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(gs, 5 + EXPIRY - 1), 0,
+    'still live the day before the window closes');
+  assert.strictEqual(gs.tradeOffers.length, 1);
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(gs, 5 + EXPIRY), 1, 'gone once it closes');
+  console.log('checkOffersExpireOnTheirLastDayNotBefore: OK');
+}
+checkOffersExpireOnTheirLastDayNotBefore();
+
+function checkLegacyOffersGetAFullWindow() {
+  // Offers saved before this feature have no dayReceived. They must not all
+  // vanish on the first day after loading such a save — they get stamped with
+  // the current day and then live out a normal window.
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+  const EXPIRY = tradeModule.TRADE_OFFER_EXPIRY_DAYS;
+  const gs = { tradeOffers: [{ proposal: { participants: ['BOS', 'PHI'] } }] };
+
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(gs, 40), 0, 'a legacy offer is not dropped on sight');
+  assert.strictEqual(gs.tradeOffers[0].dayReceived, 40, 'it is stamped with the day it was first seen');
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(gs, 40 + EXPIRY), 1, 'then expires normally');
+  console.log('checkLegacyOffersGetAFullWindow: OK');
+}
+checkLegacyOffersGetAFullWindow();
+
+function checkPruneToleratesMissingInbox() {
+  const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers({}, 5), 0, 'no tradeOffers array is not an error');
+  assert.strictEqual(tradeModule.pruneExpiredTradeOffers(null, 5), 0, 'no game state is not an error');
+  console.log('checkPruneToleratesMissingInbox: OK');
+}
+checkPruneToleratesMissingInbox();
+
 console.log('All trade validations passed');

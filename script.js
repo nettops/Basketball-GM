@@ -176,6 +176,9 @@ function runWeeklyTradeGeneration(dayIndex) {
   if (GameState.automation.autoTrade) {
     executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
   } else {
+    // Stamped so the offer can expire (trade.js) instead of sitting in the
+    // inbox for the rest of the career.
+    offer.dayReceived = dayIndex;
     GameState.tradeOffers.push(offer);
     if (GameState.settings.pauseOn.tradeOfferReceived) GameState.pauseRequested = true;
   }
@@ -200,6 +203,11 @@ function runWeeklyAIToAITradeGeneration(dayIndex) {
 }
 
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
+  // Retire offers whose window has closed. Silent by design: the Trade Center
+  // shows each offer's remaining days, so letting one lapse is a decision the
+  // player already made with the deadline in front of them — announcing it
+  // afterwards would just be one more thing to read.
+  pruneExpiredTradeOffers(GameState, dayIndex);
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);
