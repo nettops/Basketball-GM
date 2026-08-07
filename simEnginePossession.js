@@ -146,6 +146,13 @@ function pushEvent(eventCtx, ev) {
   if (!eventCtx) return;
   ev.team = eventCtx.team;
   ev.quarter = eventCtx.quarter;
+  // period distinguishes overtime (5+) from Q4, which `quarter` clamps away;
+  // clock is the real game clock at the start of this possession.
+  ev.period = eventCtx.period;
+  ev.clock = eventCtx.clock;
+  // Only on the possession event: the five cannot change mid-possession, so
+  // repeating them on every play would be ten ids of pure duplication.
+  if (ev.type === 'possession') ev.lineups = eventCtx.lineups;
   eventCtx.events.push(ev);
 }
 
@@ -234,8 +241,12 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
       logPlay(log, rebounder.name + ' grabs the defensive rebound');
       // A defensive rebounder is on the OTHER side from the possession's
       // offense, and pushEvent stamps ev.team from the context — so this one
-      // event goes through a side-flipped context.
-      pushEvent(eventCtx && { events: eventCtx.events, team: eventCtx.team === 'home' ? 'away' : 'home', quarter: eventCtx.quarter },
+      // event goes through a side-flipped context. Derived from the real
+      // context by copy-and-override rather than rebuilt field by field: a
+      // hand-listed copy silently drops every field added to the context
+      // later, which is exactly how these events ended up with no period or
+      // clock while all the others had them.
+      pushEvent(eventCtx && Object.assign({}, eventCtx, { team: eventCtx.team === 'home' ? 'away' : 'home' }),
         { type: 'rebound', playerId: rebounder.id, offensive: false });
     }
   }

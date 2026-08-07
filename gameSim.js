@@ -168,7 +168,18 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     const team = sim.offenseTeam;
     const other = team === 'home' ? 'away' : 'home';
     sim.quarter = Math.min(sim.period, REGULATION_PERIODS);
-    const ctx = captureEvents ? { events: captureEvents, team: team, quarter: sim.quarter } : null;
+    // .slice() is load-bearing: onCourt.home is mutated in place by
+    // applySubstitutions, so storing the array itself would leave every
+    // possession event pointing at one live array that reports the FINAL
+    // lineup for the whole game.
+    const ctx = captureEvents ? {
+      events: captureEvents,
+      team: team,
+      quarter: sim.quarter,
+      period: sim.period,
+      clock: Math.round(sim.clock),
+      lineups: { home: onCourt.home.slice(), away: onCourt.away.slice() }
+    } : null;
 
     const offBox = team === 'home' ? homeBox : awayBox;
     const defBox = team === 'home' ? awayBox : homeBox;

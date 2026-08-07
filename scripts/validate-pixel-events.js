@@ -162,4 +162,45 @@ function checkPlayoffWatchPath() {
 }
 checkPlayoffWatchPath();
 
+// --- Task 2: clock / period / lineup stamps ------------------------------
+
+function checkEventStamps() {
+  const events = [];
+  gameSim.simulateGame('BOS', 'LAL', makeRng(21), { events: events });
+
+  events.forEach(function (ev) {
+    assert.ok(typeof ev.period === 'number' && ev.period >= 1, 'every event carries a period');
+    assert.ok(typeof ev.clock === 'number' && ev.clock >= 0, 'every event carries a clock');
+    assert.strictEqual(ev.clock, Math.round(ev.clock), 'clock is whole seconds');
+    const periodLength = ev.period <= 4 ? 720 : 300;
+    assert.ok(ev.clock <= periodLength, 'clock fits inside its period: ' + ev.clock + ' in period ' + ev.period);
+  });
+
+  const possessions = events.filter(function (ev) { return ev.type === 'possession'; });
+  assert.ok(possessions.length > 100, 'a full game has many possessions');
+  possessions.forEach(function (ev) {
+    assert.ok(ev.lineups, 'possession events carry lineups');
+    assert.strictEqual(ev.lineups.home.length, 5, 'five home players on court');
+    assert.strictEqual(ev.lineups.away.length, 5, 'five away players on court');
+    assert.strictEqual(new Set(ev.lineups.home.concat(ev.lineups.away)).size, 10, 'ten distinct players');
+  });
+
+  // The clock only ever runs down within a period.
+  let prev = null;
+  possessions.forEach(function (ev) {
+    if (prev && prev.period === ev.period) {
+      assert.ok(ev.clock <= prev.clock, 'clock is non-increasing within a period');
+    }
+    prev = ev;
+  });
+
+  // Lineups must actually change over a game — a stamp that never moves would
+  // pass every assertion above while silently reporting the starters all night.
+  const distinct = new Set(possessions.map(function (ev) { return ev.lineups.home.slice().sort().join(','); }));
+  assert.ok(distinct.size >= 4, 'the home five changes over the game, saw ' + distinct.size + ' distinct lineups');
+
+  console.log('checkEventStamps: OK');
+}
+checkEventStamps();
+
 console.log('All pixel event validations passed');
