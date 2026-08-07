@@ -5,7 +5,7 @@
 // behaviour-identical, so it had room to grow without turning
 // simEnginePossession.js into a grab bag.
 var _GAMESIM_DATA = (typeof require !== 'undefined')
-  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./coach.js') }
+  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./gameCoach.js') }
   : {
       poss: {
         POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,

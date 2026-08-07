@@ -16,7 +16,12 @@ function registerEngine(name, engine) {
 }
 
 function getActiveEngine(settings) {
-  const name = (settings && settings.simEngine) || 'boxscore';
+  // The possession engine is the league default: it is the one that models an
+  // on-court five, rotations, a clock, and coaching decisions, so making it
+  // the default is what keeps unwatched games under the same rules as the
+  // game the user is watching. `boxscore` remains selectable in settings and
+  // is roughly 30x faster for anyone who wants raw fast-forward speed.
+  const name = (settings && settings.simEngine) || 'possession';
   const engine = SIM_ENGINES[name];
   if (!engine) {
     throw new Error('getActiveEngine: engine "' + name + '" is not implemented yet');

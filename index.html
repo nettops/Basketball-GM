@@ -39,11 +39,17 @@
   <script src="awards.js"></script>
   <script src="history.js"></script>
   <script src="schedule.js"></script>
-  <script src="coach.js"></script>
   <script src="simEngine.js"></script>
   <script src="simEngineBoxScore.js"></script>
   <script src="compositeRatings.js"></script>
   <script src="simEnginePossession.js"></script>
+  <!-- gameCoach.js (in-game substitution/timeout decisions) is distinct from
+       coaches.js (coach entities, hiring, specialties) above. It reads
+       minutesWeight from simEngineBoxScore.js at load time, so it must come
+       after it: in the browser these share one global scope and run in tag
+       order, and loading it earlier made the whole script throw, leaving its
+       const declarations permanently uninitialized. -->
+  <script src="gameCoach.js"></script>
   <script src="gameSim.js"></script>
   <script src="fatigue.js"></script>
   <script src="injuries.js"></script>

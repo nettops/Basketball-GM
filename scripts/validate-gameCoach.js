@@ -14,7 +14,7 @@ require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 require(path.join(__dirname, '..', 'simEnginePossession.js'));
 const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
-const coach = require(path.join(__dirname, '..', 'coach.js'));
+const coach = require(path.join(__dirname, '..', 'gameCoach.js'));
 
 // Six fouls means out, with no exceptions and no ambiguity.
 function checkFouledOutPlayerIsBenched() {

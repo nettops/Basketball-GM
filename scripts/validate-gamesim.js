@@ -374,4 +374,22 @@ function checkSameDecisionsReproduce() {
 }
 checkSameDecisionsReproduce();
 
+// The league must run under the same rules the user watches, or the coach's
+// decisions only exist in games that happen to be observed.
+function checkPossessionIsDefaultEngine() {
+  const simEngineModule = require(path.join(__dirname, '..', 'simEngine.js'));
+  const defaulted = simEngineModule.getActiveEngine({});
+  assert.strictEqual(defaulted, simEngineModule.SIM_ENGINES.possession,
+    'an empty settings object must select the possession engine');
+  const undefinedSettings = simEngineModule.getActiveEngine(undefined);
+  assert.strictEqual(undefinedSettings, simEngineModule.SIM_ENGINES.possession,
+    'undefined settings must select the possession engine');
+  // boxscore stays available for anyone who selects it explicitly.
+  const explicit = simEngineModule.getActiveEngine({ simEngine: 'boxscore' });
+  assert.strictEqual(explicit, simEngineModule.SIM_ENGINES.boxscore,
+    'boxscore must remain selectable');
+  console.log('checkPossessionIsDefaultEngine: OK');
+}
+checkPossessionIsDefaultEngine();
+
 console.log('All game sim validations passed');

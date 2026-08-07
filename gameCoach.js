@@ -3,7 +3,7 @@
 // league does not also get. Pure functions over sim state: no state of its
 // own, which is what makes it testable in isolation and safe to call from
 // both the batch loop and (later) the live-stepped view.
-var _COACH_DATA = (typeof require !== 'undefined')
+var _GAMECOACH_DATA = (typeof require !== 'undefined')
   ? { box: require('./simEngineBoxScore.js') }
   : { box: { minutesWeight: minutesWeight } };
 
@@ -63,13 +63,24 @@ function isGarbageTime(sim) {
 // players; anyone past tenth in the pecking order is a healthy scratch.
 const ROTATION_MINUTES = [36, 34, 32, 30, 28, 24, 20, 16, 12, 8];
 
+// Ranks are cached on the sim: roster composition cannot change mid-game, and
+// this is called from inside a sort comparator that runs on every possession.
+// Recomputing the sort each time cost ~12ms a game (a full season went from
+// ~2s to ~18s) for an answer that never changes.
+function rotationRanks(sim, team) {
+  if (!sim._rotationRanks) sim._rotationRanks = {};
+  if (sim._rotationRanks[team]) return sim._rotationRanks[team];
+  const ranks = {};
+  rosterFor(sim, team).slice()
+    .sort(function (a, b) { return _GAMECOACH_DATA.box.minutesWeight(b) - _GAMECOACH_DATA.box.minutesWeight(a); })
+    .forEach(function (p, i) { ranks[p.id] = i; });
+  sim._rotationRanks[team] = ranks;
+  return ranks;
+}
+
 function rotationRank(sim, team, id) {
-  const roster = rosterFor(sim, team).slice()
-    .sort(function (a, b) { return _COACH_DATA.box.minutesWeight(b) - _COACH_DATA.box.minutesWeight(a); });
-  for (let i = 0; i < roster.length; i++) {
-    if (roster[i].id === id) return i;
-  }
-  return roster.length;
+  const ranks = rotationRanks(sim, team);
+  return ranks[id] === undefined ? rosterFor(sim, team).length : ranks[id];
 }
 
 function targetMinutes(sim, team, id) {
@@ -133,7 +144,7 @@ function decideSubstitutions(sim, team) {
   // 3. Garbage time — rest the best players once the result is decided.
   if (isGarbageTime(sim)) {
     rosterFor(sim, team).slice()
-      .sort(function (a, b) { return _COACH_DATA.box.minutesWeight(b) - _COACH_DATA.box.minutesWeight(a); })
+      .sort(function (a, b) { return _GAMECOACH_DATA.box.minutesWeight(b) - _GAMECOACH_DATA.box.minutesWeight(a); })
       .slice(0, 3)
       .forEach(function (p) {
         if (swappedOut[p.id]) return;
