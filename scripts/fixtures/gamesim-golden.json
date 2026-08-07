@@ -1,0 +1,74 @@
+[
+  {
+    "seed": 1,
+    "home": "BOS",
+    "away": "LAL",
+    "homeScore": 97,
+    "awayScore": 114,
+    "boxChecksum": 101133,
+    "playByPlayLength": 270
+  },
+  {
+    "seed": 2,
+    "home": "DEN",
+    "away": "MIA",
+    "homeScore": 84,
+    "awayScore": 70,
+    "boxChecksum": 78443,
+    "playByPlayLength": 296
+  },
+  {
+    "seed": 3,
+    "home": "OKC",
+    "away": "NYK",
+    "homeScore": 101,
+    "awayScore": 95,
+    "boxChecksum": 95882,
+    "playByPlayLength": 275
+  },
+  {
+    "seed": 4,
+    "home": "MIL",
+    "away": "PHI",
+    "homeScore": 85,
+    "awayScore": 88,
+    "boxChecksum": 100236,
+    "playByPlayLength": 289
+  },
+  {
+    "seed": 5,
+    "home": "GSW",
+    "away": "DAL",
+    "homeScore": 85,
+    "awayScore": 101,
+    "boxChecksum": 93814,
+    "playByPlayLength": 291
+  },
+  {
+    "seed": 6,
+    "home": "CLE",
+    "away": "MEM",
+    "homeScore": 128,
+    "awayScore": 98,
+    "boxChecksum": 94915,
+    "playByPlayLength": 271
+  },
+  {
+    "seed": 7,
+    "home": "SAS",
+    "away": "HOU",
+    "homeScore": 106,
+    "awayScore": 80,
+    "boxChecksum": 86873,
+    "playByPlayLength": 281
+  },
+  {
+    "seed": 8,
+    "home": "ORL",
+    "away": "IND",
+    "homeScore": 98,
+    "awayScore": 97,
+    "boxChecksum": 94442,
+    "playByPlayLength": 287
+  }
+]
