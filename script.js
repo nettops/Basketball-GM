@@ -505,6 +505,14 @@ function renderPlaceholder(container) {
 }
 
 function renderView(viewName) {
+  // A live watched game must never be abandoned half-played. Leaving the
+  // Watch Game view by ANY route — the nav sidebar, a redirect, anything that
+  // is not its own Exit button — runs the rest of it out under the auto-coach
+  // and records it, exactly as Exit does. Without this, navigating away left
+  // a permanently unplayed game sitting on a past day in the schedule.
+  if (GameState.currentView === 'pixelGame' && viewName !== 'pixelGame') {
+    finishPendingPixelGame();
+  }
   GameState.currentView = viewName;
   const container = document.getElementById('view-content');
   const renderer = BUILT_VIEWS[viewName];

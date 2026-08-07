@@ -9,6 +9,22 @@
 let _watchSession = null;   // set by the Watch Next Game handler, cleared on exit
 let _rafId = null;
 
+// Set while a LIVE game is on screen: runs the remainder out under the
+// auto-coach and records it. A live game is not in the save until it
+// finishes, so abandoning one leaves a permanently unplayed game sitting on a
+// past day in the schedule — which is what happened when the view was left by
+// any route other than its own Exit button (the nav sidebar, or any redirect
+// through renderView). script.js's renderView calls finishPendingPixelGame on
+// the way out so every exit path completes the game.
+let _pendingLiveRunOut = null;
+
+function finishPendingPixelGame() {
+  const runOut = _pendingLiveRunOut;
+  _pendingLiveRunOut = null;
+  if (runOut) runOut();
+  stopPixelPlayback();
+}
+
 const PIXEL_SPEEDS = [1, 2, 4, 8];
 
 // Keyframe texts that mean "the ball just went in" — drives the rim flash.
@@ -165,10 +181,7 @@ function renderPixelGame(container) {
       // the controls have to re-read the sim here — otherwise the timeout
       // counter and the on-court five keep showing the pre-decision state
       // and the user cannot tell their click did anything.
-      if (userSide) {
-        refreshTimeoutBtn();
-        if (!subPanel.hidden) refreshSubPanel();
-      }
+      coach.refresh();
     }
     if (session.sim.done) finishLiveGame();
   }
@@ -179,6 +192,7 @@ function renderPixelGame(container) {
   function finishLiveGame() {
     if (liveFinished || !session.live) return;
     liveFinished = true;
+    _pendingLiveRunOut = null;
     choreographer.finish();
     const result = session.sim.result();
     session.homeScore = result.homeScore;
@@ -194,6 +208,10 @@ function renderPixelGame(container) {
   // Skip to Final and by Exit: the spec is explicit that a half-played game
   // is never recorded, so leaving the view completes the game rather than
   // discarding it.
+  // Registered module-side so leaving the view by ANY route completes the
+  // game (see finishPendingPixelGame at the top of this file).
+  if (session.live) _pendingLiveRunOut = runOutLiveGame;
+
   function runOutLiveGame() {
     if (!session.live) return;
     while (!session.sim.done) {
@@ -208,174 +226,18 @@ function renderPixelGame(container) {
     return period <= 4 ? 'Q' + period : 'OT' + (period - 4);
   }
 
-  // --- Live controls ------------------------------------------------------
-  // Everything here is optional. The auto-coach runs the user's team exactly
-  // as it runs every other team; these controls let the user OVERRIDE it at a
-  // possession boundary, never require them to.
-  const timeoutBtn = document.getElementById('pixel-timeout');
-  const subsBtn = document.getElementById('pixel-subs');
-  const subPanel = document.getElementById('pixel-subpanel');
-  let selectedOutId = null;
-
-  function userLineFor(pid) {
-    const box = userSide === 'home' ? session.sim.homeBox : session.sim.awayBox;
-    const line = box[pid];
-    if (!line) return null;
-    // secondsPlayed lives on the sim, not the box line (box `minutes` is only
-    // written at result() time), so it is merged in for display here.
-    return Object.assign({}, line, { secondsPlayed: session.sim.secondsPlayed[pid] || 0 });
-  }
-
-  function refreshTimeoutBtn() {
-    if (!userSide) { timeoutBtn.disabled = true; timeoutBtn.textContent = 'Timeout'; return; }
-    const left = session.sim.timeoutsLeft[userSide];
-    timeoutBtn.textContent = 'Timeout (' + left + ')';
-    timeoutBtn.disabled = left <= 0 || liveFinished;
-  }
-
-  function refreshSubPanel() {
-    if (!userSide) return;
-    const roster = userSide === 'home' ? session.sim.homeRoster : session.sim.awayRoster;
-    const onIds = session.sim.onCourt[userSide];
-    const byId = {};
-    roster.forEach(function (p) { byId[p.id] = p; });
-    pixelRenderSubPanel(subPanel, {
-      onCourt: onIds.map(function (id) { return byId[id]; }).filter(Boolean),
-      bench: roster.filter(function (p) { return onIds.indexOf(p.id) === -1; }),
-      lineFor: userLineFor,
-      selectedOutId: selectedOutId
-    });
-  }
-
-  if (!userSide) {
-    timeoutBtn.disabled = true;
-    subsBtn.disabled = true;
-  } else {
-    // Claim this team's timeout decision from the auto-coach (see gameSim.js).
-    // The view offers it via a nudge and applies the coach's own decision if
-    // the offer is ignored, so the outcome is unchanged for a hands-off
-    // viewer — only the opportunity is added.
-    session.sim.userTeam = userSide;
-    refreshTimeoutBtn();
-    timeoutBtn.addEventListener('click', function () {
-      if (!session.sim.applyDecision({ type: 'timeout', team: userSide })) return;
-      // Queued, not spent: it lands at the next possession boundary. Say so,
-      // rather than decrementing a counter the engine has not decremented.
-      timeoutBtn.textContent = 'Timeout called';
-      timeoutBtn.disabled = true;
-      pixelPushCommentary(document.getElementById('pixel-commentary'),
-        'You call timeout — the team gathers at the bench');
-    });
-
-    subsBtn.addEventListener('click', function () {
-      subPanel.hidden = !subPanel.hidden;
-      subsBtn.classList.toggle('active', !subPanel.hidden);
-      if (!subPanel.hidden) refreshSubPanel();
-    });
-
-    subPanel.addEventListener('click', function (e) {
-      const out = e.target.closest('.pixel-sub-out');
-      if (out) { selectedOutId = out.getAttribute('data-pid'); refreshSubPanel(); return; }
-      const inBtn = e.target.closest('.pixel-sub-in');
-      if (!inBtn || !selectedOutId) return;
-      const inId = inBtn.getAttribute('data-pid');
-      session.sim.applyDecision({ type: 'substitution', team: userSide, swaps: [{ out: selectedOutId, in: inId }] });
-      selectedOutId = null;
-      refreshSubPanel();
-    });
-  }
-
-  // --- Nudges -------------------------------------------------------------
-  // Nudges live on the PLAYBACK clock, not the wall clock, so they last the
-  // same number of possessions at 1x and at 8x.
-  const NUDGE_LIFETIME_MS = 6000;
-  const nudgeSlot = document.getElementById('pixel-nudge-slot');
-  let activeNudge = null;        // { kind, key, expiresAt, apply }
-  let lastNudgeKey = null;       // so one situation nudges once, not every step
-
-  function showNudge(nudge) {
-    if (!nudge || nudge.key === lastNudgeKey) return;
-    lastNudgeKey = nudge.key;
-    activeNudge = nudge;
-    activeNudge.expiresAt = playbackMs + NUDGE_LIFETIME_MS;
-    pixelRenderNudge(nudgeSlot, nudge);
-    const btn = document.getElementById('pixel-nudge-action');
-    if (btn) btn.addEventListener('click', function () {
-      nudge.apply();
-      clearNudge(false);
-    });
-  }
-
-  // `expired` distinguishes "the user ignored it" from "the user acted on
-  // it". Ignoring must leave the game exactly where the auto-coach would have
-  // put it, which is what onExpire does.
-  function clearNudge(expired) {
-    if (expired && activeNudge && activeNudge.onExpire) activeNudge.onExpire();
-    activeNudge = null;
-    pixelRenderNudge(nudgeSlot, null);
-  }
-
-  function checkNudges() {
-    if (!userSide || liveFinished) return;
-    if (activeNudge) {
-      if (playbackMs >= activeNudge.expiresAt) clearNudge(true);
-      return;
-    }
-    const sim = session.sim;
-    const other = userSide === 'home' ? 'away' : 'home';
-
-    // 1. The opponent is on a run and we still have a timeout.
-    if (sim.run.team === other && sim.run.points >= RUN_TRIGGER_POINTS && sim.timeoutsLeft[userSide] > 0) {
-      const oppName = (userSide === 'home' ? awayTeam : homeTeam).name;
-      showNudge({
-        kind: 'run',
-        key: 'run:' + other + ':' + sim.run.points,
-        text: oppName + ' on a ' + sim.run.points + '-0 run',
-        actionLabel: 'Call timeout',
-        apply: function () {
-          sim.applyDecision({ type: 'timeout', team: userSide });
-          refreshTimeoutBtn();
-        },
-        onExpire: function () {
-          // Ignored — so the coach decides exactly as it would have if the
-          // user were not watching at all.
-          if (decideTimeout(sim, userSide)) {
-            sim.applyDecision({ type: 'timeout', team: userSide });
-            refreshTimeoutBtn();
-          }
-        }
-      });
-      return;
-    }
-
-    // 2. A player on the floor is in foul trouble before the fourth quarter.
-    // The coach will sit him anyway on its own schedule; this just gives the
-    // user the chance to do it first, or to leave him in.
-    if (sim.period < 4) {
-      const box = userSide === 'home' ? sim.homeBox : sim.awayBox;
-      const introuble = sim.onCourt[userSide].find(function (id) {
-        return box[id] && box[id].fouls >= FOUL_TROUBLE && box[id].fouls < 6;
-      });
-      if (introuble) {
-        const p = playerById[introuble];
-        showNudge({
-          kind: 'fouls',
-          key: 'fouls:' + introuble + ':' + box[introuble].fouls,
-          // ui-safety: not-markup — a PLAIN TEXT field on a nudge object.
-          // pixelHud.js's pixelRenderNudge escapes it once, at the point it
-          // actually becomes HTML.
-          text: (p ? p.name : 'A starter') + ' has ' + box[introuble].fouls + ' fouls',
-          actionLabel: 'Open subs',
-          apply: function () {
-            subPanel.hidden = false;
-            subsBtn.classList.add('active');
-            selectedOutId = introuble;
-            refreshSubPanel();
-          }
-        });
-      }
-    }
-  }
+  // The coaching layer (timeout button, sub panel, nudges) lives in
+  // ui/pixelCoach.js. It borrows playback state through these accessors and
+  // owns none of it, so it can never affect what is drawn.
+  const coach = createPixelCoach({
+    sim: session.sim,
+    userSide: userSide,
+    playerById: playerById,
+    opponentName: (userSide === 'home' ? awayTeam : homeTeam).name,
+    playbackMs: function () { return playbackMs; },
+    isFinished: function () { return liveFinished; },
+    commentaryEl: document.getElementById('pixel-commentary')
+  });
 
   function currentFrame() {
     while (kfIndex < kfs.length - 1 && kfs[kfIndex + 1].t <= playbackMs) kfIndex++;
@@ -985,14 +847,7 @@ function renderPixelGame(container) {
     document.getElementById('pixel-ticker').textContent =
       'FINAL: ' + homeTeam.id + ' ' + session.homeScore + ' — ' + awayTeam.id + ' ' + session.awayScore;
     document.getElementById('pixel-play-pause').disabled = true;
-    // The coaching controls die with the game. Without this they keep their
-    // last live labels ("Timeout (6)") and stay clickable after the final
-    // buzzer — the engine correctly refuses the decision, so nothing breaks,
-    // but a control that looks live and does nothing is its own bug.
-    timeoutBtn.disabled = true;
-    subsBtn.disabled = true;
-    subPanel.hidden = true;
-    subsBtn.classList.remove('active');
+    coach.onGameOver();
     // A finished live game is an ordinary completed session now, so it can be
     // replayed from the top like any other.
     document.getElementById('pixel-replay').disabled = false;
@@ -1019,7 +874,7 @@ function renderPixelGame(container) {
     // Step BEFORE advancing the playhead, so the frame about to be drawn is
     // never past the end of the choreographed timeline.
     stepAhead(MAX_STEPS_PER_FRAME);
-    checkNudges();
+    coach.checkNudges();
 
     if (!paused) {
       // hitchMs freezes the whole scene (make freeze-frames, quarter cards)
@@ -1111,6 +966,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     setWatchSession: setWatchSession,
     setLiveWatchSession: setLiveWatchSession,
+    finishPendingPixelGame: finishPendingPixelGame,
     renderPixelGame: renderPixelGame,
     stopPixelPlayback: stopPixelPlayback
   };
