@@ -334,7 +334,36 @@ function renderPixelGame(container) {
   // stops when the play actually stops. Integrated in timeline-ms (not real
   // ms) so the feel is identical at 1x and 8x.
   const smooth = {};   // pid -> { x, y, vx, vy, omega }
-  const SNAP_DIST = 70; // farther than this is a substitution, not a run
+
+  // A critically damped spring tracking a target moving at velocity v lags by
+  // 2v/omega. Crossing the floor in transition is ~300px in 420-700ms, i.e.
+  // 430-700 px/s, which at omega 15 is a 57-93px lag — so a low snap
+  // threshold fired MID-RUN, teleporting players and zeroing their velocity
+  // over and over. That was the choppiness in transition.
+  //
+  // Nothing in normal play needs a snap: substitutions delete the spring
+  // (the player re-enters from the sideline) and showFinal clears them all.
+  // This is now purely a guard against a degenerate keyframe, set beyond half
+  // the court's width so real basketball never reaches it.
+  const SNAP_DIST = 260;
+
+  // Players sprint a little when they have ground to cover, but only a
+  // little: stiffness is what converts gap into per-frame movement, so an
+  // aggressive ramp turns a long run into its own teleport (a 3x boost here
+  // moved players 113px in a single frame). This tops out around 1.7x, which
+  // tightens the transition lag without outrunning the eye.
+  function omegaFor(base, dist) {
+    return base * (1 + Math.min(0.7, dist / 220));
+  }
+
+  // Hard ceiling on how far a sprite may move in one frame. Even a correct
+  // spring can outrun the eye when a beat asks for a lot of ground in very
+  // little time; clamping displacement (rather than snapping position) keeps
+  // motion continuous and simply lets the player arrive a beat late.
+  const MAX_STEP_PX_PER_SEC = 620;
+  const MAX_SEPARATION_SHIFT_PX = 4;
+
+  const SPRING_STEP = 1 / 90; // fixed integration step, in timeline seconds
 
   function springAxis(x, v, target, omega, h) {
     const f = 1 + 2 * h * omega;
@@ -467,7 +496,9 @@ function renderPixelGame(container) {
       : { x: fr.a.ball.x, y: fr.a.ball.y };
 
     // Advance every player's spring toward its keyframe target.
-    const dtTimeline = Math.min(80, realDt * speed) / 1000; // seconds, clamped for tab stalls
+    // Clamped so a backgrounded tab doesn't fast-forward the springs on
+    // return; substepped below so the clamp doesn't distort the motion.
+    const dtTimeline = Math.min(140, realDt * speed) / 1000;
     ids.forEach(function (pid) {
       const pa = fr.a.pos[pid];
       const pb = fr.b.pos[pid];
@@ -494,11 +525,37 @@ function renderPixelGame(container) {
           omega: 15 + (pid.charCodeAt(0) % 5) * 0.9 // slight per-player variation
         };
       }
-      if (Math.abs(tx - s.x) + Math.abs(ty - s.y) > SNAP_DIST) { s.x = tx; s.y = ty; s.vx = 0; s.vy = 0; }
-      const rx = springAxis(s.x, s.vx, tx, s.omega, dtTimeline);
-      const ry = springAxis(s.y, s.vy, ty, s.omega, dtTimeline);
-      s.x = rx[0]; s.vx = rx[1];
-      s.y = ry[0]; s.vy = ry[1];
+      const gapX = tx - s.x;
+      const gapY = ty - s.y;
+      if (Math.sqrt(gapX * gapX + gapY * gapY) > SNAP_DIST) { s.x = tx; s.y = ty; s.vx = 0; s.vy = 0; }
+      // Substep at a fixed timeline step so the spring integrates the same
+      // way at 1x and 8x. A single big step under-integrates and leaves
+      // players trailing their targets at high speed.
+      let remaining = dtTimeline;
+      while (remaining > 0) {
+        const h = Math.min(SPRING_STEP, remaining);
+        remaining -= h;
+        const prevX = s.x;
+        const prevY = s.y;
+        const dist = Math.sqrt(Math.pow(tx - s.x, 2) + Math.pow(ty - s.y, 2));
+        const w = omegaFor(s.omega, dist);
+        const rx = springAxis(s.x, s.vx, tx, w, h);
+        const ry = springAxis(s.y, s.vy, ty, w, h);
+        s.x = rx[0]; s.vx = rx[1];
+        s.y = ry[0]; s.vy = ry[1];
+        // speed ceiling: scale the step back rather than jumping
+        const stepX = s.x - prevX;
+        const stepY = s.y - prevY;
+        const step = Math.sqrt(stepX * stepX + stepY * stepY);
+        const maxStep = MAX_STEP_PX_PER_SEC * h;
+        if (step > maxStep) {
+          const k = maxStep / step;
+          s.x = prevX + stepX * k;
+          s.y = prevY + stepY * k;
+          s.vx *= k;
+          s.vy *= k;
+        }
+      }
       onCourtNow[pid] = true;
     });
 
@@ -508,6 +565,12 @@ function renderPixelGame(container) {
     // Pushing s.x/s.y (not a copy) means the shove persists and players
     // actually jostle instead of snapping back.
     const holderId = fr.a.ball.holder;
+    // Remember where the springs put everyone, so the shove below can be
+    // bounded: relaxation is unbounded by nature (a tight cluster can throw a
+    // body a long way in one frame), and an unbounded shove is a teleport no
+    // matter how physically motivated it is.
+    const preSep = {};
+    ids.forEach(function (pid) { preSep[pid] = [smooth[pid].x, smooth[pid].y]; });
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
@@ -526,6 +589,20 @@ function renderPixelGame(container) {
         }
       }
     }
+
+    // Clamp each body's total separation shift for this frame.
+    ids.forEach(function (pid) {
+      const s = smooth[pid];
+      const dx = s.x - preSep[pid][0];
+      const dy = s.y - preSep[pid][1];
+      const mag = Math.sqrt(dx * dx + dy * dy);
+      const cap = MAX_SEPARATION_SHIFT_PX;
+      if (mag > cap) {
+        const k = cap / mag;
+        s.x = preSep[pid][0] + dx * k;
+        s.y = preSep[pid][1] + dy * k;
+      }
+    });
 
     // sorted top-to-bottom so nearer sprites overlap farther ones
     ids.sort(function (i1, i2) { return smooth[i1].y - smooth[i2].y; });
