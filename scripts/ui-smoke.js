@@ -108,24 +108,52 @@ const UI_SMOKE = (function () {
     const roster = getTeamRoster(GameState.userTeamId);
     const victim = roster[0];
     const originalName = victim.name;
-    victim.name = HOSTILE;
-    if (typeof pushToFeed === 'function') pushToFeed(HOSTILE + ' did something', 1);
+    // GameState.feed is REAL game state, not a scratch buffer: save.js
+    // serializes it and ui/dashboard.js renders its tail as the Dashboard
+    // headlines. Pushing the hostile string below used to leave it in the
+    // league forever — the player name was restored, the feed entry never was —
+    // so running the smoke suite wrote "Zed <img src=x ...> O'Neal did
+    // something" into the user's save and it showed up under Headlines.
+    const originalFeed = GameState.feed.slice();
 
-    GameState.playMode = 'commissioner';
-    applicableNavIds().forEach(function (id) {
-      try {
-        renderView(id);
-        const vc = viewContent();
-        const injected = vc.querySelector('img[src="x"], script');
-        results.push(ok('injection:' + id, !injected, injected ? 'HOSTILE NAME BECAME MARKUP' : null));
-      } catch (e) {
-        results.push(ok('injection:' + id, false, 'threw: ' + e.message));
-      }
-    });
-    results.push(ok('injection:no-handler-fired', !window.__UI_SMOKE_XSS));
+    // try/finally, not straight-line restore at the end. Only renderView sits
+    // inside a per-view catch; a throw anywhere else in this block used to
+    // strand the hostile name on a real player and the payload in the feed.
+    try {
+      victim.name = HOSTILE;
+      if (typeof pushToFeed === 'function') pushToFeed(HOSTILE + ' did something', 1);
 
-    victim.name = originalName;
-    GameState.playMode = restoreMode;
+      GameState.playMode = 'commissioner';
+      applicableNavIds().forEach(function (id) {
+        try {
+          renderView(id);
+          const vc = viewContent();
+          const injected = vc.querySelector('img[src="x"], script');
+          results.push(ok('injection:' + id, !injected, injected ? 'HOSTILE NAME BECAME MARKUP' : null));
+        } catch (e) {
+          results.push(ok('injection:' + id, false, 'threw: ' + e.message));
+        }
+      });
+      results.push(ok('injection:no-handler-fired', !window.__UI_SMOKE_XSS));
+    } finally {
+      victim.name = originalName;
+      // In place, not reassigned: anything holding a reference to the array
+      // keeps seeing the live feed.
+      GameState.feed.length = 0;
+      Array.prototype.push.apply(GameState.feed, originalFeed);
+      GameState.playMode = restoreMode;
+    }
+
+    // A test that dirties the save it runs against is worse than no test. This
+    // asserts the cleanup actually happened — it is what would have caught the
+    // leak above, and it fails loudly if a future edit reintroduces it.
+    const stranded = GameState.feed.filter(function (e) {
+      return e && typeof e.text === 'string' && e.text.indexOf('__UI_SMOKE_XSS') !== -1;
+    }).length;
+    results.push(ok('injection:leaves-no-trace',
+      stranded === 0 && victim.name === originalName,
+      stranded > 0 ? stranded + ' hostile feed entries left behind' : null));
+
     return results;
   }
 
