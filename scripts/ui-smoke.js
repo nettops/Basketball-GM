@@ -537,12 +537,50 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // Short labels that name one thing must not be broken across lines. The
+  // topbar identity was squeezed to 46px by the status chips competing for the
+  // same flex row, so "Eastern · Atlantic" rendered as three lines with the
+  // separator stranded alone on the middle one. Like the alignment check above,
+  // this is invisible to any assertion that only looks at markup — the text was
+  // all present and correct, it was the box that was wrong.
+  function checkChromeLabels() {
+    requireSeason();
+    const results = [];
+    const offenders = [];
+
+    // Squeezed-below-natural-width is the actual defect; line count is how it
+    // shows up. Check both so a future clip-instead-of-wrap also trips this.
+    ['.identity-name', '.identity-meta', '.chip-label', '.chip-value'].forEach(function (sel) {
+      document.querySelectorAll('.topbar ' + sel).forEach(function (el) {
+        const text = (el.textContent || '').trim();
+        if (!text) return;
+        const box = el.getBoundingClientRect();
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 0;
+        if (lineHeight > 0 && box.height > lineHeight * 1.5) {
+          offenders.push(sel + ' wrapped to ' + Math.round(box.height / lineHeight) + ' lines: "' + text + '"');
+        }
+        if (el.scrollWidth > Math.ceil(box.width) + 1) {
+          offenders.push(sel + ' squeezed to ' + Math.round(box.width) + 'px, needs ' + el.scrollWidth + 'px: "' + text + '"');
+        }
+      });
+    });
+
+    const bar = document.querySelector('.topbar');
+    results.push(ok('chrome:topbar-does-not-clip',
+      !bar || bar.scrollWidth <= bar.clientWidth + 1,
+      bar ? bar.scrollWidth + '>' + bar.clientWidth : 'no topbar'));
+    results.push(ok('chrome:labels-render-on-one-line', offenders.length === 0,
+      offenders.slice(0, 5).join('; ') || null));
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,
     align: checkTableAlignment,
+    chrome: checkChromeLabels,
     nav: checkNav,
     dock: checkDock,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
