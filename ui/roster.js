@@ -110,17 +110,37 @@ function renderRoster(container, teamId) {
         '</tr>';
     });
     html += '</tbody></table></div>';
+    // GP and the per-game columns exist so this table's units line up with the
+    // roster table above it. Previously it showed Tatum as "82" directly under
+    // a row saying "16.4" — the same player over the same five games, with no
+    // denominator anywhere on screen to reconcile them. Totals are kept
+    // alongside rather than replaced: career points is the headline career
+    // number, and dropping it to fix the units would trade one problem for
+    // another.
     html += '<div class="panel"><div class="panel-header">Career Totals</div>' +
-      '<table class="data-table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">Pts</th>' +
-      '<th class="num">Reb</th><th class="num">Ast</th><th class="num">Titles</th></tr></thead><tbody>';
+      '<table class="data-table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">GP</th>' +
+      '<th class="num">Pts</th><th class="num">PPG</th><th class="num">RPG</th><th class="num">APG</th>' +
+      '<th class="num">Titles</th></tr></thead><tbody>';
     roster.forEach(function (p) {
       ensureCareerData([p]);
       // Career to date, including the season being played — otherwise this
       // whole table is a column of zeros for a league's entire first year.
       const cs = careerTotalsToDate(p);
-      html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + cs.seasonsPlayed +
-        '</td><td class="num">' + cs.points + '</td><td class="num">' + cs.rebounds +
-        '</td><td class="num">' + cs.assists + '</td><td class="num">' +
+      // Guarded: a player who has never appeared would divide by zero and
+      // render every rate as NaN.
+      const gp = cs.gamesPlayed || 0;
+      const per = function (total) { return gp > 0 ? (total / gp).toFixed(1) : '—'; };
+      // A button, not plain text, so a name opens the profile here exactly as
+      // it does in the table above — the delegated data-profile-id handler
+      // below is bound container-wide and picks these up unchanged. escapeHtml
+      // because this cell previously interpolated a raw player name.
+      html += '<tr><td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' +
+        escapeHtml(p.name) + '</button></td><td class="num">' + cs.seasonsPlayed +
+        '</td><td class="num">' + gp +
+        '</td><td class="num">' + cs.points +
+        '</td><td class="num">' + per(cs.points) +
+        '</td><td class="num">' + per(cs.rebounds) +
+        '</td><td class="num">' + per(cs.assists) + '</td><td class="num">' +
         (p.championshipsWon > 0 ? '<span class="pill pill-gold">' + p.championshipsWon + '</span>' : '—') + '</td></tr>';
     });
     html += '</tbody></table></div>';

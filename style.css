@@ -296,6 +296,14 @@ table { border-collapse: collapse; width: 100%; }
 }
 .data-table th[data-key] { cursor: pointer; user-select: none; }
 .data-table th[data-key]:hover { color: var(--text); background: var(--surface-3); }
+/* Numeric headers must right-align over their right-aligned values. The
+   th.num rule near the top of this file already says so, but `.data-table th`
+   above sets text-align: left at IDENTICAL (0,1,1) specificity and comes
+   later, so it won — every numeric column in the app had its label at the far
+   left and its digits at the far right. In the Roster's Career Totals table,
+   where columns are 150-250px wide, that put "Seasons" ~230px from its own
+   numbers. This selector is (0,2,1) and settles it. */
+.data-table th.num { text-align: right; }
 .data-table td {
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);

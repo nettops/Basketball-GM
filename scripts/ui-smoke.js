@@ -500,11 +500,49 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // A numeric column whose header aligns one way and whose values align the
+  // other is unreadable once the column is wide. This regressed silently
+  // because style.css DOES carry `th.num { text-align: right }` — but
+  // `.data-table th { text-align: left }` sits later at identical (0,1,1)
+  // specificity and beat it, app-wide, for every table in the game. Nothing
+  // else in this suite looks at computed style, so nothing else could notice.
+  function checkTableAlignment() {
+    requireSeason();
+    const results = [];
+    const offenders = [];
+
+    // Sweep every view so this covers all tables, not just today's roster.
+    const restoreView = GameState.currentView;
+    applicableNavIds().forEach(function (id) {
+      try {
+        renderView(id);
+      } catch (e) {
+        return;
+      }
+      document.querySelectorAll('#view-content table.data-table').forEach(function (table) {
+        const ths = table.querySelectorAll('thead th.num');
+        const tds = table.querySelectorAll('tbody td.num');
+        if (ths.length === 0 || tds.length === 0) return;
+        const thAlign = getComputedStyle(ths[0]).textAlign;
+        const tdAlign = getComputedStyle(tds[0]).textAlign;
+        if (thAlign !== tdAlign) {
+          offenders.push(id + ': th=' + thAlign + ' td=' + tdAlign);
+        }
+      });
+    });
+    renderView(restoreView);
+
+    results.push(ok('align:numeric-headers-match-values', offenders.length === 0,
+      offenders.slice(0, 5).join('; ') || null));
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,
+    align: checkTableAlignment,
     nav: checkNav,
     dock: checkDock,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
