@@ -13,7 +13,7 @@
 // worker-local shims over that snapshot; the main thread (simWorkerClient.js)
 // is what applies the RETURNED result to the real, shared game state — this
 // worker only computes, it never mutates anything persistent.
-importScripts('data.js', 'rng.js', 'traits.js', 'compositeRatings.js', 'simEngine.js', 'simEngineBoxScore.js', 'simEnginePossession.js', 'gameSim.js');
+importScripts('data.js', 'rng.js', 'traits.js', 'compositeRatings.js', 'simEngine.js', 'simEngineBoxScore.js', 'simEnginePossession.js', 'coach.js', 'gameSim.js');
 
 var WORKER_PLAYERS = [];
 var WORKER_TEAMS = [];

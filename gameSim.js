@@ -5,7 +5,7 @@
 // behaviour-identical, so it had room to grow without turning
 // simEnginePossession.js into a grab bag.
 var _GAMESIM_DATA = (typeof require !== 'undefined')
-  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js') }
+  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./coach.js') }
   : {
       poss: {
         POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,
@@ -15,7 +15,8 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       },
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
-      box: { minutesWeight: minutesWeight }
+      box: { minutesWeight: minutesWeight },
+      coach: { decideSubstitutions: decideSubstitutions }
     };
 
 const REGULATION_PERIODS = 4;
@@ -105,6 +106,12 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   sim.step = function () {
     if (sim.done) return;
 
+    // Every team, every game — this is what makes watching a game no better
+    // than not watching it, other than the decisions a human chooses to make.
+    ['home', 'away'].forEach(function (t) {
+      sim.applySubstitutions(t, _GAMESIM_DATA.coach.decideSubstitutions(sim, t));
+    });
+
     const periodLength = sim.period <= REGULATION_PERIODS ? PERIOD_SECONDS : OVERTIME_SECONDS;
     if (sim.clock >= periodLength) {
       playByPlay.push('--- ' + (sim.period <= REGULATION_PERIODS
@@ -131,11 +138,30 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     const elapsed = Math.min(sim.clock, possessionSeconds(rng));
     sim.clock -= elapsed;
     onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += elapsed; });
+
+    // Sitting down has to actually restore something, or rotations are a
+    // one-way ratchet: simEnginePossession.js's drainEnergy only ever spends
+    // energy, so without this every player decays past the coach's fatigue
+    // floor and the whole roster gets cycled through. Recovery is slower than
+    // drain, so heavy minutes still cost something over a game.
+    recoverBenchEnergy();
     sim.possessionsPlayed += 1;
     sim.offenseTeam = other;
 
     if (sim.clock <= 0) endPeriod();
   };
+
+  const BENCH_RECOVERY_PER_POSSESSION = 0.030;
+
+  function recoverBenchEnergy() {
+    [['home', homeRoster, homeBox], ['away', awayRoster, awayBox]].forEach(function (side) {
+      const team = side[0], roster = side[1], box = side[2];
+      roster.forEach(function (p) {
+        if (onCourt[team].indexOf(p.id) !== -1) return;
+        box[p.id].energy = Math.min(1, box[p.id].energy + BENCH_RECOVERY_PER_POSSESSION);
+      });
+    });
+  }
 
   function endPeriod() {
     const regulationOver = sim.period >= REGULATION_PERIODS;

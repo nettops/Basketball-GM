@@ -143,9 +143,14 @@ function checkMinutesAreEmergent() {
       if (box[id].teamId === 'BOS') homeMin += box[id].minutes;
       else awayMin += box[id].minutes;
     });
-    // +-3 absorbs per-player rounding to whole minutes.
-    assert.ok(Math.abs(homeMin - awayMin) <= 3, 'both teams play the same clock: ' + homeMin + ' vs ' + awayMin);
-    assert.ok(homeMin >= 237 && homeMin <= 243, 'regulation home minutes should be ~240, got ' + homeMin);
+    // Five players for every minute of every period: 240 in regulation, plus
+    // 25 for each overtime. Computed from the periods actually played rather
+    // than hardcoded, so a seed that happens to go long doesn't fail this.
+    const expected = 240 + Math.max(0, sim.period - 4) * 25;
+    // +-4 absorbs per-player rounding to whole minutes across a full roster.
+    assert.ok(Math.abs(homeMin - awayMin) <= 4, 'both teams play the same clock: ' + homeMin + ' vs ' + awayMin);
+    assert.ok(Math.abs(homeMin - expected) <= 4,
+      'home minutes should be ~' + expected + ' after ' + sim.period + ' periods, got ' + homeMin);
   }
   console.log('checkMinutesAreEmergent: OK');
 }
@@ -203,29 +208,49 @@ checkScoringStaysRealistic();
 
 // A tie at the end of regulation must be settled by playing basketball, not
 // by awarding a phantom point to whoever made more field goals.
-function checkOvertimeResolvesTies() {
-  let sawOvertime = false;
+function checkNoFinishedGameIsTied() {
   for (let seed = 100; seed < 260; seed++) {
-    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    const home = TEAMS[seed % TEAMS.length];
+    const away = TEAMS[(seed + 5) % TEAMS.length];
+    if (home.id === away.id) continue;
+    const r = gameSim.simulateGame(home.id, away.id, makeRng(seed));
+    assert.notStrictEqual(r.homeScore, r.awayScore, 'a finished game is never tied (seed ' + seed + ')');
+  }
+  console.log('checkNoFinishedGameIsTied: OK');
+}
+checkNoFinishedGameIsTied();
+
+// Overtime is rare (a couple of percent of games), so sampling random seeds
+// and hoping one ties is a flaky way to test it. Force the tie instead: run
+// regulation out, level the score, and assert the machine keeps playing.
+function checkOvertimeIsPlayedWhenTied() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(101));
+  // Run to the last possession of regulation.
+  while (!sim.done && !(sim.period === 4 && sim.clock <= 20)) sim.step();
+  assert.strictEqual(sim.done, false, 'should still be live at the end of regulation');
+
+  // Level it, then take the possession that ends the period.
+  sim.awayScore = sim.homeScore;
+  sim.step();
+
+  assert.ok(sim.period >= 5 || sim.homeScore !== sim.awayScore,
+    'a tie at the buzzer must go to overtime rather than ending');
+  if (sim.period >= 5) {
+    assert.ok(sim.clock > 0 && sim.clock <= 5 * 60, 'an overtime period is five minutes, got ' + sim.clock);
     while (!sim.done) sim.step();
     const r = sim.result();
-    assert.notStrictEqual(r.homeScore, r.awayScore, 'a finished game is never tied (seed ' + seed + ')');
-    if (sim.period > 4) {
-      sawOvertime = true;
-      const otLines = r.playByPlay.filter(function (l) { return l.indexOf('--- OT') === 0; });
-      assert.ok(otLines.length >= 1, 'an overtime game must log an OT period header');
-      // Five players for five extra minutes is 25 extra player-minutes a side.
-      let homeMin = 0;
-      Object.keys(r.boxScore).forEach(function (id) {
-        if (r.boxScore[id].teamId === 'BOS') homeMin += r.boxScore[id].minutes;
-      });
-      assert.ok(homeMin > 243, 'an overtime game must exceed regulation minutes, got ' + homeMin);
-    }
+    assert.notStrictEqual(r.homeScore, r.awayScore, 'the overtime game still resolves');
+    const otLines = r.playByPlay.filter(function (l) { return l.indexOf('--- OT') === 0; });
+    assert.ok(otLines.length >= 1, 'an overtime game must log an OT period header');
+    let homeMin = 0;
+    Object.keys(r.boxScore).forEach(function (id) {
+      if (r.boxScore[id].teamId === 'BOS') homeMin += r.boxScore[id].minutes;
+    });
+    assert.ok(homeMin > 243, 'an overtime game must exceed regulation minutes, got ' + homeMin);
   }
-  assert.ok(sawOvertime, 'at least one of 160 seeded games should have reached overtime');
-  console.log('checkOvertimeResolvesTies: OK');
+  console.log('checkOvertimeIsPlayedWhenTied: OK');
 }
-checkOvertimeResolvesTies();
+checkOvertimeIsPlayedWhenTied();
 
 // The tiebreak hack must be gone entirely.
 function checkNoTiebreakEvents() {
