@@ -32,8 +32,18 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
         '<span class="pixel-clock"><span id="pixel-quarter">Q1</span> <span id="pixel-clock">12:00</span></span>' +
         '<span class="pixel-score-team" style="border-color:' + awayTeam.colors.primary + '">' + escapeHtml(awayTeam.id) + ' <span id="pixel-score-away">0</span></span>' +
       '</div>' +
-      '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + stageW + '" height="' + stageH + '"></canvas></div>' +
-      '<div class="pixel-nudge-slot" id="pixel-nudge-slot"></div>' +
+      // The nudge card and the substitution panel are overlays ON the court,
+      // not blocks appended under it. Appended, they landed below
+      // #view-content's scroll fold: clicking "Subs" rendered a correct panel
+      // that the user could not see and had to go looking for, which is the
+      // exact failure scripts/ui-smoke.js was written after. As overlays they
+      // are always where the user is already looking, and they cost the page
+      // no vertical space when hidden.
+      '<div class="pixel-stage-wrap">' +
+        '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + stageW + '" height="' + stageH + '"></canvas></div>' +
+        '<div class="pixel-nudge-slot" id="pixel-nudge-slot"></div>' +
+        '<div class="pixel-subpanel" id="pixel-subpanel" hidden></div>' +
+      '</div>' +
       '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
       '<div class="pixel-infostrip" id="pixel-infostrip"></div>' +
       '<div class="pixel-commentary" id="pixel-commentary"></div>' +
@@ -49,7 +59,6 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
         '<button id="pixel-mute">Sound: On</button>' +
         '<button id="pixel-exit">Exit</button>' +
       '</div>' +
-      '<div class="pixel-subpanel" id="pixel-subpanel" hidden></div>' +
     '</div>';
 }
 
@@ -101,9 +110,36 @@ function pixelRenderFinalCard(stripEl, d) {
     '</div>';
 }
 
+// The substitution panel. Two columns: who is on the floor, and who is
+// available. Click a player on the floor, then a player on the bench, and the
+// swap is queued. Minutes and fouls are shown because those are the only two
+// numbers that actually drive the decision.
+function pixelRenderSubPanel(panelEl, data) {
+  function row(p, side) {
+    const line = data.lineFor(p.id) || {};
+    const mins = Math.round((line.secondsPlayed || 0) / 60);
+    const selected = side === 'out' && p.id === data.selectedOutId;
+    const fouledOut = (line.fouls || 0) >= 6;
+    return '<button class="pixel-sub-' + side + (selected ? ' is-selected' : '') + '"' +
+      (fouledOut ? ' disabled title="Fouled out"' : '') +
+      ' data-pid="' + escapeHtml(p.id) + '">' +
+      '<span class="pixel-sub-name">' + escapeHtml(p.name) + '</span>' +
+      '<span class="pixel-sub-stat">' + mins + '′ · ' + (line.points || 0) + 'p · ' +
+        (line.fouls || 0) + 'f</span>' +
+      '</button>';
+  }
+  panelEl.innerHTML =
+    '<div class="pixel-sub-col"><div class="pixel-sub-head">On the floor</div>' +
+      data.onCourt.map(function (p) { return row(p, 'out'); }).join('') + '</div>' +
+    '<div class="pixel-sub-col"><div class="pixel-sub-head">' +
+      (data.selectedOutId ? 'Bring in for the selected player' : 'Bench') + '</div>' +
+      data.bench.map(function (p) { return row(p, 'in'); }).join('') + '</div>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     pixelReplayListHtml: pixelReplayListHtml,
+    pixelRenderSubPanel: pixelRenderSubPanel,
     pixelShellHtml: pixelShellHtml,
     pixelPushCommentary: pixelPushCommentary,
     pixelRenderInfoStrip: pixelRenderInfoStrip,

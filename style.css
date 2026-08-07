@@ -87,6 +87,16 @@ select { cursor: pointer; }
 }
 .team-logo img { width: 100%; height: 100%; object-fit: contain; }
 
+.player-face {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.player-face svg { width: 100%; height: 100%; display: block; }
+
 .placeholder-view { padding: 64px 24px; text-align: center; color: var(--text-mute); font-style: italic; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -296,6 +306,35 @@ table { border-collapse: collapse; width: 100%; }
 .pill-gold { background: rgba(212, 169, 78, .16); color: var(--gold); }
 .pill-mute { background: transparent; color: var(--text-mute); border: 1px solid var(--line); }
 
+/* ---------- Trait badges ---------- */
+.trait-badge-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.trait-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px;
+  font-size: .78rem; font-weight: 650;
+  border: 1px solid transparent;
+}
+.trait-badge .trait-badge-tier {
+  font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  opacity: .85;
+}
+.trait-badge.tier-bronze { background: rgba(184, 115, 51, .16); color: #CD8A5C; border-color: rgba(184, 115, 51, .35); }
+.trait-badge.tier-silver { background: rgba(192, 197, 206, .14); color: #C7CDD6; border-color: rgba(192, 197, 206, .32); }
+.trait-badge.tier-gold { background: rgba(212, 169, 78, .16); color: var(--gold); border-color: rgba(212, 169, 78, .4); }
+.trait-badge.tier-hof { background: rgba(160, 108, 213, .16); color: #B98AE0; border-color: rgba(160, 108, 213, .4); }
+.trait-badge.tier-legendary {
+  background: linear-gradient(135deg, rgba(255, 94, 168, .18), rgba(88, 166, 255, .18));
+  color: #FF8FC7; border-color: rgba(255, 94, 168, .45);
+}
+.trait-badge.tier-negative { background: rgba(248, 81, 73, .12); color: var(--loss); border-color: rgba(248, 81, 73, .3); }
+.trait-badge.tier-fuzzy { background: var(--surface-3); color: var(--text-dim); border-color: var(--line); border-style: dashed; }
+.trait-badge-category-label {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mute);
+  margin: 14px 0 8px; font-weight: 700;
+}
+.trait-badge-category-label:first-child { margin-top: 0; }
+.trait-lock-note { color: var(--text-mute); font-style: italic; font-size: .85rem; }
+
 /* ---------- KPI tiles ---------- */
 .kpi-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
@@ -476,6 +515,25 @@ table { border-collapse: collapse; width: 100%; }
 .schedule-row.is-playable:hover td { background: var(--surface-2); }
 .schedule-row.is-expanded td { background: var(--accent-soft); border-bottom-color: var(--accent); }
 .schedule-row.is-expanded .schedule-chevron { color: var(--accent); font-weight: 700; }
+
+/* Box score expands inline, directly under the game that was clicked. It used
+   to render in a lone div after the entire table, which on a full 82-game
+   schedule put it thousands of pixels below the click — the row highlighted
+   and the chevron flipped while the content itself was off-screen. */
+.schedule-detail-row > td { padding: 0 !important; background: var(--surface-2); border-bottom: 2px solid var(--accent); }
+.box-score-detail { padding: 14px 16px 18px; }
+.box-score-line { font-size: 1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.box-score-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+.box-score-team { min-width: 0; overflow-x: auto; }
+.box-score-team-name { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute);
+  margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.box-score-team .data-table { font-size: .82rem; }
+.box-score-team .data-table th, .box-score-team .data-table td { padding: 4px 8px; }
+.box-score-pbp { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.box-score-pbp summary { cursor: pointer; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); }
+.pbp-log { max-height: 360px; overflow-y: auto; margin-top: 10px; font-size: .82rem; }
+.pbp-quarter { font-weight: 700; color: var(--accent); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; }
+.pbp-line { padding: 3px 0; color: var(--text-dim); border-bottom: 1px solid var(--line); }
 .select-actions { text-align: center; margin-bottom: 26px; }
 
 /* ---- Pixel game view (Watch Game) ---- */
@@ -538,3 +596,51 @@ table { border-collapse: collapse; width: 100%; }
 .pixel-final-head { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
 .pixel-linescore { max-width: 420px; margin-bottom: 8px; }
 .pixel-final-top { display: flex; flex-wrap: wrap; gap: 14px; }
+
+/* Live coaching controls (ui/pixelHud.js).
+   The sub panel and nudge card are absolutely positioned OVER the court.
+   Appended below it they rendered past #view-content's scroll fold — present
+   in the DOM, correct, and invisible to the user. */
+.pixel-stage-wrap { position: relative; width: 100%; display: flex; justify-content: center; }
+
+.pixel-subpanel {
+  position: absolute; z-index: 6;
+  left: 50%; transform: translateX(-50%);
+  top: 8px; width: min(94%, 620px);
+  max-height: calc(100% - 16px); overflow-y: auto;
+  display: flex; gap: 12px;
+  padding: 10px; border-radius: 5px;
+  background: rgba(10, 12, 16, 0.95); border: 1px solid #4a5262;
+}
+.pixel-subpanel[hidden] { display: none; }
+.pixel-sub-col { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pixel-sub-head { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin-bottom: 2px; }
+.pixel-sub-out, .pixel-sub-in {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  width: 100%; text-align: left; padding: 4px 7px; font-size: 0.82rem;
+}
+.pixel-sub-out.is-selected { outline: 2px solid #4a90d9; }
+.pixel-sub-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pixel-sub-stat { color: var(--text-mute); font-variant-numeric: tabular-nums; font-size: 0.74rem; white-space: nowrap; }
+.pixel-controls #pixel-subs.active { outline: 2px solid #4a90d9; }
+
+/* Nudges sit low over the court so they never cover the scoreboard, and take
+   no layout space at all when absent — a nudge appearing must not shift
+   anything under the user's cursor. */
+.pixel-nudge-slot {
+  position: absolute; z-index: 5;
+  left: 50%; transform: translateX(-50%);
+  bottom: 10px;
+  display: flex; justify-content: center;
+  pointer-events: none;
+}
+.pixel-nudge {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 5px 10px; border-radius: 4px;
+  background: rgba(10, 12, 16, 0.92); border: 1px solid #4a5262;
+  font-size: 0.85rem;
+  pointer-events: auto;
+}
+.pixel-nudge-run { border-color: #d8a13c; }
+.pixel-nudge-fouls { border-color: #ff6b5c; }
+.pixel-nudge-text { color: var(--text, #e8e8e8); }

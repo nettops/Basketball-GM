@@ -110,9 +110,6 @@ function renderPixelGame(container) {
   awayRoster.forEach(function (p) { playerById[p.id] = p; colorsById[p.id] = spriteColorsForPlayer(p, awayTeam, false); });
 
   container.innerHTML = pixelShellHtml(homeTeam, awayTeam, PIXEL_STAGE.w, PIXEL_STAGE.h, PIXEL_SPEEDS);
-  // Wired up in the live-controls task; inert (and visibly so) until then.
-  document.getElementById('pixel-timeout').disabled = true;
-  document.getElementById('pixel-subs').disabled = true;
   // Replaying a game that is still being played makes no sense.
   if (_watchSession.live) document.getElementById('pixel-replay').disabled = true;
 
@@ -164,6 +161,14 @@ function renderPixelGame(container) {
       session.sim.step();
       choreographer.appendEvents(session.events.slice(before));
       steps += 1;
+      // A queued decision lands at the boundary this step just crossed, so
+      // the controls have to re-read the sim here — otherwise the timeout
+      // counter and the on-court five keep showing the pre-decision state
+      // and the user cannot tell their click did anything.
+      if (userSide) {
+        refreshTimeoutBtn();
+        if (!subPanel.hidden) refreshSubPanel();
+      }
     }
     if (session.sim.done) finishLiveGame();
   }
@@ -201,6 +206,78 @@ function renderPixelGame(container) {
 
   function periodLabel(period) {
     return period <= 4 ? 'Q' + period : 'OT' + (period - 4);
+  }
+
+  // --- Live controls ------------------------------------------------------
+  // Everything here is optional. The auto-coach runs the user's team exactly
+  // as it runs every other team; these controls let the user OVERRIDE it at a
+  // possession boundary, never require them to.
+  const timeoutBtn = document.getElementById('pixel-timeout');
+  const subsBtn = document.getElementById('pixel-subs');
+  const subPanel = document.getElementById('pixel-subpanel');
+  let selectedOutId = null;
+
+  function userLineFor(pid) {
+    const box = userSide === 'home' ? session.sim.homeBox : session.sim.awayBox;
+    const line = box[pid];
+    if (!line) return null;
+    // secondsPlayed lives on the sim, not the box line (box `minutes` is only
+    // written at result() time), so it is merged in for display here.
+    return Object.assign({}, line, { secondsPlayed: session.sim.secondsPlayed[pid] || 0 });
+  }
+
+  function refreshTimeoutBtn() {
+    if (!userSide) { timeoutBtn.disabled = true; timeoutBtn.textContent = 'Timeout'; return; }
+    const left = session.sim.timeoutsLeft[userSide];
+    timeoutBtn.textContent = 'Timeout (' + left + ')';
+    timeoutBtn.disabled = left <= 0 || liveFinished;
+  }
+
+  function refreshSubPanel() {
+    if (!userSide) return;
+    const roster = userSide === 'home' ? session.sim.homeRoster : session.sim.awayRoster;
+    const onIds = session.sim.onCourt[userSide];
+    const byId = {};
+    roster.forEach(function (p) { byId[p.id] = p; });
+    pixelRenderSubPanel(subPanel, {
+      onCourt: onIds.map(function (id) { return byId[id]; }).filter(Boolean),
+      bench: roster.filter(function (p) { return onIds.indexOf(p.id) === -1; }),
+      lineFor: userLineFor,
+      selectedOutId: selectedOutId
+    });
+  }
+
+  if (!userSide) {
+    timeoutBtn.disabled = true;
+    subsBtn.disabled = true;
+  } else {
+    refreshTimeoutBtn();
+    timeoutBtn.addEventListener('click', function () {
+      if (!session.sim.applyDecision({ type: 'timeout', team: userSide })) return;
+      // Queued, not spent: it lands at the next possession boundary. Say so,
+      // rather than decrementing a counter the engine has not decremented.
+      timeoutBtn.textContent = 'Timeout called';
+      timeoutBtn.disabled = true;
+      pixelPushCommentary(document.getElementById('pixel-commentary'),
+        'You call timeout — the team gathers at the bench');
+    });
+
+    subsBtn.addEventListener('click', function () {
+      subPanel.hidden = !subPanel.hidden;
+      subsBtn.classList.toggle('active', !subPanel.hidden);
+      if (!subPanel.hidden) refreshSubPanel();
+    });
+
+    subPanel.addEventListener('click', function (e) {
+      const out = e.target.closest('.pixel-sub-out');
+      if (out) { selectedOutId = out.getAttribute('data-pid'); refreshSubPanel(); return; }
+      const inBtn = e.target.closest('.pixel-sub-in');
+      if (!inBtn || !selectedOutId) return;
+      const inId = inBtn.getAttribute('data-pid');
+      session.sim.applyDecision({ type: 'substitution', team: userSide, swaps: [{ out: selectedOutId, in: inId }] });
+      selectedOutId = null;
+      refreshSubPanel();
+    });
   }
 
   function currentFrame() {
@@ -811,6 +888,17 @@ function renderPixelGame(container) {
     document.getElementById('pixel-ticker').textContent =
       'FINAL: ' + homeTeam.id + ' ' + session.homeScore + ' — ' + awayTeam.id + ' ' + session.awayScore;
     document.getElementById('pixel-play-pause').disabled = true;
+    // The coaching controls die with the game. Without this they keep their
+    // last live labels ("Timeout (6)") and stay clickable after the final
+    // buzzer — the engine correctly refuses the decision, so nothing breaks,
+    // but a control that looks live and does nothing is its own bug.
+    timeoutBtn.disabled = true;
+    subsBtn.disabled = true;
+    subPanel.hidden = true;
+    subsBtn.classList.remove('active');
+    // A finished live game is an ordinary completed session now, so it can be
+    // replayed from the top like any other.
+    document.getElementById('pixel-replay').disabled = false;
 
     // Post-game card: line score plus the night's top performers, so the game
     // ends on a result rather than just stopping.
