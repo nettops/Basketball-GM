@@ -39,6 +39,13 @@ function setWatchSession(session) {
   }
 }
 
+// A live session is a game that has NOT happened yet: the view steps it while
+// playing it back. It only enters the replay history once it is complete,
+// because until then there is no result to replay.
+function setLiveWatchSession(liveSession) {
+  _watchSession = Object.assign({}, liveSession, { live: true, homeScore: 0, awayScore: 0 });
+}
+
 function getReplayHistory() { return _replayHistory; }
 
 function stopPixelPlayback() {
@@ -65,26 +72,37 @@ function renderPixelGame(container) {
   const homeTeam = getTeamById(session.homeTeamId);
   const awayTeam = getTeamById(session.awayTeamId);
 
-  // Participant rosters rebuilt from the box score (teamId stamped per line —
-  // see simEngineBoxScore.js) rather than live team rosters, so a mid-watch
-  // trade or injury can't desync the replay from what actually happened.
-  const homeRoster = Object.keys(session.boxScore)
-    .map(function (id) { return getPlayerById(id); })
-    .filter(function (p) { return p && session.boxScore[p.id].teamId === session.homeTeamId; });
-  const awayRoster = Object.keys(session.boxScore)
-    .map(function (id) { return getPlayerById(id); })
-    .filter(function (p) { return p && session.boxScore[p.id].teamId === session.awayTeamId; });
+  // Live: the rosters come from the sim, which is the authority on who is
+  // eligible tonight. Replay: rebuild them from the box score (teamId stamped
+  // per line — see simEngineBoxScore.js) rather than live team rosters, so a
+  // trade or injury after the fact can't desync the replay from what happened.
+  const homeRoster = session.live
+    ? session.sim.homeRoster
+    : Object.keys(session.boxScore)
+        .map(function (id) { return getPlayerById(id); })
+        .filter(function (p) { return p && session.boxScore[p.id].teamId === session.homeTeamId; });
+  const awayRoster = session.live
+    ? session.sim.awayRoster
+    : Object.keys(session.boxScore)
+        .map(function (id) { return getPlayerById(id); })
+        .filter(function (p) { return p && session.boxScore[p.id].teamId === session.awayTeamId; });
 
-  const timeline = buildTimeline({
-    events: session.events,
+  const choreographer = createChoreographer({
     homeRoster: homeRoster,
     awayRoster: awayRoster,
-    boxScore: session.boxScore,
     homeName: homeTeam.name,
     awayName: awayTeam.name,
     homeAbbr: homeTeam.id,
     awayAbbr: awayTeam.id
   });
+
+  // Replay feeds the whole stored log in immediately; live feeds it one
+  // possession at a time from stepAhead() below.
+  if (!session.live) {
+    groupPossessions(session.events).forEach(function (slice) { choreographer.appendEvents(slice); });
+    choreographer.finish();
+  }
+  const timeline = choreographer.timeline;
 
   const playerById = {};
   const colorsById = {};
@@ -95,6 +113,8 @@ function renderPixelGame(container) {
   // Wired up in the live-controls task; inert (and visibly so) until then.
   document.getElementById('pixel-timeout').disabled = true;
   document.getElementById('pixel-subs').disabled = true;
+  // Replaying a game that is still being played makes no sense.
+  if (_watchSession.live) document.getElementById('pixel-replay').disabled = true;
 
   const canvas = document.getElementById('pixel-canvas');
   const ctx = canvas.getContext('2d');
@@ -111,7 +131,77 @@ function renderPixelGame(container) {
   let paused = false;
   let lastFrameTs = null;
   let kfIndex = 0;
+  // The same array object throughout — appendEvents mutates it in place, so
+  // this stays valid as the live timeline grows.
   const kfs = timeline.keyframes;
+
+  // --- Live stepping ------------------------------------------------------
+  // How far ahead of the playhead the choreographed timeline is kept. Two
+  // seconds is roughly three possessions of beats — enough that a slow frame
+  // never starves playback, small enough that a decision made now still lands
+  // within a few seconds of game time rather than a minute later.
+  const STEP_AHEAD_MS = 2000;
+  // A hard per-frame cap. Without it, a tab that was backgrounded (or a Skip
+  // to Final on a game that has barely started) would try to choreograph the
+  // entire remaining game inside one animation frame and drop the tab.
+  const MAX_STEPS_PER_FRAME = 12;
+
+  let liveFinished = false;
+
+  // Which side the user coaches. A replayed game, and any game the user's
+  // team is not in, is watch-only: the controls stay disabled rather than
+  // being hidden, so the view has one layout instead of two.
+  const userSide = session.live && session.userTeamId === session.homeTeamId ? 'home'
+    : (session.live && session.userTeamId === session.awayTeamId ? 'away' : null);
+
+  function stepAhead(budget) {
+    if (!session.live) return;
+    let steps = 0;
+    while (!session.sim.done &&
+           timeline.durationMs - playbackMs < STEP_AHEAD_MS &&
+           steps < budget) {
+      const before = session.events.length;
+      session.sim.step();
+      choreographer.appendEvents(session.events.slice(before));
+      steps += 1;
+    }
+    if (session.sim.done) finishLiveGame();
+  }
+
+  // Closes the game out exactly once: the choreographer is sealed, the
+  // session becomes an ordinary completed session (so Replay works on it and
+  // it joins the replay history), and the league records the result.
+  function finishLiveGame() {
+    if (liveFinished || !session.live) return;
+    liveFinished = true;
+    choreographer.finish();
+    const result = session.sim.result();
+    session.homeScore = result.homeScore;
+    session.awayScore = result.awayScore;
+    session.boxScore = result.boxScore;
+    session.live = false;
+    if (session.onFinish) session.onFinish();
+    _replayHistory.unshift(session);
+    if (_replayHistory.length > REPLAY_LIMIT) _replayHistory.length = REPLAY_LIMIT;
+  }
+
+  // Runs whatever is left under the auto-coach and choreographs it. Used by
+  // Skip to Final and by Exit: the spec is explicit that a half-played game
+  // is never recorded, so leaving the view completes the game rather than
+  // discarding it.
+  function runOutLiveGame() {
+    if (!session.live) return;
+    while (!session.sim.done) {
+      const before = session.events.length;
+      session.sim.step();
+      choreographer.appendEvents(session.events.slice(before));
+    }
+    finishLiveGame();
+  }
+
+  function periodLabel(period) {
+    return period <= 4 ? 'Q' + period : 'OT' + (period - 4);
+  }
 
   function currentFrame() {
     while (kfIndex < kfs.length - 1 && kfs[kfIndex + 1].t <= playbackMs) kfIndex++;
@@ -306,17 +396,17 @@ function renderPixelGame(container) {
       // Event audio. Above 4x the beats blur together into a machine-gun
       // rattle, so the one-shots drop out and only the crowd bed remains.
       if (fr.a.sfx && speed <= 4) playPixelSfx(fr.a.sfx);
-      if (fr.a.quarter > lastQuarterSeen) {
+      if (fr.a.period > lastQuarterSeen) {
         // The quarter always advances and the horn always sounds; only the
         // card and the pause it forces are motion effects.
         if (!reduceMotion) {
           quarterCard = {
-            text: 'END OF Q' + lastQuarterSeen,
+            text: 'END OF ' + periodLabel(lastQuarterSeen),
             scoreLine: homeTeam.id + ' ' + fr.a.score[0] + ' — ' + awayTeam.id + ' ' + fr.a.score[1]
           };
           hitchMs = Math.max(hitchMs, 1500);
         }
-        lastQuarterSeen = fr.a.quarter;
+        lastQuarterSeen = fr.a.period;
         playPixelSfx('buzzer');
       }
       lastEffectKfT = fr.a.t;
@@ -667,7 +757,7 @@ function renderPixelGame(container) {
     drawPixelText(ctx, boardX + boardW - 10 - pixelTextWidth(awayScoreStr, aScale), boardY + 12, awayScoreStr, aColor, aScale);
 
     // quarter + clock down the middle
-    const qText = 'Q' + fr.a.quarter;
+    const qText = periodLabel(fr.a.period);
     drawPixelText(ctx, boardX + (boardW - pixelTextWidth(qText, 1)) / 2, boardY + 4, qText, '#8fa0bd', 1);
     const clockText = fmtClock(fr.a.clock);
     drawPixelText(ctx, boardX + (boardW - pixelTextWidth(clockText, 2)) / 2, boardY + 12, clockText, '#cfd6e4', 2);
@@ -706,7 +796,7 @@ function renderPixelGame(container) {
 
     setScore('pixel-score-home', fr.a.score[0], 0);
     setScore('pixel-score-away', fr.a.score[1], 1);
-    document.getElementById('pixel-quarter').textContent = 'Q' + fr.a.quarter;
+    document.getElementById('pixel-quarter').textContent = periodLabel(fr.a.period);
     document.getElementById('pixel-clock').textContent = fmtClock(fr.a.clock);
     if (fr.a.text) document.getElementById('pixel-ticker').textContent = fr.a.text;
   }
@@ -740,12 +830,29 @@ function renderPixelGame(container) {
     if (lastFrameTs === null) lastFrameTs = ts;
     const dt = ts - lastFrameTs;
     lastFrameTs = ts;
+
+    // Step BEFORE advancing the playhead, so the frame about to be drawn is
+    // never past the end of the choreographed timeline.
+    stepAhead(MAX_STEPS_PER_FRAME);
+
     if (!paused) {
       // hitchMs freezes the whole scene (make freeze-frames, quarter cards)
       if (hitchMs > 0) hitchMs -= dt;
       else playbackMs += dt * speed;
     }
-    if (playbackMs >= timeline.durationMs) { showFinal(); _rafId = null; return; }
+    // A live game is only over when the SIM is done and playback has caught
+    // up to it. Checking durationMs alone would show the final card on the
+    // very first frame, when the timeline is still empty.
+    if (playbackMs >= timeline.durationMs && (!session.live || liveFinished)) {
+      showFinal();
+      _rafId = null;
+      return;
+    }
+    // Playback outran the sim (very high speed, or a slow step): hold the
+    // playhead at the end of what exists rather than interpolating past it.
+    if (playbackMs > timeline.durationMs) playbackMs = timeline.durationMs;
+
+    if (kfs.length === 0) { _rafId = requestAnimationFrame(tick); return; }
     draw(dt);
     _rafId = requestAnimationFrame(tick);
   }
@@ -770,6 +877,9 @@ function renderPixelGame(container) {
     });
   });
   document.getElementById('pixel-skip').addEventListener('click', function () {
+    // Complete the game before showing the final: showFinal reads the line
+    // score and final stats, which only exist once the timeline is closed.
+    runOutLiveGame();
     stopPixelPlayback();
     hitchMs = 0;
     quarterCard = null;
@@ -782,10 +892,14 @@ function renderPixelGame(container) {
     showFinal();
   });
   document.getElementById('pixel-replay').addEventListener('click', function () {
+    if (session.live) return;   // nothing to replay yet — the game is still happening
     stopPixelPlayback();
     renderPixelGame(container); // same session, fresh from tip-off
   });
   document.getElementById('pixel-exit').addEventListener('click', function () {
+    // Leaving mid-game still records a COMPLETE game (spec: a half-played
+    // game is never recorded) — the rest is played out under the auto-coach.
+    runOutLiveGame();
     stopPixelPlayback();
     _watchSession = null;
     renderView('dashboard');
@@ -808,5 +922,10 @@ function renderPixelGame(container) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { setWatchSession: setWatchSession, renderPixelGame: renderPixelGame, stopPixelPlayback: stopPixelPlayback };
+  module.exports = {
+    setWatchSession: setWatchSession,
+    setLiveWatchSession: setLiveWatchSession,
+    renderPixelGame: renderPixelGame,
+    stopPixelPlayback: stopPixelPlayback
+  };
 }
