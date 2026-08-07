@@ -392,4 +392,78 @@ function checkPossessionIsDefaultEngine() {
 }
 checkPossessionIsDefaultEngine();
 
+// --- Task 1: queued user decisions ---------------------------------------
+
+function checkDecisionsQueueUntilNextStep() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(41));
+  sim.step();
+  const before = sim.onCourt.home.slice();
+  const benchId = sim.homeRoster.find(function (p) { return before.indexOf(p.id) === -1; }).id;
+  const ok = sim.applyDecision({ type: 'substitution', team: 'home', swaps: [{ out: before[0], in: benchId }] });
+  assert.strictEqual(ok, true, 'a valid decision is accepted');
+  assert.deepStrictEqual(sim.onCourt.home, before, 'queued decisions do NOT apply immediately');
+  sim.step();
+  assert.ok(sim.onCourt.home.indexOf(benchId) !== -1, 'the substitute is on the floor after the next step');
+  assert.ok(sim.onCourt.home.indexOf(before[0]) === -1, 'the replaced player came off');
+  console.log('checkDecisionsQueueUntilNextStep: OK');
+}
+checkDecisionsQueueUntilNextStep();
+
+function checkUserSubSurvivesTheCoach() {
+  // The coach runs on every step. A user substitution must not be undone by
+  // the coach in the SAME step that applied it.
+  const sim = gameSim.createGameSim('DEN', 'MIA', makeRng(42));
+  for (let i = 0; i < 60; i++) sim.step();
+  const before = sim.onCourt.away.slice();
+  const benchId = sim.awayRoster.find(function (p) { return before.indexOf(p.id) === -1; }).id;
+  sim.applyDecision({ type: 'substitution', team: 'away', swaps: [{ out: before[0], in: benchId }] });
+  sim.step();
+  assert.ok(sim.onCourt.away.indexOf(benchId) !== -1, 'the coach did not reverse the user substitution');
+  console.log('checkUserSubSurvivesTheCoach: OK');
+}
+checkUserSubSurvivesTheCoach();
+
+function checkTimeoutDecision() {
+  const sim = gameSim.createGameSim('OKC', 'NYK', makeRng(43));
+  sim.step();
+  const left = sim.timeoutsLeft.home;
+  assert.strictEqual(sim.applyDecision({ type: 'timeout', team: 'home' }), true, 'a timeout is accepted');
+  assert.strictEqual(sim.timeoutsLeft.home, left, 'not spent until the next step');
+  sim.step();
+  assert.strictEqual(sim.timeoutsLeft.home, left - 1, 'spent at the next possession boundary');
+  console.log('checkTimeoutDecision: OK');
+}
+checkTimeoutDecision();
+
+function checkInvalidDecisionsRejected() {
+  const sim = gameSim.createGameSim('MIL', 'PHI', makeRng(44));
+  sim.step();
+  assert.strictEqual(sim.applyDecision(null), false, 'null is rejected');
+  assert.strictEqual(sim.applyDecision({ type: 'nonsense', team: 'home' }), false, 'unknown type is rejected');
+  assert.strictEqual(sim.applyDecision({ type: 'timeout', team: 'nobody' }), false, 'unknown team is rejected');
+
+  // Timeouts exhausted: the spec says the control disables; the engine must
+  // refuse regardless of what any caller believes.
+  const drained = gameSim.createGameSim('GSW', 'DAL', makeRng(45));
+  drained.step();
+  for (let i = 0; i < 7; i++) { drained.applyDecision({ type: 'timeout', team: 'home' }); drained.step(); }
+  assert.strictEqual(drained.timeoutsLeft.home, 0, 'all seven spent');
+  assert.strictEqual(drained.applyDecision({ type: 'timeout', team: 'home' }), false, 'an eighth is rejected');
+  console.log('checkInvalidDecisionsRejected: OK');
+}
+checkInvalidDecisionsRejected();
+
+function checkDecisionsAfterGameOverIgnored() {
+  const sim = gameSim.createGameSim('CLE', 'MEM', makeRng(46));
+  while (!sim.done) sim.step();
+  const before = sim.onCourt.home.slice();
+  const benchId = sim.homeRoster.find(function (p) { return before.indexOf(p.id) === -1; }).id;
+  assert.strictEqual(sim.applyDecision({ type: 'substitution', team: 'home', swaps: [{ out: before[0], in: benchId }] }), false,
+    'decisions after the final buzzer are refused');
+  sim.step();
+  assert.deepStrictEqual(sim.onCourt.home, before, 'and change nothing');
+  console.log('checkDecisionsAfterGameOverIgnored: OK');
+}
+checkDecisionsAfterGameOverIgnored();
+
 console.log('All game sim validations passed');

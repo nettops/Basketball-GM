@@ -108,15 +108,53 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     byId: byId
   };
 
+  // External decisions (the user watching, or a test), queued and drained at
+  // the top of the next step(). Never applied mid-possession: a substitution
+  // landing halfway through would change who was on the floor for math that
+  // had already run.
+  const pendingDecisions = [];
+
+  sim.applyDecision = function (decision) {
+    if (sim.done) return false;                     // spec: ignored after the final buzzer
+    if (!decision) return false;
+    if (decision.type !== 'timeout' && decision.type !== 'substitution') return false;
+    if (decision.team !== 'home' && decision.team !== 'away') return false;
+    if (decision.type === 'timeout' && sim.timeoutsLeft[decision.team] <= 0) return false;
+    pendingDecisions.push(decision);
+    return true;
+  };
+
+  // Applies everything queued and reports which teams were decided for by a
+  // caller rather than by the coach. The coach is then skipped for those
+  // teams for THIS boundary only — otherwise it would evaluate the floor the
+  // user just changed and swap the substitute straight back off, making user
+  // agency look broken when it is actually being overwritten one line later.
+  function drainDecisions() {
+    const decided = {};
+    while (pendingDecisions.length > 0) {
+      const d = pendingDecisions.shift();
+      if (d.type === 'timeout') {
+        if (sim.callTimeout(d.team)) decided[d.team] = true;
+      } else {
+        sim.applySubstitutions(d.team, d.swaps);
+        decided[d.team] = true;
+      }
+    }
+    return decided;
+  }
+
   sim.step = function () {
     if (sim.done) return;
 
     // Every team, every game — this is what makes watching a game no better
     // than not watching it, other than the decisions a human chooses to make.
+    const userDecided = drainDecisions();
     ['home', 'away'].forEach(function (t) {
+      if (userDecided[t]) return;
       sim.applySubstitutions(t, _GAMESIM_DATA.coach.decideSubstitutions(sim, t));
     });
     ['home', 'away'].forEach(function (t) {
+      if (userDecided[t]) return;
       if (_GAMESIM_DATA.coach.decideTimeout(sim, t)) sim.callTimeout(t);
     });
 
