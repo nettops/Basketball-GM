@@ -1,8 +1,10 @@
 var _PROSPECT_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS },
-      traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies }
+      traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies },
+      faces: { generateFace: generateFace },
+      progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo }
     };
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
@@ -14,6 +16,11 @@ const PROSPECT_ARCHETYPES = {
   three_and_d:     { insideScoring: -6, midRange: 0, threePoint: 8, freeThrow: 2, passing: -4, ballHandling: -4, postScoring: -10, perimeterDefense: 8, interiorDefense: -4, steal: 4, block: -4, offReb: -4, defReb: 0, speed: 2, acceleration: 2, strength: 0, vertical: 0, basketballIQ: 2, leadership: 0, workEthic: 2 },
   rim_protector:   { insideScoring: -4, midRange: -10, threePoint: -14, freeThrow: -10, passing: -8, ballHandling: -12, postScoring: 2, perimeterDefense: 0, interiorDefense: 10, steal: -2, block: 12, offReb: 8, defReb: 10, speed: -6, acceleration: -6, strength: 8, vertical: 4, basketballIQ: 0, leadership: 0, workEthic: 2 },
   slasher:         { insideScoring: 8, midRange: -2, threePoint: -6, freeThrow: -2, passing: 0, ballHandling: 4, postScoring: -2, perimeterDefense: 0, interiorDefense: -6, steal: 2, block: -6, offReb: -2, defReb: -2, speed: 6, acceleration: 6, strength: 0, vertical: 6, basketballIQ: 0, leadership: 0, workEthic: 0 },
+  // Was missing while commissioner.js's CREATE_PLAYER_ARCHETYPES already offered
+  // it in the Create Player dropdown (ui/commissioner.js), so picking "stretch_big"
+  // threw in makeProspectAttributes on an undefined offset table. Offsets mirror
+  // players-2026.js's ARCHETYPES entry of the same name.
+  stretch_big:     { insideScoring: -2, midRange: 4, threePoint: 6, freeThrow: 4, passing: -4, ballHandling: -8, postScoring: 0, perimeterDefense: -4, interiorDefense: 2, steal: -4, block: 4, offReb: 0, defReb: 4, speed: -4, acceleration: -4, strength: 4, vertical: 0, basketballIQ: 0, leadership: 0, workEthic: 0 },
   raw_prospect:    { insideScoring: -2, midRange: -4, threePoint: -4, freeThrow: -2, passing: -2, ballHandling: -2, postScoring: -2, perimeterDefense: -2, interiorDefense: -2, steal: -2, block: -2, offReb: -2, defReb: -2, speed: 4, acceleration: 4, strength: -4, vertical: 4, basketballIQ: -8, leadership: -6, workEthic: 0 }
 };
 
@@ -31,11 +38,28 @@ function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// Sequence for the fixed real-2026 class below, which is built at module load
+// where no rng exists. A counter rather than Math.random so those ids are
+// identical on every page load: they are fixed data, and an id that changes
+// each time the file is parsed is a hazard for anything that stores one.
+let _staticProspectSeq = 0;
+
 function mkProspect(name, age, heightIn, weightLb, position, overall, potential, archetype, bustChance, nbaComparison, opts) {
   opts = opts || {};
   const autoData = PROSPECT_DATA_MAP[name] || {};
   return {
-    id: 'prospect-' + slugify(name) + '-' + Math.floor(Math.random() * 1000000),
+    // Deterministic either way. Every other value a generated prospect gets
+    // comes from the seeded league rng; the id was the one exception, and it
+    // defeated reproducibility outright — save.js captures the rng position
+    // precisely so reloading replays a season identically, but downstream
+    // code sorts and keys by player id, so unseeded ids made the same seed
+    // produce a different league. Two runs from one seed diverged inside the
+    // very first offseason.
+    //
+    // The suffix exists to separate GENERATED prospects, whose names repeat
+    // from a small pool; the fixed class below has unique real names and just
+    // needs a stable counter.
+    id: 'prospect-' + slugify(name) + '-' + (opts.rng ? Math.floor(opts.rng() * 1000000) : (++_staticProspectSeq)),
     teamId: null,
     name: name,
     age: age,
@@ -131,14 +155,17 @@ const FIRST_NAMES = ['Jaylen', 'Marcus', 'Devin', 'Isaiah', 'Elijah', 'Cameron',
 const LAST_NAMES = ['Turner', 'Brooks', 'Hayes', 'Coleman', 'Reid', 'Bryant', 'Foster', 'Simmons', 'Ward', 'Price', 'Bell', 'Owens', 'Hunt', 'Mercer', 'Dawson'];
 
 // Every draft after the real 2026 class uses this — procedurally generated,
-// same schema as a real prospect, but with a generic name and a rank-correlated
-// overall/potential spread (early picks skew better, same idea as a real class).
+// same schema as a real prospect, but with a generic name. Overall is still
+// rank-correlated (early picks skew better, same idea as a real class), but
+// potential is no longer a flat formula — see estimatePotentialMonteCarlo
+// (progression.js): it actually simulates the prospect's likely career
+// forward and reports the 75th-percentile ceiling reached, which naturally
+// tracks age/attributes/personality instead of just draft slot.
 function generateProspectClass(rng, count) {
   const prospects = [];
   for (let i = 0; i < count; i++) {
     const rankFactor = 1 - i / count; // 1.0 for pick 1, ->0 for the last pick
     const overall = Math.round(58 + rankFactor * 22 + (rng() - 0.5) * 8);
-    const potential = Math.round(overall + rng() * 15 + rankFactor * 8);
     const archetype = ARCHETYPE_NAMES[Math.floor(rng() * ARCHETYPE_NAMES.length)];
     const position = _PROSPECT_DATA.data.POSITIONS[Math.floor(rng() * _PROSPECT_DATA.data.POSITIONS.length)];
     const name = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)] + ' ' + LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)] + ' Jr.'.slice(0, rng() < 0.15 ? 4 : 0);
@@ -146,10 +173,13 @@ function generateProspectClass(rng, count) {
     const heightIn = 74 + Math.floor(rng() * 10);
     const weightLb = 180 + Math.floor(rng() * 60);
     const bustChance = Math.round((0.15 + (1 - rankFactor) * 0.35) * 100) / 100;
-    const prospect = mkProspect(name.trim(), age, heightIn, weightLb, position, Math.max(40, Math.min(90, overall)), Math.max(overall, Math.min(99, potential)), archetype, bustChance, 'Unproven');
+    const clampedOverall = Math.max(40, Math.min(90, overall));
+    const prospect = mkProspect(name.trim(), age, heightIn, weightLb, position, clampedOverall, clampedOverall, archetype, bustChance, 'Unproven', { rng: rng });
     prospect.hiddenTraits = _PROSPECT_DATA.traits.generateHiddenTraits(prospect, rng);
     prospect.hiddenPersonality = _PROSPECT_DATA.traits.generatePersonality(prospect, rng);
     prospect.hiddenTendencies = _PROSPECT_DATA.traits.generateTendencies(prospect, rng);
+    prospect.face = _PROSPECT_DATA.faces.generateFace(rng);
+    prospect.potential = Math.max(clampedOverall, Math.min(99, _PROSPECT_DATA.progression.estimatePotentialMonteCarlo(prospect, rng)));
     prospects.push(prospect);
   }
   return prospects;
