@@ -6,7 +6,7 @@ function renderCurrentSeasonPanel(player) {
   const avg = getPlayerAverages(player);
   const team = player.teamId ? getTeamById(player.teamId) : null;
   let html = '<div class="panel"><div class="panel-header">Current Season</div><div class="panel-body kpi-grid">';
-  html += '<div class="kpi-tile"><div class="kpi-label">Team</div><div class="kpi-value">' + (team ? team.name : 'Free Agent') + '</div></div>';
+  html += '<div class="kpi-tile"><div class="kpi-label">Team</div><div class="kpi-value">' + (team ? escapeHtml(team.name) : 'Free Agent') + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">GP</div><div class="kpi-value">' + (player.seasonStats ? player.seasonStats.gamesPlayed : 0) + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">PPG</div><div class="kpi-value">' + avg.ppg.toFixed(1) + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">RPG</div><div class="kpi-value">' + avg.rpg.toFixed(1) + '</div></div>';
@@ -48,8 +48,23 @@ function renderCareerStatsTab(player) {
   html += '</div></div>';
 
   if (player.awardsWon.length > 0) {
-    html += '<div class="panel"><div class="panel-header">Awards</div><div class="panel-body">';
-    html += player.awardsWon.map(function (a) { return a.leagueYear + ' ' + a.award; }).join(', ');
+    // Grouped by award type (title + how many times, years underneath)
+    // rather than one row per award instance — a long career racks up
+    // enough MVPs/All-NBA nods that a flat list becomes an unreadable wall.
+    const grouped = {};
+    player.awardsWon.forEach(function (a) {
+      if (!grouped[a.award]) grouped[a.award] = [];
+      grouped[a.award].push(a.leagueYear);
+    });
+    const awardKeys = Object.keys(grouped).sort(function (a, b) { return grouped[b].length - grouped[a].length; });
+    html += '<div class="panel"><div class="panel-header">Awards</div><div class="panel-body kpi-grid">';
+    awardKeys.forEach(function (key) {
+      const years = grouped[key].slice().sort(function (a, b) { return b - a; });
+      const label = AWARD_LABELS[key] || key;
+      html += '<div class="kpi-tile"><div class="kpi-label">' + escapeHtml(label) + '</div>' +
+        '<div class="kpi-value">×' + years.length + '</div>' +
+        '<div class="kpi-sub">' + years.join(', ') + '</div></div>';
+    });
     html += '</div></div>';
   }
   return html;
@@ -144,11 +159,137 @@ function renderInjuryTimelineTab(player) {
 }
 
 const PLAYER_PROFILE_TABS = [
+  { id: 'attributes', label: 'Attributes' },
+  { id: 'traits', label: 'Traits & Badges' },
   { id: 'overview', label: 'Career Stats' },
   { id: 'seasons', label: 'Season Breakdown' },
   { id: 'teams', label: 'Team History' },
   { id: 'injuries', label: 'Injury Timeline' }
 ];
+
+const TRAIT_CATEGORY_LABELS = {
+  offensive: 'Offensive', defensive: 'Defensive', athletic: 'Athletic',
+  mental: 'Mental', negative: 'Flaws', superstar: 'Superstar'
+};
+const TRAIT_CATEGORY_ORDER = ['superstar', 'offensive', 'defensive', 'athletic', 'mental', 'negative'];
+
+const PERSONALITY_LABELS = {
+  loyalty: 'Loyalty', ambition: 'Ambition', ego: 'Ego',
+  coachability: 'Coachability', durabilityMindset: 'Durability Mindset'
+};
+
+function traitBadgeHtml(key, tier, category, rangeLabel) {
+  const def = TRAIT_TAXONOMY_BY_KEY[key];
+  const name = def ? def.name : key;
+  // tier is null for a fuzzy (partially-scouted) reveal — rangeLabel carries
+  // the "silver-gold?" range text instead of a single confirmed tier, so
+  // there's no real tier to color by yet.
+  let tierClass;
+  if (tier === null) tierClass = 'tier-fuzzy';
+  else if (category === 'negative') tierClass = 'tier-negative';
+  else tierClass = 'tier-' + tier;
+  const tierLabel = rangeLabel ? rangeLabel : tier;
+  return '<span class="trait-badge ' + tierClass + '">' + escapeHtml(name) +
+    ' <span class="trait-badge-tier">' + escapeHtml(tierLabel) + '</span></span>';
+}
+
+// Same confidence-gated reveal the Scouting tab already uses (scouting.js's
+// getRevealedView) — a player's hidden traits/personality aren't just lore,
+// they're something your front office has to actually scout to learn, same
+// as an opponent's. Own-roster players start scouted at 0% too (passive
+// scouting ramps up over the season), which is intentional, not a bug: even
+// your own front office doesn't have perfect Day 1 insight into makeup.
+function renderTraitsTab(player) {
+  const target = GameState.scouting ? GameState.scouting.targets[player.id] : null;
+  const confidence = target ? target.confidence : 0;
+  const view = getRevealedView(player, confidence);
+
+  let html = '<div class="panel"><div class="panel-header">Scouting Confidence</div><div class="panel-body">' +
+    '<div class="kpi-value">' + Math.round(confidence) + '% <span class="pill pill-mute">' + view.level + '</span></div>' +
+    '<div class="meter" style="margin:8px 0 0;"><div class="meter-fill" style="width:' + Math.round(confidence) + '%"></div></div>' +
+    '</div></div>';
+
+  html += '<div class="panel"><div class="panel-header">Traits</div><div class="panel-body">';
+  if (view.level === 'hidden') {
+    html += '<p class="trait-lock-note">Not scouted enough yet — traits are hidden until confidence reaches 30%. Spend scout points from the Scouting tab to reveal them.</p>';
+  } else if (view.traits.length === 0) {
+    html += '<p class="trait-lock-note">No notable traits detected.</p>';
+  } else if (view.level === 'fuzzy') {
+    html += '<p class="trait-lock-note">Partially scouted — exact tiers unlock at 70% confidence.</p>';
+    html += '<div class="trait-badge-grid">' + view.traits.map(function (t) {
+      const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+      return traitBadgeHtml(t.key, null, def ? def.category : 'mental', t.rangeLabel + '?');
+    }).join('') + '</div>';
+  } else {
+    TRAIT_CATEGORY_ORDER.forEach(function (cat) {
+      const inCat = view.traits.filter(function (t) {
+        const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+        return def && def.category === cat;
+      });
+      if (inCat.length === 0) return;
+      html += '<div class="trait-badge-category-label">' + TRAIT_CATEGORY_LABELS[cat] + '</div>';
+      html += '<div class="trait-badge-grid">' + inCat.map(function (t) {
+        return traitBadgeHtml(t.key, t.tier, cat);
+      }).join('') + '</div>';
+    });
+  }
+  html += '</div></div>';
+
+  html += '<div class="panel"><div class="panel-header">Personality</div><div class="panel-body">';
+  if (view.level === 'hidden') {
+    html += '<p class="trait-lock-note">Not scouted enough yet — personality is hidden until confidence reaches 30%.</p>';
+  } else if (view.level === 'fuzzy') {
+    html += '<div class="kpi-grid">' + Object.keys(view.personality).map(function (k) {
+      return '<div class="kpi-tile"><div class="kpi-label">' + (PERSONALITY_LABELS[k] || k) + '</div>' +
+        '<div class="kpi-value">' + view.personality[k] + '</div></div>';
+    }).join('') + '</div>';
+  } else {
+    html += '<div class="kpi-grid">' + Object.keys(view.personality).map(function (k) {
+      const value = view.personality[k];
+      return '<div class="kpi-tile"><div class="kpi-label">' + (PERSONALITY_LABELS[k] || k) + '</div>' +
+        '<div class="kpi-value">' + value + '</div>' +
+        '<div class="meter"><div class="meter-fill" style="width:' + value + '%"></div></div></div>';
+    }).join('') + '</div>';
+  }
+  html += '</div></div>';
+
+  return html;
+}
+
+// Grouped for readability rather than one flat list of 20 — mirrors how a
+// real scouting report is organized (data.js's ATTRIBUTE_KEYS order is
+// unrelated, just declaration order).
+const ATTRIBUTE_GROUPS = [
+  { label: 'Scoring', keys: ['insideScoring', 'midRange', 'threePoint', 'freeThrow', 'postScoring'] },
+  { label: 'Playmaking', keys: ['passing', 'ballHandling'] },
+  { label: 'Defense', keys: ['perimeterDefense', 'interiorDefense', 'steal', 'block'] },
+  { label: 'Rebounding', keys: ['offReb', 'defReb'] },
+  { label: 'Athleticism', keys: ['speed', 'acceleration', 'strength', 'vertical'] },
+  { label: 'Mental', keys: ['basketballIQ', 'leadership', 'workEthic'] }
+];
+
+const ATTRIBUTE_LABELS = {
+  insideScoring: 'Inside Scoring', midRange: 'Mid-Range', threePoint: '3-Point', freeThrow: 'Free Throw',
+  postScoring: 'Post Scoring', passing: 'Passing', ballHandling: 'Ball Handling',
+  perimeterDefense: 'Perimeter D', interiorDefense: 'Interior D', steal: 'Steal', block: 'Block',
+  offReb: 'Off. Rebound', defReb: 'Def. Rebound', speed: 'Speed', acceleration: 'Acceleration',
+  strength: 'Strength', vertical: 'Vertical', basketballIQ: 'Basketball IQ', leadership: 'Leadership', workEthic: 'Work Ethic'
+};
+
+function renderAttributesTab(player) {
+  let html = '';
+  ATTRIBUTE_GROUPS.forEach(function (group) {
+    html += '<div class="panel"><div class="panel-header">' + group.label + '</div><div class="panel-body kpi-grid">';
+    group.keys.forEach(function (key) {
+      const value = player.attributes[key];
+      html += '<div class="kpi-tile"><div class="kpi-label">' + ATTRIBUTE_LABELS[key] + '</div>' +
+        '<div class="kpi-value"><span class="rating-chip ' + ratingTier(value) + '">' + value + '</span></div>' +
+        '<div class="meter"><div class="meter-fill" style="width:' + value + '%"></div></div></div>';
+    });
+    html += '</div></div>';
+  });
+  return html;
+}
 
 function openPlayerProfile(playerId) {
   GameState.profilePlayerId = playerId;
@@ -169,8 +310,10 @@ function renderPlayerProfile(container) {
 
   function draw() {
     const team = player.teamId ? getTeamById(player.teamId) : null;
-    let html = '<div class="view-header"><h2>' + player.name + '</h2><span class="view-sub">' +
-      player.position + ' · Age ' + player.age + (team ? ' · ' + team.name : ' · Free Agent') + '</span></div>';
+    let html = '<div class="view-header" style="display:flex;align-items:center;gap:16px;">' +
+      playerFaceHtml(player, team, 100) +
+      '<div><h2>' + escapeHtml(player.name) + '</h2><span class="view-sub">' +
+      player.position + ' · Age ' + player.age + (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') + '</span></div></div>';
     html += renderCurrentSeasonPanel(player);
     html += '<div class="tab-bar">';
     PLAYER_PROFILE_TABS.forEach(function (t) {
@@ -178,7 +321,9 @@ function renderPlayerProfile(container) {
     });
     html += '</div>';
 
-    if (activeTab === 'overview') html += renderCareerStatsTab(player);
+    if (activeTab === 'attributes') html += renderAttributesTab(player);
+    else if (activeTab === 'traits') html += renderTraitsTab(player);
+    else if (activeTab === 'overview') html += renderCareerStatsTab(player);
     else if (activeTab === 'seasons') html += renderSeasonBreakdownTab(player, sortKey, sortDir);
     else if (activeTab === 'teams') html += renderTeamHistoryTab(player);
     else if (activeTab === 'injuries') html += renderInjuryTimelineTab(player);

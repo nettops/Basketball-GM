@@ -15,7 +15,7 @@ function renderFreeAgency(container, userTeamId) {
     html += '<div class="panel"><table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Age</th>' +
       '<th class="num">OVR</th><th class="num">Action</th></tr></thead><tbody>';
     pool.forEach(function (p) {
-      html += '<tr><td class="col-name">' + p.name + '</td>' +
+      html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
@@ -32,7 +32,10 @@ function renderFreeAgency(container, userTeamId) {
       const rng = GameState.rng;
       const results = runFreeAgencySilently(rng);
       results.forEach(function (r) {
-        signingLog.push(getTeamById(r.teamId).name + ' signed ' + getPlayerById(r.playerId).name + ' ($' + r.salary.toLocaleString() + ')');
+        // signingLog entries are rendered as raw <li> markup above, so the
+        // player name needs escaping here just like the team name — and like
+        // the two sibling pushes in renderBiddingPanel already do.
+        signingLog.push(escapeHtml(getTeamById(r.teamId).name) + ' signed ' + escapeHtml(getPlayerById(r.playerId).name) + ' ($' + r.salary.toLocaleString() + ')');
       });
       draw();
     });
@@ -52,7 +55,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
   const state = startBidding(playerId, userTeamId, GameState.rng);
 
   function draw(lastResult) {
-    let html = '<div class="bid-panel"><h3>Bidding for ' + player.name + '</h3>';
+    let html = '<div class="bid-panel"><h3>Bidding for ' + escapeHtml(player.name) + '</h3>';
     html += '<div class="kpi-sub">Competing offers: ' + state.aiOffers.length + '</div>';
     if (lastResult) {
       html += lastResult.userWinning
@@ -78,7 +81,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
     document.getElementById('accept-bid-btn').addEventListener('click', function () {
       pushUndoSnapshot(GameState);
       const outcome = finalizeBidding(state, true);
-      if (outcome.signed) signingLog.push(getTeamById(outcome.teamId).name + ' signed ' + player.name);
+      if (outcome.signed) signingLog.push(escapeHtml(getTeamById(outcome.teamId).name) + ' signed ' + escapeHtml(player.name));
       if (outcome.signed && GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
       container.innerHTML = '';
       redrawParent();
@@ -86,7 +89,7 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
     document.getElementById('withdraw-bid-btn').addEventListener('click', function () {
       pushUndoSnapshot(GameState);
       const outcome = finalizeBidding(state, false);
-      if (outcome.signed) signingLog.push(getTeamById(outcome.teamId).name + ' signed ' + player.name + ' (you withdrew)');
+      if (outcome.signed) signingLog.push(escapeHtml(getTeamById(outcome.teamId).name) + ' signed ' + escapeHtml(player.name) + ' (you withdrew)');
       container.innerHTML = '';
       redrawParent();
     });

@@ -6,7 +6,7 @@ function formatSavedAt(ts) {
 function saveSlotLabel(slot) {
   if (slot.empty) return 'Slot ' + slot.slotId + ': (empty)';
   const label = slot.slotId === 'autosave' ? 'Autosave' : 'Slot ' + slot.slotId;
-  return label + ': ' + slot.name + ' — ' + slot.teamName + ' (' + slot.wins + '-' + slot.losses + ', ' + (slot.leagueYear || 2026) + ') — saved ' + formatSavedAt(slot.savedAt);
+  return label + ': ' + escapeHtml(slot.name) + ' — ' + escapeHtml(slot.teamName) + ' (' + slot.wins + '-' + slot.losses + ', ' + (slot.leagueYear || 2026) + ') — saved ' + formatSavedAt(slot.savedAt);
 }
 
 function downloadSaveFile(slotId, teamNameForFilename) {
@@ -29,8 +29,8 @@ function renderSaveSlotRow(slot, opts) {
   if (slot.empty) {
     html += '<div class="save-slot-name">' + label + ' — empty</div>';
   } else {
-    html += '<div class="save-slot-name">' + label + ' · ' + slot.name + '</div>' +
-      '<div class="save-slot-meta">' + slot.teamName + ' · ' + slot.wins + '-' + slot.losses +
+    html += '<div class="save-slot-name">' + label + ' · ' + escapeHtml(slot.name) + '</div>' +
+      '<div class="save-slot-meta">' + escapeHtml(slot.teamName) + ' · ' + slot.wins + '-' + slot.losses +
       ' · ' + (slot.leagueYear || 2026) + ' · saved ' + formatSavedAt(slot.savedAt) + '</div>';
   }
   html += '</div>';
@@ -67,7 +67,7 @@ function renderSaveList(container, onLoad) {
 function renderSaveLoad(container) {
   function draw() {
     const slots = listSaves();
-    const defaultName = GameState.userTeamId ? getTeamById(GameState.userTeamId).name + ' Save' : 'My Save';
+    const defaultName = GameState.userTeamId ? escapeHtml(getTeamById(GameState.userTeamId).name) + ' Save' : 'My Save';
 
     let html = '<div class="view-header"><h2>Save / Load</h2></div>';
     html += '<div class="panel"><div class="panel-header">Save Name</div><div class="panel-body">' +
@@ -83,7 +83,7 @@ function renderSaveLoad(container) {
       '<div class="toolbar"><input type="file" id="save-import-input" accept="application/json,.json"> ' +
       '<select id="save-import-target">' +
       slots.filter(function (s) { return s.slotId !== 'autosave'; }).map(function (s) {
-        return '<option value="' + s.slotId + '">Slot ' + s.slotId + (s.empty ? ' (empty)' : ' (overwrite ' + s.name + ')') + '</option>';
+        return '<option value="' + s.slotId + '">Slot ' + s.slotId + (s.empty ? ' (empty)' : ' (overwrite ' + escapeHtml(s.name) + ')') + '</option>';
       }).join('') + '</select> ' +
       '<button id="save-import-btn" class="btn-primary">Import</button></div></div></div>';
 
@@ -143,6 +143,8 @@ function renderSaveLoad(container) {
           return;
         }
         const source = slots.find(function (s) { return s.slotId === sourceSlotId; });
+        // ui-safety: not-markup — this builds the stored save NAME, not HTML.
+        // Escaping here would persist "&#39;" into the slot's actual name.
         const result = cloneSlot(sourceSlotId, emptySlot.slotId, source ? source.name + ' (Copy)' : undefined);
         document.getElementById('save-message').textContent = result.success ? 'Cloned into Slot ' + emptySlot.slotId + '.' : result.reason;
         draw();

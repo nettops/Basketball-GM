@@ -50,7 +50,7 @@ function renderEditPlayerSection(state) {
   PLAYERS_2026.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
     const teamLabel = p.teamId ? getTeamById(p.teamId).name : 'Free Agent';
     const selected = state.editPlayerId === p.id ? ' selected' : '';
-    html += '<option value="' + p.id + '"' + selected + '>' + p.name + ' (' + teamLabel + ')</option>';
+    html += '<option value="' + p.id + '"' + selected + '>' + escapeHtml(p.name) + ' (' + escapeHtml(teamLabel) + ')</option>';
   });
   html += '</select></div>';
 
@@ -116,7 +116,7 @@ function renderDeletePlayerSection(state) {
   PLAYERS_2026.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
     const teamLabel = p.teamId ? getTeamById(p.teamId).name : 'Free Agent';
     const selected = state.deletePlayerId === p.id ? ' selected' : '';
-    html += '<option value="' + p.id + '"' + selected + '>' + p.name + ' (' + teamLabel + ')</option>';
+    html += '<option value="' + p.id + '"' + selected + '>' + escapeHtml(p.name) + ' (' + escapeHtml(teamLabel) + ')</option>';
   });
   html += '</select>';
   if (state.deletePlayerId && state.deleteConfirming) {
@@ -176,7 +176,7 @@ function renderCreatePlayerSection(state) {
   html += '<label>Overall</label><input type="number" id="commissioner-create-overall" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="60">';
   html += '<label>Potential</label><input type="number" id="commissioner-create-potential" min="' + RATING_MIN + '" max="' + RATING_MAX + '" value="70">';
   html += '<label>Archetype</label><select id="commissioner-create-archetype">' + CREATE_PLAYER_ARCHETYPES.map(function (a) { return '<option value="' + a + '">' + a + '</option>'; }).join('') + '</select>';
-  html += '<label>Team</label><select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select>';
+  html += '<label>Team</label><select id="commissioner-create-team"><option value="">Free Agent</option>' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('') + '</select>';
   html += '</div><div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-create-btn" class="btn-primary">Create Player</button>';
   if (state.createMessage) {
     html += '<span class="kpi-sub">' + state.createMessage + '</span>';
@@ -205,7 +205,7 @@ function wireCreatePlayerEvents(state, redraw) {
       teamId: document.getElementById('commissioner-create-team').value || null
     };
     const player = createPlayer(details);
-    state.createMessage = 'Created ' + player.name + '.';
+    state.createMessage = 'Created ' + escapeHtml(player.name) + '.';
     redraw();
   });
 }
@@ -218,7 +218,7 @@ function renderExpansionTeamSection(state) {
   html += '<label>Market Size (1-100)</label><input type="number" id="commissioner-expansion-market" min="1" max="100" value="50">';
   html += '</div><div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-expansion-btn" class="btn-primary">Create Expansion Team</button></div>';
   if (state.expansionResult) {
-    html += '<p class="kpi-sub">Created ' + state.expansionResult.name + ' (' + state.expansionResult.conference + ' — ' + state.expansionResult.division + '), roster of ' +
+    html += '<p class="kpi-sub">Created ' + escapeHtml(state.expansionResult.name) + ' (' + state.expansionResult.conference + ' — ' + state.expansionResult.division + '), roster of ' +
       getTeamRoster(state.expansionResult.id).length + ' via expansion draft. Takes effect next season.</p>';
   }
   html += '</div></div>';
@@ -247,14 +247,14 @@ function renderRelocateTeamSection(state) {
   html += '<div class="toolbar"><select id="commissioner-relocate-select" style="min-width:220px;"><option value="">Choose a team...</option>';
   TEAMS.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (t) {
     const selected = state.relocateTeamId === t.id ? ' selected' : '';
-    html += '<option value="' + t.id + '"' + selected + '>' + t.name + '</option>';
+    html += '<option value="' + t.id + '"' + selected + '>' + escapeHtml(t.name) + '</option>';
   });
   html += '</select></div>';
 
   if (state.relocateTeamId) {
     const team = getTeamById(state.relocateTeamId);
     html += '<div class="form-grid">';
-    html += '<label>New Name</label><input type="text" id="commissioner-relocate-name" value="' + team.name + '">';
+    html += '<label>New Name</label><input type="text" id="commissioner-relocate-name" value="' + escapeHtml(team.name) + '">';
     html += '<label>Primary Color</label><input type="color" id="commissioner-relocate-primary" value="' + team.colors.primary + '">';
     html += '<label>Secondary Color</label><input type="color" id="commissioner-relocate-secondary" value="' + team.colors.secondary + '">';
     html += '<label>Market Size (1-100)</label><input type="number" id="commissioner-relocate-market" min="1" max="100" value="' + team.marketSize + '">';
@@ -300,7 +300,7 @@ function renderEditTeamSection(state) {
   html += '<div class="toolbar"><select id="commissioner-edit-team-select" style="min-width:220px;"><option value="">Choose a team...</option>';
   TEAMS.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (t) {
     const selected = state.editTeamId === t.id ? ' selected' : '';
-    html += '<option value="' + t.id + '"' + selected + '>' + t.name + '</option>';
+    html += '<option value="' + t.id + '"' + selected + '>' + escapeHtml(t.name) + '</option>';
   });
   html += '</select></div>';
 
@@ -309,7 +309,7 @@ function renderEditTeamSection(state) {
     html += '<table class="data-table"><tbody>';
     TEAM_EDITABLE_FIELDS.forEach(function (key) {
       html += '<tr><td class="col-name">' + TEAM_EDITABLE_FIELD_LABELS[key] + '</td><td class="num">' +
-        '<input type="number" min="1" max="100" data-edit-team-field="' + key + '" value="' + team[key] + '" style="width:80px;"></td></tr>';
+        '<input type="number" min="1" max="100" data-edit-team-field="' + key + '" value="' + Math.round(team[key]) + '" style="width:80px;"></td></tr>';
     });
     html += '</tbody></table>';
     html += '<div class="toolbar" style="margin:14px 0 0;"><button id="commissioner-edit-team-save-btn" class="btn-primary">Save Changes</button>';

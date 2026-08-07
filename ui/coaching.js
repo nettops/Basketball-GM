@@ -15,7 +15,7 @@ const THREE_RATE_DIAL_OPTIONS = [
 function coachCardHtml(coach) {
   if (!coach) return '<div class="empty-state">No coach hired.</div>';
   return '<div class="kpi-grid">' +
-    '<div class="kpi-tile"><div class="kpi-label">Coach</div><div class="kpi-value">' + coach.name + '</div></div>' +
+    '<div class="kpi-tile"><div class="kpi-label">Coach</div><div class="kpi-value">' + escapeHtml(coach.name) + '</div></div>' +
     '<div class="kpi-tile"><div class="kpi-label">Overall</div><div class="kpi-value">' + coach.overall + '</div></div>' +
     '<div class="kpi-tile"><div class="kpi-label">Specialty</div><div class="kpi-value">' + COACH_SPECIALTY_LABELS[coach.specialty] + '</div></div>' +
     '<div class="kpi-tile"><div class="kpi-label">Tenure</div><div class="kpi-value">' + coach.seasonsWithTeam + '</div><div class="kpi-sub">seasons with this team</div></div>' +
@@ -45,7 +45,7 @@ function renderCoaching(container, userTeamId) {
       html += '<div class="panel"><div class="panel-header">Coaching Candidates</div><div class="panel-body">' +
         '<table class="data-table"><thead><tr><th>Name</th><th class="num">Overall</th><th>Specialty</th><th></th></tr></thead><tbody>' +
         candidates.map(function (c, i) {
-          return '<tr><td class="col-name">' + c.name + '</td><td class="num">' + c.overall + '</td><td>' + COACH_SPECIALTY_LABELS[c.specialty] + '</td>' +
+          return '<tr><td class="col-name">' + escapeHtml(c.name) + '</td><td class="num">' + c.overall + '</td><td>' + COACH_SPECIALTY_LABELS[c.specialty] + '</td>' +
             '<td><button class="btn-primary" data-hire-index="' + i + '">Hire</button></td></tr>';
         }).join('') + '</tbody></table>' +
       '</div></div>';

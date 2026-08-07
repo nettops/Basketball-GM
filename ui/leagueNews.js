@@ -60,8 +60,8 @@ function computeTopPerformances(teamId, n) {
 }
 
 function highlightLabel(h) {
-  if (h.isTripleDouble) return h.playerName + ' — triple-double (' + h.line.points + ' pts, ' + h.line.rebounds + ' reb, ' + h.line.assists + ' ast)';
-  return h.playerName + ' drops ' + h.line.points + ' points';
+  if (h.isTripleDouble) return escapeHtml(h.playerName) + ' — triple-double (' + h.line.points + ' pts, ' + h.line.rebounds + ' reb, ' + h.line.assists + ' ast)';
+  return escapeHtml(h.playerName) + ' drops ' + h.line.points + ' points';
 }
 
 // Morale has no historical event log (see morale.js), so this section is a
@@ -102,7 +102,7 @@ function renderLeagueNews(container, userTeamId) {
       '<label>Show: <select id="news-scope">' +
         '<option value="all"' + (scopeTeamId === 'all' ? ' selected' : '') + '>All Teams</option>' +
         '<option value="mine"' + (scopeTeamId === 'mine' ? ' selected' : '') + '>My Team</option>' +
-        TEAMS.map(function (t) { return '<option value="' + t.id + '"' + (scopeTeamId === t.id ? ' selected' : '') + '>' + t.name + '</option>'; }).join('') +
+        TEAMS.map(function (t) { return '<option value="' + t.id + '"' + (scopeTeamId === t.id ? ' selected' : '') + '>' + escapeHtml(t.name) + '</option>'; }).join('') +
       '</select></label> ' +
       '<label>View: <select id="news-view">' +
         '<option value="category"' + (viewMode === 'category' ? ' selected' : '') + '>By Category</option>' +
@@ -121,7 +121,7 @@ function renderLeagueNews(container, userTeamId) {
         (combined.length === 0 ? '<div class="empty-state">No news yet.</div>' :
           '<ul class="headline-list">' + combined.map(function (e) {
             return '<li><span class="pill pill-mute">Day ' + e.day + '</span> ' +
-              '<span class="pill ' + NEWS_CATEGORY_PILL_CLASS[e.category] + '">' + NEWS_CATEGORY_LABELS[e.category] + '</span> ' + e.text + '</li>';
+              '<span class="pill ' + NEWS_CATEGORY_PILL_CLASS[e.category] + '">' + NEWS_CATEGORY_LABELS[e.category] + '</span> ' + escapeHtml(e.text) + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
     } else {
@@ -139,7 +139,7 @@ function renderLeagueNews(container, userTeamId) {
         html += '<div class="panel"><div class="panel-header">' + NEWS_CATEGORY_LABELS[cat] + '</div><div class="panel-body">' +
           (items.length === 0 ? '<div class="empty-state">Nothing yet.</div>' :
             '<ul class="headline-list">' + items.slice(-20).reverse().map(function (entry) {
-              return '<li><span class="pill pill-mute">Day ' + entry.day + '</span> ' + entry.text + '</li>';
+              return '<li><span class="pill pill-mute">Day ' + entry.day + '</span> ' + escapeHtml(entry.text) + '</li>';
             }).join('') + '</ul>') +
         '</div></div>';
       });
@@ -149,7 +149,7 @@ function renderLeagueNews(container, userTeamId) {
           '<ul class="headline-list">' + moraleNews.map(function (p) {
             const team = getTeamById(p.teamId);
             const reasons = moraleFactors(p, team);
-            return '<li>' + p.name + ' (' + team.name + ') — ' + Math.round(p.status.morale) + '/100' +
+            return '<li>' + escapeHtml(p.name) + ' (' + escapeHtml(team.name) + ') — ' + Math.round(p.status.morale) + '/100' +
               (reasons.length > 0 ? ': ' + reasons.join(', ') : '') + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
@@ -158,7 +158,7 @@ function renderLeagueNews(container, userTeamId) {
       if (leagueItems.length > 0) {
         html += '<div class="panel"><div class="panel-header">League</div><div class="panel-body">' +
           '<ul class="headline-list">' + leagueItems.slice(-20).reverse().map(function (entry) {
-            return '<li><span class="pill pill-mute">Day ' + entry.day + '</span> ' + entry.text + '</li>';
+            return '<li><span class="pill pill-mute">Day ' + entry.day + '</span> ' + escapeHtml(entry.text) + '</li>';
           }).join('') + '</ul>' +
         '</div></div>';
       }

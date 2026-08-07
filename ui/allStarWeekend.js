@@ -9,7 +9,7 @@ function leagueMaxGamesPlayed() {
 }
 
 function playerRowHtml(player, extra) {
-  return '<li>' + teamLogoImgHtml(player.teamId, 16) + ' ' + player.name +
+  return '<li>' + teamLogoImgHtml(player.teamId, 16) + ' ' + escapeHtml(player.name) +
     (extra ? ' <span class="kpi-sub">' + extra + '</span>' : '') + '</li>';
 }
 
@@ -26,7 +26,7 @@ function gameResultHtml(result) {
   if (!result) return '<div class="empty-state">Not yet played.</div>';
   const mvp = getPlayerById(result.mvpPlayerId);
   return '<div class="kpi-value">West ' + result.westScore + ' — East ' + result.eastScore + '</div>' +
-    (mvp ? '<div class="kpi-sub">Game MVP: ' + mvp.name + '</div>' : '');
+    (mvp ? '<div class="kpi-sub">Game MVP: ' + escapeHtml(mvp.name) + '</div>' : '');
 }
 
 function contestResultHtml(result, scoreLabel) {
@@ -34,7 +34,7 @@ function contestResultHtml(result, scoreLabel) {
   return '<table class="data-table"><thead><tr><th>Player</th><th class="num">' + scoreLabel + '</th></tr></thead><tbody>' +
     result.results.map(function (r, i) {
       const score = r.bestRound !== undefined ? r.bestRound : r.bestDunk;
-      return '<tr' + (i === 0 ? ' class="row-highlight"' : '') + '><td class="col-name">' + r.playerName + '</td><td class="num">' + score + '</td></tr>';
+      return '<tr' + (i === 0 ? ' class="row-highlight"' : '') + '><td class="col-name">' + escapeHtml(r.playerName) + '</td><td class="num">' + score + '</td></tr>';
     }).join('') + '</tbody></table>';
 }
 

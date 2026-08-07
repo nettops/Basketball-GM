@@ -26,15 +26,15 @@ function renderAwards(container) {
       const winners = season.winners.filter(function (w) { return w.award === awardKey; });
       if (winners.length === 0) return;
       html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">' + AWARD_LABELS[awardKey] +
-        '</span>' + winners.map(function (w) { return w.playerName; }).join(', ') + '</li>';
+        '</span>' + winners.map(function (w) { return escapeHtml(w.playerName); }).join(', ') + '</li>';
     });
     if (season.coachOfTheYear) {
       html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">Coach of the Year</span>' +
-        season.coachOfTheYear.coach.name + ' (' + season.coachOfTheYear.teamName + ')</li>';
+        escapeHtml(season.coachOfTheYear.coach.name) + ' (' + escapeHtml(season.coachOfTheYear.teamName) + ')</li>';
     }
     if (season.mostImprovedTeam) {
       html += '<li><span class="feed-day" style="min-width:210px;display:inline-block;">Most Improved Team</span>' +
-        season.mostImprovedTeam.teamName + '</li>';
+        escapeHtml(season.mostImprovedTeam.teamName) + '</li>';
     }
     html += '</ul></div>';
   });

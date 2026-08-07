@@ -1,5 +1,5 @@
 function renderStandings(container) {
-  let html = '<div class="view-header"><h2>Standings</h2></div><div class="conf-grid">';
+  let html = '<div class="view-header"><h2>Standings</h2><span class="view-sub">Click a team to view its roster</span></div><div class="conf-grid">';
   CONFERENCES.forEach(function (conf) {
     html += '<div class="conf-col"><h3>' + conf + ' Conference</h3>';
     DIVISIONS[conf].forEach(function (div) {
@@ -12,8 +12,9 @@ function renderStandings(container) {
         const diff = (t.record.pointsFor || 0) - (t.record.pointsAgainst || 0);
         const diffLabel = (diff > 0 ? '+' : '') + diff;
         const diffStyle = diff > 0 ? ' style="color:var(--win)"' : (diff < 0 ? ' style="color:var(--loss)"' : '');
-        const rowClass = t.id === GameState.userTeamId ? ' class="row-user"' : '';
-        html += '<tr' + rowClass + '><td class="col-name">' + teamLogoImgHtml(t.id, 18) + ' ' + t.name + '</td>' +
+        const rowClass = (t.id === GameState.userTeamId ? ' row-user' : '') + ' is-clickable';
+        html += '<tr class="' + rowClass.trim() + '" data-team-id="' + t.id + '" title="View ' + escapeHtml(t.name) + '\'s roster">' +
+          '<td class="col-name">' + teamLogoImgHtml(t.id, 18) + ' ' + escapeHtml(t.name) + '</td>' +
           '<td class="num">' + t.record.wins + '</td><td class="num">' + t.record.losses + '</td>' +
           '<td class="num"' + diffStyle + '>' + diffLabel + '</td></tr>';
       });
@@ -23,6 +24,13 @@ function renderStandings(container) {
   });
   html += '</div>';
   container.innerHTML = html;
+
+  container.querySelectorAll('tr[data-team-id]').forEach(function (row) {
+    row.addEventListener('click', function () {
+      GameState.inspectTeamId = row.getAttribute('data-team-id');
+      renderView('roster');
+    });
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {

@@ -58,7 +58,7 @@ function renderTopBar(container) {
       '<div class="topbar-identity">' +
         teamLogoImgHtml(team.id, 40) +
         '<div class="identity-text">' +
-          '<div class="identity-name">' + team.name + '</div>' +
+          '<div class="identity-name">' + escapeHtml(team.name) + '</div>' +
           '<div class="identity-meta">' + team.conference + ' · ' + team.division + '</div>' +
         '</div>' +
         '<div class="identity-record">' + team.record.wins + '<span>-</span>' + team.record.losses + '</div>' +

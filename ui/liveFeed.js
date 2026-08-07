@@ -6,7 +6,10 @@ function renderLiveFeed(container) {
     html += '<div class="panel">';
     GameState.feed.slice().reverse().forEach(function (entry) {
       html += '<div class="feed-item"><span class="feed-day">Y' + entry.leagueYear + ' · D' +
-        (entry.day === null ? '—' : entry.day) + '</span><span>' + entry.text + '</span></div>';
+        // Feed text is assembled in the sim layer (trade.js, freeAgency.js,
+        // history.js) and embeds player and team names, so it carries whatever
+        // a user typed into player creation or the commissioner tools.
+        (entry.day === null ? '—' : entry.day) + '</span><span>' + escapeHtml(entry.text) + '</span></div>';
     });
     html += '</div>';
   }

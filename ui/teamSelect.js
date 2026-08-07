@@ -22,7 +22,7 @@ function renderTeamSelect(container, onSelect, onLoadGame, onSpectate, onPlayerC
     card.style.background = 'linear-gradient(150deg, ' + team.colors.primary + ' 0%, ' + team.colors.secondary + ' 190%)';
     card.style.borderColor = team.colors.secondary;
     card.innerHTML = teamLogoImgHtml(team.id, 46) +
-      '<div class="team-card-name">' + team.name + '</div>' +
+      '<div class="team-card-name">' + escapeHtml(team.name) + '</div>' +
       '<div class="team-card-meta">' + team.division + '</div>';
     card.addEventListener('click', function () {
       const mode = container.querySelector('input[name="play-mode"]:checked').value;

@@ -51,6 +51,12 @@ function renderRoster(container, teamId) {
   let sortKey = 'overall';
   let sortDir = -1; // descending by default
   const filters = { position: 'all', minOverall: 0, injuredOnly: false };
+  // Waiving is a roster-management action, only ever valid for the user's
+  // own team — inspecting an opponent's roster from Standings/Power
+  // Rankings (see ui/standings.js) is read-only browsing, not control.
+  // Scouting stays available either way (scouting an opponent is already a
+  // normal, supported GM action elsewhere — see autoAllocateScoutPoints).
+  const isOwnTeam = teamId === GameState.userTeamId;
 
   function draw() {
     let roster = getTeamRoster(teamId).slice().filter(function (p) {
@@ -68,8 +74,14 @@ function renderRoster(container, teamId) {
     });
 
     const fullRosterSize = getTeamRoster(teamId).length;
-    let html = '<div class="view-header"><h2>Roster</h2><span class="view-sub">' +
+    const viewedTeam = getTeamById(teamId);
+    let html = '<div class="view-header"><h2>' + (isOwnTeam ? 'Roster' : escapeHtml(viewedTeam.name) + ' Roster') + '</h2><span class="view-sub">' +
       (roster.length === fullRosterSize ? roster.length + ' players' : roster.length + ' of ' + fullRosterSize + ' players') + '</span></div>';
+    if (!isOwnTeam) {
+      html += '<div class="panel"><div class="panel-body toolbar" style="justify-content:space-between;align-items:center;">' +
+        '<span class="kpi-sub">Viewing ' + teamLogoImgHtml(teamId, 18) + ' <strong>' + escapeHtml(viewedTeam.name) + '</strong> — browsing only, no roster moves available.</span>' +
+        '<button class="btn-ghost" id="roster-back-to-mine">&larr; Back to My Roster</button></div></div>';
+    }
 
     html += '<div class="panel"><div class="panel-body toolbar">' +
       '<label>Position: <select id="roster-filter-position">' +
@@ -80,7 +92,9 @@ function renderRoster(container, teamId) {
       '<label><input type="checkbox" id="roster-filter-injured"' + (filters.injuredOnly ? ' checked' : '') + '> Injured only</label>' +
       '</div></div>';
 
+    const rosterTeam = getTeamById(teamId);
     html += '<div class="panel"><table class="data-table"><thead><tr>';
+    html += '<th></th>';
     ROSTER_COLUMNS.forEach(function (col) {
       const numeric = col.key !== 'name' && col.key !== 'position';
       html += '<th data-key="' + col.key + '"' + (numeric ? ' class="num"' : '') + '>' +
@@ -91,7 +105,8 @@ function renderRoster(container, teamId) {
     roster.forEach(function (p) {
       const avg = getPlayerAverages(p);
       html += '<tr>' +
-        '<td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' + p.name + '</button></td>' +
+        '<td>' + playerFaceHtml(p, rosterTeam, 32) + '</td>' +
+        '<td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' + escapeHtml(p.name) + '</button></td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
         '<td>' + (p.college || '—') + '</td>' +
@@ -105,8 +120,8 @@ function renderRoster(container, teamId) {
         '<td class="num">' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
         '<td class="num">$' + p.contract.salary.toLocaleString() + '</td>' +
         '<td class="num">' + p.contract.yearsRemaining + '</td>' +
-        '<td class="actions"><button class="btn-ghost" data-scout-id="' + p.id + '">Scout</button> ' +
-          '<button class="btn-danger" data-waive-id="' + p.id + '">Waive</button></td>' +
+        '<td class="actions"><button class="btn-ghost" data-scout-id="' + p.id + '">Scout</button>' +
+          (isOwnTeam ? ' <button class="btn-danger" data-waive-id="' + p.id + '">Waive</button>' : '') + '</td>' +
         '</tr>';
     });
     html += '</tbody></table></div>';
@@ -132,8 +147,7 @@ function renderRoster(container, teamId) {
       const per = function (total) { return gp > 0 ? (total / gp).toFixed(1) : '—'; };
       // A button, not plain text, so a name opens the profile here exactly as
       // it does in the table above — the delegated data-profile-id handler
-      // below is bound container-wide and picks these up unchanged. escapeHtml
-      // because this cell previously interpolated a raw player name.
+      // below is bound container-wide and picks these up unchanged.
       html += '<tr><td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' +
         escapeHtml(p.name) + '</button></td><td class="num">' + cs.seasonsPlayed +
         '</td><td class="num">' + gp +
@@ -194,6 +208,14 @@ function renderRoster(container, teamId) {
     container.querySelectorAll('button[data-profile-id]').forEach(function (btn) {
       btn.addEventListener('click', function () { openPlayerProfile(btn.getAttribute('data-profile-id')); });
     });
+
+    const backBtn = document.getElementById('roster-back-to-mine');
+    if (backBtn) {
+      backBtn.addEventListener('click', function () {
+        GameState.inspectTeamId = null;
+        renderView('roster');
+      });
+    }
   }
 
   draw();

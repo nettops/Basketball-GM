@@ -15,7 +15,7 @@ function renderScoutingReport(container, playerId) {
   const confidence = target ? target.confidence : 0;
   const view = getRevealedView(player, confidence);
 
-  let html = '<div class="panel"><div class="panel-header">Scouting Report — ' + player.name + '</div><div class="panel-body">';
+  let html = '<div class="panel"><div class="panel-header">Scouting Report — ' + escapeHtml(player.name) + '</div><div class="panel-body">';
   html += '<div class="kpi-label">Confidence</div><div class="kpi-value">' + Math.round(confidence) + '% ' +
     '<span class="pill pill-mute">' + view.level + '</span></div>';
   html += '<div class="meter" style="margin:8px 0 16px;"><div class="meter-fill" style="width:' + Math.round(confidence) + '%"></div></div>';
@@ -25,12 +25,12 @@ function renderScoutingReport(container, playerId) {
     html += '<p>???</p>';
   } else if (view.level === 'fuzzy') {
     html += view.traits.length === 0 ? '<p>(none detected)</p>' : '<ul>' + view.traits.map(function (t) {
-      return '<li>' + t.name + ': ' + t.rangeLabel + '?</li>';
+      return '<li>' + escapeHtml(t.name) + ': ' + t.rangeLabel + '?</li>';
     }).join('') + '</ul>';
   } else {
     html += view.traits.length === 0 ? '<p>(none)</p>' : '<ul>' + view.traits.map(function (t) {
       const def = TRAIT_TAXONOMY_BY_KEY[t.key];
-      return '<li>' + (def ? def.name : t.key) + ': ' + t.tier + '</li>';
+      return '<li>' + escapeHtml(def ? def.name : t.key) + ': ' + t.tier + '</li>';
     }).join('') + '</ul>';
   }
 
@@ -73,8 +73,8 @@ function renderScouting(container, userTeamId) {
         const player = findScoutableById(id);
         if (!player) return;
         const conf = state.targets[id].confidence;
-        html += '<tr><td class="col-name">' + player.name + '</td>' +
-          '<td>' + (player.teamId ? teamLogoImgHtml(player.teamId, 18) + ' ' + getTeamById(player.teamId).name : '<span class="pill pill-mute">Prospect</span>') + '</td>' +
+        html += '<tr><td class="col-name">' + escapeHtml(player.name) + '</td>' +
+          '<td>' + (player.teamId ? teamLogoImgHtml(player.teamId, 18) + ' ' + escapeHtml(getTeamById(player.teamId).name) : '<span class="pill pill-mute">Prospect</span>') + '</td>' +
           '<td class="num">' + Math.round(conf) + '%<div class="meter"><div class="meter-fill" style="width:' + Math.round(conf) + '%"></div></div></td>' +
           '<td><input type="number" min="0" max="' + Math.round(state.pointsAvailable) + '" value="10" data-alloc-id="' + id + '" style="width:64px"> ' +
           '<button class="btn-ghost" data-spend-id="' + id + '">Spend</button></td>' +
@@ -90,7 +90,7 @@ function renderScouting(container, userTeamId) {
     html += '<select id="scouting-add-select" style="min-width:280px;"><option value="">Choose a player or prospect...</option>';
     scoutablePool().forEach(function (p) {
       if (state.targets[p.id] && state.targets[p.id].watchlisted) return;
-      html += '<option value="' + p.id + '">' + p.name + (p.teamId ? ' (' + getTeamById(p.teamId).name + ')' : ' (Prospect)') + '</option>';
+      html += '<option value="' + p.id + '">' + escapeHtml(p.name) + (p.teamId ? ' (' + escapeHtml(getTeamById(p.teamId).name) + ')' : ' (Prospect)') + '</option>';
     });
     html += '</select> <button id="scouting-add-btn" class="btn-primary">Add</button></div></div></div>';
 

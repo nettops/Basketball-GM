@@ -26,7 +26,10 @@ function downloadCsv(filename, rows) {
 }
 
 const LEDGER_EVENT_LABELS = {
-  trade: function (e) { const from = getTeamById(e.fromTeam), to = getTeamById(e.toTeam); return (e.details || ((from ? from.name : e.fromTeam) + ' → ' + (to ? to.name : e.toTeam))); },
+  // ui-safety: not-markup — these return PLAIN TEXT, escaped once at the render
+  // site below. Escaping inside just one of them meant the other two shipped
+  // raw while that one risked double-escaping.
+  trade: function (e) { const from = getTeamById(e.fromTeam), to = getTeamById(e.toTeam); return e.details || ((from ? from.name : e.fromTeam) + ' → ' + (to ? to.name : e.toTeam)); },
   contract: function (e) { return '$' + e.salary.toLocaleString() + '/yr × ' + e.yearsRemaining + ' (' + e.type + ')'; },
   injury: function (e) { return e.type + ' (' + e.severity + ')' + (e.actualRecoveryDays !== null ? ', ' + e.actualRecoveryDays + 'd out' : ''); }
 };
@@ -85,7 +88,7 @@ function renderCareerLedger(container) {
     html += '<input type="text" id="ledger-search" placeholder="Search player..." value="' + filters.search + '">';
     html += '<select id="ledger-team"><option value="">All Teams</option>';
     TEAMS.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (t) {
-      html += '<option value="' + t.id + '"' + (filters.teamId === t.id ? ' selected' : '') + '>' + t.name + '</option>';
+      html += '<option value="' + t.id + '"' + (filters.teamId === t.id ? ' selected' : '') + '>' + escapeHtml(t.name) + '</option>';
     });
     html += '</select>';
     html += '<select id="ledger-season"><option value="">All Seasons</option>';
@@ -112,7 +115,7 @@ function renderCareerLedger(container) {
     }
     statRows.forEach(function (r) {
       const rowClass = r.hadInjury ? ' class="row-highlight"' : '';
-      html += '<tr' + rowClass + '><td class="col-name"><button class="player-link" data-profile-id="' + r.playerId + '">' + r.playerName + '</button></td>' +
+      html += '<tr' + rowClass + '><td class="col-name"><button class="player-link" data-profile-id="' + r.playerId + '">' + escapeHtml(r.playerName) + '</button></td>' +
         '<td class="num">' + r.season + '</td><td>' + (r.team || '—') + '</td><td class="num">' + r.gamesPlayed +
         '</td><td class="num">' + r.ppg.toFixed(1) + '</td><td class="num">' + r.rpg.toFixed(1) + '</td><td class="num">' + r.apg.toFixed(1) +
         '</td><td class="num">' + r.minutes + '</td><td>' + (r.hadInjury ? '<span class="pill pill-loss">Yes</span>' : '—') +
@@ -128,7 +131,7 @@ function renderCareerLedger(container) {
       html += '<ul class="timeline-list">';
       events.forEach(function (e) {
         html += '<li><span class="pill pill-mute">' + e.season + '</span> <span class="pill pill-pos">' + e.eventType + '</span> ' +
-          '<button class="player-link" data-profile-id="' + e.playerId + '">' + e.playerName + '</button> — ' + e.description + '</li>';
+          '<button class="player-link" data-profile-id="' + e.playerId + '">' + escapeHtml(e.playerName) + '</button> — ' + escapeHtml(e.description) + '</li>';
       });
       html += '</ul>';
     }

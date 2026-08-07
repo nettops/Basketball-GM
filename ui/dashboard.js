@@ -15,7 +15,7 @@ function leadersTableHtml(title, players, statKey, statLabel) {
   if (leaders.length === 0) return '<div><div class="kpi-label">' + title + '</div><div class="empty-state">No games played yet.</div></div>';
   return '<div><div class="kpi-label">' + title + '</div><table class="data-table"><tbody>' +
     leaders.map(function (p, i) {
-      return '<tr><td class="num">' + (i + 1) + '</td><td class="col-name">' + p.name + '</td>' +
+      return '<tr><td class="num">' + (i + 1) + '</td><td class="col-name">' + escapeHtml(p.name) + '</td>' +
         '<td class="num">' + getPlayerAverages(p)[statKey].toFixed(1) + ' ' + statLabel + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -57,7 +57,7 @@ function renderDashboard(container, teamId) {
     const nextGame = GameState.season.games.find(function (g) { return g.day === nextDay && (g.homeTeamId === teamId || g.awayTeamId === teamId); });
     const isHome = nextGame.homeTeamId === teamId;
     const opp = getTeamById(isHome ? nextGame.awayTeamId : nextGame.homeTeamId);
-    nextGameLabel = 'Next game: ' + (isHome ? 'vs ' : '@ ') + opp.name + ' (day ' + nextDay + ')';
+    nextGameLabel = 'Next game: ' + (isHome ? 'vs ' : '@ ') + escapeHtml(opp.name) + ' (day ' + nextDay + ')';
   } else if (GameState.season) {
     nextGameLabel = 'No games remaining.';
   }
@@ -69,7 +69,7 @@ function renderDashboard(container, teamId) {
     : '$' + Math.abs(capSpace).toLocaleString() + ' over';
 
   container.innerHTML =
-    '<div class="view-header"><h2>' + teamLogoImgHtml(team.id, 28) + ' ' + team.name + '</h2>' +
+    '<div class="view-header"><h2>' + teamLogoImgHtml(team.id, 28) + ' ' + escapeHtml(team.name) + '</h2>' +
       '<span class="view-sub">' + team.conference + ' Conference · ' + team.division + '</span></div>' +
 
     '<div class="kpi-grid">' +
@@ -81,8 +81,8 @@ function renderDashboard(container, teamId) {
         '<div class="kpi-value">' + team.chemistry + '</div>' +
         '<div class="meter"><div class="meter-fill" style="width:' + team.chemistry + '%"></div></div></div>' +
       '<div class="kpi-tile"><div class="kpi-label">Fan Happiness</div>' +
-        '<div class="kpi-value">' + team.fanHappiness + '</div>' +
-        '<div class="meter"><div class="meter-fill" style="width:' + team.fanHappiness + '%"></div></div></div>' +
+        '<div class="kpi-value">' + Math.round(team.fanHappiness) + '</div>' +
+        '<div class="meter"><div class="meter-fill" style="width:' + Math.round(team.fanHappiness) + '%"></div></div></div>' +
       '<div class="kpi-tile"><div class="kpi-label">Owner Happiness</div>' +
         '<div class="kpi-value">' + team.ownerHappiness + '</div>' +
         '<div class="meter"><div class="meter-fill" style="width:' + team.ownerHappiness + '%"></div></div></div>' +
@@ -106,7 +106,7 @@ function renderDashboard(container, teamId) {
         ? '<div class="empty-state">No players currently injured.</div>'
         : '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">OVR</th><th>Status</th></tr></thead><tbody>' +
           injuredPlayers.map(function (p) {
-            return '<tr><td class="col-name">' + p.name + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
+            return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
               '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
               '<td><span class="pill pill-loss">' + injuryLabel(p.status.injury) + '</span></td></tr>';
           }).join('') + '</tbody></table>') +
@@ -133,7 +133,7 @@ function renderDashboard(container, teamId) {
         : '<div class="kpi-label">Unhappy Players</div><table class="data-table"><thead><tr><th>Player</th><th class="num">Morale</th><th>Why</th></tr></thead><tbody>' +
           unhappyPlayers.map(function (p) {
             const reasons = moraleFactors(p, team);
-            return '<tr><td class="col-name">' + p.name + '</td>' +
+            return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
               '<td class="num">' + moraleStatusHtml(p) + '</td>' +
               '<td>' + (reasons.length > 0 ? reasons.join(', ') : '—') + '</td></tr>';
           }).join('') + '</tbody></table>') +
@@ -143,7 +143,9 @@ function renderDashboard(container, teamId) {
       (headlines.length === 0
         ? '<div class="empty-state">No news yet.</div>'
         : '<ul class="headline-list">' + headlines.map(function (h) {
-            return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + h.text + '</li>';
+            // Same reason ui/liveFeed.js escapes this: feed text is built in
+            // the sim layer and embeds user-supplied player and team names.
+            return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + escapeHtml(h.text) + '</li>';
           }).join('') + '</ul>') +
     '</div></div>';
 }

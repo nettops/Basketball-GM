@@ -27,7 +27,7 @@ function playoffSeriesRowHtml(series, seedLookup, userTeamId) {
     if (isUser) cls += ' is-user-team';
     return '<div class="' + cls + '">' +
       '<span class="pill pill-mute">' + (seed !== undefined ? seed : '?') + '</span> ' +
-      teamLogoImgHtml(teamId, 18) + ' ' + team.name +
+      teamLogoImgHtml(teamId, 18) + ' ' + escapeHtml(team.name) +
       '<span class="num playoff-wins">' + wins + '</span></div>';
   }
 
@@ -60,7 +60,7 @@ function playInResultsHtml(bracket) {
       const away = getTeamById(g.awayTeamId);
       const label = i === 0 ? '7-8 Game' : (i === 1 ? '9-10 Game' : 'Final Spot');
       html += '<li><span class="feed-day" style="min-width:110px;display:inline-block;">' + label + '</span>' +
-        away.name + ' ' + g.awayScore + ' @ ' + home.name + ' ' + g.homeScore + '</li>';
+        escapeHtml(away.name) + ' ' + g.awayScore + ' @ ' + escapeHtml(home.name) + ' ' + g.homeScore + '</li>';
     });
     html += '</ul>';
   });
@@ -80,7 +80,7 @@ function renderBracketView(container, bracket, userTeamId) {
   if (championId) {
     const champ = getTeamById(championId);
     html += '<div class="panel"><div class="panel-body"><div class="kpi-value">' +
-      '🏆 ' + teamLogoImgHtml(champ.id, 26) + ' ' + champ.name + ' are NBA Champions' +
+      '🏆 ' + teamLogoImgHtml(champ.id, 26) + ' ' + escapeHtml(champ.name) + ' are NBA Champions' +
       '</div></div></div>';
   }
 
@@ -118,7 +118,7 @@ function renderProjectedPicture(container, userTeamId) {
     seeds.forEach(function (team, i) {
       const isUser = team.id === userTeamId;
       html += '<tr' + (isUser ? ' class="row-user"' : '') + '><td class="num">' + (i + 1) + '</td>' +
-        '<td class="col-name">' + teamLogoImgHtml(team.id, 18) + ' ' + team.name + '</td>' +
+        '<td class="col-name">' + teamLogoImgHtml(team.id, 18) + ' ' + escapeHtml(team.name) + '</td>' +
         '<td class="num">' + team.record.wins + '</td><td class="num">' + team.record.losses + '</td></tr>';
     });
     html += '</tbody></table></div>';

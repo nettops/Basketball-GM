@@ -7,7 +7,7 @@ function renderChampionsSection() {
   LEAGUE_HISTORY.champions.slice().reverse().forEach(function (c) {
     const team = getTeamById(c.teamId);
     html += '<li><span class="pill pill-gold">' + c.leagueYear + '</span> ' +
-      (team ? teamLogoImgHtml(team.id, 18) + ' ' + team.name : 'Unknown') + '</li>';
+      (team ? teamLogoImgHtml(team.id, 18) + ' ' + escapeHtml(team.name) : 'Unknown') + '</li>';
   });
   return html + '</ul></div>';
 }
@@ -21,7 +21,7 @@ function renderHallOfFameSection() {
   html += '<table class="data-table"><thead><tr><th>Name</th><th class="num">Retired</th><th class="num">Pts</th>' +
     '<th class="num">Reb</th><th class="num">Ast</th><th class="num">Titles</th></tr></thead><tbody>';
   inducted.forEach(function (r) {
-    html += '<tr><td class="col-name">' + r.name + '</td><td class="num">' + r.retiredYear + '</td><td class="num">' +
+    html += '<tr><td class="col-name">' + escapeHtml(r.name) + '</td><td class="num">' + r.retiredYear + '</td><td class="num">' +
       r.careerStats.points + '</td><td class="num">' + r.careerStats.rebounds + '</td><td class="num">' +
       r.careerStats.assists + '</td><td class="num">' + r.championshipsWon + '</td></tr>';
   });
@@ -38,9 +38,9 @@ function renderRetiredNumbersSection() {
   teamsWithNumbers.forEach(function (t) {
     const owners = t.retiredNumbers.map(function (num) {
       const retiree = LEAGUE_HISTORY.retiredPlayers.find(function (r) { return r.lastTeamId === t.id && r.jerseyNumber === num && r.hallOfFame; });
-      return '#' + num + (retiree ? ' (' + retiree.name + ')' : '');
+      return '#' + num + (retiree ? ' (' + escapeHtml(retiree.name) + ')' : '');
     }).join(', ');
-    html += '<li>' + teamLogoImgHtml(t.id, 18) + ' <strong>' + t.name + '</strong>: ' + owners + '</li>';
+    html += '<li>' + teamLogoImgHtml(t.id, 18) + ' <strong>' + escapeHtml(t.name) + '</strong>: ' + owners + '</li>';
   });
   return html + '</ul></div>';
 }
@@ -52,17 +52,17 @@ function renderRecordsSection() {
   html += '<h4>Career Leaders</h4>';
   Object.keys(RECORD_STAT_LABELS).forEach(function (statKey) {
     html += '<p><strong>' + RECORD_STAT_LABELS[statKey] + ':</strong> ';
-    html += careerLeaders(statKey, 5).map(function (l) { return l.name + ' (' + l.value + ')'; }).join(', ');
+    html += careerLeaders(statKey, 5).map(function (l) { return escapeHtml(l.name) + ' (' + l.value + ')'; }).join(', ');
     html += '</p>';
   });
   html += '<h4>Single-Season Leaders</h4>';
   Object.keys(RECORD_STAT_LABELS).forEach(function (statKey) {
     html += '<p><strong>' + RECORD_STAT_LABELS[statKey] + ':</strong> ';
-    html += singleSeasonLeaders(statKey, 5).map(function (l) { return l.name + ' (' + l.value + ')'; }).join(', ');
+    html += singleSeasonLeaders(statKey, 5).map(function (l) { return escapeHtml(l.name) + ' (' + l.value + ')'; }).join(', ');
     html += '</p>';
   });
   html += '<h4>Most Franchise Wins</h4><p>';
-  html += franchiseWinLeaders(5).map(function (l) { return l.name + ' (' + l.allTimeWins + ')'; }).join(', ');
+  html += franchiseWinLeaders(5).map(function (l) { return escapeHtml(l.name) + ' (' + l.allTimeWins + ')'; }).join(', ');
   return html + '</p></div></div>';
 }
 
@@ -76,7 +76,7 @@ function renderDraftArchiveSection() {
     html += '<h4>' + dc.leagueYear + '</h4><ol>';
     dc.picks.slice().sort(function (a, b) { return a.pickNumber - b.pickNumber; }).forEach(function (p) {
       const team = getTeamById(p.teamId);
-      html += '<li>' + p.playerName + ' — ' + (team ? team.name : 'Unknown') + '</li>';
+      html += '<li>' + escapeHtml(p.playerName) + ' — ' + (team ? escapeHtml(team.name) : 'Unknown') + '</li>';
     });
     html += '</ol>';
   });
@@ -90,8 +90,8 @@ function renderTradeArchiveSection() {
   }
   html += '<ul class="stack-list">';
   LEAGUE_HISTORY.trades.slice().reverse().forEach(function (t) {
-    const teamNames = t.participants.map(function (id) { const team = getTeamById(id); return team ? team.name : 'Unknown'; }).join(' / ');
-    const playerNames = t.players.map(function (p) { return p.playerName; }).join(', ');
+    const teamNames = t.participants.map(function (id) { const team = getTeamById(id); return escapeHtml(team ? team.name : 'Unknown'); }).join(' / ');
+    const playerNames = t.players.map(function (p) { return escapeHtml(p.playerName); }).join(', ');
     html += '<li><span class="pill pill-mute">' + t.leagueYear + '</span> ' + teamNames + ': ' + playerNames + '</li>';
   });
   return html + '</ul></div>';

@@ -6,7 +6,7 @@ function teamLogoImgHtml(teamId, sizePx) {
   const size = sizePx || 32;
   return '<span class="team-logo" style="width:' + size + 'px;height:' + size + 'px;background:' +
     team.colors.primary + ';border-color:' + team.colors.secondary + ';">' +
-    '<img src="' + getTeamLogoUrl(teamId) + '" alt="' + team.name + ' logo" onerror="this.style.display=\'none\'">' +
+    '<img src="' + getTeamLogoUrl(teamId) + '" alt="' + escapeHtml(team.name) + ' logo" onerror="this.style.display=\'none\'">' +
     '</span>';
 }
 

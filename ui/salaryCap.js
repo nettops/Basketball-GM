@@ -49,7 +49,7 @@ function renderSalaryCap(container, userTeamId) {
     html += '<div class="panel"><div class="panel-header">Your Team Contracts</div><div class="panel-body">' +
       '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Salary</th><th class="num">Yrs Left</th><th></th></tr></thead><tbody>' +
       roster.slice().sort(function (a, b) { return b.contract.salary - a.contract.salary; }).map(function (p) {
-        return '<tr><td class="col-name">' + p.name + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
+        return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
           '<td class="num">$' + p.contract.salary.toLocaleString() + '</td>' +
           '<td class="num">' + p.contract.yearsRemaining + '</td>' +
           '<td>' + (p.contract.yearsRemaining <= 1 ? '<span class="pill pill-loss">Expiring</span>' : '') + '</td></tr>';
@@ -60,7 +60,7 @@ function renderSalaryCap(container, userTeamId) {
       (expiring.length === 0 ? '<div class="empty-state">No contracts expiring after this season.</div>' :
         '<table class="data-table"><thead><tr><th>Player</th><th class="num">Salary</th></tr></thead><tbody>' +
         expiring.map(function (p) {
-          return '<tr><td class="col-name">' + p.name + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
+          return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
         }).join('') + '</tbody></table>') +
     '</div></div>';
 
@@ -90,7 +90,7 @@ function renderSalaryCap(container, userTeamId) {
         return 0;
       }).map(function (row) {
         const rowClass = row.team.id === userTeamId ? ' class="row-user"' : '';
-        return '<tr' + rowClass + '><td class="col-name">' + teamLogoImgHtml(row.team.id, 18) + ' ' + row.team.name + '</td>' +
+        return '<tr' + rowClass + '><td class="col-name">' + teamLogoImgHtml(row.team.id, 18) + ' ' + escapeHtml(row.team.name) + '</td>' +
           '<td class="num">$' + row.payroll.toLocaleString() + '</td>' +
           '<td class="num">' + capSpaceHtml(row.capSpace) + '</td>' +
           '<td class="num">' + (row.tax > 0 ? '$' + row.tax.toLocaleString() : '—') + '</td></tr>';
@@ -121,8 +121,8 @@ function renderCapCheckResult(amount, capSpace, team) {
   const canAfford = amount <= capSpace || (typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled);
   return '<div class="kpi-value ' + (canAfford ? 'is-good' : 'is-warn') + '" style="margin-top:10px;font-size:1rem;">' +
     (canAfford
-      ? team.name + ' could absorb a $' + amount.toLocaleString() + ' salary within cap space.'
-      : team.name + ' would need $' + (amount - capSpace).toLocaleString() + ' more cap space to absorb a $' + amount.toLocaleString() + ' salary.') +
+      ? escapeHtml(team.name) + ' could absorb a $' + amount.toLocaleString() + ' salary within cap space.'
+      : escapeHtml(team.name) + ' would need $' + (amount - capSpace).toLocaleString() + ' more cap space to absorb a $' + amount.toLocaleString() + ' salary.') +
     '</div>';
 }
 

@@ -24,7 +24,7 @@ function renderComparisonOverviewTab(players) {
     // alone ranked every active player identically at zero.
     const cs = careerTotalsToDate(p);
     const gp = cs.gamesPlayed || 1;
-    html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + cs.seasonsPlayed + '</td>' +
+    html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td><td class="num">' + cs.seasonsPlayed + '</td>' +
       '<td class="num">' + cs.points + '</td><td class="num">' + cs.rebounds + '</td><td class="num">' + cs.assists +
       '</td><td class="num">' + (cs.points / gp).toFixed(1) + '</td><td class="num">' + (cs.rebounds / gp).toFixed(1) +
       '</td><td class="num">' + (cs.assists / gp).toFixed(1) + '</td><td class="num">' + p.championshipsWon +
@@ -38,7 +38,7 @@ function renderComparisonSeasonsTab(players) {
   const seasons = unionSeasons(players);
   if (seasons.length === 0) return '<div class="panel"><div class="panel-body"><div class="empty-state">No recorded seasons for these players yet.</div></div></div>';
   let html = '<div class="panel"><table class="data-table"><thead><tr><th class="num">Year</th>';
-  players.forEach(function (p) { html += '<th class="num">' + p.name + '</th>'; });
+  players.forEach(function (p) { html += '<th class="num">' + escapeHtml(p.name) + '</th>'; });
   html += '</tr></thead><tbody>';
   seasons.forEach(function (year) {
     html += '<tr><td class="num">' + year + '</td>';
@@ -59,7 +59,7 @@ function renderComparisonSeasonsTab(players) {
 function renderComparisonTeamsTab(players) {
   let html = '<div class="kpi-grid">';
   players.forEach(function (p, i) {
-    html += '<div class="panel"><div class="panel-header" style="border-left:3px solid ' + COMPARISON_COLORS[i] + ';">' + p.name + '</div><div class="panel-body">';
+    html += '<div class="panel"><div class="panel-header" style="border-left:3px solid ' + COMPARISON_COLORS[i] + ';">' + escapeHtml(p.name) + '</div><div class="panel-body">';
     if (p.careerHistory.teamHistory.length === 0) {
       html += '<div class="empty-state">No team history yet.</div>';
     } else {
@@ -115,7 +115,7 @@ function renderComparisonProgressionTab(players, statKey) {
     svg += '<polyline points="' + points + '" fill="none" stroke="' + COMPARISON_COLORS[i] + '" stroke-width="2" />';
     trends[i].forEach(function (row) {
       svg += '<circle cx="' + xFor(row.season) + '" cy="' + yFor(row[statKey] || 0) + '" r="3" fill="' + COMPARISON_COLORS[i] + '">' +
-        '<title>' + p.name + ' ' + row.season + ': ' + (row[statKey] || 0).toFixed(1) + '</title></circle>';
+        '<title>' + escapeHtml(p.name) + ' ' + row.season + ': ' + (row[statKey] || 0).toFixed(1) + '</title></circle>';
     });
     (p.careerHistory.injuryHistory || []).forEach(function (inj) {
       if (seasons.indexOf(inj.season) === -1) return;
@@ -127,7 +127,7 @@ function renderComparisonProgressionTab(players, statKey) {
   html += '<div class="panel"><div class="panel-body">' + svg;
   html += '<div class="toolbar" style="margin-top:10px;">';
   players.forEach(function (p, i) {
-    html += '<span><span style="display:inline-block;width:10px;height:10px;background:' + COMPARISON_COLORS[i] + ';border-radius:2px;margin-right:4px;"></span>' + p.name + '</span>';
+    html += '<span><span style="display:inline-block;width:10px;height:10px;background:' + COMPARISON_COLORS[i] + ';border-radius:2px;margin-right:4px;"></span>' + escapeHtml(p.name) + '</span>';
   });
   html += '</div></div></div>';
   return html;
@@ -148,7 +148,7 @@ function renderComparisonHeadToHeadTab(players) {
         const val = s[statKey] / (s.gamesPlayed || 1);
         if (val > bestVal) { bestVal = val; best = p; }
       });
-      return best.name + ' (' + bestVal.toFixed(1) + ')';
+      return escapeHtml(best.name) + ' (' + bestVal.toFixed(1) + ')';
     }
     html += '<tr><td class="num">' + year + '</td><td>' + leader('points') + '</td><td>' + leader('rebounds') + '</td><td>' + leader('assists') + '</td></tr>';
   });
@@ -178,7 +178,7 @@ function renderPlayerComparison(container) {
     for (let i = 0; i < COMPARISON_SLOT_COUNT; i++) {
       html += '<select data-slot="' + i + '"><option value="">' + (i < 2 ? 'Select player ' + (i + 1) : 'None') + '</option>';
       PLAYERS_2026.slice().sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (p) {
-        html += '<option value="' + p.id + '"' + (slots[i] === p.id ? ' selected' : '') + '>' + p.name + '</option>';
+        html += '<option value="' + p.id + '"' + (slots[i] === p.id ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>';
       });
       html += '</select>';
     }

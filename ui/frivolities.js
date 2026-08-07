@@ -94,7 +94,7 @@ function renderFrivolities(container) {
       ? '<div class="empty-state">No trades yet.</div>'
       : '<table class="data-table"><thead><tr><th>Team</th><th class="num">Trades</th></tr></thead><tbody>' +
         tradeFrequency.filter(function (r) { return r.count > 0; }).map(function (r) {
-          return '<tr><td class="col-name">' + teamLogoImgHtml(r.team.id, 18) + ' ' + r.team.name + '</td><td class="num">' + r.count + '</td></tr>';
+          return '<tr><td class="col-name">' + teamLogoImgHtml(r.team.id, 18) + ' ' + escapeHtml(r.team.name) + '</td><td class="num">' + r.count + '</td></tr>';
         }).join('') + '</tbody></table>') +
   '</div></div>';
 
@@ -102,7 +102,7 @@ function renderFrivolities(container) {
     (mostTraded.length === 0
       ? '<div class="empty-state">No trades yet.</div>'
       : '<table class="data-table"><thead><tr><th>Player</th><th class="num">Times Traded</th></tr></thead><tbody>' +
-        mostTraded.map(function (r) { return '<tr><td class="col-name">' + r.name + '</td><td class="num">' + r.count + '</td></tr>'; }).join('') + '</tbody></table>') +
+        mostTraded.map(function (r) { return '<tr><td class="col-name">' + escapeHtml(r.name) + '</td><td class="num">' + r.count + '</td></tr>'; }).join('') + '</tbody></table>') +
   '</div></div>';
 
   html += '<div class="panel"><div class="panel-header">Draft Class Hit Rates <span class="kpi-sub">(' + DRAFT_HIT_THRESHOLD + '+ overall/peak)</span></div><div class="panel-body">' +
@@ -126,7 +126,7 @@ function renderFrivolities(container) {
       : '<table class="data-table"><thead><tr><th>Player</th><th>Team</th><th class="num">Seasons</th></tr></thead><tbody>' +
         longestTenures.map(function (r) {
           const team = getTeamById(r.teamId);
-          return '<tr><td class="col-name">' + r.player.name + '</td><td>' + (team ? teamLogoImgHtml(team.id, 16) + ' ' + team.name : '—') + '</td><td class="num">' + r.seasons + '</td></tr>';
+          return '<tr><td class="col-name">' + escapeHtml(r.player.name) + '</td><td>' + (team ? teamLogoImgHtml(team.id, 16) + ' ' + escapeHtml(team.name) : '—') + '</td><td class="num">' + r.seasons + '</td></tr>';
         }).join('') + '</tbody></table>') +
   '</div></div>';
 

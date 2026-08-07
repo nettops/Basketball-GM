@@ -50,7 +50,7 @@ function renderPowerRankings(container) {
     const diff = (t.record.pointsFor || 0) - (t.record.pointsAgainst || 0);
     const last10Pct = Math.round(recentFormWinPct(t.id, GameState.season) * 10);
     const rowClass = t.id === GameState.userTeamId ? ' class="row-user"' : '';
-    html += '<tr' + rowClass + '><td class="num">' + (i + 1) + '</td><td class="col-name">' + teamLogoImgHtml(t.id, 18) + ' ' + t.name + '</td>' +
+    html += '<tr' + rowClass + '><td class="num">' + (i + 1) + '</td><td class="col-name">' + teamLogoImgHtml(t.id, 18) + ' ' + escapeHtml(t.name) + '</td>' +
       '<td class="num">' + t.record.wins + '-' + t.record.losses + '</td>' +
       '<td class="num">' + (diff > 0 ? '+' : '') + diff + '</td>' +
       '<td class="num">' + (gamesPlayed > 0 ? last10Pct + '-' + (10 - last10Pct) : '—') + '</td>' +
