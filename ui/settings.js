@@ -44,7 +44,7 @@ function renderSettings(container) {
   });
   if (!GameState.userTeamId) {
     html += '<div class="panel-body"><p class="kpi-sub">No team selected yet — choose one before switching out of Spectator.</p>';
-    html += '<select id="settings-team-picker">' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + t.name + '</option>'; }).join('') + '</select></div>';
+    html += '<select id="settings-team-picker">' + TEAMS.map(function (t) { return '<option value="' + t.id + '">' + escapeHtml(t.name) + '</option>'; }).join('') + '</select></div>';
   }
   html += '</div>';
 
@@ -56,6 +56,10 @@ function renderSettings(container) {
     html += '<label class="toggle-row' + (available ? '' : ' is-disabled') + '"><input type="radio" name="sim-engine" value="' +
       engineName + '"' + checked + disabled + '> ' + ENGINE_LABELS[engineName] + '</label>';
   });
+  const workerAvailable = typeof isWorkerSimAvailable === 'function' && isWorkerSimAvailable();
+  html += '<label class="toggle-row' + (workerAvailable ? '' : ' is-disabled') + '"><input type="checkbox" id="settings-worker-sim"' +
+    (GameState.settings.useWorkerSim ? ' checked' : '') + (workerAvailable ? '' : ' disabled') + '> Simulate games on a background thread ' +
+    '(keeps the app responsive during long fast-forwards' + (workerAvailable ? '' : ' — not supported in this browser') + ')</label>';
   html += '</div>';
 
   html += '<div class="panel"><div class="panel-header">League Rules</div><div class="panel-body">' +
@@ -67,6 +71,13 @@ function renderSettings(container) {
     INJURY_FREQUENCY_OPTIONS.map(function (opt) {
       return '<option value="' + opt.value + '"' + (GameState.settings.injuryFrequency === opt.value ? ' selected' : (opt.value === 1 && GameState.settings.injuryFrequency === undefined ? ' selected' : '')) + '>' + opt.label + '</option>';
     }).join('') + '</select></label>' +
+    '<label class="toggle-row" style="display:block;">Draft Lottery Format<br><select id="settings-lottery-format">' +
+    Object.keys(LOTTERY_FORMATS).map(function (key) {
+      const fmt = LOTTERY_FORMATS[key];
+      const selected = (GameState.settings.lotteryFormat || DEFAULT_LOTTERY_FORMAT) === key ? ' selected' : '';
+      return '<option value="' + key + '"' + selected + ' title="' + escapeHtml(fmt.description) + '">' + fmt.label + '</option>';
+    }).join('') + '</select><span class="kpi-sub">' +
+    escapeHtml((LOTTERY_FORMATS[GameState.settings.lotteryFormat] || LOTTERY_FORMATS[DEFAULT_LOTTERY_FORMAT]).description) + '</span></label>' +
     '<label class="toggle-row"><input type="checkbox" id="settings-play-in-enabled"' +
     (GameState.settings.playInEnabled ? ' checked' : '') +
     '> Play-In Tournament (7-10 seeds play in for the final two spots, instead of a straight top-8 cutoff)</label>' +
@@ -148,6 +159,17 @@ function renderSettings(container) {
   document.getElementById('settings-auto-expansion-enabled').addEventListener('change', function (e) {
     GameState.settings.autoExpansionEnabled = e.target.checked;
   });
+
+  document.getElementById('settings-lottery-format').addEventListener('change', function (e) {
+    GameState.settings.lotteryFormat = e.target.value;
+  });
+
+  const workerSimInput = document.getElementById('settings-worker-sim');
+  if (workerSimInput) {
+    workerSimInput.addEventListener('change', function (e) {
+      GameState.settings.useWorkerSim = e.target.checked;
+    });
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
