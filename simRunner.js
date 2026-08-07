@@ -60,10 +60,18 @@ function evaluateStop(gameState, dayIndex, context) {
   // below so the offseason stages report what is waiting rather than the
   // stage transition that got there.
   const auto = gameState.automation || {};
-  if (gameState.offseasonStage === 'draft' && !auto.autoDraft) {
+  // A live draftSession means picks are still waiting on the user. Once it is
+  // gone the draft is finished and there is nothing left to decide, so the
+  // stage becomes crossable — without this a manual drafter is stranded at a
+  // completed draft forever, because nothing else moves offseasonStage on.
+  if (gameState.offseasonStage === 'draft' && !auto.autoDraft && gameState.draftSession) {
     return { reason: STOP_REASONS.DRAFT_READY, label: 'Draft is ready' };
   }
-  if (gameState.offseasonStage === 'freeagency' && !auto.autoFreeAgency) {
+  // Free agency has no equivalent "done" signal — the user signs whoever they
+  // want and stops when they feel like it. ctx.crossStage is that signal:
+  // Continue pressed while already looking at the free agency view means
+  // "I'm finished here", so the run may proceed into the new season.
+  if (gameState.offseasonStage === 'freeagency' && !auto.autoFreeAgency && !ctx.crossStage) {
     return { reason: STOP_REASONS.FREE_AGENCY_READY, label: 'Free agency is open' };
   }
 

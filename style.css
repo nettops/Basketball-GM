@@ -210,6 +210,13 @@ select { cursor: pointer; }
 #sim-controls input[type="number"] { width: 58px; padding: 6px 7px; }
 #sim-controls .dock-primary button { padding: 8px 16px; }
 
+/* Continue is the dock's one primary action; everything else is secondary.
+   The min-width holds the button steady as the label changes between
+   "Continue", "Continue → Playoffs" and "Stop", so the controls beside it do
+   not shuffle sideways every time the league moves on. */
+#sim-continue { padding: 8px 20px; font-weight: 700; min-width: 190px; }
+#sim-skip-qty[hidden] { display: none; }
+
 /* The offseason advance button — appended by renderView as the only
    direct-child button of #sim-controls (all dock controls are nested). */
 #sim-controls > button {

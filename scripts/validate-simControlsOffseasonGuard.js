@@ -48,6 +48,10 @@ const playersModule = req('players-2026.js');
 
 global.GameState = {
   offseasonStage: 'draft',            // an offseason is already under way
+  // Mid-draft, with picks still waiting: the exact state the reported bug was
+  // triggered from. A draft with no live session is finished and is meant to
+  // be crossable, so it would not exercise this guard at all.
+  draftSession: { results: [], available: [] },
   playMode: 'gm',
   settings: { simSpeed: 'ultra', pauseOn: {} },
   season: { games: [], currentDay: 0 },

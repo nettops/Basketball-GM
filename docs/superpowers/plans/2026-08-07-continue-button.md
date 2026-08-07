@@ -1115,11 +1115,53 @@ git commit -m "feat: one interruptible day-granular advance loop"
 
 ## Task 7: The dock — Continue, Watch, Skip to…
 
+> **Deviations (executed).** Removing the ten controls turned out to expose
+> three ways the offseason could strand a player, none of them in the plan.
+>
+> 1. **The three ceremonial offseason buttons had to go too.** The spec says
+>    Continue absorbs "Advance to Offseason", "Go to Free Agency" and "Start
+>    New Season"; the plan never said to delete them, and leaving them would
+>    have duplicated the new path. Removing them is what surfaced (2) and (3).
+> 2. **A manual drafter was stranded at a finished draft.** handleUserDraftPick
+>    clears `draftSession` but leaves `offseasonStage` at `'draft'`, and the
+>    button that used to move it on was the one just deleted. `draftReady` now
+>    requires a live `draftSession`; free agency, which has no "done" signal at
+>    all, gets `ctx.crossStage` — Continue pressed while already viewing free
+>    agency means "I'm finished signing". Both are tested.
+> 3. **Continue auto-drafted for everyone.** `stepOnce`'s rollover passed
+>    `stopAfterDraft` but not `onDraft`, so it always resolved the draft
+>    itself — `draftReady` then had nothing to stop for and a manual drafter
+>    never saw their own draft. The interactive draft is now
+>    `runInteractiveDraft` in `script.js`, passed by BOTH callers.
+> 4. **`continueLabel` as drafted was wrong in four states.** It reported
+>    `Continue → Playoffs` for a finished postseason (the next step is the
+>    whole offseason), and ignored automation entirely — with autoDraft off
+>    Continue opens the draft rather than crossing it, so the drafted label
+>    promised something the click would not do. Every branch now matches what
+>    `handleContinue` actually does.
+> 5. **Two stale references the plan's greps did not cover.** The keyboard
+>    shortcuts `n` and `g` in `script.js` pointed at `#sim-next-day` and
+>    `#sim-next-game`, and `ui/playerDashboard.js`'s `simulateSeason()` clicked
+>    `#sim-to-end` — all three deleted, all three failing silently. The
+>    shortcuts now drive Continue and Watch; `simulateSeason` calls
+>    `handleSkipTo` directly instead of reaching into the dock for a button,
+>    which is the second time that coupling has broken it.
+>
+> **The status line never worked at all.** `runAdvance` captured `#sim-status`
+> once, but that element lives inside the dock's `innerHTML`, so the first
+> `renderSimControls` detached it and every later write landed on a node that
+> was not on the page — and the closing `renderView` wiped the final label
+> anyway. The spec's `Stopped: Jayson Tatum injured` line could never have
+> appeared. Replaced with `setSimStatus()`, which re-queries, and the closing
+> write moved after the render. The same latent bug was silently swallowing
+> "No remaining games for your team to watch." and "Game could not be watched
+> — simmed normally." in the two watch paths; both are fixed here.
+
 **Files:**
 - Modify: `ui/simControls.js` (`renderSimControls`)
 - Modify: `style.css`
 
-- [ ] **Step 1: Replace the ten controls**
+- [x] **Step 1: Replace the ten controls**
 
 In `renderSimControls`, replace the markup for `sim-next-game`, `sim-next-day`, `sim-to-end`, `sim-to-deadline`, `sim-to-draft`, `sim-to-fa`, `sim-n-seasons`, `sim-n-seasons-btn`, `sim-until-championship`, `sim-n-days`, `sim-n-days-btn` with:
 
@@ -1147,7 +1189,7 @@ In `renderSimControls`, replace the markup for `sim-next-game`, `sim-next-day`, 
 
 Keep `sim-undo-btn`, `sim-redo-btn`, `sim-speed` and `sim-status` exactly as they are — they are not time controls.
 
-- [ ] **Step 2: Add the stage-aware label**
+- [x] **Step 2: Add the stage-aware label**
 
 ```js
 // Continue states where it is going, so the three ceremonial offseason
@@ -1163,7 +1205,7 @@ function continueLabel() {
 }
 ```
 
-- [ ] **Step 3: Wire the handlers**
+- [x] **Step 3: Wire the handlers**
 
 Replace the corresponding `addEventListener` calls with:
 
@@ -1184,7 +1226,7 @@ Replace the corresponding `addEventListener` calls with:
 
 Delete the listeners for every removed control.
 
-- [ ] **Step 4: Disable Continue while a live game is pending**
+- [x] **Step 4: Disable Continue while a live game is pending**
 
 Immediately after the listeners:
 
@@ -1213,7 +1255,7 @@ function isLiveWatchPending() { return _pendingLiveRunOut !== null; }
 
 Add it to that file's `module.exports` alongside `finishPendingPixelGame`.
 
-- [ ] **Step 5: Style the dock**
+- [x] **Step 5: Style the dock**
 
 Append to `style.css`:
 
@@ -1224,7 +1266,7 @@ Append to `style.css`:
 #sim-skip-qty[hidden] { display: none; }
 ```
 
-- [ ] **Step 6: Verify in the browser**
+- [x] **Step 6: Verify in the browser**
 
 Run: `python scripts/devserver.py 8225`
 
@@ -1236,7 +1278,7 @@ At `http://localhost:8225`:
 5. Start a watched game, then confirm Continue and Go are disabled while it is on screen.
 6. Console shows zero errors throughout.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/simControls.js ui/pixelGameView.js style.css

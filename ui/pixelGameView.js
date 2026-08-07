@@ -33,6 +33,12 @@ function confirmLeaveLiveGame(targetView) {
   return false;
 }
 
+// True while a watched game is on screen and still unrecorded. The sim dock
+// reads this to disable Continue: the dock stays visible during a watched
+// game, and without the check it would sim days out from under a game the
+// user is still looking at.
+function isLiveWatchPending() { return _pendingLiveRunOut !== null; }
+
 function finishPendingPixelGame() {
   const runOut = _pendingLiveRunOut;
   _pendingLiveRunOut = null;
@@ -1002,6 +1008,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setWatchSession: setWatchSession,
     setLiveWatchSession: setLiveWatchSession,
     finishPendingPixelGame: finishPendingPixelGame,
+    isLiveWatchPending: isLiveWatchPending,
     confirmLeaveLiveGame: confirmLeaveLiveGame,
     renderPixelGame: renderPixelGame,
     stopPixelPlayback: stopPixelPlayback

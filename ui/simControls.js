@@ -69,6 +69,13 @@ function autoFreeAgencyEffective() {
   return GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency;
 }
 
+// Picks still waiting on the user. handleUserDraftPick clears draftSession
+// once the board is exhausted but leaves offseasonStage at 'draft', so the
+// stage alone does not tell you whether anything is still pending.
+function draftIsWaiting() {
+  return GameState.offseasonStage === 'draft' && !autoDraftEffective() && !!GameState.draftSession;
+}
+
 // Advances the league exactly one unit and returns false when there is
 // nothing left to step. A "unit" is whatever the current phase advances by:
 // one day in the regular season, one game in the playoffs, one stage in the
@@ -109,6 +116,10 @@ function stepOnce(out) {
       // the behaviour the design deliberately drops.
       const rollover = runOffseasonRollover(GameState, {
         stopAfterDraft: !autoDraftEffective(),
+        // The same interactive draft script.js hands out. Without it Continue
+        // auto-drafted for everyone, and the draftReady stop had nothing to
+        // stop for — a manual drafter never saw their own draft.
+        onDraft: autoDraftEffective() ? null : runInteractiveDraft,
         onFeed: function (text) { pushToFeed(text); },
         onCareerFollowup: GameState.gameMode === 'playerCareer'
           ? function () { return handlePlayerCareerOffseasonFollowup(true); }
@@ -144,10 +155,19 @@ function stepOnce(out) {
   return true;
 }
 
+// Always re-queries. #sim-status lives inside the dock's innerHTML, so every
+// renderSimControls destroys the element — a reference captured once goes
+// stale the first time the dock repaints, and writes to it land on a detached
+// node that is not on the page. That is exactly how the status line silently
+// showed nothing at all.
+function setSimStatus(text) {
+  const el = document.getElementById('sim-status');
+  if (el) el.textContent = text;
+}
+
 // options: { target } — null for Continue. Resolves to the stop that ended it.
 async function runAdvance(options) {
   const opts = options || {};
-  const statusEl = document.getElementById('sim-status');
   _advanceStopRequested = false;
   _advanceRunning = true;
   GameState.pauseRequested = false;
@@ -168,9 +188,11 @@ async function runAdvance(options) {
     stop = evaluateStop(GameState, GameState.season.currentDay, {
       target: opts.target || null,
       userStopRequested: _advanceStopRequested,
-      // Only the first check. See simRunner.js — this is what lets Continue
-      // step across a boundary it is parked on.
-      crossBoundary: steps === 0
+      // Both only on the first check. See simRunner.js — these are what let
+      // Continue step across a boundary, or a finished free agency, that it
+      // is parked on. A later season's free agency still stops the run.
+      crossBoundary: steps === 0,
+      crossStage: steps === 0 && !!opts.crossStage
     });
     if (stop) break;
 
@@ -191,7 +213,7 @@ async function runAdvance(options) {
     // the opposite of what a stop system is for.
     if (out.sceneShown) { stop = { reason: STOP_REASONS.NOTABLE_EVENT, label: '' }; break; }
 
-    if (statusEl) statusEl.textContent = 'Simulating...';
+    setSimStatus('Simulating…');
     // ALWAYS yield, including at ultra where delayMs is 0. The old loops
     // skipped the await entirely at ultra, which froze the tab and made a run
     // impossible to interrupt — there was no moment for a click to land.
@@ -201,7 +223,6 @@ async function runAdvance(options) {
   _advanceRunning = false;
   _advanceStopRequested = false;
   stop = stop || { reason: STOP_REASONS.USER_STOP, label: 'Stopped' };
-  if (statusEl) statusEl.textContent = stop.reason === STOP_REASONS.USER_STOP ? '' : stop.label;
 
   if (out.sceneShown) {
     // Re-render only the dock: the scene is sitting in view-content and
@@ -210,6 +231,11 @@ async function runAdvance(options) {
   } else {
     renderView(GameState.currentView);
   }
+
+  // AFTER the render above, never before: both branches rebuild the dock and
+  // would wipe whatever was written first. Pressing Stop clears the line
+  // rather than announcing itself — the user knows, they just clicked it.
+  setSimStatus(stop.reason === STOP_REASONS.USER_STOP ? '' : stop.label);
   autosave(GameState);
   return { reason: stop.reason, label: stop.label, steps: steps };
 }
@@ -224,12 +250,19 @@ async function handleContinue() {
   // Standing at a stage the player has to act on, Continue is a doorway
   // rather than a simulation: take them there instead of running a loop that
   // would stop immediately having done nothing.
-  if (GameState.offseasonStage === 'draft' && !autoDraftEffective()) return renderView('draft');
-  if (GameState.offseasonStage === 'freeagency' && !autoFreeAgencyEffective()) return renderView('freeagency');
+  if (draftIsWaiting() && GameState.currentView !== 'draft') return renderView('draft');
+  const faWaiting = GameState.offseasonStage === 'freeagency' && !autoFreeAgencyEffective();
+  if (faWaiting && GameState.currentView !== 'freeagency') return renderView('freeagency');
 
-  const result = await runAdvance({ target: null });
-  if (result.reason === STOP_REASONS.DRAFT_READY) renderView('draft');
-  else if (result.reason === STOP_REASONS.FREE_AGENCY_READY) renderView('freeagency');
+  // Already looking at free agency and pressing Continue again is the only
+  // "I'm done signing" signal there is — nothing else marks that stage
+  // finished, and the button that used to end it is gone.
+  const result = await runAdvance({ target: null, crossStage: faWaiting });
+  // Land the user on the stage that is waiting, then restate why — the
+  // renderView rebuilds the dock and would otherwise wipe the line runAdvance
+  // just wrote.
+  if (result.reason === STOP_REASONS.DRAFT_READY) { renderView('draft'); setSimStatus(result.label); }
+  else if (result.reason === STOP_REASONS.FREE_AGENCY_READY) { renderView('freeagency'); setSimStatus(result.label); }
   return result;
 }
 
@@ -259,7 +292,7 @@ async function handleSkipTo(kind, quantity) {
       ? { kind: 'seasons', untilYear: (GameState.leagueYear || 2026) + 1, label: 'the new season' }
       : { kind: 'stage', stage: stage, label: kind === 'draft' ? 'the draft' : 'free agency' };
     const result = await runAdvance({ target: target });
-    if (!automated) renderView(stage);
+    if (!automated) { renderView(stage); setSimStatus(result.label); }
     return result;
   }
   // seasonEnd / playoffsEnd: Continue's own boundary rules already stop there.
@@ -276,9 +309,8 @@ async function handleSkipTo(kind, quantity) {
 // involving the user's team, then opens the pixel view on it.
 async function handleWatchNextPlayoffGame() {
   const container = document.getElementById('sim-controls');
-  const statusEl = document.getElementById('sim-status');
   container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-  if (statusEl) statusEl.textContent = 'Simulating...';
+  setSimStatus('Simulating…');
 
   const events = [];
   const watch = { teamId: GameState.userTeamId, events: events, live: true };
@@ -291,10 +323,12 @@ async function handleWatchNextPlayoffGame() {
     if (game === null) break;          // champion already crowned
   }
 
-  if (statusEl) statusEl.textContent = '';
+  setSimStatus('');
   if (!watch.liveGame) {
-    if (statusEl) statusEl.textContent = 'No remaining games for your team to watch.';
+    // After the render, not before: renderView rebuilds the dock and would
+    // wipe this message, so it has never actually been seen.
     renderView(GameState.currentView);
+    setSimStatus('No remaining games for your team to watch.');
     autosave(GameState);
     return;
   }
@@ -327,8 +361,7 @@ async function watchGameOnDay(targetDay) {
   if (targetDay === null || targetDay === undefined) return;
 
   container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-  const statusEl = document.getElementById('sim-status');
-  if (statusEl) statusEl.textContent = 'Simulating...';
+  setSimStatus('Simulating…');
 
   // Days before the user's game day sim exactly as Next Game does.
   if (targetDay - 1 > GameState.season.currentDay) {
@@ -342,11 +375,12 @@ async function watchGameOnDay(targetDay) {
   simulateDate(GameState.season, targetDay, GameState.settings, GameState.rng, handleDayComplete, watch);
   GameState.season.currentDay = targetDay;
 
-  if (statusEl) statusEl.textContent = '';
+  setSimStatus('');
   if (!watch || !watch.liveGame) {
-    // Graceful fallback (spec): behave like a normal Next Game click.
-    if (statusEl) statusEl.textContent = 'Game could not be watched — simmed normally.';
+    // Graceful fallback (spec): sim the day normally. The message goes after
+    // the render, which rebuilds the dock and would otherwise wipe it.
     renderView(GameState.currentView);
+    setSimStatus('Game could not be watched — simmed normally.');
     autosave(GameState);
     return;
   }
@@ -377,42 +411,68 @@ async function handleWatchNextGame() {
   return watchGameOnDay(getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay));
 }
 
+// Continue states where it is going. That is what lets it absorb the three
+// ceremonial offseason clicks — Advance to Offseason, Go to Free Agency,
+// Start New Season — which existed only because nothing else would do them.
+//
+// Every branch here must match what handleContinue actually does from that
+// state, including the automation branches: with autoDraft off Continue opens
+// the draft for the user rather than crossing it, and a label promising
+// otherwise would be a lie about the next click.
+function continueLabel() {
+  if (isAdvanceRunning()) return 'Stop';
+  if (GameState.offseasonStage === 'draft') {
+    // Only while picks remain. A finished draft crosses to free agency.
+    return draftIsWaiting() ? 'Continue → Draft' : 'Continue → Free Agency';
+  }
+  if (GameState.offseasonStage === 'freeagency') {
+    // Once they are looking at free agency, the next press ends it.
+    const waiting = !autoFreeAgencyEffective() && GameState.currentView !== 'freeagency';
+    return waiting ? 'Continue → Free Agency' : 'Continue → Next Season';
+  }
+  if (GameState.playoffBracket) {
+    const finals = GameState.playoffBracket.finals;
+    // A crowned champion means the next unit of time is the whole offseason.
+    if (finals && finals[0] && finals[0].winner) return 'Continue → Offseason';
+    return 'Continue → Playoffs';
+  }
+  if (GameState.season && isRegularSeasonComplete(GameState.season)) return 'Continue → Playoffs';
+  return 'Continue';
+}
+
 function renderSimControls(container) {
-  const stageLabel = GameState.playoffBracket ? 'Playoffs' : 'Regular Season';
-  // Once the offseason has started, handleAdvanceToOffseason is a no-op by
-  // design (see its guard) — disable the two controls that call it so the
-  // button state matches what actually happens on click.
-  const inOffseason = !!GameState.offseasonStage;
   const running = isAdvanceRunning();
-  // While a run is in flight the only live control is Stop. Task 7 replaces
-  // this dock wholesale; until then the buttons keep their labels and simply
-  // route through runAdvance.
-  const skipDisabled = (inOffseason || running) ? ' disabled' : '';
+  // Skip-to is meaningless mid-offseason: every target is either behind us or
+  // the stage we are already standing in.
+  const skipDisabled = (!!GameState.offseasonStage || running) ? ' disabled' : '';
   const busyDisabled = running ? ' disabled' : '';
   container.innerHTML =
     '<div class="dock-group dock-primary">' +
-      '<button id="sim-next-game" class="btn-primary">' + (running ? 'Stop' : 'Next Game') + '</button>' +
+      // Ten time controls became three. The player used to have to decide HOW
+      // FAR to skip before every advance, which is itself a micro-decision
+      // repeated constantly; Continue asks nothing and stops when something
+      // actually needs them.
+      '<button id="sim-continue" class="btn-primary">' + continueLabel() + '</button>' +
       '<button id="sim-watch-game"' + busyDisabled + '>Watch Next Game</button>' +
-      '<button id="sim-next-day"' + busyDisabled + '>Next Day</button>' +
-      '<button id="sim-to-end"' + busyDisabled + '>Sim to End of ' + stageLabel + '</button>' +
     '</div>' +
     '<div class="dock-group">' +
       '<button id="sim-undo-btn" class="btn-ghost" title="Undo the last trade or free agent signing"' + (canUndo(GameState) ? '' : ' disabled') + '>Undo</button>' +
       '<button id="sim-redo-btn" class="btn-ghost"' + (canRedo(GameState) ? '' : ' disabled') + '>Redo</button>' +
     '</div>' +
     '<div class="dock-group">' +
-      '<span class="dock-label">Skip to</span>' +
-      '<button id="sim-to-deadline" class="btn-ghost"' + skipDisabled + '>Trade Deadline</button>' +
-      '<button id="sim-to-draft" class="btn-ghost"' + skipDisabled + '>Draft</button>' +
-      '<button id="sim-to-fa" class="btn-ghost"' + skipDisabled + '>Free Agency</button>' +
-    '</div>' +
-    '<div class="dock-group">' +
-      '<span class="dock-label">Fast forward</span>' +
-      '<input type="number" id="sim-n-seasons" value="1" min="1" max="15"' + skipDisabled + '>' +
-      '<button id="sim-n-seasons-btn" class="btn-ghost"' + skipDisabled + '>Seasons</button>' +
-      '<button id="sim-until-championship" class="btn-ghost"' + skipDisabled + '>Until Title</button>' +
-      '<input type="number" id="sim-n-days" value="7" min="1"' + skipDisabled + '>' +
-      '<button id="sim-n-days-btn" class="btn-ghost"' + skipDisabled + '>Days</button>' +
+      '<select id="sim-skip-to"' + skipDisabled + '>' +
+        '<option value="">Skip to…</option>' +
+        '<option value="deadline">Trade Deadline</option>' +
+        '<option value="draft">Draft</option>' +
+        '<option value="freeAgency">Free Agency</option>' +
+        '<option value="seasonEnd">End of Regular Season</option>' +
+        '<option value="playoffsEnd">End of Playoffs</option>' +
+        '<option value="championship">Until Title</option>' +
+        '<option value="seasons">Seasons…</option>' +
+        '<option value="days">Days…</option>' +
+      '</select>' +
+      '<input type="number" id="sim-skip-qty" value="1" min="1" max="15" hidden>' +
+      '<button id="sim-skip-go" class="btn-ghost"' + skipDisabled + '>Go</button>' +
     '</div>' +
     '<div class="dock-group dock-end">' +
       '<span class="dock-label">Speed</span>' +
@@ -424,33 +484,42 @@ function renderSimControls(container) {
       '<span id="sim-status"></span>' +
     '</div>';
 
-  document.getElementById('sim-next-game').addEventListener('click', function () {
-    if (isAdvanceRunning()) return requestAdvanceStop();
-    if (GameState.playoffBracket) return runAdvance({ target: null });
-    const day = getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay);
-    if (day === null) return;
-    return runAdvance({ target: advanceTargetForDay(day, 'your next game') });
-  });
+  document.getElementById('sim-continue').addEventListener('click', handleContinue);
   document.getElementById('sim-watch-game').addEventListener('click', handleWatchNextGame);
-  document.getElementById('sim-next-day').addEventListener('click', function () {
-    runAdvance({ target: advanceTargetForDay(GameState.season.currentDay + 1, 'the next day') });
+  document.getElementById('sim-skip-to').addEventListener('change', function (e) {
+    // Only the two quantity-taking targets reveal the number input, so at most
+    // three elements are ever visible at once.
+    const needsQty = e.target.value === 'seasons' || e.target.value === 'days';
+    const qty = document.getElementById('sim-skip-qty');
+    qty.hidden = !needsQty;
+    if (needsQty) qty.value = e.target.value === 'days' ? '7' : '1';
   });
-  document.getElementById('sim-to-end').addEventListener('click', function () { handleSkipTo('seasonEnd'); });
-  document.getElementById('sim-to-deadline').addEventListener('click', function () { handleSkipTo('deadline'); });
-  document.getElementById('sim-to-draft').addEventListener('click', function () { handleSkipTo('draft'); });
-  document.getElementById('sim-to-fa').addEventListener('click', function () { handleSkipTo('freeAgency'); });
-  document.getElementById('sim-n-seasons-btn').addEventListener('click', function () {
-    handleSkipTo('seasons', Number(document.getElementById('sim-n-seasons').value));
-  });
-  document.getElementById('sim-until-championship').addEventListener('click', function () {
-    handleSkipTo('championship');
-  });
-  document.getElementById('sim-n-days-btn').addEventListener('click', function () {
-    handleSkipTo('days', Number(document.getElementById('sim-n-days').value));
+  document.getElementById('sim-skip-go').addEventListener('click', function () {
+    const kind = document.getElementById('sim-skip-to').value;
+    if (!kind) return;
+    const qty = Number(document.getElementById('sim-skip-qty').value) || 1;
+    handleSkipTo(kind, qty);
   });
   document.getElementById('sim-speed').addEventListener('change', function (e) {
     GameState.settings.simSpeed = e.target.value;
   });
+
+  // The dock stays visible during a watched game, so without this Continue
+  // would sim days out from under a game still on screen. Guarded by typeof:
+  // ui/pixelGameView.js loads after this file, so the name does not exist
+  // when this module is evaluated — only when a render actually runs.
+  if (typeof isLiveWatchPending === 'function' && isLiveWatchPending()) {
+    document.getElementById('sim-continue').disabled = true;
+    document.getElementById('sim-skip-go').disabled = true;
+  }
+
+  // Nothing left to watch: during the offseason, and once the regular season
+  // has no remaining game for the user. A button that opens an empty view is
+  // worse than one that is visibly unavailable.
+  const noGameToWatch = !!GameState.offseasonStage ||
+    (!GameState.playoffBracket && GameState.season &&
+      getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay) === null);
+  if (noGameToWatch) document.getElementById('sim-watch-game').disabled = true;
 
   document.getElementById('sim-undo-btn').addEventListener('click', function () {
     performUndo(GameState);

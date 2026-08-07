@@ -98,12 +98,14 @@ function recordTrainingDecision(trainingType) {
   renderPlayerDashboard(document.getElementById('view-content'), GameState.controlledPlayerId);
 }
 
+// Calls the advance loop directly rather than hunting the dock for a button.
+// This used to match on the button's label text, which only worked during the
+// regular season — the dock renamed it once a bracket existed. The dock no
+// longer has that button at all, so the coupling is gone entirely:
+// handleSkipTo is the actual interface.
 function simulateSeason() {
-  const btns = Array.from(document.querySelectorAll('#sim-controls button'));
-  const simToEndBtn = btns.find(function (b) { return b.textContent.trim() === 'Sim to End of Regular Season'; });
-  if (simToEndBtn) {
-    simToEndBtn.click();
-  }
+  if (isAdvanceRunning()) return;
+  handleSkipTo('seasonEnd');
 }
 
 if (typeof module !== 'undefined' && module.exports) {

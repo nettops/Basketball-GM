@@ -326,6 +326,25 @@ function isRegularSeasonAndPlayoffsComplete() {
     && GameState.playoffBracket && GameState.playoffBracket.finals.length > 0 && GameState.playoffBracket.finals[0].complete;
 }
 
+// Builds a draft the user picks in, instead of resolving every pick for them.
+// Passed as runOffseasonRollover's onDraft by BOTH callers — this function and
+// ui/simControls.js's advance loop — so Continue hands over the same draft the
+// Season Recap route does. When only one of them passed it, Continue silently
+// auto-drafted for every manual drafter.
+function runInteractiveDraft(gs) {
+  runOffseasonPreDraft(gs.rng, gs.leagueYear);
+  const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
+  gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
+  advanceDraftUntilUserTurn(gs.draftSession, gs.userTeamId, false);
+  // The user's picks may all fall after the last AI pick, in which case the
+  // session is already finished and there is nothing to hand them.
+  if (!currentPick(gs.draftSession)) {
+    gs.lastDraftResults = gs.draftSession.results;
+    gs.draftSession = null;
+    archiveDraftClass(gs.leagueYear, gs.lastDraftResults);
+  }
+}
+
 // showSummary is true only from the manual "Advance to Offseason" button
 // (script.js's renderView wiring) — the two "Skip to Draft/FA" dock shortcuts
 // (ui/simControls.js) call this with no argument because the user explicitly
@@ -355,19 +374,7 @@ function handleAdvanceToOffseason(showSummary) {
     // Only when the user has NOT delegated the draft. Passing this overrides
     // the automatic pipeline with an interactive session they pick from;
     // omitting it lets the shared auto-draft run, exactly as before.
-    onDraft: autoDraftEffective ? null : function (gs) {
-      runOffseasonPreDraft(gs.rng, gs.leagueYear);
-      const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
-      gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
-      advanceDraftUntilUserTurn(gs.draftSession, gs.userTeamId, false);
-      // The user's picks may all fall after the last AI pick, in which case
-      // the session is already finished and there is nothing to hand them.
-      if (!currentPick(gs.draftSession)) {
-        gs.lastDraftResults = gs.draftSession.results;
-        gs.draftSession = null;
-        archiveDraftClass(gs.leagueYear, gs.lastDraftResults);
-      }
-    }
+    onDraft: autoDraftEffective ? null : runInteractiveDraft
   });
 
   if (showSummary === true) {
@@ -571,25 +578,13 @@ function renderView(viewName) {
     renderSimControls(document.getElementById('sim-controls'));
   }
 
-  const simControlsEl = document.getElementById('sim-controls');
-  if (isRegularSeasonAndPlayoffsComplete() && !GameState.offseasonStage) {
-    simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-offseason-btn">Advance to Offseason</button>');
-    document.getElementById('advance-offseason-btn').addEventListener('click', function () { handleAdvanceToOffseason(true); });
-  } else if (GameState.offseasonStage === 'draft') {
-    simControlsEl.insertAdjacentHTML('beforeend', '<button id="advance-to-fa-btn">Go to Free Agency</button>');
-    document.getElementById('advance-to-fa-btn').addEventListener('click', function () {
-      GameState.offseasonStage = 'freeagency';
-      if (GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency) {
-        runFreeAgencySilently(GameState.rng);
-        autoEnforceRosterSize(getTeamById(GameState.userTeamId));
-      }
-      renderView('freeagency');
-      autosave(GameState);
-    });
-  } else if (GameState.offseasonStage === 'freeagency') {
-    simControlsEl.insertAdjacentHTML('beforeend', '<button id="start-new-season-btn">Start New Season</button>');
-    document.getElementById('start-new-season-btn').addEventListener('click', handleAdvanceToNewSeason);
-  }
+  // The three ceremonial offseason buttons that used to be appended here —
+  // "Advance to Offseason", "Go to Free Agency", "Start New Season" — are
+  // gone. Continue does all three now (see continueLabel in
+  // ui/simControls.js, which names the destination), and each of them was a
+  // click the player had no choice about: there was never anything else to do
+  // at those moments. handleAdvanceToOffseason survives for the Season Recap
+  // route; stepOnce covers the rest.
 }
 
 function selectTeam(teamId, playMode) {
@@ -681,8 +676,12 @@ function startFirstSeason() {
 // contenteditable) so they never hijack normal text entry, and while a
 // modifier key is held (so browser/OS shortcuts like Ctrl+R still work).
 const KEYBOARD_SHORTCUTS = {
-  n: function () { const btn = document.getElementById('sim-next-day'); if (btn) btn.click(); },
-  g: function () { const btn = document.getElementById('sim-next-game'); if (btn) btn.click(); },
+  // The dock's two live actions. `n` was Next Day and `g` was Next Game;
+  // neither control exists now, so both keys pointed at nothing. `n` is the
+  // natural home for Continue (which is also Stop mid-run), and `g` keeps its
+  // association with the user's own game by watching it.
+  n: function () { const btn = document.getElementById('sim-continue'); if (btn && !btn.disabled) btn.click(); },
+  g: function () { const btn = document.getElementById('sim-watch-game'); if (btn && !btn.disabled) btn.click(); },
   u: function () { const btn = document.getElementById('sim-undo-btn'); if (btn && !btn.disabled) btn.click(); },
   y: function () { const btn = document.getElementById('sim-redo-btn'); if (btn && !btn.disabled) btn.click(); },
   d: function () { renderView('dashboard'); },

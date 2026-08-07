@@ -36,7 +36,7 @@ function checkUserStopOutranksEverything() {
   // Deliberately a state where several other reasons also apply. If Stop did
   // not win, pressing it would look ignored while some other reason was
   // reported instead.
-  const gs = baseState({ offseasonStage: 'draft', pauseRequested: true, pauseReason: 'Injury' });
+  const gs = baseState({ offseasonStage: 'draft', draftSession: {}, pauseRequested: true, pauseReason: 'Injury' });
   const stop = runner.evaluateStop(gs, 0, { target: null, userStopRequested: true });
   assert.ok(stop, 'a stop is returned');
   assert.strictEqual(stop.reason, R.USER_STOP, 'pressing Stop wins over every automatic reason');
@@ -45,12 +45,12 @@ function checkUserStopOutranksEverything() {
 checkUserStopOutranksEverything();
 
 function checkDraftStopRespectsAutomation() {
-  const manual = baseState({ offseasonStage: 'draft' });
+  const manual = baseState({ offseasonStage: 'draft', draftSession: {} });
   const s1 = runner.evaluateStop(manual, 0, NO_CONTEXT);
   assert.ok(s1 && s1.reason === R.DRAFT_READY, 'stops at the draft when autoDraft is off');
   assert.ok(s1.label && s1.label.length > 0, 'and says why');
 
-  const auto = baseState({ offseasonStage: 'draft', automation: { autoDraft: true, autoFreeAgency: false } });
+  const auto = baseState({ offseasonStage: 'draft', draftSession: {}, automation: { autoDraft: true, autoFreeAgency: false } });
   assert.strictEqual(runner.evaluateStop(auto, 0, NO_CONTEXT), null,
     'runs straight through when autoDraft is on');
   console.log('checkDraftStopRespectsAutomation: OK');
@@ -137,7 +137,7 @@ function checkCrossBoundaryLetsContinueProceed() {
 
   // The narrowness is the point: a draft the user has not delegated is a
   // decision, not a boundary, and crossBoundary must not skip it.
-  const draft = baseState({ offseasonStage: 'draft' });
+  const draft = baseState({ offseasonStage: 'draft', draftSession: {} });
   const s2 = runner.evaluateStop(draft, 0, { crossBoundary: true });
   assert.ok(s2 && s2.reason === R.DRAFT_READY, 'an unautomated draft still stops');
 
@@ -169,7 +169,7 @@ function checkChampionshipTargetRunsPastOtherChampions() {
 
   // The design is explicit that a skip halts early for a decision rather than
   // blowing past it — the old fast-forward loop did the opposite.
-  const draftMidRun = baseState({ userTeamId: 'BOS', offseasonStage: 'draft' });
+  const draftMidRun = baseState({ userTeamId: 'BOS', offseasonStage: 'draft', draftSession: {} });
   const s2 = runner.evaluateStop(draftMidRun, 0, ctx);
   assert.ok(s2 && s2.reason === R.DRAFT_READY, 'an unautomated draft still interrupts a title run');
   console.log('checkChampionshipTargetRunsPastOtherChampions: OK');
@@ -231,7 +231,7 @@ function checkOffseasonStagesSuppressStaleBoundaries() {
   const atDraft = baseState({
     season: { games: [{ day: 0, played: true }], currentDay: 0 },
     playoffBracket: { finals: [{ winner: 'OKC' }] },
-    offseasonStage: 'draft',
+    offseasonStage: 'draft', draftSession: {},
     automation: { autoDraft: true, autoFreeAgency: true }
   });
   assert.strictEqual(runner.evaluateStop(atDraft, 0, NO_CONTEXT), null,
@@ -258,6 +258,36 @@ function checkOffseasonStagesSuppressStaleBoundaries() {
   console.log('checkOffseasonStagesSuppressStaleBoundaries: OK');
 }
 checkOffseasonStagesSuppressStaleBoundaries();
+
+// The offseason has to be escapable. Nothing outside these two rules moves
+// offseasonStage on for a manual player, so if either stops unconditionally
+// the save is stuck at that stage permanently.
+function checkFinishedOffseasonStagesAreEscapable() {
+  // handleUserDraftPick clears draftSession when the board is exhausted but
+  // leaves offseasonStage at 'draft'. If that still reported draftReady, the
+  // player would sit at a completed draft with no way forward.
+  const drafted = baseState({ offseasonStage: 'draft', draftSession: null });
+  assert.strictEqual(runner.evaluateStop(drafted, 0, NO_CONTEXT), null,
+    'a completed draft no longer blocks the run');
+
+  const midDraft = baseState({ offseasonStage: 'draft', draftSession: { results: [] } });
+  const s1 = runner.evaluateStop(midDraft, 0, NO_CONTEXT);
+  assert.ok(s1 && s1.reason === R.DRAFT_READY, 'but picks still waiting do');
+
+  // Free agency has no "done" flag at all — the user decides. crossStage is
+  // Continue saying so.
+  const fa = baseState({ offseasonStage: 'freeagency' });
+  const s2 = runner.evaluateStop(fa, 0, NO_CONTEXT);
+  assert.ok(s2 && s2.reason === R.FREE_AGENCY_READY, 'free agency stops the first time');
+  assert.strictEqual(runner.evaluateStop(fa, 0, { crossStage: true }), null,
+    'and is escapable when the user says they are finished');
+
+  // crossStage is for free agency only: it must not skip pending draft picks.
+  assert.ok(runner.evaluateStop(midDraft, 0, { crossStage: true }).reason === R.DRAFT_READY,
+    'crossStage never skips picks the user still has to make');
+  console.log('checkFinishedOffseasonStagesAreEscapable: OK');
+}
+checkFinishedOffseasonStagesAreEscapable();
 
 function checkContextIsOptional() {
   // The loop always passes a context, but a missing one must not throw —
