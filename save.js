@@ -30,7 +30,10 @@ var _SAVE_DATA = (typeof require !== 'undefined')
     };
 
 const SAVE_SLOT_COUNT = 5;
-const SAVE_FORMAT_VERSION = 1;
+// v2 added the Phase 7-9 fields serializeGameState originally omitted (career
+// mode, trade inbox, All-Star Weekend, season snapshots). v1 payloads still
+// load — every v2-only field defaults in applySavedState below.
+const SAVE_FORMAT_VERSION = 2;
 const SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
@@ -48,7 +51,28 @@ function saveSlotKey(slotId) {
 // same as before this fix.
 const TEAM_IDENTITY_FIELDS = ['id', 'name', 'conference', 'division', 'colors'];
 
-function serializeGameState(gameState, name) {
+// The career-mode controllers are class instances (PlayerCareerController /
+// NarrativeSystem / RandomEventSystem), so they can't round-trip through JSON.
+// Their *state* is what matters — capture it here and rebuild the instances in
+// applySavedState. Returns null in GM mode, and for the Node validation
+// scripts, which never construct these.
+function serializeCareerController(controller) {
+  if (!controller) return null;
+  return {
+    controlledPlayerId: controller.controlledPlayerId,
+    careerPhase: controller.careerPhase,
+    careerEvents: controller.careerEvents || [],
+    decisionHistory: controller.decisionHistory || [],
+    randomEventHistory: controller.randomEventHistory || []
+  };
+}
+
+// includeSnapshots is false for every in-memory snapshot path (undo/redo and
+// pushSeasonSnapshot itself), for the same reason undoStack/redoStack are never
+// serialized: a snapshot that embedded the snapshot list would nest its own
+// history on every push and blow up exponentially. Only saveToSlot, which
+// writes a terminal payload nobody snapshots again, passes true.
+function serializeGameState(gameState, name, includeSnapshots) {
   const teamsOut = {};
   _SAVE_DATA.teams.TEAMS.forEach(function (t) {
     const out = {};
@@ -56,12 +80,37 @@ function serializeGameState(gameState, name) {
     teamsOut[t.id] = out;
   });
 
-  // Per-game boxScore is intentionally dropped — season/career stat averages
-  // are already accumulated separately per-player, and a full season's worth
-  // of box scores would run several MB per slot (measured during design).
+  // Box scores for the WHOLE league would run several MB per slot (measured:
+  // ~1230 games x ~26 player lines), so they were originally dropped wholesale.
+  // But ui/schedule.js's expandable box score only ever shows the user's own
+  // games, and dropping those made every played row in a reloaded save open to
+  // nothing. Keeping just the user's games is ~150KB against a ~2.9MB save —
+  // the feature works, and the size problem that motivated dropping them
+  // doesn't come back. Everyone else's games still save as null and render the
+  // "not stored" note in renderBoxScoreDetail.
+  const BOX_SCORE_KEEP_LIMIT = 120; // a full 82-game season plus a deep playoff run
+  const userGameIds = {};
+  if (gameState.season && gameState.userTeamId) {
+    gameState.season.games
+      .filter(function (g) {
+        return g.played && g.boxScore && (g.homeTeamId === gameState.userTeamId || g.awayTeamId === gameState.userTeamId);
+      })
+      .slice(-BOX_SCORE_KEEP_LIMIT)
+      .forEach(function (g) { userGameIds[g.id] = true; });
+  }
+
   const seasonOut = gameState.season ? {
     games: gameState.season.games.map(function (g) {
-      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      const out = { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      if (userGameIds[g.id]) {
+        out.boxScore = g.boxScore;
+        // Same "user's own games only" pruning as boxScore above, and for the
+        // same reason — a full season of possession-engine play-by-play
+        // (~90 lines/team/game) would dwarf the save otherwise. Everyone
+        // else's games save as null/absent, same as their box scores.
+        out.playByPlay = g.playByPlay || null;
+      }
+      return out;
     }),
     currentDay: gameState.season.currentDay
   } : null;
@@ -94,8 +143,73 @@ function serializeGameState(gameState, name) {
     automation: gameState.automation,
     feed: gameState.feed || [],
     draftSession: gameState.draftSession || null,
-    leagueHistory: _SAVE_DATA.history.LEAGUE_HISTORY
+    leagueHistory: _SAVE_DATA.history.LEAGUE_HISTORY,
+
+    // v2 fields. Everything below was live GameState that the original
+    // payload never captured, so a reload silently dropped it: a career-mode
+    // game reverted to GM mode, the trade inbox emptied, and All-Star results
+    // and commissioner rewind snapshots vanished.
+    tradeOffers: gameState.tradeOffers || [],
+    allStarWeekend: gameState.allStarWeekend || null,
+    automationBeforeSpectator: gameState.automationBeforeSpectator || null,
+    lastTradeGenWeek: gameState.lastTradeGenWeek,
+    lastAIToAITradeWeek: gameState.lastAIToAITradeWeek,
+    gameMode: gameState.gameMode || null,
+    controlledPlayerId: gameState.controlledPlayerId || null,
+    playerLegacy: gameState.playerLegacy || null,
+    pendingRandomEvent: gameState.pendingRandomEvent || null,
+    careerController: serializeCareerController(gameState.playerCareerController),
+    narrativeRelationships: gameState.narrativeSystem ? gameState.narrativeSystem.npcRelationships : null,
+    seasonSnapshots: includeSnapshots ? (gameState.seasonSnapshots || []) : [],
+    godMode: gameState.godMode || { enabled: false, autoWinEnabled: false }
   };
+}
+
+// Rebuilds the career-mode class instances from the flat state serializeCareerController
+// captured. Guarded on `typeof` because save.js also runs standalone under Node in
+// scripts/validate-save.js, where the career-mode files were never loaded.
+function rehydrateCareerMode(payload, gameState) {
+  // Cleared unconditionally first: loading a GM save over a live career-mode
+  // session (or vice versa) must not leave the previous session's controllers
+  // attached to the new one.
+  gameState.playerCareerController = null;
+  gameState.narrativeSystem = null;
+  gameState.randomEventSystem = null;
+  if (payload.gameMode !== 'playerCareer') return;
+
+  if (typeof PlayerCareerController !== 'undefined') {
+    const controller = new PlayerCareerController(gameState);
+    const saved = payload.careerController || {};
+    controller.controlledPlayerId = saved.controlledPlayerId !== undefined ? saved.controlledPlayerId : payload.controlledPlayerId;
+    controller.careerPhase = saved.careerPhase || null;
+    controller.careerEvents = saved.careerEvents || [];
+    controller.decisionHistory = saved.decisionHistory || [];
+    controller.randomEventHistory = saved.randomEventHistory || [];
+    gameState.playerCareerController = controller;
+  }
+  if (typeof NarrativeSystem !== 'undefined') {
+    gameState.narrativeSystem = new NarrativeSystem(gameState);
+    gameState.narrativeSystem.npcRelationships = payload.narrativeRelationships || {};
+  }
+  if (typeof RandomEventSystem !== 'undefined') {
+    gameState.randomEventSystem = new RandomEventSystem(gameState);
+  }
+}
+
+// Shape check run BEFORE applySavedState touches anything. This matters because
+// applySavedState empties PLAYERS_2026 partway through — a payload that throws
+// after that point leaves the app with no players and no way back short of a
+// page refresh. importPayloadToSlot's own check is deliberately looser (it
+// guards the write side), so the read side needs its own.
+function validateSavePayload(payload) {
+  if (!payload || typeof payload !== 'object') return 'That save file is not readable.';
+  if (typeof payload.version === 'number' && payload.version > SAVE_FORMAT_VERSION) {
+    return 'That save was made by a newer version of the game (format ' + payload.version + ').';
+  }
+  if (!Array.isArray(payload.players) || payload.players.length === 0) return 'That save has no player data.';
+  if (!payload.teams || typeof payload.teams !== 'object') return 'That save has no team data.';
+  if (!payload.settings || typeof payload.settings !== 'object') return 'That save has no settings data.';
+  return null;
 }
 
 function applySavedState(payload, gameState) {
@@ -122,7 +236,10 @@ function applySavedState(payload, gameState) {
 
   gameState.season = payload.season ? {
     games: payload.season.games.map(function (g) {
-      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: null, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      // boxScore/playByPlay are present only for the user's own games (see
+      // serializeGameState); null for everyone else's, which
+      // renderBoxScoreDetail renders as a note rather than treating as data.
+      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: g.boxScore || null, playByPlay: g.playByPlay || null, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
     }),
     currentDay: payload.season.currentDay
   } : null;
@@ -136,8 +253,18 @@ function applySavedState(payload, gameState) {
   gameState.settings = payload.settings;
   // Guards against save files written before settings.leagueYear existed —
   // league.js's simulateDate reads the season year off settings, not GameState.
+  // The `|| 2026` matters for saves taken before initSeason started setting
+  // leagueYear explicitly: without it, `undefined` propagates into settings and
+  // every leagueYear stamped on feed/history entries for the rest of the
+  // session falls back independently.
+  if (!gameState.leagueYear) gameState.leagueYear = 2026;
   if (gameState.settings) gameState.settings.leagueYear = gameState.leagueYear;
   gameState.playMode = payload.playMode || 'gm';
+  // Deliberately all-off, and deliberately NOT script.js's defaultAutomation().
+  // This branch only runs for a payload predating the automation field, i.e. a
+  // save played with nothing automated — so all-off reproduces how that game
+  // actually ran. A new game's defaults are a different question, answered in
+  // script.js.
   gameState.automation = payload.automation || { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: false, autoScout: false };
   gameState.feed = payload.feed || [];
   gameState.draftSession = payload.draftSession || null;
@@ -147,9 +274,30 @@ function applySavedState(payload, gameState) {
     gameState.rng.setState(payload.rngState);
   }
 
-  gameState.lastDraftResults = payload.lastDraftResults.map(function (r) {
-    return { teamId: r.teamId, prospect: _SAVE_DATA.league.getPlayerById(r.playerId), pickNumber: r.pickNumber, round: r.round };
-  });
+  // Defaulted and filtered: a v1 save predating this field has no array at all,
+  // and a player referenced by a stored pick can since have been deleted
+  // (commissioner) — either way ui/draft.js's renderDraftResults reads
+  // r.prospect.name and would throw on the gap.
+  gameState.lastDraftResults = (payload.lastDraftResults || [])
+    .map(function (r) {
+      return { teamId: r.teamId, prospect: _SAVE_DATA.league.getPlayerById(r.playerId), pickNumber: r.pickNumber, round: r.round };
+    })
+    .filter(function (r) { return !!r.prospect; });
+
+  // v2 fields — all defaulted so a v1 payload restores to the same state it
+  // would have produced before these were tracked.
+  gameState.tradeOffers = payload.tradeOffers || [];
+  gameState.allStarWeekend = payload.allStarWeekend || null;
+  gameState.automationBeforeSpectator = payload.automationBeforeSpectator || null;
+  gameState.lastTradeGenWeek = payload.lastTradeGenWeek;
+  gameState.lastAIToAITradeWeek = payload.lastAIToAITradeWeek;
+  gameState.gameMode = payload.gameMode || null;
+  gameState.controlledPlayerId = payload.controlledPlayerId || null;
+  gameState.playerLegacy = payload.playerLegacy || null;
+  gameState.pendingRandomEvent = payload.pendingRandomEvent || null;
+  gameState.godMode = payload.godMode || { enabled: false, autoWinEnabled: false };
+  if (payload.seasonSnapshots) gameState.seasonSnapshots = payload.seasonSnapshots;
+  rehydrateCareerMode(payload, gameState);
 
   // Older saves (pre-Phase 8) won't have this field — leave LEAGUE_HISTORY at
   // its default empty-arrays state rather than crashing on a missing key.
@@ -176,23 +324,28 @@ function writeSaveIndex(index) {
   _SAVE_DATA.storage.setItem(SAVE_INDEX_KEY, JSON.stringify(index));
 }
 
+// Reads the team off the PAYLOAD, not the live TEAMS array. They're the same
+// object for saveToSlot, but importPayloadToSlot and cloneSlot write a payload
+// from another league entirely — sourcing the record from live TEAMS made an
+// imported slot advertise the current session's name and W/L.
 function slotMetadata(slotId, payload) {
-  const team = _SAVE_DATA.teams.TEAMS.find(function (t) { return t.id === payload.userTeamId; });
+  const savedTeam = payload.teams ? payload.teams[payload.userTeamId] : null;
+  const record = (savedTeam && savedTeam.record) || { wins: 0, losses: 0 };
   return {
     slotId: slotId,
     name: payload.name,
     teamId: payload.userTeamId,
-    teamName: team ? team.name : 'Unknown',
+    teamName: savedTeam ? savedTeam.name : 'Unknown',
     leagueYear: payload.leagueYear,
     day: payload.season ? payload.season.currentDay : null,
-    wins: team ? team.record.wins : 0,
-    losses: team ? team.record.losses : 0,
+    wins: record.wins || 0,
+    losses: record.losses || 0,
     savedAt: payload.savedAt
   };
 }
 
 function saveToSlot(slotId, name, gameState) {
-  const payload = serializeGameState(gameState, name);
+  const payload = serializeGameState(gameState, name, true);
   try {
     _SAVE_DATA.storage.setItem(saveSlotKey(slotId), JSON.stringify(payload));
   } catch (e) {
@@ -207,7 +360,14 @@ function saveToSlot(slotId, name, gameState) {
 function loadFromSlot(slotId, gameState) {
   const raw = _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
   if (!raw) return { success: false, reason: 'No save found in that slot.' };
-  const payload = JSON.parse(raw);
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (e) {
+    return { success: false, reason: 'That save is corrupted and could not be read.' };
+  }
+  const invalid = validateSavePayload(payload);
+  if (invalid) return { success: false, reason: invalid };
   applySavedState(payload, gameState);
   return { success: true };
 }
@@ -229,9 +389,8 @@ function getRawSlotPayload(slotId) {
 // file import (ui/saveLoad.js's Import button) and league cloning below,
 // neither of which starts from a live GameState the way saveToSlot does.
 function importPayloadToSlot(slotId, payload) {
-  if (!payload || typeof payload !== 'object' || !payload.players || !payload.teams) {
-    return { success: false, reason: 'That file does not look like a valid save.' };
-  }
+  const invalid = validateSavePayload(payload);
+  if (invalid) return { success: false, reason: invalid };
   try {
     _SAVE_DATA.storage.setItem(saveSlotKey(slotId), JSON.stringify(payload));
   } catch (e) {
@@ -249,7 +408,12 @@ function importPayloadToSlot(slotId, payload) {
 function cloneSlot(sourceSlotId, targetSlotId, newName) {
   const raw = _SAVE_DATA.storage.getItem(saveSlotKey(sourceSlotId));
   if (!raw) return { success: false, reason: 'No save found in that slot.' };
-  const payload = JSON.parse(raw);
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch (e) {
+    return { success: false, reason: 'That save is corrupted and could not be read.' };
+  }
   payload.name = newName || (payload.name + ' (Copy)');
   payload.savedAt = Date.now();
   return importPayloadToSlot(targetSlotId, payload);
@@ -362,6 +526,8 @@ if (typeof module !== 'undefined' && module.exports) {
     saveSlotKey: saveSlotKey,
     serializeGameState: serializeGameState,
     applySavedState: applySavedState,
+    validateSavePayload: validateSavePayload,
+    serializeCareerController: serializeCareerController,
     saveToSlot: saveToSlot,
     loadFromSlot: loadFromSlot,
     deleteSlot: deleteSlot,

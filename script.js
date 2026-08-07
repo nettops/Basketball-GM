@@ -1,3 +1,25 @@
+// Automation a NEW game starts with. The split is deliberate: automate the
+// bookkeeping, never the decisions.
+//
+// autoCap and autoScout are chores with no drama in them. autoCap only fires
+// when the roster is already illegal (over 15) — a state that must be
+// resolved anyway — and takes the obvious option, the lowest-value player.
+// autoScout spends a weekly point allowance across your own roster and
+// anything you watchlisted. Neither is a choice a player would enjoy making
+// forty times a season, and leaving them off just hands every new player a
+// standing obligation before they have any idea the Settings page exists.
+//
+// The draft, free agency and trades stay manual because they ARE the game.
+// Automating those by default would quietly play it for you. autoTrade in
+// particular auto-EXECUTES incoming offers, so defaulting it on would change
+// your roster without asking — the opposite of the point.
+//
+// Existing saves are unaffected: save.js restores whatever flags that save
+// was played under.
+function defaultAutomation() {
+  return { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: true, autoScout: true };
+}
+
 const GameState = {
   userTeamId: null,
   currentView: 'dashboard',
@@ -10,7 +32,7 @@ const GameState = {
   season: null,
   playoffBracket: null,
   playMode: 'gm', // 'gm' | 'commissioner' | 'spectator'
-  automation: { autoFreeAgency: false, autoDraft: false, autoTrade: false, autoCap: false, autoScout: false },
+  automation: defaultAutomation(),
   feed: [],
   draftSession: null,
   tradeOffers: [],
@@ -200,9 +222,13 @@ function switchPlayMode(newMode, teamId) {
       GameState.userTeamId = teamId;
     }
     if (GameState.playMode === 'spectator') {
-      const restored = GameState.automationBeforeSpectator;
+      // With no stash (started in spectator, then switched to GM) fall back to
+      // the same defaults a new game gets, not to all-off — otherwise leaving
+      // spectator silently handed the player back chores a new game would
+      // have automated for them.
+      const restored = GameState.automationBeforeSpectator || defaultAutomation();
       Object.keys(GameState.automation).forEach(function (k) {
-        GameState.automation[k] = restored ? !!restored[k] : false;
+        GameState.automation[k] = !!restored[k];
       });
       GameState.automationBeforeSpectator = null;
     }
