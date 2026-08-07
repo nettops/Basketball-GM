@@ -894,6 +894,55 @@ git commit -m "refactor: one season-rollover path for manual and fast-forward"
 
 ## Task 6: `runAdvance` — the single loop
 
+> **Deviations (executed).** Six, four of them load-bearing.
+>
+> 1. **`stepOnce` never ran the season rollover.** As drafted it returned false
+>    once a champion was crowned, so Continue reported "Nothing left to
+>    simulate" and the league could never leave the postseason — the loop was
+>    unable to reach the very rollover Tasks 1, 2 and 5 existed to build. It now
+>    has explicit offseason phases: cross draft, cross free agency, and run the
+>    rollover when a champion exists (with `stopAfterDraft` mirroring the
+>    player's own automation, so a manual drafter is handed their draft).
+> 2. **Nothing let Continue step ACROSS a boundary it was parked on.** Stops are
+>    evaluated before stepping, so halting at `seasonComplete` meant the next
+>    press re-evaluated the same still-true condition and halted again having
+>    simulated nothing. Continue would have been a dead button at exactly the
+>    moments the design says it should read `Continue -> Playoffs`. Added
+>    `ctx.crossBoundary`, true only on a run's first check, suppressing only the
+>    two boundary reasons — never an unautomated draft, never Stop.
+> 3. **"Until Title" and "N seasons" were silently dropped.** The drafted
+>    `handleSkipTo` sent both to `target: null`, which just stops at the next
+>    boundary. Added `championship`, `seasons` and `stage` target kinds to
+>    `simRunner.js`, each with tests. A championship target now runs past other
+>    teams' titles but still halts for an unautomated draft, per the design.
+> 4. **A stale boundary interrupted the offseason.** The bracket is not cleared
+>    until the new season, so `playoffsComplete` stayed true throughout and
+>    Continue halted in free agency to announce "Playoffs are over". Boundary
+>    stops are now suppressed while an offseason stage is under way.
+> 5. **Step 3's grep list was incomplete.** `scripts/validate-simControlsOffseasonGuard.js`
+>    *calls* `runMultiSeason`; the listed pattern would have found it but the
+>    step only expected comments. It has been rewritten against `runAdvance` —
+>    the regression it guards is the behaviour, not the old function name.
+> 6. **The dock was rewired now rather than in Task 7.** Deleting the handlers
+>    while `renderSimControls` still referenced them would have left this commit
+>    broken. The existing buttons keep their labels and route through
+>    `runAdvance`; the primary button becomes Stop mid-run. Task 7 still owns
+>    replacing the dock with the three controls.
+>
+> **Two bugs found while verifying, both fixed here:**
+>
+> - **`ultra` speed never worked.** Every call site read
+>   `SIM_SPEED_DELAYS_MS[speed] || SIM_SPEED_DELAYS_MS.normal`, and `ultra` is
+>   `0`, so `0 || 200` silently ran the fastest setting at normal speed — and
+>   always had. Replaced with an explicit `simSpeedDelayMs()` lookup.
+> - **A zero-delay yield via `setTimeout` is clamped in a hidden tab.** Measured
+>   in a backgrounded tab: 749ms per yield against 5.4ms to simulate a day, so a
+>   run slowed ~150x the moment the user switched tabs — while the design
+>   promises a run continues when they navigate away. `yieldToBrowser` now uses
+>   a `MessageChannel` round-trip for the zero case: still a real macrotask, so
+>   Stop lands between iterations, but not a timer (measured 0.016ms in that
+>   same hidden tab). End to end this took a 40-day advance from ~40s to 221ms.
+
 **Files:**
 - Modify: `ui/simControls.js`
 
@@ -904,7 +953,7 @@ git commit -m "refactor: one season-rollover path for manual and fast-forward"
   - `requestAdvanceStop()` — sets the flag the loop checks each iteration.
   - `isAdvanceRunning() → boolean`.
 
-- [ ] **Step 1: Write `runAdvance`**
+- [x] **Step 1: Write `runAdvance`**
 
 Add to `ui/simControls.js`, replacing `runWithDelay`:
 
@@ -996,7 +1045,7 @@ async function runAdvance(options) {
 }
 ```
 
-- [ ] **Step 2: Add the two handlers that survive, then delete the rest**
+- [x] **Step 2: Add the two handlers that survive, then delete the rest**
 
 `handleNextGame`, `handleNextDay`, `handleSimToEnd`, `handleSimToTradeDeadline`, `handleSimToDraft`, `handleSimToFreeAgency` and `runMultiSeason` all disappear — their buttons are gone in Task 7 and `runAdvance` covers every intent they expressed. `handleWatchNextGame` and `handleWatchNextPlayoffGame` stay untouched: they are the watch path, not the advance path.
 
@@ -1034,7 +1083,7 @@ Two things to preserve while deleting, both of which live only in the code being
 - `handleSimToEnd` calls `handlePlayerCareerPlayoffIntro()` when a bracket first appears. Move that into `stepOnce`, right after `generateBracket`, so career mode still gets its playoff scene.
 - `handleSimToFreeAgency` runs `runFreeAgencySilently` + `autoEnforceRosterSize` when `autoFreeAgency` is on. `runOffseasonRollover` already does both, so this needs no replacement — confirm by reading it rather than assuming.
 
-- [ ] **Step 3: Verify nothing still references the deleted functions**
+- [x] **Step 3: Verify nothing still references the deleted functions**
 
 Run: `grep -rn "runWithDelay\|runMultiSeason\|runRegularSeasonAndPlayoffsToCompletion" --include=*.js .`
 Expected: no output.
@@ -1042,7 +1091,7 @@ Expected: no output.
 Run: `node --check ui/simControls.js && for f in scripts/validate-*.js; do node "$f" > /dev/null 2>&1 || echo "FAIL: $f"; done; echo done`
 Expected: no `--check` output, `done` with no `FAIL:` lines.
 
-- [ ] **Step 4: Verify interruption in the browser**
+- [x] **Step 4: Verify interruption in the browser**
 
 Run: `python scripts/devserver.py 8224`
 
@@ -1055,7 +1104,7 @@ setTimeout(() => console.log('day', GameState.season.currentDay, 'running', isAd
 ```
 Expected: `running false`, and a `currentDay` well short of the season end. Under the old loop ultra speed never yielded, so this is the specific regression to prove gone.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/simControls.js

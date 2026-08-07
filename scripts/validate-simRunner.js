@@ -119,6 +119,146 @@ function checkDayTargetReached() {
 }
 checkDayTargetReached();
 
+// Continue must be able to step ACROSS a boundary it is parked on, or it is a
+// dead button exactly when the design says it should read "Continue -> Playoffs".
+function checkCrossBoundaryLetsContinueProceed() {
+  const seasonOver = baseState({ season: { games: [{ day: 0, played: true }], currentDay: 0 } });
+  const s1 = runner.evaluateStop(seasonOver, 0, NO_CONTEXT);
+  assert.ok(s1 && s1.reason === R.SEASON_COMPLETE, 'halts at the boundary during a run');
+  assert.strictEqual(runner.evaluateStop(seasonOver, 0, { crossBoundary: true }), null,
+    'but steps across it when Continue is pressed from there');
+
+  const champ = baseState({
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'BOS' }] }
+  });
+  assert.strictEqual(runner.evaluateStop(champ, 0, { crossBoundary: true }), null,
+    'the same applies to a finished postseason, so the rollover can run');
+
+  // The narrowness is the point: a draft the user has not delegated is a
+  // decision, not a boundary, and crossBoundary must not skip it.
+  const draft = baseState({ offseasonStage: 'draft' });
+  const s2 = runner.evaluateStop(draft, 0, { crossBoundary: true });
+  assert.ok(s2 && s2.reason === R.DRAFT_READY, 'an unautomated draft still stops');
+
+  // Nor may it override the user.
+  const s3 = runner.evaluateStop(seasonOver, 0, { crossBoundary: true, userStopRequested: true });
+  assert.ok(s3 && s3.reason === R.USER_STOP, 'and Stop still wins');
+  console.log('checkCrossBoundaryLetsContinueProceed: OK');
+}
+checkCrossBoundaryLetsContinueProceed();
+
+function checkChampionshipTargetRunsPastOtherChampions() {
+  const someoneElse = baseState({
+    userTeamId: 'BOS',
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'LAL' }] }
+  });
+  const ctx = { target: { kind: 'championship' }, userStopRequested: false };
+  assert.strictEqual(runner.evaluateStop(someoneElse, 0, ctx), null,
+    'another team winning is just a season boundary to roll through');
+
+  const us = baseState({
+    userTeamId: 'BOS',
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'BOS' }] }
+  });
+  const stop = runner.evaluateStop(us, 0, ctx);
+  assert.ok(stop && stop.reason === R.TARGET_REACHED, 'the user winning ends the run');
+  assert.strictEqual(stop.label, 'You won the title', 'and says so');
+
+  // The design is explicit that a skip halts early for a decision rather than
+  // blowing past it — the old fast-forward loop did the opposite.
+  const draftMidRun = baseState({ userTeamId: 'BOS', offseasonStage: 'draft' });
+  const s2 = runner.evaluateStop(draftMidRun, 0, ctx);
+  assert.ok(s2 && s2.reason === R.DRAFT_READY, 'an unautomated draft still interrupts a title run');
+  console.log('checkChampionshipTargetRunsPastOtherChampions: OK');
+}
+checkChampionshipTargetRunsPastOtherChampions();
+
+function checkSeasonsTargetCountsLeagueYears() {
+  const ctx = { target: { kind: 'seasons', untilYear: 2029, label: '3 seasons' }, userStopRequested: false };
+  const midRun = baseState({
+    leagueYear: 2027,
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'LAL' }] }
+  });
+  assert.strictEqual(runner.evaluateStop(midRun, 0, ctx), null,
+    'rolls through season boundaries until the year is reached');
+
+  const arrived = baseState({ leagueYear: 2029 });
+  const stop = runner.evaluateStop(arrived, 0, ctx);
+  assert.ok(stop && stop.reason === R.TARGET_REACHED, 'stops on the target year');
+  assert.strictEqual(stop.label, 'Reached 3 seasons', 'and reports the target');
+  console.log('checkSeasonsTargetCountsLeagueYears: OK');
+}
+checkSeasonsTargetCountsLeagueYears();
+
+// The user's own title is the one result worth naming.
+function checkUserTitleIsNamedOnAPlainContinue() {
+  const gs = baseState({
+    userTeamId: 'BOS',
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'BOS' }] }
+  });
+  const stop = runner.evaluateStop(gs, 0, NO_CONTEXT);
+  assert.strictEqual(stop.label, 'You won the title', 'the user winning is named');
+
+  const other = baseState({
+    userTeamId: 'BOS',
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'LAL' }] }
+  });
+  assert.strictEqual(runner.evaluateStop(other, 0, NO_CONTEXT).label, 'Playoffs are over',
+    'someone else winning is not');
+  console.log('checkUserTitleIsNamedOnAPlainContinue: OK');
+}
+checkUserTitleIsNamedOnAPlainContinue();
+
+// The bracket survives into the offseason (the season summary reads it), so a
+// crowned champion stays true the whole way through. Those boundaries are
+// behind us by then and must not interrupt an automated offseason.
+function checkOffseasonStagesSuppressStaleBoundaries() {
+  const inFreeAgency = baseState({
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'OKC' }] },
+    offseasonStage: 'freeagency',
+    automation: { autoDraft: true, autoFreeAgency: true }
+  });
+  assert.strictEqual(runner.evaluateStop(inFreeAgency, 0, NO_CONTEXT), null,
+    'an automated free agency is not interrupted to announce the playoffs are over');
+
+  const atDraft = baseState({
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'OKC' }] },
+    offseasonStage: 'draft',
+    automation: { autoDraft: true, autoFreeAgency: true }
+  });
+  assert.strictEqual(runner.evaluateStop(atDraft, 0, NO_CONTEXT), null,
+    'nor an automated draft');
+
+  // The stages' own stops must still fire — this suppresses the stale
+  // boundary, not the real decision.
+  const manualFA = baseState({
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'OKC' }] },
+    offseasonStage: 'freeagency',
+    automation: { autoDraft: true, autoFreeAgency: false }
+  });
+  const stop = runner.evaluateStop(manualFA, 0, NO_CONTEXT);
+  assert.ok(stop && stop.reason === R.FREE_AGENCY_READY, 'an unautomated free agency still stops');
+
+  // And with no offseason under way the boundary is the correct answer.
+  const justCrowned = baseState({
+    season: { games: [{ day: 0, played: true }], currentDay: 0 },
+    playoffBracket: { finals: [{ winner: 'OKC' }] }
+  });
+  const s2 = runner.evaluateStop(justCrowned, 0, NO_CONTEXT);
+  assert.ok(s2 && s2.reason === R.PLAYOFFS_COMPLETE, 'the boundary still reports when it is current');
+  console.log('checkOffseasonStagesSuppressStaleBoundaries: OK');
+}
+checkOffseasonStagesSuppressStaleBoundaries();
+
 function checkContextIsOptional() {
   // The loop always passes a context, but a missing one must not throw —
   // this function is the single gate every advance runs through.

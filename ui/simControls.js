@@ -1,42 +1,269 @@
 const SIM_SPEED_DELAYS_MS = { slow: 500, normal: 200, fast: 50, ultra: 0 };
 
+// NOT `SIM_SPEED_DELAYS_MS[speed] || SIM_SPEED_DELAYS_MS.normal`, which is how
+// this was written everywhere before. ultra is 0, and `0 || 200` is 200 — so
+// the fastest setting silently ran at normal speed and had done all along.
+// An unknown/absent value still needs the fallback, hence the explicit check.
+function simSpeedDelayMs(speed) {
+  return Object.prototype.hasOwnProperty.call(SIM_SPEED_DELAYS_MS, speed)
+    ? SIM_SPEED_DELAYS_MS[speed]
+    : SIM_SPEED_DELAYS_MS.normal;
+}
+
 function delay(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+// The advance loop's yield. For a real pacing delay this is just a timer, but
+// a ZERO delay must not be one: browsers clamp timers in a hidden tab to
+// ~1s, and the design says a run keeps going when the user navigates away.
+// Measured in a backgrounded tab: 749ms per setTimeout(0) yield, against
+// 5.4ms to actually simulate a day — so ultra speed became ~150x slower the
+// moment the tab lost focus. A MessageChannel round-trip is a genuine
+// macrotask, so a Stop click still lands between iterations, but it is not a
+// timer and is not clamped (measured: 0.016ms in that same hidden tab).
+function yieldToBrowser(ms) {
+  if (ms > 0) return delay(ms);
+  return new Promise(function (resolve) {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = function () { channel.port1.close(); resolve(); };
+    channel.port2.postMessage(0);
+  });
 }
 
 function isRegularSeasonComplete(season) {
   return season.games.every(function (g) { return g.played; });
 }
 
-async function runWithDelay(container, stepFn, stepsToRun) {
-  container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-  const statusEl = document.getElementById('sim-status');
-  if (statusEl) statusEl.textContent = 'Simulating...';
-  const delayMs = SIM_SPEED_DELAYS_MS[GameState.settings.simSpeed] || SIM_SPEED_DELAYS_MS.normal;
+// ---------------------------------------------------------------------------
+// The single advance loop.
+//
+// Replaces runWithDelay (one step, no stop rules) and runMultiSeason
+// (season-granular, its own stop rules). Having two loops with different
+// stopping behaviour is why the ten dock controls behaved inconsistently.
+//
+// Each iteration: evaluate the stop BEFORE stepping, step once, yield.
+// Checking before the step is load-bearing — it is what leaves the next day
+// unplayed, which is what makes "stop and go watch that game" possible.
+// Stopping after a step would mean the game the player wanted to see had
+// already been decided.
+//
+// Policy lives in simRunner.js (pure, Node-tested); this file owns only the
+// mechanism.
+// ---------------------------------------------------------------------------
+let _advanceStopRequested = false;
+let _advanceRunning = false;
 
-  for (let i = 0; i < stepsToRun; i++) {
-    stepFn();
-    if (delayMs > 0) await delay(delayMs);
-  }
+function requestAdvanceStop() { _advanceStopRequested = true; }
+function isAdvanceRunning() { return _advanceRunning; }
 
-  if (statusEl) statusEl.textContent = '';
-  renderView(GameState.currentView);
-  autosave(GameState);
+function lastDayOfSeason() {
+  return GameState.season.games.reduce(function (m, g) { return Math.max(m, g.day); }, 0);
 }
 
-async function handleNextGame() {
-  const container = document.getElementById('sim-controls');
-  if (!GameState.playoffBracket) {
-    const targetDay = getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay);
-    if (targetDay === null) return;
-    await runWithDelay(container, function () {
-      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, targetDay, GameState.settings, GameState.rng, handleDayComplete);
-    }, 1);
-  } else {
-    await runWithDelay(container, function () {
-      simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-    }, 1);
+function autoDraftEffective() {
+  return GameState.playMode === 'spectator' || GameState.automation.autoDraft;
+}
+
+function autoFreeAgencyEffective() {
+  return GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency;
+}
+
+// Advances the league exactly one unit and returns false when there is
+// nothing left to step. A "unit" is whatever the current phase advances by:
+// one day in the regular season, one game in the playoffs, one stage in the
+// offseason. Ordering matters — the phases are checked most-advanced first.
+//
+// `out` collects side effects the loop needs to know about: `out.sceneShown`
+// means something was rendered into view-content that the loop's closing
+// renderView must not paint over.
+function stepOnce(out) {
+  // --- Offseason stages -----------------------------------------------------
+  // Reaching here means the stage is automated (evaluateStop halts on the ones
+  // the player has not delegated), so crossing it is exactly one step. These
+  // mirror the "Go to Free Agency" and "Start New Season" buttons in
+  // script.js's renderView, which Task 7 removes in favour of Continue.
+  if (GameState.offseasonStage === 'draft') {
+    GameState.offseasonStage = 'freeagency';
+    if (autoFreeAgencyEffective()) {
+      runFreeAgencySilently(GameState.rng);
+      autoEnforceRosterSize(getTeamById(GameState.userTeamId));
+    }
+    return true;
   }
+  if (GameState.offseasonStage === 'freeagency') {
+    // handleAdvanceToNewSeason rather than a fresh copy of its body: it also
+    // calls enforceRosterFloors(), without which a user who clicked past free
+    // agency starts the season with most of the league under the 12-man floor.
+    handleAdvanceToNewSeason();
+    return true;
+  }
+
+  // --- Postseason -----------------------------------------------------------
+  if (GameState.playoffBracket) {
+    if (GameState.playoffBracket.finals[0] && GameState.playoffBracket.finals[0].winner) {
+      // Champion crowned: the next unit of time is the whole offseason.
+      // stopAfterDraft mirrors the player's own automation setting, so a
+      // manual drafter is handed their draft instead of having it resolved
+      // for them. The old fast-forward loop auto-drafted regardless, which is
+      // the behaviour the design deliberately drops.
+      const rollover = runOffseasonRollover(GameState, {
+        stopAfterDraft: !autoDraftEffective(),
+        onFeed: function (text) { pushToFeed(text); },
+        onCareerFollowup: GameState.gameMode === 'playerCareer'
+          ? function () { return handlePlayerCareerOffseasonFollowup(true); }
+          : null
+      });
+      if (rollover.careerSceneShown) out.sceneShown = true;
+      return true;
+    }
+    return simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng) !== null;
+  }
+
+  // --- Regular season -------------------------------------------------------
+  if (GameState.season.currentDay >= lastDayOfSeason()) {
+    if (!isRegularSeasonComplete(GameState.season)) return false;
+    GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
+
+    // Both of these lived only inside the loops being deleted and would have
+    // gone with them.
+    const madePlayoffs = GameState.playoffBracket.first.some(function (s) {
+      return s.higherSeed === GameState.userTeamId || s.lowerSeed === GameState.userTeamId;
+    });
+    if ((madePlayoffs && GameState.settings.pauseOn.madePlayoffs) ||
+        (!madePlayoffs && GameState.settings.pauseOn.missedPlayoffs)) {
+      GameState.pauseRequested = true;
+      GameState.pauseReason = madePlayoffs ? 'You made the playoffs' : 'You missed the playoffs';
+    }
+    if (handlePlayerCareerPlayoffIntro()) out.sceneShown = true;
+    return true;
+  }
+
+  GameState.season.currentDay = simulateNextDay(
+    GameState.season, GameState.season.currentDay, GameState.settings, GameState.rng, handleDayComplete);
+  return true;
+}
+
+// options: { target } — null for Continue. Resolves to the stop that ended it.
+async function runAdvance(options) {
+  const opts = options || {};
+  const statusEl = document.getElementById('sim-status');
+  _advanceStopRequested = false;
+  _advanceRunning = true;
+  GameState.pauseRequested = false;
+  GameState.pauseReason = null;
+
+  const delayMs = simSpeedDelayMs(GameState.settings.simSpeed);
+  const out = { sceneShown: false };
+  let stop = null;
+  let steps = 0;
+
+  renderSimControls(document.getElementById('sim-controls'));   // flips Continue to Stop
+
+  // Hard cap. A season is ~170 days and a bracket ~105 games, so this is far
+  // beyond any legitimate run; it exists only so a state the loop cannot
+  // advance spins for a moment rather than forever.
+  let guard = 0;
+  while (guard++ < 20000) {
+    stop = evaluateStop(GameState, GameState.season.currentDay, {
+      target: opts.target || null,
+      userStopRequested: _advanceStopRequested,
+      // Only the first check. See simRunner.js — this is what lets Continue
+      // step across a boundary it is parked on.
+      crossBoundary: steps === 0
+    });
+    if (stop) break;
+
+    // A throw inside a step must halt and say so. Without this the guard is
+    // the only thing between a broken step and 20000 attempts at it.
+    let advanced;
+    try {
+      advanced = stepOnce(out);
+    } catch (e) {
+      stop = { reason: STOP_REASONS.USER_STOP, label: 'Simulation error: ' + e.message };
+      break;
+    }
+    steps += 1;
+    if (!advanced) { stop = { reason: STOP_REASONS.SEASON_COMPLETE, label: 'Nothing left to simulate' }; break; }
+
+    // A scene the user has to acknowledge (a retirement ceremony, a playoff
+    // intro) ends the run — simming past something that asked to be read is
+    // the opposite of what a stop system is for.
+    if (out.sceneShown) { stop = { reason: STOP_REASONS.NOTABLE_EVENT, label: '' }; break; }
+
+    if (statusEl) statusEl.textContent = 'Simulating...';
+    // ALWAYS yield, including at ultra where delayMs is 0. The old loops
+    // skipped the await entirely at ultra, which froze the tab and made a run
+    // impossible to interrupt — there was no moment for a click to land.
+    await yieldToBrowser(delayMs);
+  }
+
+  _advanceRunning = false;
+  _advanceStopRequested = false;
+  stop = stop || { reason: STOP_REASONS.USER_STOP, label: 'Stopped' };
+  if (statusEl) statusEl.textContent = stop.reason === STOP_REASONS.USER_STOP ? '' : stop.label;
+
+  if (out.sceneShown) {
+    // Re-render only the dock: the scene is sitting in view-content and
+    // renderView would paint straight over it.
+    renderSimControls(document.getElementById('sim-controls'));
+  } else {
+    renderView(GameState.currentView);
+  }
+  autosave(GameState);
+  return { reason: stop.reason, label: stop.label, steps: steps };
+}
+
+function advanceTargetForDay(day, label) {
+  return { kind: 'day', day: day, label: label || ('day ' + day) };
+}
+
+async function handleContinue() {
+  if (isAdvanceRunning()) { requestAdvanceStop(); return; }
+
+  // Standing at a stage the player has to act on, Continue is a doorway
+  // rather than a simulation: take them there instead of running a loop that
+  // would stop immediately having done nothing.
+  if (GameState.offseasonStage === 'draft' && !autoDraftEffective()) return renderView('draft');
+  if (GameState.offseasonStage === 'freeagency' && !autoFreeAgencyEffective()) return renderView('freeagency');
+
+  const result = await runAdvance({ target: null });
+  if (result.reason === STOP_REASONS.DRAFT_READY) renderView('draft');
+  else if (result.reason === STOP_REASONS.FREE_AGENCY_READY) renderView('freeagency');
+  return result;
+}
+
+// kind: 'deadline' | 'days' | 'seasonEnd' | 'draft' | 'freeAgency' | 'seasons'
+// | 'championship'. Every one is the same loop with a different stop predicate.
+async function handleSkipTo(kind, quantity) {
+  const lastDay = lastDayOfSeason();
+
+  if (kind === 'deadline') {
+    return runAdvance({ target: advanceTargetForDay(Math.min(lastDay, Math.round(lastDay * 0.65)), 'the trade deadline') });
+  }
+  if (kind === 'days') {
+    return runAdvance({ target: advanceTargetForDay(Math.min(lastDay, GameState.season.currentDay + quantity), quantity + ' days') });
+  }
+  if (kind === 'seasons') {
+    return runAdvance({ target: { kind: 'seasons', untilYear: (GameState.leagueYear || 2026) + quantity, label: quantity + ' seasons' } });
+  }
+  if (kind === 'championship') {
+    return runAdvance({ target: { kind: 'championship', label: 'a title' } });
+  }
+  if (kind === 'draft' || kind === 'freeAgency') {
+    const stage = kind === 'draft' ? 'draft' : 'freeagency';
+    // With the stage automated there is no such stop to reach — the rollover
+    // runs straight through it — so the honest target is the next season.
+    const automated = kind === 'draft' ? autoDraftEffective() : autoFreeAgencyEffective();
+    const target = automated
+      ? { kind: 'seasons', untilYear: (GameState.leagueYear || 2026) + 1, label: 'the new season' }
+      : { kind: 'stage', stage: stage, label: kind === 'draft' ? 'the draft' : 'free agency' };
+    const result = await runAdvance({ target: target });
+    if (!automated) renderView(stage);
+    return result;
+  }
+  // seasonEnd / playoffsEnd: Continue's own boundary rules already stop there.
+  return runAdvance({ target: null });
 }
 
 // Watch Next Game: identical day-advance to handleNextGame, except the user's
@@ -150,214 +377,24 @@ async function handleWatchNextGame() {
   return watchGameOnDay(getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay));
 }
 
-async function handleNextDay() {
-  const container = document.getElementById('sim-controls');
-  await runWithDelay(container, function () {
-    GameState.season.currentDay = simulateNextDay(GameState.season, GameState.season.currentDay, GameState.settings, GameState.rng, handleDayComplete);
-  }, 1);
-}
-
-async function handleSimToEnd() {
-  const container = document.getElementById('sim-controls');
-  if (!GameState.playoffBracket) {
-    const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
-    // Bracket generation belongs INSIDE the runWithDelay callback: that
-    // function ends by calling renderView, so generating the bracket after it
-    // returned left the dock still labelled "Regular Season" (and the playoff
-    // view empty) until the next unrelated re-render.
-    const hadBracket = !!GameState.playoffBracket;
-    await runWithDelay(container, function () {
-      GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng, handleDayComplete);
-      if (isRegularSeasonComplete(GameState.season)) {
-        GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
-      }
-    }, 1);
-    // A career-mode player whose team just made the bracket gets the playoff
-    // milestone scene. Rendered after runWithDelay because that call ends in a
-    // renderView that would otherwise paint straight over it.
-    if (!hadBracket && GameState.playoffBracket) {
-      handlePlayerCareerPlayoffIntro();
-    }
-  } else {
-    await runWithDelay(container, function () {
-      let result = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-      while (result !== null) {
-        result = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-      }
-    }, 1);
-  }
-}
-
-async function handleSimToTradeDeadline() {
-  const container = document.getElementById('sim-controls');
-  const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
-  const deadlineDay = Math.min(lastDay, Math.round(lastDay * 0.65));
-  await runWithDelay(container, function () {
-    GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, deadlineDay, GameState.settings, GameState.rng, handleDayComplete);
-  }, 1);
-}
-
-async function runRegularSeasonAndPlayoffsToCompletion(container) {
-  const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
-  await runWithDelay(container, function () {
-    GameState.season.currentDay = simulateThroughDate(GameState.season, GameState.season.currentDay, lastDay, GameState.settings, GameState.rng, handleDayComplete);
-    if (!GameState.playoffBracket && isRegularSeasonComplete(GameState.season)) GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
-    if (GameState.playoffBracket) {
-      let g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-      while (g !== null) g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-    }
-  }, 1);
-}
-
-async function handleSimToDraft() {
-  const container = document.getElementById('sim-controls');
-  await runRegularSeasonAndPlayoffsToCompletion(container);
-  handleAdvanceToOffseason();
-}
-
-async function handleSimToFreeAgency() {
-  const container = document.getElementById('sim-controls');
-  await runRegularSeasonAndPlayoffsToCompletion(container);
-  handleAdvanceToOffseason();
-  GameState.offseasonStage = 'freeagency';
-  if (GameState.playMode === 'spectator' || GameState.automation.autoFreeAgency) {
-    runFreeAgencySilently(GameState.rng);
-    autoEnforceRosterSize(getTeamById(GameState.userTeamId));
-  }
-  renderView('freeagency');
-  autosave(GameState);
-}
-
-// Repeats season -> playoffs -> offseason (always fully auto-driven, regardless
-// of individual automation toggles — a 10+ season unattended run can't pause
-// for manual draft/FA input at every boundary) until the requested stop
-// condition. mode: 'seasons' | 'championship' | 'days'.
-async function runMultiSeason(mode, target) {
-  const container = document.getElementById('sim-controls');
-  const statusEl = document.getElementById('sim-status');
-
-  // Idempotence guard, mirroring script.js's handleAdvanceToOffseason. This
-  // loop is a second, independent season-rollover path (see the comment on
-  // its body below) that redoes finalizeSeasonHistory / runOffseasonThroughDraft
-  // / runFreeAgencySilently unconditionally from its very first iteration —
-  // it never checks whether an offseason (draft, possibly still mid-pick in
-  // manual mode; free agency) is already under way. Without this guard, a
-  // "Skip to Draft"/"Skip to Free Agency" click followed by any fast-forward
-  // button re-drafts the SAME GameState.upcomingDraftClass prospects a second
-  // time straight into PLAYERS_2026 (duplicate roster entries, salaries
-  // double-counted in payroll) and leaves any in-progress GameState.draftSession
-  // pointing at prospects whose state no longer matches reality — which is
-  // what the fast-forward controls hanging on the next interaction traces
-  // back to. The buttons are also disabled below (renderSimControls) while
-  // inOffseason, same as "Skip to...", but this guard is the actual fix:
-  // button state alone doesn't stop a second call reaching here.
-  if (GameState.offseasonStage) {
-    if (statusEl) statusEl.textContent = 'Finish the current draft / free agency before fast-forwarding.';
-    return;
-  }
-
-  container.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
-  const delayMs = SIM_SPEED_DELAYS_MS[GameState.settings.simSpeed] || SIM_SPEED_DELAYS_MS.normal;
-
-  let seasonsRun = 0;
-  const maxSeasons = mode === 'championship' ? 15 : (mode === 'seasons' ? target : Infinity);
-  let daysRemaining = mode === 'days' ? target : Infinity;
-  GameState.pauseRequested = false;
-  GameState.pauseReason = null;
-
-  while (seasonsRun < maxSeasons && daysRemaining > 0 && !GameState.pauseRequested) {
-    const lastDay = GameState.season.games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
-    const stepTarget = mode === 'days' ? Math.min(lastDay, GameState.season.currentDay + daysRemaining) : lastDay;
-    const daysBefore = GameState.season.currentDay;
-    if (statusEl) statusEl.textContent = 'Simulating season ' + (seasonsRun + 1) + '...';
-
-    // Worker-backed path (opt-in, GameState.settings.useWorkerSim — see
-    // ui/settings.js) hands each individual game's simulation math off to
-    // simWorker.js and yields to the browser between every game via the
-    // postMessage roundtrip, instead of only between whole seasons like the
-    // synchronous path below. Same bookkeeping either way (league.js's
-    // simulateDateAsync shares applyGameResult with the sync simulateDate) —
-    // this only changes WHERE the CPU-heavy game math runs, never the result.
-    const useWorker = GameState.settings.useWorkerSim && isWorkerSimAvailable();
-    GameState.season.currentDay = useWorker
-      ? await simulateThroughDateAsync(GameState.season, GameState.season.currentDay, stepTarget, GameState.settings, GameState.rng, handleDayComplete)
-      : simulateThroughDate(GameState.season, GameState.season.currentDay, stepTarget, GameState.settings, GameState.rng, handleDayComplete);
-    if (delayMs > 0) await delay(delayMs);
-    daysRemaining -= (GameState.season.currentDay - daysBefore);
-    if (GameState.pauseRequested) break;
-    if (GameState.season.currentDay < lastDay) continue; // 'days' mode hit its limit mid-season
-
-    if (!GameState.playoffBracket) {
-      GameState.playoffBracket = generateBracket(GameState.rng, GameState.settings);
-      const madePlayoffs = GameState.playoffBracket.first.some(function (s) { return s.higherSeed === GameState.userTeamId || s.lowerSeed === GameState.userTeamId; });
-      if ((madePlayoffs && GameState.settings.pauseOn.madePlayoffs) || (!madePlayoffs && GameState.settings.pauseOn.missedPlayoffs)) {
-        GameState.pauseRequested = true;
-        GameState.pauseReason = madePlayoffs ? 'You made the playoffs' : 'You missed the playoffs';
-      }
-    }
-    let g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-    while (g !== null) g = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng);
-
-    if (mode === 'championship' && GameState.playoffBracket.finals[0].winner === GameState.userTeamId) {
-      seasonsRun += 1;
-      GameState.pauseRequested = true;
-      GameState.pauseReason = 'You won the title';
-      break;
-    }
-    if (GameState.pauseRequested) { seasonsRun += 1; break; }
-
-    // The full rollover — history, draft, free agency, next schedule. This
-    // drives every fast-forward control (Sim N Seasons, Until Championship,
-    // Sim Custom Days), the long unattended runs Phase 8's history/awards
-    // tracking exists for, so it needs the same wiring as the manual path and
-    // not a cut-down version. It used to BE a second, independent copy of
-    // that wiring alongside script.js's handleAdvanceToOffseason; both now
-    // call seasonRollover.js, so they cannot drift apart.
-    const rollover = runOffseasonRollover(GameState, {
-      onFeed: function (text) { pushToFeed(text); },
-      // Career mode's own offseason step. This loop never ran it before the
-      // extraction, so fast-forwarding skipped every retirement ceremony and
-      // could retire the controlled player out of PLAYERS_2026, leaving the
-      // Career view reading "Player not found".
-      onCareerFollowup: GameState.gameMode === 'playerCareer'
-        ? function () { return handlePlayerCareerOffseasonFollowup(true); }
-        : null
-    });
-    const careerSceneShown = rollover.careerSceneShown;
-    seasonsRun += 1;
-
-    // A scene the user has to acknowledge ends the fast-forward. Returning
-    // here (rather than breaking) skips the renderView below, which would
-    // otherwise immediately paint over the scene that was just rendered.
-    if (careerSceneShown) {
-      if (statusEl) statusEl.textContent = '';
-      // Re-render just the dock, not the whole view: the buttons were disabled
-      // at the top of this function and need re-enabling, but renderView would
-      // paint over the scene we just put in view-content.
-      renderSimControls(document.getElementById('sim-controls'));
-      autosave(GameState);
-      return;
-    }
-  }
-
-  if (statusEl) statusEl.textContent = '';
-  renderView(GameState.currentView);
-  autosave(GameState);
-}
-
 function renderSimControls(container) {
   const stageLabel = GameState.playoffBracket ? 'Playoffs' : 'Regular Season';
   // Once the offseason has started, handleAdvanceToOffseason is a no-op by
   // design (see its guard) — disable the two controls that call it so the
   // button state matches what actually happens on click.
   const inOffseason = !!GameState.offseasonStage;
-  const skipDisabled = inOffseason ? ' disabled' : '';
+  const running = isAdvanceRunning();
+  // While a run is in flight the only live control is Stop. Task 7 replaces
+  // this dock wholesale; until then the buttons keep their labels and simply
+  // route through runAdvance.
+  const skipDisabled = (inOffseason || running) ? ' disabled' : '';
+  const busyDisabled = running ? ' disabled' : '';
   container.innerHTML =
     '<div class="dock-group dock-primary">' +
-      '<button id="sim-next-game" class="btn-primary">Next Game</button>' +
-      '<button id="sim-watch-game">Watch Next Game</button>' +
-      '<button id="sim-next-day">Next Day</button>' +
-      '<button id="sim-to-end">Sim to End of ' + stageLabel + '</button>' +
+      '<button id="sim-next-game" class="btn-primary">' + (running ? 'Stop' : 'Next Game') + '</button>' +
+      '<button id="sim-watch-game"' + busyDisabled + '>Watch Next Game</button>' +
+      '<button id="sim-next-day"' + busyDisabled + '>Next Day</button>' +
+      '<button id="sim-to-end"' + busyDisabled + '>Sim to End of ' + stageLabel + '</button>' +
     '</div>' +
     '<div class="dock-group">' +
       '<button id="sim-undo-btn" class="btn-ghost" title="Undo the last trade or free agent signing"' + (canUndo(GameState) ? '' : ' disabled') + '>Undo</button>' +
@@ -387,21 +424,29 @@ function renderSimControls(container) {
       '<span id="sim-status"></span>' +
     '</div>';
 
-  document.getElementById('sim-next-game').addEventListener('click', handleNextGame);
+  document.getElementById('sim-next-game').addEventListener('click', function () {
+    if (isAdvanceRunning()) return requestAdvanceStop();
+    if (GameState.playoffBracket) return runAdvance({ target: null });
+    const day = getNextGameDay(GameState.season, GameState.userTeamId, GameState.season.currentDay);
+    if (day === null) return;
+    return runAdvance({ target: advanceTargetForDay(day, 'your next game') });
+  });
   document.getElementById('sim-watch-game').addEventListener('click', handleWatchNextGame);
-  document.getElementById('sim-next-day').addEventListener('click', handleNextDay);
-  document.getElementById('sim-to-end').addEventListener('click', handleSimToEnd);
-  document.getElementById('sim-to-deadline').addEventListener('click', handleSimToTradeDeadline);
-  document.getElementById('sim-to-draft').addEventListener('click', handleSimToDraft);
-  document.getElementById('sim-to-fa').addEventListener('click', handleSimToFreeAgency);
+  document.getElementById('sim-next-day').addEventListener('click', function () {
+    runAdvance({ target: advanceTargetForDay(GameState.season.currentDay + 1, 'the next day') });
+  });
+  document.getElementById('sim-to-end').addEventListener('click', function () { handleSkipTo('seasonEnd'); });
+  document.getElementById('sim-to-deadline').addEventListener('click', function () { handleSkipTo('deadline'); });
+  document.getElementById('sim-to-draft').addEventListener('click', function () { handleSkipTo('draft'); });
+  document.getElementById('sim-to-fa').addEventListener('click', function () { handleSkipTo('freeAgency'); });
   document.getElementById('sim-n-seasons-btn').addEventListener('click', function () {
-    runMultiSeason('seasons', Number(document.getElementById('sim-n-seasons').value));
+    handleSkipTo('seasons', Number(document.getElementById('sim-n-seasons').value));
   });
   document.getElementById('sim-until-championship').addEventListener('click', function () {
-    runMultiSeason('championship', null);
+    handleSkipTo('championship');
   });
   document.getElementById('sim-n-days-btn').addEventListener('click', function () {
-    runMultiSeason('days', Number(document.getElementById('sim-n-days').value));
+    handleSkipTo('days', Number(document.getElementById('sim-n-days').value));
   });
   document.getElementById('sim-speed').addEventListener('change', function (e) {
     GameState.settings.simSpeed = e.target.value;
@@ -418,5 +463,14 @@ function renderSimControls(container) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderSimControls: renderSimControls, runMultiSeason: runMultiSeason, watchGameOnDay: watchGameOnDay, SIM_SPEED_DELAYS_MS: SIM_SPEED_DELAYS_MS };
+  module.exports = {
+    renderSimControls: renderSimControls,
+    runAdvance: runAdvance,
+    requestAdvanceStop: requestAdvanceStop,
+    isAdvanceRunning: isAdvanceRunning,
+    handleContinue: handleContinue,
+    handleSkipTo: handleSkipTo,
+    watchGameOnDay: watchGameOnDay,
+    SIM_SPEED_DELAYS_MS: SIM_SPEED_DELAYS_MS
+  };
 }
