@@ -406,11 +406,78 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The sidebar is the project's whole deliverable, so these assert what a
+  // user can see and click rather than what exists. The last check is the one
+  // that matters: every view still reachable by clicking hubs and tabs. A view
+  // orphaned from all hubs renders perfectly when navigated to directly, so
+  // nothing else in this suite would notice it had become unreachable.
+  function checkNav() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+
+    const hubs = Array.from(document.querySelectorAll('#nav-bar .nav-item'));
+    results.push(ok('nav:hub-count', hubs.length === 7, hubs.length + ' hubs'));
+    results.push(ok('nav:hubs-reachable', hubs.every(isHitTestable),
+      hubs.filter(function (h) { return !isHitTestable(h); })
+        .map(function (h) { return h.textContent; }).join(', ') || null));
+
+    renderView('dashboard');
+    results.push(ok('nav:dashboard-has-no-tabs',
+      document.querySelectorAll('#view-tabs .view-tab').length === 0));
+
+    renderView('standings');
+    const tabs = Array.from(document.querySelectorAll('#view-tabs .view-tab'));
+    results.push(ok('nav:tabs-render-for-hub', tabs.length === 5, tabs.length + ' tabs on League'));
+    results.push(ok('nav:tabs-reachable', tabs.length > 0 && tabs.every(isHitTestable)));
+    results.push(ok('nav:active-tab-marked',
+      document.querySelectorAll('#view-tabs .view-tab.active').length === 1));
+
+    // Reached directly, not by clicking its hub — this is how the sim dock and
+    // the offseason navigate, and the highlight must still follow. Matched on
+    // data-hub rather than the label so a copy change cannot fail the test.
+    renderView('frivolities');
+    const active = document.querySelector('#nav-bar .nav-item.active');
+    results.push(ok('nav:hub-highlighted-on-direct-nav',
+      !!active && active.getAttribute('data-hub') === 'hub-records',
+      active ? active.textContent : 'none'));
+
+    renderView('playerProfile');
+    const profileHub = document.querySelector('#nav-bar .nav-item.active');
+    results.push(ok('nav:related-view-keeps-hub-highlighted',
+      !!profileHub && profileHub.getAttribute('data-hub') === 'hub-roster',
+      profileHub ? profileHub.textContent : 'none'));
+    results.push(ok('nav:related-view-has-no-tabs',
+      document.querySelectorAll('#view-tabs .view-tab').length === 0));
+
+    // Re-query by index each iteration: clicking a hub re-renders the sidebar
+    // and detaches every button captured beforehand. A detached node still
+    // fires its listener, so a cached loop looks like it works while
+    // asserting against elements no longer on the page.
+    const reachable = [];
+    const hubCount = document.querySelectorAll('#nav-bar .nav-item').length;
+    for (let i = 0; i < hubCount; i++) {
+      document.querySelectorAll('#nav-bar .nav-item')[i].click();
+      reachable.push(GameState.currentView);
+      document.querySelectorAll('#view-tabs .view-tab').forEach(function (t) {
+        reachable.push(t.getAttribute('data-view'));
+      });
+    }
+    const expected = applicableNavIds().filter(function (id) { return id !== 'commissioner'; });
+    const unreachable = expected.filter(function (id) { return reachable.indexOf(id) === -1; });
+    results.push(ok('nav:every-view-reachable', unreachable.length === 0,
+      unreachable.join(', ') || null));
+
+    renderView(startView);
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,
+    nav: checkNav,
     dock: checkDock,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
     // pixel view. From anywhere else it reports a single skip rather than
