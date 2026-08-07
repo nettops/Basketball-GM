@@ -10,13 +10,18 @@ var _LEAGUE_DATA = (typeof require !== 'undefined')
 // cycle entirely: by call time every module has finished loading.
 function _simDeps() {
   return (typeof require !== 'undefined')
-    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js'), morale: require('./morale.js'), finances: require('./finances.js') }
+    ? { simEngine: require('./simEngine.js'), fatigue: require('./fatigue.js'), injuries: require('./injuries.js'), morale: require('./morale.js'), finances: require('./finances.js'), gameSim: require('./gameSim.js'), rng: require('./rng.js') }
     : {
         simEngine: { getActiveEngine: getActiveEngine },
         fatigue: { applyFatigueForGame: applyFatigueForGame, decayFatigueForRest: decayFatigueForRest },
         injuries: { rollInjury: rollInjury, decrementInjuriesForTeamGame: decrementInjuriesForTeamGame, INJURY_SEVERITY_TIER: INJURY_SEVERITY_TIER, GAMES_TO_DAYS: GAMES_TO_DAYS },
         morale: { tickMoraleForTeamGame: tickMoraleForTeamGame },
-        finances: { tickFinancesForTeamGame: tickFinancesForTeamGame }
+        finances: { tickFinancesForTeamGame: tickFinancesForTeamGame },
+        // gameSim.js requires simEnginePossession.js, which requires this
+        // file back for getTeamRoster — so it belongs here in the LAZY block
+        // for exactly the reason described above, not in _LEAGUE_DATA.
+        gameSim: { createGameSim: createGameSim },
+        rng: { makeRng: makeRng }
       };
 }
 
@@ -179,7 +184,40 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete, watchOptio
     // proven drift-free by scripts/validate-pixel-events.js, so the recorded
     // result is a normal possession-engine result.
     let result;
-    if (watchOptions && game.id === watchOptions.gameId) {
+    if (watchOptions && watchOptions.live && game.id === watchOptions.gameId) {
+      // Live-watched: create the sim, do NOT step it, do NOT record anything.
+      // The view steps it (under user decisions) and calls finish() below.
+      //
+      // Its own rng, seeded by ONE draw from the league rng: stepping happens
+      // over minutes of wall clock, interleaved with autosaves, so a watched
+      // game sharing the league rng would make the league's future depend on
+      // when the user happened to click, and would let a mid-watch save
+      // capture an rng state from inside a game that was never recorded.
+      const watchRng = deps.rng.makeRng(Math.floor(rng() * 2147483647));
+      const sim = deps.gameSim.createGameSim(game.homeTeamId, game.awayTeamId, watchRng,
+        { events: watchOptions.events });
+      let finished = false;
+      watchOptions.liveGame = {
+        sim: sim,
+        game: game,
+        finish: function () {
+          if (finished) return false;
+          finished = true;
+          const lateInjuries = [];
+          const latePlaying = {};
+          applyGameResult(game, sim.result(), deps, season, dayIndex, leagueYear, latePlaying, lateInjuries, rng);
+          // The day's other results already went to the feed when this
+          // function's caller returned; this game's news lands when it is
+          // actually decided, which is also when the user learns it.
+          if (onDayComplete) onDayComplete(dayIndex, [game], lateInjuries);
+          return true;
+        }
+      };
+      playingTeamIds[game.homeTeamId] = true;
+      playingTeamIds[game.awayTeamId] = true;
+      return;
+    }
+    if (watchOptions && !watchOptions.live && game.id === watchOptions.gameId) {
       const watchEngine = deps.simEngine.getActiveEngine({ simEngine: 'possession' });
       result = watchEngine.simulateGame(game.homeTeamId, game.awayTeamId, rng, { events: watchOptions.events });
     } else {

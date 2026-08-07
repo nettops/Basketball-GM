@@ -106,12 +106,12 @@ async function watchGameOnDay(targetDay) {
     return g.day === targetDay && !g.played && (g.homeTeamId === GameState.userTeamId || g.awayTeamId === GameState.userTeamId);
   });
   const events = [];
-  simulateDate(GameState.season, targetDay, GameState.settings, GameState.rng, handleDayComplete,
-    userGame ? { gameId: userGame.id, events: events } : null);
+  const watch = userGame ? { gameId: userGame.id, events: events, live: true } : null;
+  simulateDate(GameState.season, targetDay, GameState.settings, GameState.rng, handleDayComplete, watch);
   GameState.season.currentDay = targetDay;
 
   if (statusEl) statusEl.textContent = '';
-  if (!userGame || events.length === 0) {
+  if (!watch || !watch.liveGame) {
     // Graceful fallback (spec): behave like a normal Next Game click.
     if (statusEl) statusEl.textContent = 'Game could not be watched — simmed normally.';
     renderView(GameState.currentView);
@@ -119,15 +119,24 @@ async function watchGameOnDay(targetDay) {
     return;
   }
 
-  setWatchSession({
-    homeTeamId: userGame.homeTeamId,
-    awayTeamId: userGame.awayTeamId,
-    events: events,
-    boxScore: userGame.boxScore,
-    homeScore: userGame.homeScore,
-    awayScore: userGame.awayScore
-  });
+  // Saving here records the day's OTHER games and the advanced day. The
+  // watched game is still unplayed and is not in the save: if the user
+  // reloads mid-watch it simply has not happened yet, which is the only
+  // consistent state available (playback lives in memory by design — see the
+  // module comment in ui/pixelGameView.js).
   autosave(GameState);
+
+  setLiveWatchSession({
+    homeTeamId: watch.liveGame.game.homeTeamId,
+    awayTeamId: watch.liveGame.game.awayTeamId,
+    events: events,
+    sim: watch.liveGame.sim,
+    userTeamId: GameState.userTeamId,
+    onFinish: function () {
+      watch.liveGame.finish();
+      autosave(GameState);
+    }
+  });
   renderView('pixelGame');
 }
 
