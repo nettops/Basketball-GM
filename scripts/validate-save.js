@@ -37,17 +37,44 @@ function makeFakeGameState(overrides) {
   }, overrides || {});
 }
 
-function checkSerializeDropsBoxScore() {
+// Box scores are kept for the USER's games (so ui/schedule.js's expandable box
+// score still works after a reload) and dropped for everyone else's (so a save
+// doesn't carry ~1230 games' worth of player lines). Dropping them wholesale is
+// what made every played row in a reloaded save expand to an empty panel.
+function checkSerializeKeepsUserBoxScoresOnly() {
   const saveModule = require(path.join(__dirname, '..', 'save.js'));
-  const gs = makeFakeGameState();
+  const gs = makeFakeGameState({
+    season: {
+      games: [
+        { id: 'g1', homeTeamId: 'BOS', awayTeamId: 'MIA', day: 0, played: true, homeScore: 110, awayScore: 100, boxScore: { 'bos-jayson-tatum': { points: 30 } }, isPlayoff: false, seriesId: null },
+        { id: 'g2', homeTeamId: 'LAL', awayTeamId: 'GSW', day: 0, played: true, homeScore: 105, awayScore: 99, boxScore: { 'lal-luka-doncic': { points: 40 } }, isPlayoff: false, seriesId: null },
+        { id: 'g3', homeTeamId: 'BOS', awayTeamId: 'NYK', day: 1, played: false, homeScore: null, awayScore: null, boxScore: null, isPlayoff: false, seriesId: null }
+      ],
+      currentDay: 5
+    }
+  });
   const payload = saveModule.serializeGameState(gs, 'Test');
-  assert.strictEqual(payload.season.games[0].boxScore, undefined, 'serialized games should not carry boxScore');
-  assert.strictEqual(payload.season.games[0].homeScore, 110, 'final score should still be present');
+  const byId = {};
+  payload.season.games.forEach(function (g) { byId[g.id] = g; });
 
-  console.log('checkSerializeDropsBoxScore: OK');
+  assert.ok(byId.g1.boxScore, "the user's own played game must keep its box score");
+  assert.strictEqual(byId.g1.boxScore['bos-jayson-tatum'].points, 30, 'the kept box score must survive intact');
+  assert.strictEqual(byId.g1.homeScore, 110, 'final score should still be present');
+  assert.strictEqual(byId.g2.boxScore, undefined, "another team's box score must not be serialized");
+  assert.strictEqual(byId.g3.boxScore, undefined, 'an unplayed game carries no box score');
+
+  // Round-trips into a usable shape rather than a null that the UI has to guard.
+  const restored = {};
+  saveModule.applySavedState(JSON.parse(JSON.stringify(payload)), restored);
+  const restoredById = {};
+  restored.season.games.forEach(function (g) { restoredById[g.id] = g; });
+  assert.ok(restoredById.g1.boxScore, "the user's box score must survive the round trip");
+  assert.strictEqual(restoredById.g2.boxScore, null, "another team's game restores with an explicit null");
+
+  console.log('checkSerializeKeepsUserBoxScoresOnly: OK');
 }
 
-checkSerializeDropsBoxScore();
+checkSerializeKeepsUserBoxScoresOnly();
 
 function checkApplyRestoresTeamsAndPlayers() {
   const saveModule = require(path.join(__dirname, '..', 'save.js'));
@@ -71,7 +98,11 @@ function checkApplyRestoresTeamsAndPlayers() {
   assert.strictEqual(teamsModule.getTeamById('BOS').chemistry, originalChemistry, 'team fields should be restored to their saved values');
   assert.strictEqual(playersModule.PLAYERS_2026.length, originalPlayerCount, 'PLAYERS_2026 should be fully replaced by the saved roster, not appended to');
   assert.strictEqual(restored.userTeamId, 'BOS');
-  assert.strictEqual(restored.season.games[0].boxScore, null, 'restored games should have boxScore explicitly nulled, not the saved (dropped) value');
+  // makeFakeGameState's single game belongs to the user's team (BOS), so its
+  // box score is deliberately kept — see checkSerializeKeepsUserBoxScoresOnly.
+  // Games belonging to other teams restore as an explicit null instead.
+  assert.deepStrictEqual(restored.season.games[0].boxScore, { 'bos-jayson-tatum': { points: 30 } },
+    "the user's own game should restore with its box score intact");
   assert.strictEqual(restored.scouting.targets['bos-jayson-tatum'].confidence, 55);
 
   console.log('checkApplyRestoresTeamsAndPlayers: OK');

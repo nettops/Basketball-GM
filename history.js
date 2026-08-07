@@ -284,12 +284,30 @@ function adjustPrestige(team, madeFinals, wonChampionship, madePlayoffs) {
   team.prestige = Math.max(PRESTIGE_MIN, Math.min(PRESTIGE_MAX, team.prestige + delta));
 }
 
+// Grouped by conference and snapshotted at championship time — team.record
+// gets zeroed out by seasonTransition.js's generateNewSeason before the user
+// necessarily gets around to viewing a season recap, so "best record" has to
+// be captured now rather than computed on demand later (same reasoning as
+// LEAGUE_HISTORY.champions/awardsHistory being permanent archives, not live
+// queries).
+function computeBestRecordByConference() {
+  const byConf = {};
+  _HISTORY_DATA.teams.TEAMS.forEach(function (t) {
+    const current = byConf[t.conference];
+    const diff = (t.record.pointsFor || 0) - (t.record.pointsAgainst || 0);
+    if (!current || t.record.wins > current.wins || (t.record.wins === current.wins && diff > current.diff)) {
+      byConf[t.conference] = { teamId: t.id, wins: t.record.wins, losses: t.record.losses, diff: diff };
+    }
+  });
+  return byConf;
+}
+
 function archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, feedSink) {
   const sink = feedSink || function () {};
   if (!playoffBracket || playoffBracket.finals.length === 0 || !playoffBracket.finals[0].complete) return;
 
   const championId = playoffBracket.finals[0].winner;
-  LEAGUE_HISTORY.champions.push({ leagueYear: leagueYear, teamId: championId });
+  LEAGUE_HISTORY.champions.push({ leagueYear: leagueYear, teamId: championId, bestRecordByConference: computeBestRecordByConference() });
 
   const playoffTeamIds = {};
   playoffBracket.first.forEach(function (s) { playoffTeamIds[s.higherSeed] = true; playoffTeamIds[s.lowerSeed] = true; });
@@ -448,6 +466,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HOF_THRESHOLD: HOF_THRESHOLD,
     archiveRetiree: archiveRetiree,
     archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige,
+    computeBestRecordByConference: computeBestRecordByConference,
     archiveTrade: archiveTrade,
     archiveDraftClass: archiveDraftClass,
     finalizeSeasonHistory: finalizeSeasonHistory,

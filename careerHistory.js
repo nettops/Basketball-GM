@@ -149,9 +149,13 @@ function recordInjuryInHistory(player, injuryType, severity, estimatedRecoveryDa
   return record;
 }
 
+// Closes the most recent still-open injury, regardless of which league year it
+// was opened in. The old `i.season === season` filter meant an injury that ran
+// past a season boundary (a season-ending one carries 999 games) could never be
+// closed, so it sat in the career history as permanently unresolved.
 function recordInjuryReturn(player, season, actualRecoveryDays) {
   const history = ensureCareerHistory(player);
-  const openInjury = history.injuryHistory.filter(function (i) { return i.season === season && i.actualRecoveryDays === null; }).pop();
+  const openInjury = history.injuryHistory.filter(function (i) { return i.actualRecoveryDays === null; }).pop();
   if (!openInjury) return null;
   openInjury.actualRecoveryDays = actualRecoveryDays;
   return openInjury;

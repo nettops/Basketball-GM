@@ -13,7 +13,7 @@ var _AUTOGM_DATA = (typeof require !== 'undefined')
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, needMultiplier: needMultiplier },
       rosterMoves: { waivePlayer: waivePlayer },
       scouting: { allocateScoutPoints: allocateScoutPoints },
-      trade: { validateRosterSizes: validateRosterSizes, evaluateTrade: evaluateTrade }
+      trade: { validateRosterSizes: validateRosterSizes, evaluateTrade: evaluateTrade, findPick: findPick }
     };
 
 // The only numeric roster constraint the game enforces today that can leave
@@ -98,6 +98,35 @@ function selectSurplusCandidate(team, roster) {
   return candidate;
 }
 
+// Greedy fallback (ZenGM's makeItWork.ts adds assets one at a time until a
+// deal balances, up to 5; ours is a two-team-only market so it's bounded to
+// exactly one extra asset). Only tried once the straight one-for-one loop
+// above has already failed for every partner — this never changes the
+// straight-swap outcome, it only recovers deals that were close but not
+// quite there, by sweetening `team`'s side with its own 2nd-round pick
+// (round 1 stays off the table; that's a bigger commitment than a bench
+// surplus-vs-need swap should cost).
+function trySweetenedOffer(team, candidate, partner, partnerRoster, rng) {
+  const ownPick = _AUTOGM_DATA.trade.findPick(team.id, 2);
+  if (!ownPick) return null;
+  for (let ri = 0; ri < partnerRoster.length; ri++) {
+    const returnPlayer = partnerRoster[ri];
+    if (_AUTOGM_DATA.tradeEvaluator.needMultiplier(returnPlayer.position, team) < 1.0) continue;
+    const proposal = {
+      participants: [team.id, partner.id],
+      assignments: [
+        { playerId: candidate.id, fromTeamId: team.id, toTeamId: partner.id },
+        { playerId: returnPlayer.id, fromTeamId: partner.id, toTeamId: team.id }
+      ],
+      pickAssignments: [{ round: 2, fromTeamId: team.id, toTeamId: partner.id }]
+    };
+    if (_AUTOGM_DATA.trade.validateRosterSizes(proposal).length > 0) continue;
+    const evaluation = _AUTOGM_DATA.trade.evaluateTrade(proposal, team.id, true);
+    if (evaluation.accepted) return { proposal: proposal, evaluation: evaluation };
+  }
+  return null;
+}
+
 function generateTradeOffer(team, rng, excludeTeamId) {
   const roster = _AUTOGM_DATA.league.getTeamRoster(team.id);
   if (roster.length <= 12) return null;
@@ -134,6 +163,13 @@ function generateTradeOffer(team, rng, excludeTeamId) {
       if (evaluation.accepted) return { proposal: proposal, evaluation: evaluation };
     }
   }
+
+  for (let pi = 0; pi < partners.length; pi++) {
+    const partner = partners[pi];
+    const sweetened = trySweetenedOffer(team, candidate, partner, _AUTOGM_DATA.league.getTeamRoster(partner.id), rng);
+    if (sweetened) return sweetened;
+  }
+
   return null;
 }
 
@@ -142,6 +178,7 @@ if (typeof module !== 'undefined' && module.exports) {
     autoEnforceRosterSize: autoEnforceRosterSize,
     autoAllocateScoutPoints: autoAllocateScoutPoints,
     generateTradeOffer: generateTradeOffer,
-    selectSurplusCandidate: selectSurplusCandidate
+    selectSurplusCandidate: selectSurplusCandidate,
+    trySweetenedOffer: trySweetenedOffer
   };
 }

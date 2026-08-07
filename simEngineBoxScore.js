@@ -147,6 +147,12 @@ function simulateTeamBoxScore(teamId, teamScore, rng) {
   roster.forEach(function (p, i) {
     const shooting = deriveShootingLine(p, points[i], rng, threePointRateDial);
     boxScore[p.id] = {
+      // Which team the player suited up for IN THIS GAME. Without it the only
+      // way to attribute a line is the player's current teamId, which goes
+      // stale the moment they're traded — the schedule's box score then drops
+      // those lines entirely. Not a SEASON_STAT_KEY, so it's ignored by
+      // accumulateSeasonStats and the career-high checks.
+      teamId: teamId,
       minutes: minutes[i],
       points: points[i],
       rebounds: rebounds[i],

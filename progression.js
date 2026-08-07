@@ -11,56 +11,171 @@ function clampRating(v) {
   return Math.max(_PROGRESSION_DATA.data.RATING_MIN, Math.min(_PROGRESSION_DATA.data.RATING_MAX, Math.round(v)));
 }
 
-// Formula-driven with randomness: young players trend toward their potential,
-// veterans decline, and a small league-wide breakout/bust roll adds emergent
-// variance on top of the age curve. `teammates` (optional) lets a Mentor on
-// the roster nudge development for players 25 and under.
-function progressPlayer(player, rng, teammates) {
+function bound(val, lo, hi) { return Math.max(lo, Math.min(hi, val)); }
+
+function gaussianRandom(rng) {
+  var u1 = rng(), u2 = rng();
+  return Math.sqrt(-2 * Math.log(u1 || 0.0001)) * Math.cos(2 * Math.PI * u2);
+}
+
+function shootingAgeModifier(age) {
+  if (age <= 27) return 0;
+  if (age <= 29) return 0.5;
+  if (age <= 31) return 1.5;
+  return 2;
+}
+
+function athleticAgeModifier(age) {
+  if (age <= 27) return 0;
+  if (age <= 30) return -2;
+  if (age <= 35) return -3;
+  if (age <= 40) return -4;
+  return -8;
+}
+
+function iqAgeModifier(age) {
+  if (age <= 21) return 4;
+  if (age <= 23) return 3;
+  if (age <= 27) return 0;
+  if (age <= 29) return 0.5;
+  if (age <= 31) return 1.5;
+  return 2;
+}
+
+function strengthAgeModifier(age) {
+  if (age <= 23) return 2;
+  if (age <= 28) return 0;
+  if (age <= 33) return -1;
+  return -2;
+}
+
+function skillAgeModifier(age) {
+  return shootingAgeModifier(age);
+}
+
+function defenseAgeModifier(age) {
+  if (age <= 21) return 2;
+  if (age <= 23) return 1;
+  if (age <= 28) return 0;
+  if (age <= 31) return -1;
+  if (age <= 35) return -2;
+  return -3;
+}
+
+function athleticDefenseAgeModifier(age) {
+  if (age <= 26) return 0;
+  if (age <= 30) return -2;
+  if (age <= 35) return -3;
+  return -5;
+}
+
+function mentalAgeModifier(age) {
+  if (age <= 25) return 1;
+  if (age <= 30) return 0;
+  return -0.5;
+}
+
+var RATING_PROFILES = {
+  insideScoring:    { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
+  midRange:         { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
+  threePoint:       { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
+  freeThrow:        { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
+  postScoring:      { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
+  passing:          { ageModifier: skillAgeModifier,            changeLimits: [-2, 5] },
+  ballHandling:     { ageModifier: skillAgeModifier,            changeLimits: [-2, 5] },
+  perimeterDefense: { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
+  interiorDefense:  { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
+  steal:            { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
+  block:            { ageModifier: athleticDefenseAgeModifier,   changeLimits: [-12, 4] },
+  offReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-2, 5] },
+  defReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-2, 5] },
+  speed:            { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
+  acceleration:     { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
+  strength:         { ageModifier: strengthAgeModifier,         changeLimits: [-3, 6] },
+  vertical:         { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
+  basketballIQ:     { ageModifier: iqAgeModifier,               changeLimits: [-3, 13] },
+  leadership:       { ageModifier: iqAgeModifier,               changeLimits: [-2, 8] },
+  workEthic:        { ageModifier: mentalAgeModifier,           changeLimits: [-2, 4] }
+};
+
+function calcBaseChange(age, rng) {
+  var val;
+  if (age <= 21)      val = 2;
+  else if (age <= 25) val = 1;
+  else if (age <= 27) val = 0;
+  else if (age <= 29) val = -1;
+  else if (age <= 31) val = -2;
+  else if (age <= 34) val = -3;
+  else if (age <= 40) val = -4;
+  else if (age <= 43) val = -5;
+  else                val = -6;
+
+  if (age <= 23)      val += bound(gaussianRandom(rng) * 5, -4, 20);
+  else if (age <= 25) val += bound(gaussianRandom(rng) * 5, -4, 10);
+  else                val += bound(gaussianRandom(rng) * 3, -2, 4);
+
+  return val;
+}
+
+function progressPlayer(player, rng, teammates, options) {
   teammates = teammates || [];
+  options = options || {};
   player.age += 1;
   player.yearsPro += 1;
-  const potentialGap = player.potential - player.overall;
 
-  let change;
-  if (player.age <= 25) {
-    change = potentialGap * 0.3 + (rng() - 0.3) * 4;
-  } else if (player.age <= 29) {
-    change = potentialGap * 0.1 + (rng() - 0.5) * 3;
-  } else {
-    const declineRate = (player.age - 29) * 0.8;
-    change = -declineRate + (rng() - 0.5) * 3;
+  var baseChange = calcBaseChange(player.age, rng);
+
+  // Potential still acts as a gravitational pull toward each young player's
+  // ceiling (tradeEvaluator/draftProspects/scouting all treat potential as a
+  // real target, not just flavor text) — layered on top of the per-rating age
+  // curves below rather than replacing them. Suppressed during
+  // estimatePotentialMonteCarlo's internal simulation runs (see below) since
+  // that function's whole purpose is to DISCOVER what potential should be —
+  // pulling toward it while estimating it would be circular.
+  if (!options.suppressPotentialPull) {
+    var potentialGap = player.potential - player.overall;
+    if (player.age <= 25) {
+      baseChange += potentialGap * 0.15;
+    } else if (player.age <= 29) {
+      baseChange += potentialGap * 0.05;
+    }
   }
 
-  const breakoutRoll = rng();
-  if (breakoutRoll < 0.03) {
-    change += 8;
-  } else if (breakoutRoll > 0.97) {
-    change -= 8;
-  }
+  var breakoutRoll = rng();
+  if (breakoutRoll < 0.03) baseChange += 8;
+  else if (breakoutRoll > 0.97) baseChange -= 8;
 
-  // Trait/personality modifiers, gated by coach fit: a player whose skill
-  // lean matches their coach's specialty gets more out of being Coachable
-  // (or is hurt less by being Stubborn) than a mismatched pairing would.
-  const team = player.teamId ? _PROGRESSION_DATA.teams.getTeamById(player.teamId) : null;
-  const fit = team ? _PROGRESSION_DATA.coaches.coachFitMultiplier(team.coach, player) : 1;
-  change += _PROGRESSION_DATA.traits.getTraitBonus(player, 'progression', 'self') * 0.3;
+  var team = (!options.suppressPotentialPull && player.teamId) ? _PROGRESSION_DATA.teams.getTeamById(player.teamId) : null;
+  var fit = team ? _PROGRESSION_DATA.coaches.coachFitMultiplier(team.coach, player) : 1;
+  baseChange += _PROGRESSION_DATA.traits.getTraitBonus(player, 'progression', 'self') * 0.3;
   if (player.hiddenPersonality && player.hiddenPersonality.coachability !== undefined) {
-    change += (player.hiddenPersonality.coachability - 50) / 50 * 1.5 * fit;
+    baseChange += (player.hiddenPersonality.coachability - 50) / 50 * 1.5 * fit;
   }
-  if (player.age <= 25) {
-    const mentorBonus = teammates.reduce(function (sum, tm) {
+  if (player.age <= 25 && !options.suppressPotentialPull) {
+    var mentorBonus = teammates.reduce(function (sum, tm) {
       return sum + _PROGRESSION_DATA.traits.getTraitBonus(tm, 'progression', 'teammate');
     }, 0);
-    change += Math.min(3, mentorBonus * 0.2);
+    baseChange += Math.min(3, mentorBonus * 0.2);
   }
 
-  const newOverall = clampRating(player.overall + change);
-  player.overall = newOverall;
-  player.potential = Math.max(player.potential, newOverall); // invariant: potential >= overall
+  baseChange *= 1 + (baseChange > 0 ? 1 : -1) * (fit - 1) * 0.3;
 
+  var changeSum = 0;
   _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
-    player.attributes[key] = clampRating(player.attributes[key] + change);
+    var profile = RATING_PROFILES[key];
+    var ageMod = profile ? profile.ageModifier(player.age) : 0;
+    var limits = profile ? profile.changeLimits : [-5, 10];
+    var ratingChange = bound(
+      (baseChange + ageMod) * (0.4 + rng() * 1.0),
+      limits[0], limits[1]
+    );
+    player.attributes[key] = clampRating(player.attributes[key] + ratingChange);
+    changeSum += ratingChange;
   });
+
+  var avgChange = changeSum / _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.length;
+  player.overall = clampRating(player.overall + avgChange);
+  player.potential = Math.max(player.potential, player.overall);
 
   applyCareerModeTraining(player);
 }
@@ -94,6 +209,46 @@ function applyCareerModeTraining(player) {
   pending.applied = true;
 }
 
+const MONTE_CARLO_SIMULATIONS = 20; // ZenGM's develop.ts uses the same count — enough samples without being slow
+const MONTE_CARLO_TARGET_AGE = 29; // player.js:develop's own convention: aging is simulated up to (not including) 29
+
+// Estimates a prospect's realistic ceiling by actually simulating their
+// career forward with progressPlayer, rather than a flat rank-based formula.
+// Only meaningful for players who HAVEN'T developed yet (procedurally
+// generated future draft prospects) — real players-2026.js rosters and the
+// hand-authored 2026 draft class already carry scouting-judgment potential
+// values that this would be wrong to overwrite. Runs MONTE_CARLO_SIMULATIONS
+// independent trajectories on throwaway copies (never touches the real
+// player object) up to age 29, takes the max overall reached in each one,
+// and returns the 75th percentile across runs — same "high but not the
+// absolute ceiling of luck" percentile ZenGM's monteCarloPot uses.
+function estimatePotentialMonteCarlo(player, rng) {
+  if (player.age >= MONTE_CARLO_TARGET_AGE) return player.overall;
+
+  const maxOveralls = [];
+  for (let sim = 0; sim < MONTE_CARLO_SIMULATIONS; sim++) {
+    const copy = {
+      age: player.age,
+      yearsPro: player.yearsPro,
+      overall: player.overall,
+      potential: player.overall, // unused while suppressPotentialPull is set, but keeps the invariant player.potential >= player.overall valid
+      attributes: Object.assign({}, player.attributes),
+      teamId: null,
+      hiddenPersonality: player.hiddenPersonality || {},
+      isCustomPlayer: false
+    };
+    let maxOverall = copy.overall;
+    while (copy.age < MONTE_CARLO_TARGET_AGE) {
+      progressPlayer(copy, rng, [], { suppressPotentialPull: true });
+      if (copy.overall > maxOverall) maxOverall = copy.overall;
+    }
+    maxOveralls.push(maxOverall);
+  }
+
+  maxOveralls.sort(function (a, b) { return a - b; });
+  return maxOveralls[Math.floor(0.75 * MONTE_CARLO_SIMULATIONS)];
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating };
+  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating, estimatePotentialMonteCarlo: estimatePotentialMonteCarlo };
 }

@@ -7,6 +7,7 @@ const tradeModule = require(path.join(__dirname, '..', 'trade.js'));
 const tradeEvaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
 const draftModule = require(path.join(__dirname, '..', 'draft.js'));
 const prospectsModule = require(path.join(__dirname, '..', 'draftProspects.js'));
+const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
 const seasonTransitionModule = require(path.join(__dirname, '..', 'seasonTransition.js'));
 const autoGMModule = require(path.join(__dirname, '..', 'autoGM.js'));
 const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
@@ -55,7 +56,27 @@ function checkDraftSession() {
   draftModule.advanceDraftUntilUserTurn(session, userTeamId, true);
   assert.strictEqual(session.results.length, 60, 'a full draft should still produce 60 picks total');
   assert.strictEqual(new Set(session.results.map(function (r) { return r.prospect.id; })).size, 60, 'no prospect drafted twice');
-  console.log('checkDraftSession: OK');
+
+  // The manual/session flow (script.js's handleUserDraftPick, wired through
+  // resolveCurrentPick) is a separate code path from runDraft's automatic
+  // one, and it used to only mutate the prospect object's .teamId without
+  // ever adding it to PLAYERS_2026 — the array getTeamRoster/getPlayerById/
+  // getTeamPayroll all read directly. Every manually-drafted rookie vanished
+  // instead of joining the team: it never showed up on a roster and its
+  // salary never counted against the cap.
+  session.results.forEach(function (r) {
+    assert.ok(playersModule.PLAYERS_2026.indexOf(r.prospect) !== -1,
+      r.prospect.name + ' (pick ' + r.pickNumber + ') must be merged into PLAYERS_2026, not just have .teamId set');
+    assert.strictEqual(leagueModule.getTeamRoster(r.teamId).some(function (p) { return p.id === r.prospect.id; }), true,
+      r.prospect.name + ' must actually appear on ' + r.teamId + '\'s roster');
+  });
+  const idCounts = {};
+  playersModule.PLAYERS_2026.forEach(function (p) { idCounts[p.id] = (idCounts[p.id] || 0) + 1; });
+  session.results.forEach(function (r) {
+    assert.strictEqual(idCounts[r.prospect.id], 1, r.prospect.name + ' must appear exactly once in PLAYERS_2026, not duplicated');
+  });
+
+  console.log('checkDraftSession: OK (' + session.results.length + ' picks all merged into PLAYERS_2026 exactly once)');
 }
 
 checkDraftSession();

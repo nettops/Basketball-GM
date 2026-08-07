@@ -156,6 +156,17 @@ function checkDraftOrder() {
   }
   assert.ok(worstTeamFirstPickCount / TRIALS > 0.15, 'the worst team should win the #1 pick a meaningfully large share of the time, got ' + (worstTeamFirstPickCount / TRIALS));
 
+  // The weighting must never reward winning. `(30 - wins)^2` used to invert
+  // above 30 wins and hit exactly 0 at 30, so a 45-win lottery team outweighed
+  // a 35-win one and a 30-win team could not win the lottery at all.
+  let previousWeight = Infinity;
+  for (let wins = 0; wins <= 82; wins++) {
+    const weight = draftModule.lotteryWeight({ record: { wins: wins, losses: 82 - wins } });
+    assert.ok(weight > 0, 'every lottery team must have a non-zero chance (wins=' + wins + ')');
+    assert.ok(weight <= previousWeight, 'lottery weight must never increase with wins (wins=' + wins + ')');
+    previousWeight = weight;
+  }
+
   console.log('checkDraftOrder: OK');
 }
 
@@ -393,7 +404,13 @@ function checkGenerateNewSeason() {
   const result = transitionModule.generateNewSeason(rng);
 
   assert.strictEqual(result.games.length, 1230, 'a new season should have exactly 1230 games');
-  assert.strictEqual(result.nextDraftClass.length, 60, 'generateNewSeason should also produce next year\'s 60-prospect draft class');
+  // Sized off the league, not a hardcoded 60: two rounds of one pick per team
+  // plus a small cushion, so an expansion team can't outrun the prospect pool.
+  const expectedClassSize = teamsModule.TEAMS.length * 2 + 4;
+  assert.strictEqual(result.nextDraftClass.length, expectedClassSize,
+    'generateNewSeason should produce a draft class sized for the current league (' + expectedClassSize + ' prospects)');
+  assert.ok(result.nextDraftClass.length >= teamsModule.TEAMS.length * 2,
+    'the draft class must cover every pick in both rounds');
   assert.strictEqual(team.record.wins, 0, 'records should reset for the new season');
   assert.strictEqual(player.seasonStats, undefined, 'season stats should clear for the new season');
   assert.strictEqual(teamsModule.getTeamById('BOS').draftPicks.length, 2, 'every team should have fresh draft picks after generating a new season');
@@ -403,4 +420,43 @@ function checkGenerateNewSeason() {
 }
 
 checkGenerateNewSeason();
+
+// runOffseasonPreDraft used to scope progression and retirement to players with
+// a teamId. progressPlayer is what increments age/yearsPro, so every player who
+// reached free agency was frozen at his current age forever and could never
+// roll retirement — the pool grew without bound and never turned over.
+function checkFreeAgentsAgeAndRetire() {
+  const transitionModule = require(path.join(__dirname, '..', 'seasonTransition.js'));
+  const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
+
+  // Park a handful of players in free agency, including one already old enough
+  // for the retirement roll to be able to reach him.
+  const sample = playersModule.PLAYERS_2026.slice(0, 5);
+  sample.forEach(function (p) { p.teamId = null; });
+  const tracked = sample[0];
+  tracked.age = 30;
+  const startingAge = tracked.age;
+  const startingYearsPro = tracked.yearsPro;
+
+  transitionModule.runOffseasonPreDraft(makeRng(9001), 2030);
+
+  assert.strictEqual(tracked.age, startingAge + 1, 'a free agent must age at the offseason like everyone else');
+  assert.strictEqual(tracked.yearsPro, startingYearsPro + 1, 'a free agent must accrue yearsPro at the offseason');
+
+  // Over enough offseasons an aging free-agent pool must actually shrink,
+  // rather than accumulating un-retirable players indefinitely.
+  const stuck = playersModule.PLAYERS_2026.filter(function (p) { return !p.teamId; });
+  stuck.forEach(function (p) { p.age = 38; });
+  const before = stuck.length;
+  assert.ok(before > 0, 'test setup should leave some free agents in the pool');
+  for (let i = 0; i < 6; i++) transitionModule.runOffseasonPreDraft(makeRng(700 + i), 2031 + i);
+  const after = playersModule.PLAYERS_2026.filter(function (p) { return !p.teamId; })
+    .filter(function (p) { return stuck.indexOf(p) !== -1; }).length;
+  assert.ok(after < before, 'aging free agents must eventually retire out of the pool, got ' + after + ' of ' + before);
+
+  console.log('checkFreeAgentsAgeAndRetire: OK');
+}
+
+checkFreeAgentsAgeAndRetire();
+
 console.log('All offseason validations passed');

@@ -21,6 +21,12 @@ const AWARD_KEYS = {
 // without hardcoding the schedule's exact game count anywhere in this file.
 const MIN_GAMES_FOR_AWARDS = 50;
 
+// Note on what "season" means here: finalizeSeasonHistory (history.js) calls
+// computeSeasonAwards AFTER the playoffs have been simulated, and playoffs.js
+// deliberately accumulates postseason production into player.seasonStats and
+// team.record (see its comment above _seriesIdCounter). So every value below —
+// per-game averages, teamWinPct, the MVP/DPOY/All-NBA races — is regular season
+// plus postseason, by design, not regular season alone.
 function eligiblePlayerEntries() {
   return _AWARDS_DATA.teams.TEAMS.reduce(function (all, team) {
     const roster = _AWARDS_DATA.league.getTeamRoster(team.id).map(function (p) { return { player: p, team: team }; });
