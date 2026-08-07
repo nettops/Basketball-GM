@@ -5,6 +5,13 @@ class NarrativeSystem {
     this.npcRelationships = {}; // Track NPC relationships
   }
 
+  // Seeded league rng rather than Math.random, so the same save replays the
+  // same lines. See RandomEventSystem._rand for the same reasoning.
+  _rand() {
+    const rng = this.gameState && this.gameState.rng;
+    return rng ? rng() : Math.random();
+  }
+
   initDialogueLibrary() {
     return {
       agent_aggressive: [
@@ -120,11 +127,11 @@ class NarrativeSystem {
     if (playerStats.isStarSeason && situation === 'contract_negotiation') {
       const starDialogues = dialogues.filter(d => /star|market|franchise|earned/i.test(d));
       if (starDialogues.length > 0) {
-        return starDialogues[Math.floor(Math.random() * starDialogues.length)];
+        return starDialogues[Math.floor(this._rand() * starDialogues.length)];
       }
     }
 
-    return dialogues[Math.floor(Math.random() * dialogues.length)];
+    return dialogues[Math.floor(this._rand() * dialogues.length)];
   }
 
   getDialogueOptions(situation) {

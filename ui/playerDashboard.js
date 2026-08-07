@@ -10,8 +10,8 @@ function renderPlayerDashboard(container, playerId) {
 
   const html = `
     <div class="view-header">
-      <h2>${player.name}</h2>
-      <span class="view-sub">${player.position} | Age ${player.age} | Season ${season}</span>
+      <h2>${escapeHtml(player.name)}</h2>
+      <span class="view-sub">${escapeHtml(player.position)} | Age ${player.age} | Season ${season}</span>
     </div>
 
     <div class="panel">
@@ -55,10 +55,10 @@ function renderPlayerDashboard(container, playerId) {
     <div class="panel">
       <div class="panel-header">Badges & Traits</div>
       <div>
-        <strong>Badges:</strong> ${player.badges.join(', ') || 'None'}
+        <strong>Badges:</strong> ${escapeHtml((player.badges || []).join(', ')) || 'None'}
       </div>
       <div style="margin-top: 10px;">
-        <strong>Traits:</strong> ${player.traits.join(', ') || 'None'}
+        <strong>Traits:</strong> ${escapeHtml((player.traits || []).join(', ')) || 'None'}
       </div>
     </div>
 
@@ -74,6 +74,10 @@ function renderPlayerDashboard(container, playerId) {
       ${pendingTrainingHtml(player)}
     </div>
 
+    ${leagueInterestHtml(player)}
+
+    ${aroundTheTeamHtml(player)}
+
     <div class="panel">
       <div class="panel-header">Quick Actions</div>
       <button class="btn btn-primary" onclick="simulateSeason()">Simulate to End of Season</button>
@@ -85,24 +89,94 @@ function renderPlayerDashboard(container, playerId) {
   container.innerHTML = html;
 }
 
+// Surfaces PlayerAwarenessModule (aiGmPlayerAwareness.js), which had no caller
+// anywhere in the app — the whole "how does the rest of the league value you"
+// model was unreachable. Instantiated lazily and cached on GameState so its
+// teamInterest tracking accumulates across a career rather than resetting on
+// every re-render.
+function leagueInterestHtml(player) {
+  if (typeof PlayerAwarenessModule === 'undefined') return '';
+  if (!GameState.playerAwareness) {
+    GameState.playerAwareness = new PlayerAwarenessModule(GameState);
+  }
+  const awareness = GameState.playerAwareness;
+  const value = awareness.evaluatePlayerValue(player.id);
+  const offers = awareness.generateTradeOffers(player.id);
+
+  const offerRows = offers.length === 0
+    ? '<tr><td colspan="2" class="kpi-sub">No teams are circling yet — keep producing.</td></tr>'
+    : offers.map(function (o) {
+        const team = getTeamById(o.fromTeamId);
+        return '<tr><td>' + escapeHtml(team ? team.name : o.fromTeamId) + '</td>' +
+          '<td>$' + o.contractOffer.salary.toLocaleString() + '/yr &times; ' + o.contractOffer.years + ' yrs</td></tr>';
+      }).join('');
+
+  return '<div class="panel"><div class="panel-header">League Interest</div>' +
+    '<div class="panel-body"><p><strong>Your market value:</strong> <span class="rating-chip">' + value + '</span></p></div>' +
+    '<table class="data-table"><tbody>' + offerRows + '</tbody></table></div>';
+}
+
+// Surfaces NarrativeSystem, which was constructed by initPlayerCareerMode but
+// had no caller anywhere — the whole dialogue library was unreachable content.
+// Each NPC's line is picked for the player's current standing: a star season
+// (by the same production blend awards.js's mvpValue uses) gets the aggressive
+// agent and the friendly GM; a quiet one gets the cautious and shrewd versions.
+const NARRATIVE_NPCS = [
+  { key: 'agent', label: 'Your Agent', hot: 'agent_aggressive', cold: 'agent_cautious' },
+  { key: 'coach', label: 'Head Coach', hot: 'coach_supportive', cold: 'coach_demanding' },
+  { key: 'gm', label: 'General Manager', hot: 'gm_friendly', cold: 'gm_shrewd' },
+  { key: 'media', label: 'Beat Reporter', hot: 'media_standard', cold: 'media_standard' }
+];
+
+function isStarSeason(player) {
+  const avg = getPlayerAverages(player);
+  return (avg.ppg + avg.rpg * 1.2 + avg.apg * 1.5) >= 25;
+}
+
+function aroundTheTeamHtml(player) {
+  const narrative = GameState.narrativeSystem;
+  if (!narrative) return '';
+  const star = isStarSeason(player);
+
+  const rows = NARRATIVE_NPCS.map(function (npc) {
+    const line = narrative.getContextualDialogue(
+      star ? npc.hot : npc.cold,
+      'contract_negotiation',
+      { isStarSeason: star }
+    );
+    narrative.recordNPCInteraction(npc.key, player.id, star ? 'star_season' : 'steady_season');
+    return '<tr><td style="white-space:nowrap;"><strong>' + escapeHtml(npc.label) + '</strong></td>' +
+      '<td>' + escapeHtml(line) + '</td></tr>';
+  }).join('');
+
+  return '<div class="panel"><div class="panel-header">Around the Team</div>' +
+    '<table class="data-table"><tbody>' + rows + '</tbody></table></div>';
+}
+
+// The controller is null outside player-career mode (and was null after any
+// reload before save.js started persisting it), so every read of it is guarded
+// rather than assumed.
 function pendingTrainingHtml(player) {
-  const pending = GameState.playerCareerController.decisionHistory
+  const controller = GameState.playerCareerController;
+  if (!controller) return '<small>Training focus is unavailable outside player-career mode.</small>';
+  const pending = (controller.decisionHistory || [])
     .filter(function (d) { return d.type === 'training' && !d.applied; })
     .slice(-1)[0];
   if (!pending) return '<small>No training focus selected for next offseason.</small>';
-  return '<small>Selected: ' + pending.decision.replace(/_/g, ' ') + ' (applies next offseason)</small>';
+  return '<small>Selected: ' + escapeHtml(pending.decision.replace(/_/g, ' ')) + ' (applies next offseason)</small>';
 }
 
 function recordTrainingDecision(trainingType) {
+  if (!GameState.playerCareerController) return;
   GameState.playerCareerController.recordDecision('training', trainingType, 'selected');
   renderPlayerDashboard(document.getElementById('view-content'), GameState.controlledPlayerId);
 }
 
-// Calls the advance loop directly rather than hunting the dock for a button.
-// This used to match on the button's label text, which only worked during the
-// regular season — the dock renamed it once a bracket existed. The dock no
-// longer has that button at all, so the coupling is gone entirely:
-// handleSkipTo is the actual interface.
+// Calls the advance loop directly rather than reaching into the dock for a
+// button. This used to click #sim-to-end, and before that matched on the
+// button's label text — both broke silently when the dock changed, which is
+// twice now. handleSkipTo is the actual interface and cannot be renamed out
+// from under this without a load-time error.
 function simulateSeason() {
   if (isAdvanceRunning()) return;
   handleSkipTo('seasonEnd');

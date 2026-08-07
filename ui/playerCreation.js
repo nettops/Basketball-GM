@@ -44,7 +44,7 @@ function renderPlayerCreation(container, onPlayerCreated) {
             ${Object.entries(PLAYER_ARCHETYPES).map(([key, arch]) => `
               <label style="display: block; margin: 8px 0;">
                 <input type="radio" name="archetype" value="${key}" required>
-                <strong>${arch.name}:</strong> ${arch.description}
+                <strong>${escapeHtml(arch.name)}:</strong> ${escapeHtml(arch.description)}
               </label>
             `).join('')}
           </div>
@@ -120,11 +120,15 @@ function renderPlayerCreation(container, onPlayerCreated) {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
 
-    const name = container.querySelector('#playerName').value;
+    const name = container.querySelector('#playerName').value.trim();
     const position = container.querySelector('#playerPosition').value;
     const college = container.querySelector('#playerCollege').value;
     const archetype = container.querySelector('input[name="archetype"]:checked').value;
 
+    if (!name) {
+      alert('Enter a name');
+      return;
+    }
     if (!selectedBadges.length) {
       alert('Select at least 1 badge');
       return;
@@ -134,7 +138,12 @@ function renderPlayerCreation(container, onPlayerCreated) {
       return;
     }
 
-    const controller = new PlayerCareerController(GameState);
+    // Uses the controller initPlayerCareerMode already built and stored on
+    // GameState. Constructing a second one here worked only by accident: its
+    // decisionHistory (training focus, event choices) would have been written
+    // to an object nothing else ever read.
+    const controller = GameState.playerCareerController || new PlayerCareerController(GameState);
+    GameState.playerCareerController = controller;
     const player = controller.createCustomPlayer(name, position, college, archetype, selectedBadges, selectedTraits);
 
     onPlayerCreated(player);

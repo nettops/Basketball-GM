@@ -18,7 +18,7 @@ function renderAllStarScene(context) {
     <div class="view-header"><h2>All-Star Selection - Season ${season}</h2></div>
     <div class="panel" style="text-align: center; padding: 40px;">
       <p style="font-size: 18px; margin: 20px 0;">This year's All-Star selections are in...</p>
-      <h2 style="font-size: 36px; color: #FFD700; margin: 30px 0;">${playerName}</h2>
+      <h2 style="font-size: 36px; color: #FFD700; margin: 30px 0;">${escapeHtml(playerName)}</h2>
       <p>You've been selected as an All-Star!</p>
       <p>Your career just reached a new level.</p>
       <p style="margin-top: 30px;">
@@ -33,7 +33,7 @@ function renderPlayoffScene(context) {
   return `
     <div class="view-header"><h2>Playoff ${round} - Season ${season}</h2></div>
     <div class="panel" style="padding: 30px;">
-      <p style="font-size: 18px;">Your team faces ${opponent} in ${round}.</p>
+      <p style="font-size: 18px;">Your team faces ${escapeHtml(opponent)} in ${escapeHtml(round)}.</p>
       <p style="margin: 20px 0;">This is your chance to prove yourself on the biggest stage.</p>
       <p style="margin-top: 30px;">
         <button class="btn btn-primary" onclick="dismissNarrativeScene()">Continue</button>
@@ -47,7 +47,7 @@ function renderRetirementScene(context) {
   return `
     <div class="view-header"><h2>Retirement Ceremony</h2></div>
     <div class="panel" style="text-align: center; padding: 40px;">
-      <h2 style="font-size: 32px;">${playerName}</h2>
+      <h2 style="font-size: 32px;">${escapeHtml(playerName)}</h2>
       <p style="font-size: 18px; margin: 20px 0;">A career comes to an end</p>
 
       <div style="margin: 30px 0; text-align: left; display: inline-block;">

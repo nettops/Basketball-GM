@@ -1,14 +1,26 @@
 function renderLegacyView(container) {
   if (!GameState.playerLegacy) {
-    container.innerHTML = '<div class="panel">No player career to display</div>';
+    container.innerHTML = '<div class="empty-state">No player career to display.</div>';
     return;
   }
 
   const legacy = GameState.playerLegacy;
   const hof = legacy.hallOfFame ? 'Hall of Fame Eligible' : '';
+  // getPlayerLegacySummary previously had no caller anywhere; it's the natural
+  // source for this header line, so the view reads through it rather than
+  // duplicating the same field picking inline.
+  const summary = GameState.gameMode === 'playerCareer' || GameState.playerLegacy
+    ? new PlayerToGMTransition(GameState).getPlayerLegacySummary()
+    : null;
+  const headline = summary
+    ? summary.points.toLocaleString() + ' PTS &middot; ' + summary.rebounds.toLocaleString() + ' REB &middot; ' +
+      summary.assists.toLocaleString() + ' AST &middot; ' + summary.championships + ' title' + (summary.championships === 1 ? '' : 's')
+    : '';
 
   const html = `
-    <div class="view-header"><h2>${legacy.name}</h2><span class="view-sub">${hof}</span></div>
+    <div class="view-header"><h2>${escapeHtml(legacy.name)}</h2><span class="view-sub">${hof}</span></div>
+
+    ${headline ? `<div class="panel"><div class="panel-body kpi-sub" style="text-align:center;font-size:15px;">${headline}</div></div>` : ''}
 
     <div class="panel">
       <div class="panel-header">Career Summary</div>
@@ -19,7 +31,7 @@ function renderLegacyView(container) {
         </tr>
         <tr>
           <td><strong>Teams:</strong></td>
-          <td>${legacy.teamsPlayedFor.join(', ') || 'None'}</td>
+          <td>${escapeHtml((legacy.teamsPlayedFor || []).join(', ')) || 'None'}</td>
         </tr>
         <tr>
           <td><strong>Career Points:</strong></td>

@@ -4,6 +4,15 @@ class RandomEventSystem {
     this.eventPool = this.initEventPool();
   }
 
+  // Draws from the seeded league rng (save.js captures and restores its exact
+  // position) instead of Math.random, so reloading a save and replaying an
+  // offseason produces the same events. Falls back to Math.random only if no
+  // rng exists yet, which is the pre-initSeason case.
+  _rand() {
+    const rng = this.gameState && this.gameState.rng;
+    return rng ? rng() : Math.random();
+  }
+
   initEventPool() {
     return [
       {
@@ -41,10 +50,10 @@ class RandomEventSystem {
 
   // 10-15% chance per season an event triggers
   triggerRandomEvent(playerId, season) {
-    if (Math.random() > 0.12) return null;
+    if (this._rand() > 0.12) return null;
 
-    const eventType = this.eventPool[Math.floor(Math.random() * this.eventPool.length)];
-    const trigger = eventType.triggers[Math.floor(Math.random() * eventType.triggers.length)];
+    const eventType = this.eventPool[Math.floor(this._rand() * this.eventPool.length)];
+    const trigger = eventType.triggers[Math.floor(this._rand() * eventType.triggers.length)];
 
     return {
       id: `event_${playerId}_${season}_${Date.now()}`,
