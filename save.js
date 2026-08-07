@@ -470,9 +470,9 @@ function performRedo(gameState) {
 
 const SEASON_SNAPSHOT_LIMIT = 10;
 
-// Called once per season boundary (script.js's handleAdvanceToOffseason and
-// ui/simControls.js's runMultiSeason, both right before finalizeSeasonHistory
-// runs) so "rewind to season N" restores the league exactly as that season's
+// Called once per season boundary — from seasonRollover.js, right before
+// finalizeSeasonHistory runs — so "rewind to season N" restores the league
+// exactly as that season's
 // regular-season-plus-playoffs left it. Reuses the same snapshotGameState
 // deep-clone save/load format Phase F's undo/redo already established —
 // this is a commissioner-only convenience layered on top of it, not a

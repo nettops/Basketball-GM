@@ -237,6 +237,16 @@ const UI_SMOKE = (function () {
     const results = [];
     const view = viewContent();
 
+    // This group asserts on the pixel view's own controls, so running it from
+    // anywhere else reported eight failures that only meant "wrong view" — on
+    // every single full run. A suite that always shows failures teaches you to
+    // stop reading them, which is worse than having no suite. Report the skip
+    // instead, and say how to run it for real.
+    if (typeof GameState !== 'undefined' && GameState.currentView !== 'pixelGame') {
+      return [ok('live:skipped-not-watching', true,
+        'start a watched game, then UI_SMOKE.run("live")')];
+    }
+
     const canvas = view.querySelector('#pixel-canvas');
     results.push(ok('live:canvas-visible', isVisible(canvas)));
 
@@ -321,14 +331,90 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The dock's whole point is that there is one primary action. A regression
+  // here means the ten controls crept back, or Continue became unreachable.
+  function checkDock() {
+    requireSeason();
+    const results = [];
+    const dock = document.getElementById('sim-controls');
+
+    const cont = dock.querySelector('#sim-continue');
+    results.push(ok('dock:continue-reachable', isHitTestable(cont)));
+    // The primary button is Continue, Stop mid-run, or "Your pick" while the
+    // draft is waiting on the user. Anything else means continueLabel fell
+    // through to a state it does not handle — and a wrong label here is a
+    // promise about what the next click does.
+    results.push(ok('dock:continue-labelled',
+      !!cont && /^(Continue|Stop|Your pick)/.test(cont.textContent.trim()),
+      cont ? cont.textContent : null));
+    // A disabled primary must always explain itself, or it reads as broken.
+    results.push(ok('dock:disabled-continue-is-explained',
+      !cont || !cont.disabled ||
+        /Your pick/.test(cont.textContent) ||
+        (typeof isLiveWatchPending === 'function' && isLiveWatchPending()),
+      cont ? 'disabled with label: ' + cont.textContent : null));
+
+    const watch = dock.querySelector('#sim-watch-game');
+    results.push(ok('dock:watch-reachable', isHitTestable(watch)));
+
+    const skip = dock.querySelector('#sim-skip-to');
+    results.push(ok('dock:skip-menu-reachable', isHitTestable(skip)));
+    results.push(ok('dock:skip-go-reachable', isHitTestable(dock.querySelector('#sim-skip-go'))));
+
+    // At most three elements visible at once: the quantity input stays hidden
+    // until a target that needs it is chosen.
+    const qty = dock.querySelector('#sim-skip-qty');
+    const needsQty = skip && (skip.value === 'seasons' || skip.value === 'days');
+    results.push(ok('dock:skip-qty-hidden-unless-needed',
+      !!qty && (needsQty ? !qty.hidden : qty.hidden),
+      qty ? 'value=' + (skip ? skip.value : '?') + ' hidden=' + qty.hidden : null));
+
+    // The ten controls this replaced must be gone, not hidden.
+    const retired = ['sim-next-game', 'sim-next-day', 'sim-to-end', 'sim-to-deadline',
+      'sim-to-draft', 'sim-to-fa', 'sim-n-seasons-btn', 'sim-until-championship', 'sim-n-days-btn'];
+    const survivors = retired.filter(function (id) { return !!document.getElementById(id); });
+    results.push(ok('dock:old-controls-removed', survivors.length === 0, survivors.join(', ') || null));
+
+    // ...and so must the three ceremonial offseason buttons Continue absorbed.
+    // While these existed there were two ways through the offseason, and only
+    // one of them was being maintained.
+    const ceremonial = ['advance-offseason-btn', 'advance-to-fa-btn', 'start-new-season-btn'];
+    const stillThere = ceremonial.filter(function (id) { return !!document.getElementById(id); });
+    results.push(ok('dock:ceremonial-buttons-removed', stillThere.length === 0, stillThere.join(', ') || null));
+
+    // Undo/Redo and speed are not time controls and must survive.
+    results.push(ok('dock:undo-still-present', !!document.getElementById('sim-undo-btn')));
+    results.push(ok('dock:speed-still-present', !!document.getElementById('sim-speed')));
+
+    // The status line is the only channel that tells the player WHY a run
+    // stopped, and it silently failed for the whole of this project's life:
+    // #sim-status lives inside the dock's innerHTML, so a reference captured
+    // before a re-render points at a detached node and every write vanishes.
+    // Asserting the write actually lands is the only way that stays fixed.
+    if (typeof setSimStatus === 'function') {
+      const statusEl = dock.querySelector('#sim-status');
+      const before = statusEl ? statusEl.textContent : '';
+      const sentinel = 'smoke-status-probe';
+      setSimStatus(sentinel);
+      const live = dock.querySelector('#sim-status');
+      results.push(ok('dock:status-line-receives-writes',
+        !!live && live.textContent === sentinel,
+        live ? live.textContent : 'no #sim-status'));
+      setSimStatus(before);
+    }
+
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,
+    dock: checkDock,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
-    // pixel view. It asserts on that view's controls, so running it from the
-    // dashboard reports failures that only mean "wrong view".
+    // pixel view. From anywhere else it reports a single skip rather than
+    // asserting on controls that are not on screen.
     live: checkLiveControls
   };
 

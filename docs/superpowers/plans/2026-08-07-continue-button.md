@@ -1289,10 +1289,40 @@ git commit -m "feat: dock reduced to Continue, Watch and Skip to"
 
 ## Task 8: Smoke coverage and whole-plan verification
 
+> **Deviations (executed).**
+>
+> 1. **Extra dock checks.** Beyond the planned six: the Go button is reachable,
+>    the quantity input stays hidden unless Seasons/Days is selected, the three
+>    ceremonial offseason buttons are gone, a disabled Continue always explains
+>    itself, and — most valuable — `dock:status-line-receives-writes`. That last
+>    one guards the exact bug Task 7 found: `#sim-status` lives inside the dock's
+>    `innerHTML`, so a reference held across a re-render points at a detached
+>    node and every write silently vanishes. It went unnoticed for the whole
+>    project because nothing asserted the write landed.
+> 2. **The checks were mutation-tested.** Reintroducing a retired control,
+>    holding a stale `#sim-status` reference, and covering Continue with an
+>    overlay each failed exactly one check and only that one. Assertions that
+>    cannot fail have cost this project real time before.
+> 3. **Step 2's "zero failures across every group" was not achievable.** The
+>    `live` group asserts on the pixel view's controls, so a full run always
+>    reported eight failures that only meant "wrong view" — and a suite that
+>    always shows failures teaches you to stop reading them. It now reports a
+>    single skip when not watching, and `UI_SMOKE.run()` is 100/0. Verified the
+>    skip hides nothing: with a game open the group still runs 22/22.
+> 4. **Continue was inert on the draft view.** Verification (not the plan) found
+>    it: standing on a draft that is waiting, Continue restated "Draft is ready"
+>    and did nothing, because the pick is genuinely the user's. It now reads
+>    **Your pick** and is disabled, re-enabling the moment the board is
+>    exhausted — which is what carries them on to free agency.
+> 5. **Four stale comments** in `save.js` and `script.js` still described
+>    `runMultiSeason` as a live code path. A future reader would grep for a
+>    function that no longer exists; they now name `seasonRollover.js` and
+>    `runAdvance`.
+
 **Files:**
 - Modify: `scripts/ui-smoke.js`
 
-- [ ] **Step 1: Add a `dock` group**
+- [x] **Step 1: Add a `dock` group**
 
 Following the file's rule — assert what is VISIBLE AND REACHABLE, not merely present — add:
 
@@ -1336,7 +1366,7 @@ Register it in the `GROUPS` object literal:
     live: checkLiveControls
 ```
 
-- [ ] **Step 2: Run the smoke suite**
+- [x] **Step 2: Run the smoke suite**
 
 Run: `python scripts/devserver.py 8226`, then from the console after starting a game:
 
@@ -1348,18 +1378,18 @@ Expected: all checks pass.
 Then `UI_SMOKE.run()` from a non-watch view.
 Expected: zero failures across every group.
 
-- [ ] **Step 3: Whole-plan verification**
+- [x] **Step 3: Whole-plan verification**
 
-- [ ] `for f in scripts/validate-*.js; do node "$f" || echo "FAIL: $f"; done` reports no failures.
-- [ ] `git diff c9c5231 --stat -- scripts/fixtures/gamesim-golden.json` prints nothing — the possession engine is untouched by this project.
-- [ ] `node scripts/validate-seasonRollover.js` passes, including `checkRolloverMatchesGolden`.
-- [ ] `grep -rn "runWithDelay\|runMultiSeason" --include=*.js .` returns nothing.
-- [ ] Ultra-speed runs are interruptible (Task 6, Step 4).
-- [ ] A full season can be played using only Continue, Watch Next Game and Skip to….
-- [ ] Continue is disabled while a live watched game is on screen.
-- [ ] Zero console errors across the full browser pass.
+- [x] `for f in scripts/validate-*.js; do node "$f" || echo "FAIL: $f"; done` reports no failures.
+- [x] `git diff c9c5231 --stat -- scripts/fixtures/gamesim-golden.json` prints nothing — the possession engine is untouched by this project.
+- [x] `node scripts/validate-seasonRollover.js` passes, including `checkRolloverMatchesGolden`.
+- [x] `grep -rn "runWithDelay\|runMultiSeason" --include=*.js .` returns nothing.
+- [x] Ultra-speed runs are interruptible (Task 6, Step 4).
+- [x] A full season can be played using only Continue, Watch Next Game and Skip to….
+- [x] Continue is disabled while a live watched game is on screen.
+- [x] Zero console errors across the full browser pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add scripts/ui-smoke.js

@@ -422,8 +422,14 @@ async function handleWatchNextGame() {
 function continueLabel() {
   if (isAdvanceRunning()) return 'Stop';
   if (GameState.offseasonStage === 'draft') {
-    // Only while picks remain. A finished draft crosses to free agency.
-    return draftIsWaiting() ? 'Continue → Draft' : 'Continue → Free Agency';
+    // Standing on the draft with a pick waiting, Continue has nothing it can
+    // do — the choice is the player's, and the Draft view's own buttons make
+    // it. Saying so beats a button that restates "Draft is ready" and does
+    // nothing; renderSimControls disables it to match.
+    if (draftIsWaiting()) {
+      return GameState.currentView === 'draft' ? 'Your pick' : 'Continue → Draft';
+    }
+    return 'Continue → Free Agency';   // a finished draft crosses onward
   }
   if (GameState.offseasonStage === 'freeagency') {
     // Once they are looking at free agency, the next press ends it.
@@ -511,6 +517,14 @@ function renderSimControls(container) {
   if (typeof isLiveWatchPending === 'function' && isLiveWatchPending()) {
     document.getElementById('sim-continue').disabled = true;
     document.getElementById('sim-skip-go').disabled = true;
+  }
+
+  // Likewise when the user is looking at the draft that is waiting on them:
+  // the pick is theirs to make, so Continue is genuinely unavailable rather
+  // than merely ineffective. It re-enables the moment the board is exhausted,
+  // which is what carries them on to free agency.
+  if (draftIsWaiting() && GameState.currentView === 'draft') {
+    document.getElementById('sim-continue').disabled = true;
   }
 
   // Nothing left to watch: during the offseason, and once the regular season

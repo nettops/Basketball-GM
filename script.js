@@ -107,7 +107,7 @@ function initSeason() {
   });
   GameState.season = { games: games, currentDay: -1 };
   // Postseason state has to be cleared alongside the new schedule, the same
-  // way the season-rollover paths do it (ui/simControls.js's runMultiSeason,
+  // way the season rollover does it (seasonRollover.js,
   // handleAdvanceToNewSeason). Without this, starting a new game in a session
   // that already finished one inherited the OLD bracket: the dock read
   // "Playoffs" over a day -1 regular season, the Playoffs view showed the
@@ -399,11 +399,12 @@ function handleAdvanceToOffseason(showSummary) {
 // handleAdvanceToOffseason already rendered, since a career-mode player
 // doesn't need to see the league's rookie draft results.
 // Returns true when it rendered a scene the user has to acknowledge (a
-// retirement ceremony or a pending random event). runMultiSeason uses that to
-// stop fast-forwarding rather than simming straight past it.
-// `quiet` suppresses the fall-through renderView for callers driving a loop
-// (runMultiSeason) — re-rendering the whole app once per simulated season is
-// both wasteful and visibly re-enables the sim dock mid-run.
+// retirement ceremony or a pending random event). The advance loop
+// (ui/simControls.js's runAdvance) uses that to stop rather than simming
+// straight past it.
+// `quiet` suppresses the fall-through renderView for callers driving a loop —
+// re-rendering the whole app once per simulated season is both wasteful and
+// visibly re-enables the sim dock mid-run.
 function handlePlayerCareerOffseasonFollowup(quiet) {
   const container = document.getElementById('view-content');
   const player = getPlayerById(GameState.controlledPlayerId);
