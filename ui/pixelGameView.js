@@ -251,6 +251,11 @@ function renderPixelGame(container) {
     timeoutBtn.disabled = true;
     subsBtn.disabled = true;
   } else {
+    // Claim this team's timeout decision from the auto-coach (see gameSim.js).
+    // The view offers it via a nudge and applies the coach's own decision if
+    // the offer is ignored, so the outcome is unchanged for a hands-off
+    // viewer — only the opportunity is added.
+    session.sim.userTeam = userSide;
     refreshTimeoutBtn();
     timeoutBtn.addEventListener('click', function () {
       if (!session.sim.applyDecision({ type: 'timeout', team: userSide })) return;
@@ -278,6 +283,98 @@ function renderPixelGame(container) {
       selectedOutId = null;
       refreshSubPanel();
     });
+  }
+
+  // --- Nudges -------------------------------------------------------------
+  // Nudges live on the PLAYBACK clock, not the wall clock, so they last the
+  // same number of possessions at 1x and at 8x.
+  const NUDGE_LIFETIME_MS = 6000;
+  const nudgeSlot = document.getElementById('pixel-nudge-slot');
+  let activeNudge = null;        // { kind, key, expiresAt, apply }
+  let lastNudgeKey = null;       // so one situation nudges once, not every step
+
+  function showNudge(nudge) {
+    if (!nudge || nudge.key === lastNudgeKey) return;
+    lastNudgeKey = nudge.key;
+    activeNudge = nudge;
+    activeNudge.expiresAt = playbackMs + NUDGE_LIFETIME_MS;
+    pixelRenderNudge(nudgeSlot, nudge);
+    const btn = document.getElementById('pixel-nudge-action');
+    if (btn) btn.addEventListener('click', function () {
+      nudge.apply();
+      clearNudge(false);
+    });
+  }
+
+  // `expired` distinguishes "the user ignored it" from "the user acted on
+  // it". Ignoring must leave the game exactly where the auto-coach would have
+  // put it, which is what onExpire does.
+  function clearNudge(expired) {
+    if (expired && activeNudge && activeNudge.onExpire) activeNudge.onExpire();
+    activeNudge = null;
+    pixelRenderNudge(nudgeSlot, null);
+  }
+
+  function checkNudges() {
+    if (!userSide || liveFinished) return;
+    if (activeNudge) {
+      if (playbackMs >= activeNudge.expiresAt) clearNudge(true);
+      return;
+    }
+    const sim = session.sim;
+    const other = userSide === 'home' ? 'away' : 'home';
+
+    // 1. The opponent is on a run and we still have a timeout.
+    if (sim.run.team === other && sim.run.points >= RUN_TRIGGER_POINTS && sim.timeoutsLeft[userSide] > 0) {
+      const oppName = (userSide === 'home' ? awayTeam : homeTeam).name;
+      showNudge({
+        kind: 'run',
+        key: 'run:' + other + ':' + sim.run.points,
+        text: oppName + ' on a ' + sim.run.points + '-0 run',
+        actionLabel: 'Call timeout',
+        apply: function () {
+          sim.applyDecision({ type: 'timeout', team: userSide });
+          refreshTimeoutBtn();
+        },
+        onExpire: function () {
+          // Ignored — so the coach decides exactly as it would have if the
+          // user were not watching at all.
+          if (decideTimeout(sim, userSide)) {
+            sim.applyDecision({ type: 'timeout', team: userSide });
+            refreshTimeoutBtn();
+          }
+        }
+      });
+      return;
+    }
+
+    // 2. A player on the floor is in foul trouble before the fourth quarter.
+    // The coach will sit him anyway on its own schedule; this just gives the
+    // user the chance to do it first, or to leave him in.
+    if (sim.period < 4) {
+      const box = userSide === 'home' ? sim.homeBox : sim.awayBox;
+      const introuble = sim.onCourt[userSide].find(function (id) {
+        return box[id] && box[id].fouls >= FOUL_TROUBLE && box[id].fouls < 6;
+      });
+      if (introuble) {
+        const p = playerById[introuble];
+        showNudge({
+          kind: 'fouls',
+          key: 'fouls:' + introuble + ':' + box[introuble].fouls,
+          // ui-safety: not-markup — a PLAIN TEXT field on a nudge object.
+          // pixelHud.js's pixelRenderNudge escapes it once, at the point it
+          // actually becomes HTML.
+          text: (p ? p.name : 'A starter') + ' has ' + box[introuble].fouls + ' fouls',
+          actionLabel: 'Open subs',
+          apply: function () {
+            subPanel.hidden = false;
+            subsBtn.classList.add('active');
+            selectedOutId = introuble;
+            refreshSubPanel();
+          }
+        });
+      }
+    }
   }
 
   function currentFrame() {
@@ -922,6 +1019,7 @@ function renderPixelGame(container) {
     // Step BEFORE advancing the playhead, so the frame about to be drawn is
     // never past the end of the choreographed timeline.
     stepAhead(MAX_STEPS_PER_FRAME);
+    checkNudges();
 
     if (!paused) {
       // hitchMs freezes the whole scene (make freeze-frames, quarter cards)

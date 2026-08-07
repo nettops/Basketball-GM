@@ -101,6 +101,9 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     quarter: 1,
     timeoutsLeft: { home: TIMEOUTS_PER_GAME, away: TIMEOUTS_PER_GAME },
     run: { team: null, points: 0 },
+    // Set by a watching view to the side the human is coaching. Null for
+    // every unwatched game, which is what keeps batch sims unchanged.
+    userTeam: null,
     done: false,
     playByPlay: playByPlay,
     onCourt: onCourt,
@@ -155,6 +158,14 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     });
     ['home', 'away'].forEach(function (t) {
       if (userDecided[t]) return;
+      // The watched team's timeout is the human's call FIRST. The coach reacts
+      // at the very boundary the run becomes qualifying — which is before the
+      // view can render a frame, let alone a nudge — and calling it clears
+      // sim.run, so the situation the user was meant to react to never
+      // reached the screen. A watched team's timeout is therefore left to the
+      // view, which offers it and then applies this same decision itself if
+      // the user ignores the offer.
+      if (sim.userTeam === t) return;
       if (_GAMESIM_DATA.coach.decideTimeout(sim, t)) sim.callTimeout(t);
     });
 

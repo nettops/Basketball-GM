@@ -466,4 +466,46 @@ function checkDecisionsAfterGameOverIgnored() {
 }
 checkDecisionsAfterGameOverIgnored();
 
+function checkUserTeamKeepsItsTimeoutDecision() {
+  // Without this, the coach spends the watched team's timeout at the very
+  // boundary the run becomes qualifying — before any view could render a
+  // frame — and clears sim.run, so the human is never actually offered the
+  // decision the whole nudge system exists to offer.
+  function runOut(userTeam) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(77));
+    sim.userTeam = userTeam;
+    let sawQualifyingRunAgainstHome = false;
+    while (!sim.done) {
+      if (sim.run.team === 'away' && sim.run.points >= 8 && sim.timeoutsLeft.home > 0) {
+        sawQualifyingRunAgainstHome = true;
+      }
+      sim.step();
+    }
+    return { sim: sim, sawRun: sawQualifyingRunAgainstHome };
+  }
+
+  const unwatched = runOut(null);
+  assert.ok(unwatched.sim.timeoutsLeft.home < 7,
+    'with no user team, the coach spends home timeouts as before');
+
+  const watched = runOut('home');
+  assert.strictEqual(watched.sim.timeoutsLeft.home, 7,
+    'a watched team\'s timeouts are left entirely to its view');
+  assert.ok(watched.sim.timeoutsLeft.away < 7,
+    'the OTHER team\'s coach is unaffected');
+  assert.ok(watched.sawRun,
+    'a qualifying run against the watched team actually survives to be seen');
+
+  // The view still gets to spend them through the normal decision path.
+  const decided = gameSim.createGameSim('BOS', 'LAL', makeRng(78));
+  decided.userTeam = 'home';
+  decided.step();
+  decided.applyDecision({ type: 'timeout', team: 'home' });
+  decided.step();
+  assert.strictEqual(decided.timeoutsLeft.home, 6, 'the view can still call one');
+
+  console.log('checkUserTeamKeepsItsTimeoutDecision: OK');
+}
+checkUserTeamKeepsItsTimeoutDecision();
+
 console.log('All game sim validations passed');

@@ -136,10 +136,25 @@ function pixelRenderSubPanel(panelEl, data) {
       data.bench.map(function (p) { return row(p, 'in'); }).join('') + '</div>';
 }
 
+// A nudge is a suggestion, never a prompt: it renders over the court,
+// playback keeps running behind it, and it disappears on its own. There is
+// deliberately no "dismiss" — ignoring it IS dismissing it, and a button
+// whose only job is to make the user act is the micromanagement this whole
+// design is trying to avoid.
+function pixelRenderNudge(slotEl, nudge) {
+  if (!nudge) { slotEl.innerHTML = ''; return; }
+  slotEl.innerHTML =
+    '<div class="pixel-nudge pixel-nudge-' + escapeHtml(nudge.kind) + '">' +
+      '<span class="pixel-nudge-text">' + escapeHtml(nudge.text) + '</span>' +
+      '<button id="pixel-nudge-action">' + escapeHtml(nudge.actionLabel) + '</button>' +
+    '</div>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     pixelReplayListHtml: pixelReplayListHtml,
     pixelRenderSubPanel: pixelRenderSubPanel,
+    pixelRenderNudge: pixelRenderNudge,
     pixelShellHtml: pixelShellHtml,
     pixelPushCommentary: pixelPushCommentary,
     pixelRenderInfoStrip: pixelRenderInfoStrip,
