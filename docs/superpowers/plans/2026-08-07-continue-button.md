@@ -795,13 +795,13 @@ Merges `handleAdvanceToOffseason` onto `runOffseasonRollover`. The fixture from 
 **Interfaces:**
 - Consumes: `runOffseasonRollover(gameState, deps)` from Task 1.
 
-- [ ] **Step 1: Read both implementations side by side**
+- [x] **Step 1: Read both implementations side by side**
 
 Run: `grep -n "function handleAdvanceToOffseason" -A 45 script.js` and `grep -n "runOffseasonRollover" -B 5 -A 12 ui/simControls.js`
 
 The manual path stops at the draft (`offseasonStage = 'draft'`) and may show a season summary; the auto path continues through free agency into a new season. Everything before that divergence — snapshot, clear offers, finalize history, bump the year, run the draft, archive the class — is the same work in both.
 
-- [ ] **Step 2: Give the rollover a stop point**
+- [x] **Step 2: Give the rollover a stop point**
 
 In `seasonRollover.js`, add an option so the manual path can stop after the draft. Replace the free-agency block and everything after it with:
 
@@ -830,55 +830,43 @@ In `seasonRollover.js`, add an option so the manual path can stop after the draf
   return { careerSceneShown: careerSceneShown, stoppedAfterDraft: false };
 ```
 
-- [ ] **Step 3: Add a test for the new branch**
+- [x] **Step 3: Add a test for the new branch**
 
-Append to `scripts/validate-seasonRollover.js`, before its final summary line:
+> **Deviation (executed).** The test as drafted here could not work. It built a
+> state with `buildGameState(80)` and never played a season, but `buildDraftOrder`
+> reads playoff finish order and needs a completed postseason — the same mistake
+> Task 2 already hit. It must call `playSeason(gs)` first, which in turn makes the
+> `currentDay === -1` assertion wrong (it is `lastDay` by then). The replacement
+> asserts the stronger property anyway: the schedule object is *identical* and
+> still fully played, i.e. the manual path did not quietly roll into a new season.
+> A second test was added for the injected draft. See
+> `scripts/validate-seasonRollover.js` for both as landed.
 
-```js
-function checkStopAfterDraftLeavesTheUserAtTheDraft() {
-  const gs = buildGameState(80);
-  const r = rollover.runOffseasonRollover(gs, { stopAfterDraft: true });
-  assert.strictEqual(r.stoppedAfterDraft, true, 'reports where it stopped');
-  assert.strictEqual(gs.offseasonStage, 'draft', 'the user is left at the draft');
-  assert.ok(gs.lastDraftResults && gs.lastDraftResults.length > 0, 'the draft still ran');
-  // buildGameState leaves currentDay at -1, and the manual path must NOT
-  // replace the season — so it is still the same untouched schedule.
-  assert.strictEqual(gs.season.currentDay, -1, 'no new season was generated yet');
-  console.log('checkStopAfterDraftLeavesTheUserAtTheDraft: OK');
-}
-checkStopAfterDraftLeavesTheUserAtTheDraft();
-```
+- [x] **Step 4: Point `handleAdvanceToOffseason` at the shared rollover**
 
-- [ ] **Step 4: Point `handleAdvanceToOffseason` at the shared rollover**
+> **Deviation (executed).** The caveat below was warranted: reading the real
+> function showed the drafted replacement dropped **four** live behaviours.
+>
+> 1. **The interactive draft.** With `autoDraft` off, the manual path runs
+>    `runOffseasonPreDraft` → `buildDraftOrder` → `startDraftSession` →
+>    `advanceDraftUntilUserTurn` so the user picks for themselves. The
+>    replacement always auto-drafted, which would have silently deleted manual
+>    drafting — the very thing Task 3's `DRAFT_READY` stop exists to hand them.
+> 2. **`renderSeasonSummary(finishedLeagueYear)` does not exist.** The real
+>    function is `renderSeasonSummary(container)` in `ui/seasonSummary.js`; the
+>    year travels via `GameState.summarySeasonYear` + `renderView('seasonSummary')`.
+> 3. **`renderView('draft')`** — the non-summary branch, dropped entirely.
+> 4. **`handlePlayerCareerOffseasonFollowup()`** at the end, for career mode.
+>
+> Resolution: `seasonRollover.js` gained an injected `deps.onDraft` alongside
+> `stopAfterDraft`. The draft is the one step that legitimately differs between
+> callers — because the user chose it in Settings — so it is a strategy the
+> caller supplies, not a second copy of the rollover. Everything else (snapshot,
+> clearing offers, `finalizeSeasonHistory`, the year bump) is now shared. The
+> view renders and the career followup stay in `script.js`, unchanged and in
+> their original order. See `script.js:333` as landed.
 
-In `script.js`, keep the idempotence guard and the season-summary behaviour, and replace the duplicated body between them:
-
-```js
-function handleAdvanceToOffseason(showSummary) {
-  // Idempotence guard. Both "Skip to Draft" and "Skip to Free Agency" call
-  // this and stay clickable, so without it a second click re-ran
-  // finalizeSeasonHistory for the same year: duplicate award history,
-  // all-time records counted twice, leagueYear bumped twice.
-  if (GameState.offseasonStage) return;
-
-  const finishedLeagueYear = GameState.leagueYear || 2026;
-
-  // One implementation, shared with the fast-forward path (seasonRollover.js).
-  // These were two separate bodies doing the same work, which is how a
-  // fast-forward silently diverges from a manual advance.
-  runOffseasonRollover(GameState, {
-    stopAfterDraft: true,
-    onFeed: function (text) { pushToFeed(text); }
-  });
-
-  if (showSummary) renderSeasonSummary(finishedLeagueYear);
-  autosave(GameState);
-}
-```
-
-Before editing, read the existing function in full and preserve any behaviour it has that is not listed here — particularly anything about `renderSeasonSummary` and the career-mode branches. If it does something this replacement drops, keep it.
-
-- [ ] **Step 5: Verify against the fixture**
+- [x] **Step 5: Verify against the fixture**
 
 Run: `node scripts/validate-seasonRollover.js`
 Expected: all five checks OK, including `checkRolloverMatchesGolden` — the auto path must be byte-identical after the merge.
@@ -886,7 +874,7 @@ Expected: all five checks OK, including `checkRolloverMatchesGolden` — the aut
 Run: `for f in scripts/validate-*.js; do node "$f" > /dev/null 2>&1 || echo "FAIL: $f"; done; echo done`
 Expected: `done` with no `FAIL:` lines.
 
-- [ ] **Step 6: Verify both paths in the browser**
+- [x] **Step 6: Verify both paths in the browser**
 
 Run: `python scripts/devserver.py 8223`
 
@@ -895,7 +883,7 @@ Run: `python scripts/devserver.py 8223`
 3. In both, confirm rosters have no duplicate players: `PLAYERS_2026.length === new Set(PLAYERS_2026.map(p=>p.id)).size`
 Expected: `true`. Duplicate draftees are the specific corruption a divergent rollover produces.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add seasonRollover.js script.js scripts/validate-seasonRollover.js

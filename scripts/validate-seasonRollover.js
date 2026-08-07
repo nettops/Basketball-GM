@@ -150,5 +150,51 @@ function checkCareerFollowupIsReported() {
 }
 checkCareerFollowupIsReported();
 
+// The manual path. The plan's version of this test built a state without
+// playing a season, which cannot work: buildDraftOrder reads playoff finish
+// order and needs a completed postseason.
+function checkStopAfterDraftLeavesTheUserAtTheDraft() {
+  const gs = buildGameState(80);
+  playSeason(gs);
+  const scheduleBefore = gs.season.games;
+
+  const r = rollover.runOffseasonRollover(gs, { stopAfterDraft: true });
+
+  assert.strictEqual(r.stoppedAfterDraft, true, 'reports where it stopped');
+  assert.strictEqual(gs.offseasonStage, 'draft', 'the user is left at the draft');
+  assert.ok(gs.lastDraftResults && gs.lastDraftResults.length > 0, 'the draft still ran');
+  assert.strictEqual(gs.leagueYear, 2027, 'the year advanced exactly once');
+  // The specific corruption this guards: stopping late would replace the
+  // schedule and run free agency behind the user's back, so the season they
+  // are still looking at must be the same object, still fully played.
+  assert.strictEqual(gs.season.games, scheduleBefore, 'the schedule was not replaced');
+  assert.ok(gs.season.games.every(function (g) { return g.played; }),
+    'the finished season is still finished');
+  assert.ok(gs.playoffBracket, 'and its bracket is still there to summarize');
+  console.log('checkStopAfterDraftLeavesTheUserAtTheDraft: OK');
+}
+checkStopAfterDraftLeavesTheUserAtTheDraft();
+
+// With autoDraft off, script.js injects an interactive draft session in place
+// of the automatic pipeline. The automatic one must not also run — that would
+// draft the same class twice into PLAYERS_2026.
+function checkInjectedDraftReplacesTheAutomaticOne() {
+  const gs = buildGameState(81);
+  playSeason(gs);
+  const populationBefore = PLAYERS_2026.length;
+
+  let sawState = null;
+  rollover.runOffseasonRollover(gs, {
+    stopAfterDraft: true,
+    onDraft: function (state) { sawState = state; state.lastDraftResults = []; }
+  });
+
+  assert.strictEqual(sawState, gs, 'the injected draft receives the game state');
+  assert.deepStrictEqual(gs.lastDraftResults, [], 'and owns the results');
+  assert.strictEqual(PLAYERS_2026.length, populationBefore,
+    'no prospects were drafted by the automatic path as well');
+  console.log('checkInjectedDraftReplacesTheAutomaticOne: OK');
+}
+checkInjectedDraftReplacesTheAutomaticOne();
 
 console.log('All season rollover validations passed');

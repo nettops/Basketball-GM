@@ -37,9 +37,14 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
 //
 // deps.onFeed receives feed lines. deps.onCareerFollowup runs player-career
 // mode's own offseason step and returns true if it put a scene on screen the
-// user must acknowledge. Both are injected rather than called directly
-// because they reach into script.js and the DOM — this module stays free of
-// both so it remains testable in Node.
+// user must acknowledge. deps.onDraft, when given, resolves the draft in
+// place of the automatic pipeline. All three are injected rather than called
+// directly because they reach into script.js and the DOM — this module stays
+// free of both so it remains testable in Node.
+//
+// deps.stopAfterDraft stops once the draft is done, leaving offseasonStage at
+// 'draft'. That is the manual path; without it the rollover continues through
+// free agency into a fresh schedule.
 function runOffseasonRollover(gameState, deps) {
   const d = deps || {};
   const onFeed = d.onFeed || function () {};
@@ -58,11 +63,33 @@ function runOffseasonRollover(gameState, deps) {
   gameState.leagueYear = (gameState.leagueYear || 2026) + 1;
   if (gameState.settings) gameState.settings.leagueYear = gameState.leagueYear;
 
-  const draftResult = _ROLLOVER_DATA.seasonTransition.runOffseasonThroughDraft(
-    gameState.playoffBracket, gameState.rng, gameState.upcomingDraftClass,
-    gameState.leagueYear, gameState.settings.lotteryFormat);
-  gameState.lastDraftResults = draftResult.draftResults;
-  _ROLLOVER_DATA.history.archiveDraftClass(gameState.leagueYear, draftResult.draftResults);
+  // The draft is the ONE step that legitimately differs between callers, and
+  // it differs because the user chose it in Settings: with autoDraft off the
+  // manual path builds an interactive session for them to pick from instead
+  // of resolving every pick itself. That is a real difference, unlike the
+  // accidental duplication this module exists to remove — so it is an
+  // injected strategy rather than a second copy of the whole rollover.
+  // deps.onDraft owns setting lastDraftResults/draftSession and archiving.
+  if (d.onDraft) {
+    d.onDraft(gameState);
+  } else {
+    const draftResult = _ROLLOVER_DATA.seasonTransition.runOffseasonThroughDraft(
+      gameState.playoffBracket, gameState.rng, gameState.upcomingDraftClass,
+      gameState.leagueYear, gameState.settings.lotteryFormat);
+    gameState.lastDraftResults = draftResult.draftResults;
+    // A session left over from an abandoned manual draft would otherwise
+    // still point at prospects that have just been drafted for real.
+    gameState.draftSession = null;
+    _ROLLOVER_DATA.history.archiveDraftClass(gameState.leagueYear, draftResult.draftResults);
+  }
+
+  // The manual path stops here and hands the user their draft; the
+  // fast-forward path continues into the new season. Everything above ran
+  // identically for both, which is the entire point of this module.
+  if (d.stopAfterDraft) {
+    gameState.offseasonStage = 'draft';
+    return { careerSceneShown: false, stoppedAfterDraft: true };
+  }
 
   _ROLLOVER_DATA.freeAgency.runFreeAgencySilently(gameState.rng);
   _ROLLOVER_DATA.autoGM.autoEnforceRosterSize(_ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId));
@@ -77,7 +104,7 @@ function runOffseasonRollover(gameState, deps) {
   gameState.offseasonStage = null;
   gameState.allStarWeekend = null;
 
-  return { careerSceneShown: careerSceneShown };
+  return { careerSceneShown: careerSceneShown, stoppedAfterDraft: false };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

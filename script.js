@@ -339,48 +339,37 @@ function handleAdvanceToOffseason(showSummary) {
   // twice, and leagueYear bumped twice.
   if (GameState.offseasonStage) return;
 
-  // Snapshot before anything about the season that just finished changes —
-  // this is what a commissioner's "Rewind to Season N" (ui/commissioner.js)
-  // restores.
-  pushSeasonSnapshot(GameState);
-
-  // Pending offers reference a roster that retirement, the draft, and free
-  // agency are all about to reshape — carrying them into the new league year
-  // would let the user accept a trade for a player who no longer exists.
-  GameState.tradeOffers = [];
-
-  // Captured before the leagueYear increment below — this is the season whose
-  // champion/awards finalizeSeasonHistory is about to archive, and what the
-  // season summary screen (if shown) should display.
+  // Captured before the rollover's leagueYear increment — this is the season
+  // whose champion/awards get archived, and what the season summary screen
+  // (if shown) should display.
   const finishedLeagueYear = GameState.leagueYear || 2026;
-
-  // Runs BEFORE the leagueYear increment and before retirement, so
-  // finalizeSeasonHistory's award/career-stat rollup reflects the season
-  // that just finished, and retirees archived immediately after this see
-  // their fully-updated careerStats/awardsWon.
-  finalizeSeasonHistory(finishedLeagueYear, GameState.playoffBracket, function (text) { pushToFeed(text); });
-
-  setLeagueYear(finishedLeagueYear + 1);
   const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
 
-  if (autoDraftEffective) {
-    const result = runOffseasonThroughDraft(GameState.playoffBracket, GameState.rng, GameState.upcomingDraftClass, GameState.leagueYear, GameState.settings.lotteryFormat);
-    GameState.lastDraftResults = result.draftResults;
-    GameState.draftSession = null;
-    archiveDraftClass(GameState.leagueYear, result.draftResults);
-  } else {
-    runOffseasonPreDraft(GameState.rng, GameState.leagueYear);
-    const draftOrder = buildDraftOrder(GameState.playoffBracket, GameState.rng, GameState.settings.lotteryFormat);
-    GameState.draftSession = startDraftSession(draftOrder, GameState.upcomingDraftClass);
-    advanceDraftUntilUserTurn(GameState.draftSession, GameState.userTeamId, false);
-    if (!currentPick(GameState.draftSession)) {
-      GameState.lastDraftResults = GameState.draftSession.results;
-      GameState.draftSession = null;
-      archiveDraftClass(GameState.leagueYear, GameState.lastDraftResults);
+  // ONE implementation, shared with the fast-forward path (seasonRollover.js):
+  // the snapshot, clearing pending offers, finalizeSeasonHistory and the year
+  // bump all live there now. These were two independent bodies doing the same
+  // work, which is how a fast-forward silently diverges from a manual advance.
+  runOffseasonRollover(GameState, {
+    stopAfterDraft: true,
+    onFeed: function (text) { pushToFeed(text); },
+    // Only when the user has NOT delegated the draft. Passing this overrides
+    // the automatic pipeline with an interactive session they pick from;
+    // omitting it lets the shared auto-draft run, exactly as before.
+    onDraft: autoDraftEffective ? null : function (gs) {
+      runOffseasonPreDraft(gs.rng, gs.leagueYear);
+      const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
+      gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
+      advanceDraftUntilUserTurn(gs.draftSession, gs.userTeamId, false);
+      // The user's picks may all fall after the last AI pick, in which case
+      // the session is already finished and there is nothing to hand them.
+      if (!currentPick(gs.draftSession)) {
+        gs.lastDraftResults = gs.draftSession.results;
+        gs.draftSession = null;
+        archiveDraftClass(gs.leagueYear, gs.lastDraftResults);
+      }
     }
-  }
+  });
 
-  GameState.offseasonStage = 'draft';
   if (showSummary === true) {
     GameState.summarySeasonYear = finishedLeagueYear;
     renderView('seasonSummary');
