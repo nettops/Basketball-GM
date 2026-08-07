@@ -214,6 +214,12 @@ function renderPixelGame(container) {
 
   function runOutLiveGame() {
     if (!session.live) return;
+    // Hand the timeout decision back to the auto-coach. The view claimed it
+    // (sim.userTeam) so the human got first refusal via a nudge — but nobody
+    // is watching now, and leaving it claimed would run the entire remainder
+    // with the user's team never calling a timeout at all, while every other
+    // team managed theirs normally.
+    session.sim.userTeam = null;
     while (!session.sim.done) {
       const before = session.events.length;
       session.sim.step();
@@ -232,7 +238,6 @@ function renderPixelGame(container) {
   const coach = createPixelCoach({
     sim: session.sim,
     userSide: userSide,
-    playerById: playerById,
     opponentName: (userSide === 'home' ? awayTeam : homeTeam).name,
     playbackMs: function () { return playbackMs; },
     isFinished: function () { return liveFinished; },

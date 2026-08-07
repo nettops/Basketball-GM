@@ -28,7 +28,6 @@ const PIXEL_NUDGE_WALL_CEILING_MS = 15000;
 // opts:
 //   sim            - the live GameSim
 //   userSide       - 'home' | 'away' | null (null = watch-only)
-//   playerById     - id -> player, for names
 //   opponentName   - display name of the side the user is NOT coaching
 //   playbackMs     - () => current playback position, for nudge expiry
 //   isFinished     - () => true once the game is over
@@ -149,28 +148,18 @@ function createPixelCoach(opts) {
       return;
     }
 
-    // 2. A player on the floor is in foul trouble before the fourth quarter.
-    // The coach will sit him anyway on its own schedule; this just gives the
-    // user the chance to do it first, or to leave him in.
-    if (sim.period < 4) {
-      const box = userSide === 'home' ? sim.homeBox : sim.awayBox;
-      const introuble = sim.onCourt[userSide].find(function (id) {
-        return box[id] && box[id].fouls >= FOUL_TROUBLE && box[id].fouls < 6;
-      });
-      if (introuble) {
-        const p = opts.playerById[introuble];
-        showNudge({
-          kind: 'fouls',
-          key: 'fouls:' + introuble + ':' + box[introuble].fouls,
-          // ui-safety: not-markup — a PLAIN TEXT field on a nudge object.
-          // pixelHud.js's pixelRenderNudge escapes it once, at the point it
-          // actually becomes HTML.
-          text: (p ? p.name : 'A starter') + ' has ' + box[introuble].fouls + ' fouls',
-          actionLabel: 'Open subs',
-          apply: function () { openSubs(introuble); }
-        });
-      }
-    }
+    // There is deliberately NO foul-trouble nudge. gameCoach.js already sits a
+    // player at 4+ fouls before the fourth quarter, at the same possession
+    // boundary such a nudge would fire — so in practice it almost never
+    // appeared, and when it did it was asking the user to redo a decision
+    // that had already been made for them. Prompting someone to re-make an
+    // automatic decision is the definition of micromanagement, and the
+    // broadcast info strip already shows who is in foul trouble.
+    //
+    // The timeout above is different in kind: it is a scarce one-shot
+    // resource (7 a game), and gameSim.js hands that specific decision to
+    // this view rather than the coach (sim.userTeam), so the nudge is the
+    // only place it surfaces — and ignoring it hands it straight back.
   }
 
   if (!userSide) {
