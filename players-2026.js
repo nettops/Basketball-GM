@@ -917,5 +917,8 @@ PLAYERS_2026.push(mkPlayer('SAS', 'Bismack Biyombo', 33, 81, 255, 'C', 18, 13, 6
 PLAYERS_2026.push(mkPlayer('SAS', 'Charles Bassey', 25, 82, 234, 'C', 28, 5, 66, 70, 'rim_protector', 2100000, 1));
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { PLAYERS_2026: PLAYERS_2026 };
+  // makeAttributes/ARCHETYPES are exported so Node validation scripts can build
+  // a player the same way the browser does — playerCareerController.js reads
+  // makeAttributes as a page global, which doesn't exist under require().
+  module.exports = { PLAYERS_2026: PLAYERS_2026, makeAttributes: makeAttributes, ARCHETYPES: ARCHETYPES };
 }

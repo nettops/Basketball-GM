@@ -28,18 +28,33 @@ function generateMatchupCounts(rng) {
   });
 
   // 2. Non-division conference opponents: circulant construction per division-pair,
-  // guaranteeing exactly 3 four-game + 2 three-game partners per team per other division
-  // (6 four-game + 4 three-game total across both other divisions).
+  // guaranteeing a fixed 4-game/3-game split per team per other division (at the
+  // standard 5-team division: 3 four-game + 2 three-game partners, i.e. 6 and 4
+  // across both other divisions).
+  //
+  // Sized off the actual division lengths rather than a hardcoded 5. An
+  // expansion team (commissioner.js's createExpansionTeam) puts 6 teams in one
+  // division, and the old `a < 5 / b < 5` bounds left gamesCount undefined for
+  // every pair involving that 6th team — which expandToGameList below then read
+  // as `Math.floor(undefined / 2)`, i.e. NaN, silently emitting zero games
+  // instead of throwing. The circulant works for unequal division sizes too:
+  // indexing the offset modulo the OTHER division's length keeps each team's
+  // partner count well-defined in both directions.
   CONFS.forEach(function (conf) {
     const divs = DIVS[conf];
     for (let d1 = 0; d1 < divs.length; d1++) {
       for (let d2 = d1 + 1; d2 < divs.length; d2++) {
         const teamsA = TEAMS_LIST.filter(function (t) { return t.conference === conf && t.division === divs[d1]; });
         const teamsB = TEAMS_LIST.filter(function (t) { return t.conference === conf && t.division === divs[d2]; });
-        const r = Math.floor(rng() * 5);
-        for (let a = 0; a < 5; a++) {
-          for (let b = 0; b < 5; b++) {
-            const isFourGame = (b - a - r + 25) % 5 <= 2;
+        if (teamsA.length === 0 || teamsB.length === 0) continue;
+        const span = Math.max(teamsA.length, teamsB.length);
+        // 3 of every 5 partners play four games — preserves the exact 3/2 split
+        // at the standard size and degrades sensibly at any other size.
+        const fourGameCutoff = Math.floor(span * 0.6);
+        const r = Math.floor(rng() * span);
+        for (let a = 0; a < teamsA.length; a++) {
+          for (let b = 0; b < teamsB.length; b++) {
+            const isFourGame = (((b - a - r) % span) + span) % span < fourGameCutoff;
             setGames(teamsA[a].id, teamsB[b].id, isFourGame ? 4 : 3);
           }
         }
@@ -76,6 +91,13 @@ function expandToGameList(gamesCount, teamsList, rng) {
     teamsList.forEach(function (b) {
       if (a.id < b.id) {
         const n = gamesCount[a.id][b.id];
+        // Fail loudly rather than silently emitting zero games. A missing count
+        // used to flow through as NaN here and drop the matchup entirely, which
+        // is how an expansion team ended up playing a partial schedule with no
+        // error anywhere.
+        if (typeof n !== 'number' || !isFinite(n)) {
+          throw new Error('expandToGameList: no matchup count for ' + a.id + ' vs ' + b.id);
+        }
         const aHome = Math.floor(n / 2) + (n % 2 === 1 ? Math.round(rng()) : 0);
         const bHome = n - aHome;
         for (let i = 0; i < aHome; i++) gameList.push({ id: gid++, home: a.id, away: b.id });

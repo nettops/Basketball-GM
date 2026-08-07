@@ -7,15 +7,21 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       prospects: require('./draftProspects.js'),
       traits: require('./traits.js'),
       trade: require('./trade.js'),
-      tradeEvaluator: require('./tradeEvaluator.js')
+      tradeEvaluator: require('./tradeEvaluator.js'),
+      coaches: require('./coaches.js'),
+      rosterMoves: require('./rosterMoves.js'),
+      faces: require('./faces.js')
     }
   : {
       league: { getPlayerById: getPlayerById, getTeamRoster: getTeamRoster },
-      data: { RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, CONFERENCES: CONFERENCES, DIVISIONS: DIVISIONS },
+      data: { RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, CONFERENCES: CONFERENCES, DIVISIONS: DIVISIONS, POSITIONS: POSITIONS },
       players: { PLAYERS_2026: PLAYERS_2026 },
       teams: { TEAMS: TEAMS },
       prospects: { mkProspect: mkProspect },
       traits: { ensureHiddenPlayerData: ensureHiddenPlayerData },
+      faces: { ensurePlayerFace: ensurePlayerFace },
+      coaches: { ensureTeamCoach: ensureTeamCoach },
+      rosterMoves: { getFreeAgents: getFreeAgents },
       trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
     };
@@ -113,6 +119,7 @@ function createPlayer(details) {
     details.name, details.age, 78, 210, details.position, overall, potential, details.archetype, 0, 'Commissioner-created'
   );
   _COMMISSIONER_DATA.traits.ensureHiddenPlayerData([player]);
+  _COMMISSIONER_DATA.faces.ensurePlayerFace([player]);
   player.yearsPro = Math.max(0, details.age - 19);
 
   if (details.teamId) {
@@ -209,8 +216,19 @@ function createExpansionTeam(details, rng) {
     draftPicks: [
       { round: 1, originalTeamId: id, currentOwnerId: id },
       { round: 2, originalTeamId: id, currentOwnerId: id }
-    ]
+    ],
+    // Explicit rather than left undefined: every consumer defaults these with
+    // `|| 0` today, but they're in save.js's TEAM_SAVE_FIELDS, and undefined
+    // values are dropped entirely by JSON.stringify on the way into a slot.
+    allTimeWins: 0,
+    allTimeLosses: 0,
+    lastSeasonWins: 0,
+    retiredNumbers: []
   };
+  // A team created mid-save never passes through initSeason, which is the only
+  // other place coaches are assigned. Without this the expansion team plays out
+  // the rest of the league's life with no coach and no strategy dials.
+  _COMMISSIONER_DATA.coaches.ensureTeamCoach(team, rng);
   _COMMISSIONER_DATA.teams.TEAMS.push(team);
 
   const donorIds = _COMMISSIONER_DATA.teams.TEAMS
@@ -238,7 +256,62 @@ function createExpansionTeam(details, rng) {
     if (!draftedThisRound) break;
   }
 
+  // The expansion draft alone can't always reach the target: every donor is
+  // protected down to EXPANSION_DONOR_FLOOR, so a league that has already
+  // expanded once has almost nobody left to give (measured: a second expansion
+  // team landed with 8 players). Anything below the 12-man floor is not a
+  // cosmetic shortfall — validateRosterSizes rejects every trade that team ever
+  // proposes, permanently, and simulateTeamBoxScore starts handing out 30
+  // minutes a night to everyone. Top up the same way a real expansion franchise
+  // does: free agents first, then minimum-contract fringe signings.
+  fillRosterToTarget(team, EXPANSION_ROSTER_TARGET, rng);
+
   return team;
+}
+
+const FRINGE_FIRST_NAMES = ['Dane', 'Corbin', 'Rashad', 'Emory', 'Teodor', 'Malachi', 'Sven', 'Bo', 'Amari', 'Kwame', 'Rui', 'Deshawn'];
+const FRINGE_LAST_NAMES = ['Vasquez', 'Okonkwo', 'Bergstrom', 'Ferreira', 'Haddad', 'Lindqvist', 'Osei', 'Marchetti', 'Nakamura', 'Duval', 'Petrov', 'Ellington'];
+
+// Roster-filler player: fringe-NBA ratings, minimum money, short deal. Built
+// through mkProspect for the same reason createPlayer above uses it — it's the
+// one path that derives a full 20-attribute spread from an overall, so a filler
+// signing is a real player to every system rather than a stub.
+function generateFringePlayer(team, rng) {
+  const name = FRINGE_FIRST_NAMES[Math.floor(rng() * FRINGE_FIRST_NAMES.length)] + ' ' +
+    FRINGE_LAST_NAMES[Math.floor(rng() * FRINGE_LAST_NAMES.length)];
+  const overall = 48 + Math.round(rng() * 10);
+  const position = _COMMISSIONER_DATA.data.POSITIONS[Math.floor(rng() * _COMMISSIONER_DATA.data.POSITIONS.length)];
+  const archetype = CREATE_PLAYER_ARCHETYPES[Math.floor(rng() * CREATE_PLAYER_ARCHETYPES.length)];
+  const player = _COMMISSIONER_DATA.prospects.mkProspect(
+    name, 24 + Math.floor(rng() * 5), 78, 210, position, overall, overall + Math.round(rng() * 6), archetype, 0, 'Undrafted free agent'
+  );
+  _COMMISSIONER_DATA.traits.ensureHiddenPlayerData([player]);
+  _COMMISSIONER_DATA.faces.ensurePlayerFace([player]);
+  player.yearsPro = Math.max(1, player.age - 22);
+  _COMMISSIONER_DATA.players.PLAYERS_2026.push(player);
+  return player;
+}
+
+// Signs the best available free agents (same adjustedPlayerValue ranking the
+// expansion and real drafts use), then generates fringe players for whatever
+// gap remains — a brand-new league has no free agents at all, since nobody has
+// reached the end of a contract yet.
+function fillRosterToTarget(team, target, rng) {
+  const signed = [];
+  const available = _COMMISSIONER_DATA.rosterMoves.getFreeAgents()
+    .slice()
+    .sort(function (a, b) {
+      return _COMMISSIONER_DATA.tradeEvaluator.adjustedPlayerValue(b, team) - _COMMISSIONER_DATA.tradeEvaluator.adjustedPlayerValue(a, team);
+    });
+
+  while (_COMMISSIONER_DATA.league.getTeamRoster(team.id).length < target) {
+    const player = available.length > 0 ? available.shift() : generateFringePlayer(team, rng);
+    player.teamId = team.id;
+    player.jerseyNumber = nextAvailableJersey(team.id, player.id);
+    player.contract = { salary: fairSalaryForOverall(player.overall), yearsRemaining: 2, playerOption: false, teamOption: false };
+    signed.push(player.id);
+  }
+  return signed;
 }
 
 // Renames/rebrands a team in place — conference, division, roster, and
@@ -296,6 +369,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CREATE_PLAYER_ARCHETYPES: CREATE_PLAYER_ARCHETYPES,
     forceTrade: forceTrade,
     createExpansionTeam: createExpansionTeam,
+    fillRosterToTarget: fillRosterToTarget,
+    EXPANSION_ROSTER_TARGET: EXPANSION_ROSTER_TARGET,
     relocateTeam: relocateTeam,
     checkAutoExpansion: checkAutoExpansion,
     AUTO_EXPANSION_MAX_TEAMS: AUTO_EXPANSION_MAX_TEAMS

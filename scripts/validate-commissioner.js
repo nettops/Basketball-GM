@@ -10,6 +10,43 @@ const saveModule = require(path.join(__dirname, '..', 'save.js'));
 const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
 const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 
+// Restoring TEAMS alone is not enough to undo an expansion: createExpansionTeam
+// also reassigns donor players' teamId/jerseyNumber and appends brand-new filler
+// players to PLAYERS_2026. Dropping the team without undoing those left players
+// stranded on a team that no longer exists, which silently drained donor rosters
+// for every later check in this file. These two helpers restore the whole league.
+function snapshotLeague() {
+  return {
+    teams: teamsModule.TEAMS.slice(),
+    playerCount: playersModule.PLAYERS_2026.length,
+    players: playersModule.PLAYERS_2026.map(function (p) {
+      return { ref: p, teamId: p.teamId, jerseyNumber: p.jerseyNumber, contract: Object.assign({}, p.contract) };
+    })
+  };
+}
+
+function restoreLeague(snap) {
+  teamsModule.TEAMS.length = 0;
+  snap.teams.forEach(function (t) { teamsModule.TEAMS.push(t); });
+  // Players created after the snapshot were appended, so truncating is enough.
+  playersModule.PLAYERS_2026.length = snap.playerCount;
+  snap.players.forEach(function (e) {
+    e.ref.teamId = e.teamId;
+    e.ref.jerseyNumber = e.jerseyNumber;
+    e.ref.contract = Object.assign({}, e.contract);
+  });
+}
+
+// Every team must be inside the roster band the rest of the game assumes.
+// Asserted at the end of each expansion-touching check so a leak surfaces where
+// it happens rather than as a confusing failure three checks later.
+function assertLeagueRostersAreLegal(context) {
+  teamsModule.TEAMS.forEach(function (t) {
+    const size = leagueModule.getTeamRoster(t.id).length;
+    assert.ok(size >= 12 && size <= 15, context + ': ' + t.id + ' has ' + size + ' players, outside the 12-15 band');
+  });
+}
+
 function checkEditPlayerRatings() {
   const team = teamsModule.TEAMS[0];
   const player = leagueModule.getTeamRoster(team.id)[0];
@@ -175,7 +212,7 @@ function checkAutoExpansionGating() {
   nonExpansionTeams.forEach(function (t) { teamsModule.TEAMS.push(t); });
   assert.strictEqual(teamsModule.TEAMS.length, 30, 'test setup should start from the real 30-team baseline');
 
-  const originalTeamsSnapshot = teamsModule.TEAMS.slice();
+  const leagueSnapshot = snapshotLeague();
 
   // Below the fan-happiness bar: should never trigger regardless of rng.
   teamsModule.TEAMS.forEach(function (t) { t.fanHappiness = 30; });
@@ -195,9 +232,9 @@ function checkAutoExpansionGating() {
     } else {
       foundTrigger = true;
       assert.strictEqual(teamsModule.TEAMS.length, before + 1, 'a triggered expansion should add exactly one team');
-      // Undo so later seeds in this loop still see the original 30-team league.
-      teamsModule.TEAMS.length = 0;
-      originalTeamsSnapshot.forEach(function (t) { teamsModule.TEAMS.push(t); });
+      // Undo the whole expansion — team list, donor rosters, and the filler
+      // players it generated — so later seeds see a genuinely pristine league.
+      restoreLeague(leagueSnapshot);
     }
   }
   assert.ok(foundNonTrigger, 'eligible-but-unlucky seasons should be common, not guaranteed to expand');
@@ -211,8 +248,8 @@ function checkAutoExpansionGating() {
   const atCap = commissionerModule.checkAutoExpansion(makeRng(1));
   assert.strictEqual(atCap, null, 'auto-expansion should not trigger once the team cap is reached');
 
-  teamsModule.TEAMS.length = 0;
-  originalTeamsSnapshot.forEach(function (t) { teamsModule.TEAMS.push(t); });
+  restoreLeague(leagueSnapshot);
+  assertLeagueRostersAreLegal('after auto-expansion gating');
 
   console.log('checkAutoExpansionGating: OK');
 }
@@ -259,5 +296,79 @@ function checkEditTeamAttributes() {
 }
 
 checkEditTeamAttributes();
+
+// An expansion team used to be quietly unusable: schedule.js's cross-division
+// pass was hardcoded to 5-team divisions, so every matchup involving the 6th
+// team in a division had no game count and expandToGameList dropped it as NaN
+// — the new team played zero games. The draft was worse: 62 picks against a
+// 60-prospect pool, with pick #31 emitted twice. This pins all of it.
+function checkExpansionTeamIsFullyPlayable() {
+  const transitionModule = require(path.join(__dirname, '..', 'seasonTransition.js'));
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+  const rng = makeRng(4242);
+
+  // Snapshot first so this check neither inherits nor leaks league state. It
+  // previously depended on whatever earlier checks in this file happened to
+  // leave behind, which is how it once failed on a drained donor pool.
+  const leagueSnapshot = snapshotLeague();
+  assertLeagueRostersAreLegal('before expansion');
+
+  const before = teamsModule.TEAMS.length;
+  const team = commissionerModule.createExpansionTeam({
+    name: 'Expansion Test Club', primaryColor: '#111111', secondaryColor: '#eeeeee', marketSize: 60
+  }, rng);
+  assert.strictEqual(teamsModule.TEAMS.length, before + 1, 'the expansion team should join the league');
+  assert.ok(team.coach, 'an expansion team needs a coach — nothing else assigns one after initSeason');
+  assert.ok(team.strategy, 'an expansion team needs strategy dials for the sim engines to read');
+  assert.ok(leagueModule.getTeamRoster(team.id).length >= 12, 'the expansion draft should clear the 12-man floor');
+
+  const divisionSize = teamsModule.TEAMS.filter(function (t) {
+    return t.conference === team.conference && t.division === team.division;
+  }).length;
+  assert.strictEqual(divisionSize, 6, 'the 31st team should make one division 6 deep — the case that used to break');
+
+  const season = transitionModule.generateNewSeason(rng);
+  const gamesFor = function (teamId) {
+    return season.games.filter(function (g) { return g.homeTeamId === teamId || g.awayTeamId === teamId; }).length;
+  };
+  const counts = teamsModule.TEAMS.map(function (t) { return gamesFor(t.id); });
+  assert.ok(Math.min.apply(null, counts) >= 80, 'every team must get a full schedule, expansion team included');
+  assert.ok(Math.max.apply(null, counts) - Math.min.apply(null, counts) <= 4, 'schedules should stay within a few games of each other');
+
+  teamsModule.TEAMS.forEach(function (t, i) {
+    const noDoubleBooking = {};
+    season.games.filter(function (g) { return g.homeTeamId === t.id || g.awayTeamId === t.id; })
+      .forEach(function (g) {
+        assert.ok(!noDoubleBooking[g.day], t.id + ' is booked twice on day ' + g.day);
+        noDoubleBooking[g.day] = true;
+      });
+  });
+
+  assert.ok(season.nextDraftClass.length >= teamsModule.TEAMS.length * 2,
+    'the prospect class must cover both rounds of a 31-team draft');
+
+  const bracket = { first: [], semis: [], confFinals: [], finals: [{ winner: 'BOS', higherSeed: 'BOS', lowerSeed: 'LAL', complete: true }] };
+  for (let i = 0; i < 8; i++) bracket.first.push({ winner: 'BOS', higherSeed: 'BOS', lowerSeed: 'LAL' });
+  for (let i = 0; i < 4; i++) bracket.semis.push({ winner: 'BOS', higherSeed: 'BOS', lowerSeed: 'LAL' });
+  for (let i = 0; i < 2; i++) bracket.confFinals.push({ winner: 'BOS', higherSeed: 'BOS', lowerSeed: 'LAL' });
+  const order = draftModule.buildDraftOrder(bracket, rng);
+  const results = draftModule.runDraft(order, season.nextDraftClass);
+  const pickNumbers = results.map(function (r) { return r.pickNumber; });
+  assert.strictEqual(new Set(pickNumbers).size, pickNumbers.length, 'every pick number must be unique across both rounds');
+  assert.strictEqual(results.length, teamsModule.TEAMS.length * 2, 'a 31-team draft is 62 picks');
+  const firstSecondRounder = results.find(function (r) { return r.round === 2; });
+  assert.strictEqual(firstSecondRounder.pickNumber, teamsModule.TEAMS.length + 1,
+    'round 2 must start one past the end of round 1, not at a hardcoded 31');
+  assert.strictEqual(firstSecondRounder.prospect.contract.yearsRemaining, 2,
+    'the round-1/round-2 rookie-scale boundary must follow league size');
+
+  restoreLeague(leagueSnapshot);
+  assert.strictEqual(teamsModule.TEAMS.length, before, 'the league must be restored to its pre-expansion size');
+  assertLeagueRostersAreLegal('after expansion');
+
+  console.log('checkExpansionTeamIsFullyPlayable: OK');
+}
+
+checkExpansionTeamIsFullyPlayable();
 
 console.log('All commissioner validations passed');
