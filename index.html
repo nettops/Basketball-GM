@@ -83,6 +83,9 @@
   <script src="ui/schedule.js"></script>
   <script src="ui/playoffs.js"></script>
   <script src="ui/allStarWeekend.js"></script>
+  <!-- Pure policy: reads only its arguments, so it has no load-order
+       dependency of its own. Placed next to its only consumer. -->
+  <script src="simRunner.js"></script>
   <script src="ui/simControls.js"></script>
   <script src="ui/settings.js"></script>
   <script src="ui/tradeCenter.js"></script>
