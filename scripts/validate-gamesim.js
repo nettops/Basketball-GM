@@ -151,4 +151,54 @@ function checkMinutesAreEmergent() {
 }
 checkMinutesAreEmergent();
 
+// The clock must be a real clock: monotonic within a period, never negative,
+// and resetting at each period boundary.
+function checkClockIsMonotonic() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(51));
+  let prevClock = Infinity;
+  let prevPeriod = 1;
+  while (!sim.done) {
+    assert.ok(sim.clock >= 0, 'clock must never go negative, got ' + sim.clock);
+    if (sim.period === prevPeriod) {
+      assert.ok(sim.clock <= prevClock, 'clock must run down within a period: ' + prevClock + ' -> ' + sim.clock);
+    } else {
+      assert.ok(sim.period > prevPeriod, 'periods only advance');
+      prevPeriod = sim.period;
+    }
+    prevClock = sim.clock;
+    sim.step();
+  }
+  console.log('checkClockIsMonotonic: OK');
+}
+checkClockIsMonotonic();
+
+// Pace must stay where it was, or every score in the league silently re-scales.
+function checkPaceMatchesLegacy() {
+  let total = 0;
+  const seeds = [52, 53, 54, 55, 56];
+  seeds.forEach(function (seed) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    while (!sim.done) sim.step();
+    total += sim.possessionsPlayed;
+  });
+  const avgPerTeam = total / seeds.length / 2;
+  assert.ok(avgPerTeam >= 82 && avgPerTeam <= 98,
+    'possessions per team should stay near the legacy 90, got ' + avgPerTeam.toFixed(1));
+  console.log('checkPaceMatchesLegacy: OK (' + avgPerTeam.toFixed(1) + ' possessions/team)');
+}
+checkPaceMatchesLegacy();
+
+// Scoring must land in the same range the possession suite already asserts.
+function checkScoringStaysRealistic() {
+  for (const seed of [57, 58, 59, 60]) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    while (!sim.done) sim.step();
+    const r = sim.result();
+    assert.ok(r.homeScore >= 60 && r.homeScore <= 170, 'home score realistic, got ' + r.homeScore);
+    assert.ok(r.awayScore >= 60 && r.awayScore <= 170, 'away score realistic, got ' + r.awayScore);
+  }
+  console.log('checkScoringStaysRealistic: OK');
+}
+checkScoringStaysRealistic();
+
 console.log('All game sim validations passed');

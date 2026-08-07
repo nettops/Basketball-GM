@@ -18,6 +18,21 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       box: { minutesWeight: minutesWeight }
     };
 
+const REGULATION_PERIODS = 4;
+const PERIOD_SECONDS = 12 * 60;
+const OVERTIME_SECONDS = 5 * 60;
+
+// 16s base over a 2880s regulation gives 180 total possessions — 90 per team,
+// matching the legacy POSSESSIONS_PER_TEAM exactly, so switching from a fixed
+// possession count to a real clock does not re-scale scoring.
+const POSSESSION_BASE_SECONDS = 16;
+const POSSESSION_VARIANCE_SECONDS = 5;
+
+function possessionSeconds(rng) {
+  const jitter = (rng() * 2 - 1) * POSSESSION_VARIANCE_SECONDS;
+  return Math.max(4, POSSESSION_BASE_SECONDS + jitter);
+}
+
 // The game-level state machine. step() advances exactly one possession pair
 // (home, then away) — the same unit the old for-loop body covered, so RNG
 // consumption order is unchanged. simulatePossessionGame below is now just a
@@ -61,7 +76,6 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const awaySynergy = _GAMESIM_DATA.composite.computeTeamSynergy(awayRoster);
 
   const playByPlay = [];
-  const POSSESSIONS_PER_QUARTER = Math.ceil(_GAMESIM_DATA.poss.POSSESSIONS_PER_TEAM / 4);
   // Structured events for the pixel game view — only collected when the
   // caller asks (Watch Next Game passes { events: [] }); a normal season sim
   // never pays the allocation cost.
@@ -76,7 +90,10 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     awayBox: awayBox,
     homeScore: 0,
     awayScore: 0,
-    possessionIndex: 0,
+    clock: PERIOD_SECONDS,
+    period: 1,
+    possessionsPlayed: 0,
+    offenseTeam: 'home',
     quarter: 1,
     done: false,
     playByPlay: playByPlay,
@@ -87,28 +104,49 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
 
   sim.step = function () {
     if (sim.done) return;
-    const i = sim.possessionIndex;
-    const quarter = Math.floor(i / POSSESSIONS_PER_QUARTER) + 1;
-    sim.quarter = quarter;
-    if (i % POSSESSIONS_PER_QUARTER === 0) {
-      playByPlay.push('--- Q' + quarter + ' ---');
-    }
-    const homeCtx = captureEvents ? { events: captureEvents, team: 'home', quarter: quarter } : null;
-    const awayCtx = captureEvents ? { events: captureEvents, team: 'away', quarter: quarter } : null;
-    sim.homeScore += _GAMESIM_DATA.poss.simulatePossession(lineup('home'), homeBox, lineup('away'), awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
-    sim.awayScore += _GAMESIM_DATA.poss.simulatePossession(lineup('away'), awayBox, lineup('home'), homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
 
-    // Until Task 6 introduces the clock, a possession pair is a fixed slice of
-    // regulation: 2880 seconds over POSSESSIONS_PER_TEAM pairs.
-    const pairSeconds = 2880 / _GAMESIM_DATA.poss.POSSESSIONS_PER_TEAM;
-    onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += pairSeconds; });
-
-    sim.possessionIndex += 1;
-    if (sim.possessionIndex >= _GAMESIM_DATA.poss.POSSESSIONS_PER_TEAM) {
-      resolveTie();
-      sim.done = true;
+    const periodLength = sim.period <= REGULATION_PERIODS ? PERIOD_SECONDS : OVERTIME_SECONDS;
+    if (sim.clock >= periodLength) {
+      playByPlay.push('--- ' + (sim.period <= REGULATION_PERIODS
+        ? 'Q' + sim.period
+        : 'OT' + (sim.period - REGULATION_PERIODS)) + ' ---');
     }
+
+    const team = sim.offenseTeam;
+    const other = team === 'home' ? 'away' : 'home';
+    sim.quarter = Math.min(sim.period, REGULATION_PERIODS);
+    const ctx = captureEvents ? { events: captureEvents, team: team, quarter: sim.quarter } : null;
+
+    const offBox = team === 'home' ? homeBox : awayBox;
+    const defBox = team === 'home' ? awayBox : homeBox;
+    const offSyn = team === 'home' ? homeSynergy : awaySynergy;
+    const defSyn = team === 'home' ? awaySynergy : homeSynergy;
+
+    const points = _GAMESIM_DATA.poss.simulatePossession(
+      lineup(team), offBox, lineup(other), defBox, rng,
+      { offense: offSyn, defense: defSyn }, playByPlay, ctx);
+
+    if (team === 'home') sim.homeScore += points; else sim.awayScore += points;
+
+    const elapsed = Math.min(sim.clock, possessionSeconds(rng));
+    sim.clock -= elapsed;
+    onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += elapsed; });
+    sim.possessionsPlayed += 1;
+    sim.offenseTeam = other;
+
+    if (sim.clock <= 0) endPeriod();
   };
+
+  function endPeriod() {
+    if (sim.period < REGULATION_PERIODS) {
+      sim.period += 1;
+      sim.clock = PERIOD_SECONDS;
+      return;
+    }
+    // Task 7 replaces this with real overtime.
+    resolveTie();
+    sim.done = true;
+  }
 
   function resolveTie() {
     if (sim.homeScore !== sim.awayScore) return;
