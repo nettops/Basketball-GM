@@ -52,16 +52,7 @@ function renderPixelGame(container) {
   stopPixelPlayback();
   if (!_watchSession) {
     container.innerHTML = '<div class="view-header"><h2>Watch Game</h2></div>' +
-      (_replayHistory.length === 0
-        ? '<div class="empty-state">No game to watch. Use "Watch Next Game" in the sim dock.</div>'
-        : '<div class="panel"><div class="panel-header">Recently Watched</div><div class="panel-body">' +
-          '<table class="data-table"><tbody>' + _replayHistory.map(function (s, i) {
-            const h = getTeamById(s.homeTeamId), a = getTeamById(s.awayTeamId);
-            return '<tr><td class="col-name">' + escapeHtml(h.id) + ' ' + s.homeScore +
-              ' — ' + escapeHtml(a.id) + ' ' + s.awayScore + '</td>' +
-              '<td>' + (s.isPlayoff ? '<span class="pill pill-gold">Playoffs</span>' : '') + '</td>' +
-              '<td><button class="pixel-replay-btn" data-idx="' + i + '">Replay</button></td></tr>';
-          }).join('') + '</tbody></table></div></div>');
+      pixelReplayListHtml(_replayHistory, getTeamById);
     Array.prototype.forEach.call(container.querySelectorAll('.pixel-replay-btn'), function (btn) {
       btn.addEventListener('click', function () {
         _watchSession = _replayHistory[Number(btn.getAttribute('data-idx'))];
@@ -100,30 +91,10 @@ function renderPixelGame(container) {
   homeRoster.forEach(function (p) { playerById[p.id] = p; colorsById[p.id] = spriteColorsForPlayer(p, homeTeam, true); });
   awayRoster.forEach(function (p) { playerById[p.id] = p; colorsById[p.id] = spriteColorsForPlayer(p, awayTeam, false); });
 
-  container.innerHTML =
-    '<div class="pixel-game">' +
-      // The real scoreboard is drawn inside the canvas; this copy stays in
-      // the DOM (visually hidden) so screen readers still get the score.
-      '<div class="pixel-scoreboard pixel-sr-only">' +
-        '<span class="pixel-score-team" style="border-color:' + homeTeam.colors.primary + '">' + escapeHtml(homeTeam.id) + ' <span id="pixel-score-home">0</span></span>' +
-        '<span class="pixel-clock"><span id="pixel-quarter">Q1</span> <span id="pixel-clock">12:00</span></span>' +
-        '<span class="pixel-score-team" style="border-color:' + awayTeam.colors.primary + '">' + escapeHtml(awayTeam.id) + ' <span id="pixel-score-away">0</span></span>' +
-      '</div>' +
-      '<div class="pixel-canvas-wrap"><canvas id="pixel-canvas" width="' + PIXEL_STAGE.w + '" height="' + PIXEL_STAGE.h + '"></canvas></div>' +
-      '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
-      '<div class="pixel-infostrip" id="pixel-infostrip"></div>' +
-      '<div class="pixel-commentary" id="pixel-commentary"></div>' +
-      '<div class="pixel-controls">' +
-        '<button id="pixel-play-pause">Pause</button>' +
-        PIXEL_SPEEDS.map(function (s) {
-          return '<button class="pixel-speed' + (s === 1 ? ' active' : '') + '" data-speed="' + s + '">' + s + '×</button>';
-        }).join('') +
-        '<button id="pixel-skip">Skip to Final</button>' +
-        '<button id="pixel-replay">Replay</button>' +
-        '<button id="pixel-mute">Sound: On</button>' +
-        '<button id="pixel-exit">Exit</button>' +
-      '</div>' +
-    '</div>';
+  container.innerHTML = pixelShellHtml(homeTeam, awayTeam, PIXEL_STAGE.w, PIXEL_STAGE.h, PIXEL_SPEEDS);
+  // Wired up in the live-controls task; inert (and visibly so) until then.
+  document.getElementById('pixel-timeout').disabled = true;
+  document.getElementById('pixel-subs').disabled = true;
 
   const canvas = document.getElementById('pixel-canvas');
   const ctx = canvas.getContext('2d');
@@ -170,12 +141,7 @@ function renderPixelGame(container) {
   function pushCommentary(kf) {
     if (!kf.commentary || kf.t === lastCommentaryKfT) return;
     lastCommentaryKfT = kf.t;
-    const feed = document.getElementById('pixel-commentary');
-    const line = document.createElement('div');
-    line.className = 'pixel-commentary-line';
-    line.textContent = kf.commentary;
-    feed.insertBefore(line, feed.firstChild);
-    while (feed.children.length > 6) feed.removeChild(feed.lastChild);
+    pixelPushCommentary(document.getElementById('pixel-commentary'), kf.commentary);
   }
 
   // Motion-quality state: per-player facing persists so standing players
@@ -716,20 +682,9 @@ function renderPixelGame(container) {
     const snap = timeline.snapshots[fr.a.snap] || timeline.snapshots[0];
     if (snap && snap !== lastSnapRendered) {
       lastSnapRendered = snap;
-      const leadHtml = snap.leaders.map(function (l) {
-        const p = playerById[l.id];
-        const t = getTeamById(l.team === 'home' ? session.homeTeamId : session.awayTeamId);
-        return '<span class="pixel-leader"><i style="background:' + t.colors.primary + '"></i>' +
-          escapeHtml(p ? p.name : l.id) + ' <b>' + l.pts + '</b></span>';
-      }).join('');
-      const troubleHtml = snap.foulTrouble.map(function (f) {
-        const p = playerById[f.id];
-        return '<span class="pixel-foul' + (f.fouls >= 6 ? ' is-out' : '') + '">' +
-          escapeHtml(p ? p.name : f.id) + ' ' + f.fouls + (f.fouls >= 6 ? ' — FOULED OUT' : ' fouls') + '</span>';
-      }).join('');
-      document.getElementById('pixel-infostrip').innerHTML =
-        '<span class="pixel-strip-label">Leaders</span>' + leadHtml +
-        (troubleHtml ? '<span class="pixel-strip-label">Foul trouble</span>' + troubleHtml : '');
+      pixelRenderInfoStrip(document.getElementById('pixel-infostrip'), snap, playerById, function (side) {
+        return getTeamById(side === 'home' ? session.homeTeamId : session.awayTeamId).colors.primary;
+      });
     }
 
     // quarter-break card, drawn unshaken over everything
@@ -774,29 +729,11 @@ function renderPixelGame(container) {
       .map(function (id) { return { id: id, pts: pts[id] }; })
       .sort(function (a, b) { return b.pts - a.pts; })
       .slice(0, 5);
-    const q = timeline.lineScore;
-    const homeWon = session.homeScore > session.awayScore;
-    document.getElementById('pixel-infostrip').innerHTML =
-      '<div class="pixel-final">' +
-        '<div class="pixel-final-head">' + escapeHtml(homeTeam.name) + ' ' + session.homeScore +
-          ' — ' + escapeHtml(awayTeam.name) + ' ' + session.awayScore +
-          ' <span class="pill ' + (homeWon ? 'pill-win' : 'pill-loss') + '">' +
-          escapeHtml((homeWon ? homeTeam : awayTeam).id) + ' win</span></div>' +
-        '<table class="data-table pixel-linescore"><thead><tr><th></th>' +
-          q.map(function (r) { return '<th class="num">Q' + r.quarter + '</th>'; }).join('') +
-          '<th class="num">F</th></tr></thead><tbody>' +
-          '<tr><td class="col-name">' + escapeHtml(homeTeam.id) + '</td>' +
-            q.map(function (r) { return '<td class="num">' + r.home + '</td>'; }).join('') +
-            '<td class="num"><b>' + session.homeScore + '</b></td></tr>' +
-          '<tr><td class="col-name">' + escapeHtml(awayTeam.id) + '</td>' +
-            q.map(function (r) { return '<td class="num">' + r.away + '</td>'; }).join('') +
-            '<td class="num"><b>' + session.awayScore + '</b></td></tr>' +
-        '</tbody></table>' +
-        '<div class="pixel-final-top">' + top.map(function (t) {
-          const p = playerById[t.id];
-          return '<span class="pixel-leader">' + escapeHtml(p ? p.name : t.id) + ' <b>' + t.pts + '</b></span>';
-        }).join('') + '</div>' +
-      '</div>';
+    pixelRenderFinalCard(document.getElementById('pixel-infostrip'), {
+      homeTeam: homeTeam, awayTeam: awayTeam,
+      homeScore: session.homeScore, awayScore: session.awayScore,
+      lineScore: timeline.lineScore, topScorers: top, playerById: playerById
+    });
   }
 
   function tick(ts) {
