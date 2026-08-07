@@ -16,7 +16,7 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
       box: { minutesWeight: minutesWeight },
-      coach: { decideSubstitutions: decideSubstitutions }
+      coach: { decideSubstitutions: decideSubstitutions, decideTimeout: decideTimeout }
     };
 
 const REGULATION_PERIODS = 4;
@@ -28,6 +28,9 @@ const OVERTIME_SECONDS = 5 * 60;
 // possession count to a real clock does not re-scale scoring.
 const POSSESSION_BASE_SECONDS = 16;
 const POSSESSION_VARIANCE_SECONDS = 5;
+
+const TIMEOUTS_PER_GAME = 7;
+const TIMEOUT_ENERGY_RESTORE = 0.12;
 
 function possessionSeconds(rng) {
   const jitter = (rng() * 2 - 1) * POSSESSION_VARIANCE_SECONDS;
@@ -96,6 +99,8 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     possessionsPlayed: 0,
     offenseTeam: 'home',
     quarter: 1,
+    timeoutsLeft: { home: TIMEOUTS_PER_GAME, away: TIMEOUTS_PER_GAME },
+    run: { team: null, points: 0 },
     done: false,
     playByPlay: playByPlay,
     onCourt: onCourt,
@@ -110,6 +115,9 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // than not watching it, other than the decisions a human chooses to make.
     ['home', 'away'].forEach(function (t) {
       sim.applySubstitutions(t, _GAMESIM_DATA.coach.decideSubstitutions(sim, t));
+    });
+    ['home', 'away'].forEach(function (t) {
+      if (_GAMESIM_DATA.coach.decideTimeout(sim, t)) sim.callTimeout(t);
     });
 
     const periodLength = sim.period <= REGULATION_PERIODS ? PERIOD_SECONDS : OVERTIME_SECONDS;
@@ -134,6 +142,11 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       { offense: offSyn, defense: defSyn }, playByPlay, ctx);
 
     if (team === 'home') sim.homeScore += points; else sim.awayScore += points;
+
+    if (points > 0) {
+      if (sim.run.team === team) sim.run.points += points;
+      else sim.run = { team: team, points: points };
+    }
 
     const elapsed = Math.min(sim.clock, possessionSeconds(rng));
     sim.clock -= elapsed;
@@ -179,6 +192,21 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     }
     sim.done = true;
   }
+
+  // Consumes no game clock: the stoppage is represented by its effects, not
+  // by advancing time (see the design doc).
+  sim.callTimeout = function (team) {
+    if (sim.done) return false;
+    if (sim.timeoutsLeft[team] <= 0) return false;
+    sim.timeoutsLeft[team] -= 1;
+    const box = team === 'home' ? homeBox : awayBox;
+    onCourt[team].forEach(function (id) {
+      box[id].energy = Math.min(1, box[id].energy + TIMEOUT_ENERGY_RESTORE);
+    });
+    // Whoever was running now isn't.
+    sim.run = { team: null, points: 0 };
+    return true;
+  };
 
   sim.applySubstitutions = function (team, swaps) {
     if (!swaps || swaps.length === 0) return;

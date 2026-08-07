@@ -264,4 +264,114 @@ function checkNoTiebreakEvents() {
 }
 checkNoTiebreakEvents();
 
+// A timeout must do something mechanical, or the agency built on it is hollow.
+function checkTimeoutRestoresEnergyAndClearsRun() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(71));
+  sim.onCourt.home.forEach(function (id) { sim.homeBox[id].energy = 0.5; });
+  sim.run = { team: 'away', points: 10 };
+  const before = sim.timeoutsLeft.home;
+
+  const ok = sim.callTimeout('home');
+  assert.strictEqual(ok, true, 'a timeout with one in hand must succeed');
+  assert.strictEqual(sim.timeoutsLeft.home, before - 1, 'a timeout must be consumed');
+  sim.onCourt.home.forEach(function (id) {
+    assert.ok(Math.abs(sim.homeBox[id].energy - 0.62) < 1e-9,
+      'on-court energy must rise by 0.12, got ' + sim.homeBox[id].energy);
+  });
+  assert.strictEqual(sim.run.points, 0, 'a timeout must clear the opponent run');
+  console.log('checkTimeoutRestoresEnergyAndClearsRun: OK');
+}
+checkTimeoutRestoresEnergyAndClearsRun();
+
+// Energy is a multiplier ceiling-ed at 1.0; a timeout must not exceed it.
+function checkTimeoutEnergyIsCapped() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(72));
+  sim.onCourt.home.forEach(function (id) { sim.homeBox[id].energy = 0.95; });
+  sim.callTimeout('home');
+  sim.onCourt.home.forEach(function (id) {
+    assert.ok(sim.homeBox[id].energy <= 1.0, 'energy must never exceed 1.0');
+  });
+  console.log('checkTimeoutEnergyIsCapped: OK');
+}
+checkTimeoutEnergyIsCapped();
+
+// Seven per game, and no more.
+function checkTimeoutsAreFinite() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(73));
+  assert.strictEqual(sim.timeoutsLeft.home, 7, 'teams start with 7 timeouts');
+  for (let i = 0; i < 7; i++) {
+    assert.strictEqual(sim.callTimeout('home'), true, 'timeout ' + (i + 1) + ' should succeed');
+  }
+  assert.strictEqual(sim.callTimeout('home'), false, 'the 8th timeout must be refused');
+  assert.strictEqual(sim.timeoutsLeft.home, 0, 'timeouts cannot go negative');
+  console.log('checkTimeoutsAreFinite: OK');
+}
+checkTimeoutsAreFinite();
+
+// The run tracker is what nudges and coach timeout logic read.
+function checkRunTracking() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(74));
+  let sawRun = false;
+  while (!sim.done) {
+    sim.step();
+    assert.ok(sim.run.points >= 0, 'run points are never negative');
+    if (sim.run.points >= 6) sawRun = true;
+    if (sim.run.team) assert.ok(sim.run.team === 'home' || sim.run.team === 'away', 'run team is a side');
+  }
+  assert.ok(sawRun, 'some team should go on a 6+ point run in a full game');
+  console.log('checkRunTracking: OK');
+}
+checkRunTracking();
+
+// The spec's core claim: agency is real, not cosmetic. Same seed, different
+// decisions, different game. (Calling a timeout consumes no rng, so the
+// random stream is identical — only the energy state the draws are applied
+// against differs, which is exactly what makes this a fair comparison.)
+function checkDecisionsChangeOutcomes() {
+  let anyDiffered = false;
+  for (const seed of [81, 82, 83, 84, 85, 86]) {
+    const control = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    while (!control.done) control.step();
+
+    const withTimeouts = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    let n = 0;
+    while (!withTimeouts.done) {
+      if (n === 12 || n === 40) withTimeouts.callTimeout('home');
+      withTimeouts.step();
+      n += 1;
+    }
+
+    if (control.result().homeScore !== withTimeouts.result().homeScore ||
+        control.result().awayScore !== withTimeouts.result().awayScore) {
+      anyDiffered = true;
+    }
+  }
+  assert.ok(anyDiffered,
+    'calling timeouts must change at least one of six games, or agency is cosmetic');
+  console.log('checkDecisionsChangeOutcomes: OK');
+}
+checkDecisionsChangeOutcomes();
+
+// ...and the same decisions must still reproduce exactly, or nothing is
+// debuggable.
+function checkSameDecisionsReproduce() {
+  function play(seed) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    let n = 0;
+    while (!sim.done) {
+      if (n === 12 || n === 40) sim.callTimeout('home');
+      sim.step();
+      n += 1;
+    }
+    return sim.result();
+  }
+  const a = play(91);
+  const b = play(91);
+  assert.strictEqual(a.homeScore, b.homeScore, 'same seed + same decisions must reproduce');
+  assert.strictEqual(a.awayScore, b.awayScore, 'same seed + same decisions must reproduce');
+  assert.strictEqual(boxChecksum(a.boxScore), boxChecksum(b.boxScore), 'box scores must reproduce');
+  console.log('checkSameDecisionsReproduce: OK');
+}
+checkSameDecisionsReproduce();
+
 console.log('All game sim validations passed');

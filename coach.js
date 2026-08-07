@@ -25,7 +25,11 @@ function rosterFor(sim, team) {
   return team === 'home' ? sim.homeRoster : sim.awayRoster;
 }
 
-// Bench players who could legally come in, freshest first.
+// Bench players who could legally come in. Sorted by whether they still have
+// minutes budget left FIRST, then by freshness — picking purely on freshness
+// sends a rested starter back out even when he is already over his night's
+// allocation, which is how a 36-minute player ended up at 46 (timeouts top
+// everyone up, so he kept coming back as the freshest body available).
 function availableBench(sim, team, alreadyUsed) {
   return rosterFor(sim, team)
     .filter(function (p) {
@@ -34,6 +38,9 @@ function availableBench(sim, team, alreadyUsed) {
       return lineFor(sim, team, p.id).fouls < FOUL_OUT;
     })
     .sort(function (a, b) {
+      const aOver = isOverMinutesPace(sim, team, a.id) ? 1 : 0;
+      const bOver = isOverMinutesPace(sim, team, b.id) ? 1 : 0;
+      if (aOver !== bOver) return aOver - bOver;   // under-budget players first
       return lineFor(sim, team, b.id).energy - lineFor(sim, team, a.id).energy;
     });
 }
@@ -159,9 +166,23 @@ function decideSubstitutions(sim, team) {
   return swaps;
 }
 
+const RUN_TRIGGER_POINTS = 8;
+
+// Call a timeout when the other side is running away with it and we still
+// have one in hand. Deliberately simple: the human watching gets the same
+// signal through a nudge, and can act sooner if they read it better.
+function decideTimeout(sim, team) {
+  if (sim.timeoutsLeft[team] <= 0) return false;
+  const other = team === 'home' ? 'away' : 'home';
+  if (sim.run.team !== other) return false;
+  return sim.run.points >= RUN_TRIGGER_POINTS;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     decideSubstitutions: decideSubstitutions,
+    decideTimeout: decideTimeout,
+    RUN_TRIGGER_POINTS: RUN_TRIGGER_POINTS,
     ENERGY_FLOOR: ENERGY_FLOOR,
     FOUL_TROUBLE: FOUL_TROUBLE,
     FOUL_OUT: FOUL_OUT

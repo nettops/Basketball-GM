@@ -110,4 +110,21 @@ function checkNeverFieldsFewerThanFive() {
 }
 checkNeverFieldsFewerThanFive();
 
+// The coach calls a timeout when it is being run off the floor, and not
+// otherwise.
+function checkCoachTimeoutOnRun() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(65));
+  sim.run = { team: 'away', points: 10 };
+  assert.strictEqual(coach.decideTimeout(sim, 'home'), true, 'conceding a 10-0 run should draw a timeout');
+
+  sim.run = { team: 'away', points: 4 };
+  assert.strictEqual(coach.decideTimeout(sim, 'home'), false, 'a 4-0 run is not worth a timeout');
+
+  sim.run = { team: 'away', points: 10 };
+  sim.timeoutsLeft.home = 0;
+  assert.strictEqual(coach.decideTimeout(sim, 'home'), false, 'cannot call a timeout with none left');
+  console.log('checkCoachTimeoutOnRun: OK');
+}
+checkCoachTimeoutOnRun();
+
 console.log('All coach validations passed');
