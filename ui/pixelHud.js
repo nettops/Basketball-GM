@@ -44,9 +44,11 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
         '<div class="pixel-nudge-slot" id="pixel-nudge-slot"></div>' +
         '<div class="pixel-subpanel" id="pixel-subpanel" hidden></div>' +
       '</div>' +
-      '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
-      '<div class="pixel-infostrip" id="pixel-infostrip"></div>' +
-      '<div class="pixel-commentary" id="pixel-commentary"></div>' +
+      // Controls sit directly under the court, ABOVE the ticker, info strip
+      // and commentary feed. Last in the stack they were pushed past
+      // #view-content's scroll fold on an ordinary window — present, correct,
+      // and unclickable without scrolling. If anything has to fall below the
+      // fold it should be the read-only feed, not the buttons.
       '<div class="pixel-controls">' +
         '<button id="pixel-play-pause">Pause</button>' +
         speeds.map(function (s) {
@@ -59,6 +61,9 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
         '<button id="pixel-mute">Sound: On</button>' +
         '<button id="pixel-exit">Exit</button>' +
       '</div>' +
+      '<div class="pixel-ticker" id="pixel-ticker">&nbsp;</div>' +
+      '<div class="pixel-infostrip" id="pixel-infostrip"></div>' +
+      '<div class="pixel-commentary" id="pixel-commentary"></div>' +
     '</div>';
 }
 
@@ -128,7 +133,13 @@ function pixelRenderSubPanel(panelEl, data) {
         (line.fouls || 0) + 'f</span>' +
       '</button>';
   }
+  // The close button belongs to the PANEL, not just to the Subs toggle in the
+  // control bar. The panel is an overlay and can be opened by a nudge without
+  // the user ever touching that toggle — and the control bar can sit below
+  // #view-content's scroll fold, which left the panel open with its only exit
+  // off-screen. An overlay has to be closable from itself.
   panelEl.innerHTML =
+    '<button id="pixel-sub-close" class="pixel-sub-x" title="Close" aria-label="Close substitutions">×</button>' +
     '<div class="pixel-sub-col"><div class="pixel-sub-head">On the floor</div>' +
       data.onCourt.map(function (p) { return row(p, 'out'); }).join('') + '</div>' +
     '<div class="pixel-sub-col"><div class="pixel-sub-head">' +
@@ -136,17 +147,24 @@ function pixelRenderSubPanel(panelEl, data) {
       data.bench.map(function (p) { return row(p, 'in'); }).join('') + '</div>';
 }
 
-// A nudge is a suggestion, never a prompt: it renders over the court,
-// playback keeps running behind it, and it disappears on its own. There is
-// deliberately no "dismiss" — ignoring it IS dismissing it, and a button
-// whose only job is to make the user act is the micromanagement this whole
-// design is trying to avoid.
+// A nudge is a suggestion, never a prompt: it renders over the court and
+// playback keeps running behind it.
+//
+// It carries an explicit dismiss (×) as well as expiring on its own. The
+// original design deliberately had no dismiss — "ignoring it IS dismissing
+// it" — but that reasoning only holds while the thing reliably expires, and
+// expiry runs on the PLAYBACK clock, which stops dead when the user pauses.
+// Pausing to read a nudge is the single most likely thing to do with one, and
+// it left the card stuck on screen with no way to get rid of it. Dismissing
+// is treated exactly like ignoring, so it adds control without adding
+// obligation.
 function pixelRenderNudge(slotEl, nudge) {
   if (!nudge) { slotEl.innerHTML = ''; return; }
   slotEl.innerHTML =
     '<div class="pixel-nudge pixel-nudge-' + escapeHtml(nudge.kind) + '">' +
       '<span class="pixel-nudge-text">' + escapeHtml(nudge.text) + '</span>' +
       '<button id="pixel-nudge-action">' + escapeHtml(nudge.actionLabel) + '</button>' +
+      '<button id="pixel-nudge-dismiss" class="pixel-nudge-x" title="Dismiss" aria-label="Dismiss">×</button>' +
     '</div>';
 }
 

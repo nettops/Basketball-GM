@@ -251,7 +251,17 @@ const UI_SMOKE = (function () {
       results.push(ok('live:bench-populated', bench.length > 0, bench.length));
       results.push(ok('live:first-floor-player-reachable',
         onFloor.length > 0 && isHitTestable(onFloor[0])));
-      viewContent().querySelector('#pixel-subs').click(); // close again
+
+      // The panel must be closable from ITSELF. It can be opened by a nudge
+      // without the user touching the Subs toggle, and that toggle can sit
+      // below #view-content's scroll fold — which left the panel open with
+      // its only exit off-screen.
+      const closeBtn = viewContent().querySelector('#pixel-sub-close');
+      results.push(ok('live:sub-panel-has-close', !!closeBtn));
+      results.push(ok('live:sub-panel-close-reachable', isHitTestable(closeBtn)));
+      if (closeBtn) closeBtn.click();
+      results.push(ok('live:sub-panel-closes-from-itself',
+        !!viewContent().querySelector('#pixel-subpanel').hidden));
     }
 
     // The nudge slot must not reserve layout space when empty — a nudge
@@ -261,6 +271,22 @@ const UI_SMOKE = (function () {
     results.push(ok('live:nudge-slot-is-overlay',
       !!slot && window.getComputedStyle(slot).position === 'absolute',
       slot ? window.getComputedStyle(slot).position : null));
+
+    // A nudge must always be closable by hand. Expiry runs on the playback
+    // clock, which stops when the user pauses — so without a dismiss control
+    // a paused nudge sat on screen permanently. Rendered directly here rather
+    // than waiting for a real one, so this holds regardless of game state.
+    if (slot && typeof pixelRenderNudge === 'function') {
+      const hadNudge = !!slot.querySelector('.pixel-nudge');
+      if (!hadNudge) {
+        pixelRenderNudge(slot, { kind: 'run', text: 'smoke test', actionLabel: 'Act' });
+        const x = slot.querySelector('#pixel-nudge-dismiss');
+        results.push(ok('live:nudge-has-dismiss', !!x));
+        results.push(ok('live:nudge-dismiss-reachable', isHitTestable(x)));
+        pixelRenderNudge(slot, null);   // leave the slot as we found it
+        results.push(ok('live:nudge-slot-restored', !slot.querySelector('.pixel-nudge')));
+      }
+    }
 
     return results;
   }

@@ -14,9 +14,16 @@
 // sim.userTeam in gameSim.js for why the timeout in particular has to be
 // claimed rather than raced).
 
-// How long a nudge stays up, measured on the PLAYBACK clock rather than the
-// wall clock, so it lasts the same number of possessions at 1x and 8x.
+// How long a nudge stays up, measured on the PLAYBACK clock so it lasts the
+// same number of possessions at 1x and 8x.
 const PIXEL_NUDGE_LIFETIME_MS = 6000;
+
+// Wall-clock backstop. The playback clock stops when the user pauses, and
+// during the freeze-frames that hold the quarter-break card — so a nudge
+// timed purely on playback could sit on screen forever. Pausing to read a
+// nudge is the most natural thing to do with one, and doing so used to trap
+// it permanently. Whichever limit is reached first retires the card.
+const PIXEL_NUDGE_WALL_CEILING_MS = 15000;
 
 // opts:
 //   sim            - the live GameSim
@@ -36,6 +43,7 @@ function createPixelCoach(opts) {
   const nudgeSlot = document.getElementById('pixel-nudge-slot');
 
   let selectedOutId = null;
+  let onEscape = null;      // document-level listener, removed at game over
   let activeNudge = null;   // { kind, key, expiresAt, apply, onExpire }
   let lastNudgeKey = null;  // so one situation nudges once, not every frame
 
@@ -76,17 +84,28 @@ function createPixelCoach(opts) {
     refreshSubPanel();
   }
 
+  function closeSubs() {
+    subPanel.hidden = true;
+    subsBtn.classList.remove('active');
+    selectedOutId = null;
+  }
+
   function showNudge(nudge) {
     if (!nudge || nudge.key === lastNudgeKey) return;
     lastNudgeKey = nudge.key;
     activeNudge = nudge;
     activeNudge.expiresAt = opts.playbackMs() + PIXEL_NUDGE_LIFETIME_MS;
+    activeNudge.wallDeadline = Date.now() + PIXEL_NUDGE_WALL_CEILING_MS;
     pixelRenderNudge(nudgeSlot, nudge);
     const btn = document.getElementById('pixel-nudge-action');
     if (btn) btn.addEventListener('click', function () {
       nudge.apply();
       clearNudge(false);
     });
+    // Dismissing is treated exactly like letting it expire: the coach still
+    // decides whatever the user chose not to.
+    const x = document.getElementById('pixel-nudge-dismiss');
+    if (x) x.addEventListener('click', function () { clearNudge(true); });
   }
 
   // `expired` distinguishes "the user ignored it" from "the user acted on
@@ -101,7 +120,8 @@ function createPixelCoach(opts) {
   function checkNudges() {
     if (!userSide || opts.isFinished()) return;
     if (activeNudge) {
-      if (opts.playbackMs() >= activeNudge.expiresAt) clearNudge(true);
+      if (opts.playbackMs() >= activeNudge.expiresAt ||
+          Date.now() >= activeNudge.wallDeadline) clearNudge(true);
       return;
     }
     const other = userSide === 'home' ? 'away' : 'home';
@@ -175,11 +195,16 @@ function createPixelCoach(opts) {
 
     subsBtn.addEventListener('click', function () {
       if (subPanel.hidden) { openSubs(null); return; }
-      subPanel.hidden = true;
-      subsBtn.classList.remove('active');
+      closeSubs();
     });
 
+    // Escape closes it too — the panel covers the court, and a keyboard exit
+    // is the one that always works no matter where the page is scrolled.
+    onEscape = function (e) { if (e.key === 'Escape' && !subPanel.hidden) closeSubs(); };
+    document.addEventListener('keydown', onEscape);
+
     subPanel.addEventListener('click', function (e) {
+      if (e.target.closest('#pixel-sub-close')) { closeSubs(); return; }
       const out = e.target.closest('.pixel-sub-out');
       if (out) { selectedOutId = out.getAttribute('data-pid'); refreshSubPanel(); return; }
       const inBtn = e.target.closest('.pixel-sub-in');
@@ -214,6 +239,9 @@ function createPixelCoach(opts) {
       subPanel.hidden = true;
       subsBtn.classList.remove('active');
       clearNudge(false);
+      // The keydown listener is on `document`, so it outlives this view's DOM
+      // and would pile up one handler per watched game without this.
+      if (onEscape) { document.removeEventListener('keydown', onEscape); onEscape = null; }
     }
   };
 }

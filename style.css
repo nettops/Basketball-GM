@@ -613,6 +613,12 @@ table { border-collapse: collapse; width: 100%; }
   background: rgba(10, 12, 16, 0.95); border: 1px solid #4a5262;
 }
 .pixel-subpanel[hidden] { display: none; }
+.pixel-sub-x {
+  position: absolute; top: 4px; right: 6px; z-index: 1;
+  padding: 0 6px; line-height: 1.3; font-size: 1rem;
+  background: rgba(10,12,16,0.9); border-color: #4a5262; color: var(--text-mute);
+}
+.pixel-sub-x:hover:not(:disabled) { color: var(--text, #e8e8e8); }
 .pixel-sub-col { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .pixel-sub-head { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-mute); margin-bottom: 2px; }
 .pixel-sub-out, .pixel-sub-in {
@@ -641,6 +647,11 @@ table { border-collapse: collapse; width: 100%; }
   font-size: 0.85rem;
   pointer-events: auto;
 }
+.pixel-nudge-x {
+  padding: 1px 6px; line-height: 1.1; font-size: 0.95rem;
+  background: transparent; border-color: transparent; color: var(--text-mute);
+}
+.pixel-nudge-x:hover:not(:disabled) { color: var(--text, #e8e8e8); border-color: #4a5262; }
 .pixel-nudge-run { border-color: #d8a13c; }
 .pixel-nudge-fouls { border-color: #ff6b5c; }
 .pixel-nudge-text { color: var(--text, #e8e8e8); }
