@@ -75,6 +75,10 @@ function accumulateSeasonStats(playerId, statLine) {
   if (!player.seasonStats) {
     player.seasonStats = { gamesPlayed: 0 };
     SEASON_STAT_KEYS.forEach(function (k) { player.seasonStats[k] = 0; });
+    // A brand-new season's stats have not been banked into careerStats yet.
+    // generateNewSeason clears this too; belt and braces, because whichever
+    // runs first, a fresh stat line must never be treated as already counted.
+    player.seasonStatsRolled = false;
   }
   player.seasonStats.gamesPlayed += 1;
   SEASON_STAT_KEYS.forEach(function (k) { player.seasonStats[k] += statLine[k] || 0; });

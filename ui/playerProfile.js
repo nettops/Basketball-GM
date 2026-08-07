@@ -21,9 +21,14 @@ function renderCurrentSeasonPanel(player) {
 
 function renderCareerStatsTab(player) {
   ensureCareerData([player]);
-  const cs = player.careerStats;
+  // Includes the season in progress — careerStats alone only gains a year at
+  // the top of the offseason, so mid-season this panel read Games 0 / PPG 0.0
+  // directly beneath a Current Season panel reporting real production.
+  const cs = careerTotalsToDate(player);
   const gp = cs.gamesPlayed || 1;
-  const highs = player.careerHistory.careerHighs;
+  // singleGame highs update per game and are already live; singleSeason waits
+  // for the offseason, which is why Best Season read 0 next to a real pace.
+  const highs = { singleGame: player.careerHistory.careerHighs.singleGame, singleSeason: seasonHighsToDate(player) };
   let html = '<div class="panel"><div class="panel-header">Career Totals</div><div class="panel-body kpi-grid">';
   html += '<div class="kpi-tile"><div class="kpi-label">Seasons</div><div class="kpi-value">' + cs.seasonsPlayed + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">Games</div><div class="kpi-value">' + cs.gamesPlayed + '</div></div>';

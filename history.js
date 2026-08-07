@@ -95,6 +95,17 @@ function rollSeasonIntoCareerStats(player, leagueYear, feedSink) {
   // before that, from finalizeSeasonHistory at the top of the offseason.
   _HISTORY_DATA.careerHistory.recordSeasonInHistory(player, leagueYear);
 
+  // From here on, whatever is in seasonStats has been accounted for in
+  // careerStats — set on BOTH paths below, including the zero-games early
+  // return where "accounted for" means "there was nothing to account for".
+  //
+  // careerTotalsToDate needs this because seasonStats is NOT cleared here: the
+  // manual rollover returns at the draft (seasonRollover.js:89) and only
+  // generateNewSeason wipes it, so for the whole draft/free-agency stretch
+  // both fields hold the same season. Without the flag, career totals shown
+  // during the offseason would count that year twice.
+  player.seasonStatsRolled = true;
+
   if (!player.seasonStats || player.seasonStats.gamesPlayed === 0) {
     player.lastSeasonAverages = Object.assign({}, ZERO_AVERAGES);
     return;
@@ -116,6 +127,71 @@ function rollSeasonIntoCareerStats(player, leagueYear, feedSink) {
   });
 
   checkMilestones(player, beforeTotals, sink);
+}
+
+// Career totals AS DISPLAYED: what careerStats holds, plus the season being
+// played right now.
+//
+// careerStats is a bank that only takes a deposit at the top of the offseason,
+// which is correct for the milestone/record machinery built on it — but wrong
+// as an answer to "what has this player done in their career", which is what
+// every Career Totals panel is asking. Five games into year one that read
+// Games 0 / PPG 0.0 directly beneath a Current Season panel saying GP 5.
+//
+// Returns a NEW object. Callers must not write through it, and nothing here
+// touches the stored record: checkMilestones diffs careerStats across the roll,
+// so mutating it from a render path would fire milestones off a moved baseline.
+function careerTotalsToDate(player) {
+  ensureCareerData([player]);
+  const stored = player.careerStats;
+  const totals = { gamesPlayed: stored.gamesPlayed, seasonsPlayed: stored.seasonsPlayed };
+  _HISTORY_DATA.league.SEASON_STAT_KEYS.forEach(function (key) { totals[key] = stored[key] || 0; });
+
+  const live = player.seasonStats;
+  // seasonStatsRolled: already banked, so adding it again would double-count
+  // the year for the entire draft/free-agency window. No games: an unplayed
+  // season is not a season played, so it must not bump seasonsPlayed.
+  if (!live || player.seasonStatsRolled || !live.gamesPlayed) return totals;
+
+  totals.gamesPlayed += live.gamesPlayed;
+  totals.seasonsPlayed += 1;
+  _HISTORY_DATA.league.SEASON_STAT_KEYS.forEach(function (key) { totals[key] += live[key] || 0; });
+  return totals;
+}
+
+// Best-season highs AS DISPLAYED, same story as careerTotalsToDate:
+// careerHighs.singleSeason is only written by recordSeasonInHistory at season
+// end, so a profile showed "Best Season PPG 0.0" directly beside a live 16.4 —
+// while Single-Game Pts, which updates per game, read a correct 36.
+//
+// max() rather than addition, and a NEW object: writing a mid-season pace into
+// the stored highs would make it permanent the moment the user looked at it.
+function seasonHighsToDate(player) {
+  ensureCareerData([player]);
+  const stored = player.careerHistory.careerHighs.singleSeason;
+  const highs = {
+    points: stored.points, rebounds: stored.rebounds, assists: stored.assists,
+    ppg: stored.ppg, rpg: stored.rpg, apg: stored.apg
+  };
+
+  // seasonStatsRolled is defensive here, unlike in careerTotalsToDate where it
+  // is load-bearing: max() is idempotent, so once a season is banked into the
+  // stored highs, re-considering it changes nothing. Kept for symmetry and
+  // because a future switch from max() to accumulation would need it.
+  const live = player.seasonStats;
+  if (!live || player.seasonStatsRolled || !live.gamesPlayed) return highs;
+
+  // Totals are compared raw, so a 5-game season cannot out-total a full one.
+  // Rates are compared per game, so a genuinely career-best pace shows up
+  // immediately rather than waiting for the offseason to be believed.
+  const gp = live.gamesPlayed;
+  highs.points = Math.max(highs.points, live.points || 0);
+  highs.rebounds = Math.max(highs.rebounds, live.rebounds || 0);
+  highs.assists = Math.max(highs.assists, live.assists || 0);
+  highs.ppg = Math.max(highs.ppg, (live.points || 0) / gp);
+  highs.rpg = Math.max(highs.rpg, (live.rebounds || 0) / gp);
+  highs.apg = Math.max(highs.apg, (live.assists || 0) / gp);
+  return highs;
 }
 
 // Weighted career-value score: counting stats are worth a small fraction of a
@@ -324,7 +400,10 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
 function careerLeaders(statKey, count) {
   const activeEntries = _HISTORY_DATA.players.PLAYERS_2026.map(function (p) {
     ensureCareerData([p]);
-    return { id: p.id, name: p.name, value: p.careerStats[statKey] };
+    // Career to date for actives, so this board agrees with the Career Totals
+    // panels. Retirees below are read as stored: their last season was banked
+    // when they retired and they have no live seasonStats to fold in.
+    return { id: p.id, name: p.name, value: careerTotalsToDate(p)[statKey] };
   });
   const retiredEntries = LEAGUE_HISTORY.retiredPlayers.map(function (r) {
     return { id: r.id, name: r.name, value: r.careerStats[statKey] };
@@ -337,7 +416,11 @@ function careerLeaders(statKey, count) {
 function singleSeasonLeaders(statKey, count) {
   const activeEntries = _HISTORY_DATA.players.PLAYERS_2026.map(function (p) {
     ensureCareerData([p]);
-    return { id: p.id, name: p.name, value: p.bestSeasonTotals[statKey] };
+    // bestSeasonTotals is written at season end like everything else here, so
+    // an in-progress season has to be considered explicitly or this board sits
+    // at zero for a league's whole first year.
+    const live = (!p.seasonStats || p.seasonStatsRolled) ? 0 : (p.seasonStats[statKey] || 0);
+    return { id: p.id, name: p.name, value: Math.max(p.bestSeasonTotals[statKey], live) };
   });
   const retiredEntries = LEAGUE_HISTORY.retiredPlayers.map(function (r) {
     return { id: r.id, name: r.name, value: r.bestSeasonTotals ? r.bestSeasonTotals[statKey] : 0 };
@@ -359,6 +442,8 @@ if (typeof module !== 'undefined' && module.exports) {
     LEAGUE_HISTORY: LEAGUE_HISTORY,
     ensureCareerData: ensureCareerData,
     rollSeasonIntoCareerStats: rollSeasonIntoCareerStats,
+    careerTotalsToDate: careerTotalsToDate,
+    seasonHighsToDate: seasonHighsToDate,
     computeHofScore: computeHofScore,
     HOF_THRESHOLD: HOF_THRESHOLD,
     archiveRetiree: archiveRetiree,

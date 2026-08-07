@@ -88,6 +88,10 @@ function generateNewSeason(rng) {
 
   _TRANSITION_DATA.players.PLAYERS_2026.forEach(function (p) {
     p.seasonStats = undefined;
+    // Paired with the write in history.js's rollSeasonIntoCareerStats: the
+    // season that was banked is gone, so the next one to accumulate here is
+    // unbanked again and careerTotalsToDate must start adding it back in.
+    p.seasonStatsRolled = false;
   });
 
   const games = _TRANSITION_DATA.schedule.generateSeasonGames(rng, _TRANSITION_DATA.teams.TEAMS).map(function (g) {

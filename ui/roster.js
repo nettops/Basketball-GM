@@ -115,9 +115,12 @@ function renderRoster(container, teamId) {
       '<th class="num">Reb</th><th class="num">Ast</th><th class="num">Titles</th></tr></thead><tbody>';
     roster.forEach(function (p) {
       ensureCareerData([p]);
-      html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + p.careerStats.seasonsPlayed +
-        '</td><td class="num">' + p.careerStats.points + '</td><td class="num">' + p.careerStats.rebounds +
-        '</td><td class="num">' + p.careerStats.assists + '</td><td class="num">' +
+      // Career to date, including the season being played — otherwise this
+      // whole table is a column of zeros for a league's entire first year.
+      const cs = careerTotalsToDate(p);
+      html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + cs.seasonsPlayed +
+        '</td><td class="num">' + cs.points + '</td><td class="num">' + cs.rebounds +
+        '</td><td class="num">' + cs.assists + '</td><td class="num">' +
         (p.championshipsWon > 0 ? '<span class="pill pill-gold">' + p.championshipsWon + '</span>' : '—') + '</td></tr>';
     });
     html += '</tbody></table></div>';

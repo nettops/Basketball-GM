@@ -150,7 +150,11 @@ function renderCareerLedger(container) {
         ensureCareerData([p]);
         if (filters.teamId && p.teamId !== filters.teamId) return;
         if (filters.search && p.name.toLowerCase().indexOf(filters.search.toLowerCase()) === -1) return;
-        rows.push([p.name, p.careerStats.seasonsPlayed, p.careerStats.gamesPlayed, p.careerStats.points, p.careerStats.rebounds, p.careerStats.assists, p.championshipsWon, p.peakOverall]);
+        // Career to date, matching what the Career Totals panels show — an
+        // export that disagreed with the screen it was exported from would be
+        // worse than one that is merely stale.
+        const cs = careerTotalsToDate(p);
+        rows.push([p.name, cs.seasonsPlayed, cs.gamesPlayed, cs.points, cs.rebounds, cs.assists, p.championshipsWon, p.peakOverall]);
       });
       downloadCsv('career-totals.csv', rows);
     });

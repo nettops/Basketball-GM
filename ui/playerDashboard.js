@@ -18,11 +18,11 @@ function renderPlayerDashboard(container, playerId) {
       <div class="panel-header">Career Stats</div>
       <table style="width: 100%;">
         <tr>
-          <td><strong>Career Points:</strong> ${player.careerStats.points}</td>
+          <td><strong>Career Points:</strong> ${careerTotalsToDate(player).points}</td>
           <td><strong>Championships:</strong> ${player.championshipsWon}</td>
         </tr>
         <tr>
-          <td><strong>Seasons Played:</strong> ${player.careerStats.seasonsPlayed}</td>
+          <td><strong>Seasons Played:</strong> ${careerTotalsToDate(player).seasonsPlayed}</td>
           <td><strong>MVPs:</strong> ${player.awardsWon.filter(a => a.award === AWARD_KEYS.MVP).length}</td>
         </tr>
       </table>

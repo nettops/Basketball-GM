@@ -20,11 +20,14 @@ function renderComparisonOverviewTab(players) {
     '<th class="num">RPG</th><th class="num">APG</th><th class="num">Titles</th><th class="num">Peak OVR</th><th class="num">Awards</th></tr></thead><tbody>';
   players.forEach(function (p) {
     ensureCareerData([p]);
-    const gp = p.careerStats.gamesPlayed || 1;
-    html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + p.careerStats.seasonsPlayed + '</td>' +
-      '<td class="num">' + p.careerStats.points + '</td><td class="num">' + p.careerStats.rebounds + '</td><td class="num">' + p.careerStats.assists +
-      '</td><td class="num">' + (p.careerStats.points / gp).toFixed(1) + '</td><td class="num">' + (p.careerStats.rebounds / gp).toFixed(1) +
-      '</td><td class="num">' + (p.careerStats.assists / gp).toFixed(1) + '</td><td class="num">' + p.championshipsWon +
+    // Career to date: comparing two players mid-season on stored careerStats
+    // alone ranked every active player identically at zero.
+    const cs = careerTotalsToDate(p);
+    const gp = cs.gamesPlayed || 1;
+    html += '<tr><td class="col-name">' + p.name + '</td><td class="num">' + cs.seasonsPlayed + '</td>' +
+      '<td class="num">' + cs.points + '</td><td class="num">' + cs.rebounds + '</td><td class="num">' + cs.assists +
+      '</td><td class="num">' + (cs.points / gp).toFixed(1) + '</td><td class="num">' + (cs.rebounds / gp).toFixed(1) +
+      '</td><td class="num">' + (cs.assists / gp).toFixed(1) + '</td><td class="num">' + p.championshipsWon +
       '</td><td class="num">' + p.peakOverall + '</td><td class="num">' + p.awardsWon.length + '</td></tr>';
   });
   html += '</tbody></table></div>';
