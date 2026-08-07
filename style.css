@@ -157,14 +157,9 @@ select { cursor: pointer; }
 }
 .sidebar-brand span { color: var(--accent); }
 
-#nav-bar { padding: 10px 0 20px; }
-.nav-group { margin-bottom: 14px; }
-.nav-group-label {
-  padding: 6px 18px;
-  font-size: .68rem; font-weight: 700;
-  letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-mute);
-}
+/* Seven hub buttons, no group headers — the sidebar is short enough now that
+   grouping added labels without adding clarity. */
+#nav-bar { padding: 10px 0 20px; display: flex; flex-direction: column; gap: 1px; }
 .nav-item {
   display: block; width: 100%; text-align: left;
   padding: 7px 18px;

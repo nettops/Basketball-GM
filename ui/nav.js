@@ -1,32 +1,32 @@
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', group: 'Team' },
-  { id: 'playerDashboard', label: 'Career', group: 'Team' },
-  { id: 'legacy', label: 'Player Legacy', group: 'Team' },
-  { id: 'roster', label: 'Roster', group: 'Team' },
-  { id: 'schedule', label: 'Schedule', group: 'Team' },
-  { id: 'playoffs', label: 'Playoffs', group: 'Team' },
-  { id: 'allStarWeekend', label: 'All-Star Weekend', group: 'League' },
-  { id: 'standings', label: 'Standings', group: 'League' },
-  { id: 'powerRankings', label: 'Power Rankings', group: 'League' },
-  { id: 'awards', label: 'Awards', group: 'League' },
-  { id: 'seasonSummary', label: 'Season Recap', group: 'League' },
-  { id: 'history', label: 'History', group: 'League' },
-  { id: 'frivolities', label: 'Frivolities', group: 'League' },
-  { id: 'careerLedger', label: 'Career Ledger', group: 'League' },
-  { id: 'playerComparison', label: 'Compare Players', group: 'League' },
-  { id: 'news', label: 'League News', group: 'League' },
-  { id: 'feed', label: 'Live Feed', group: 'League' },
-  { id: 'trade', label: 'Trade Center', group: 'Transactions' },
-  { id: 'freeagency', label: 'Free Agency', group: 'Transactions' },
-  { id: 'draft', label: 'Draft', group: 'Transactions' },
-  { id: 'scouting', label: 'Scouting', group: 'Transactions' },
-  { id: 'salarycap', label: 'Salary Cap', group: 'Transactions' },
-  { id: 'finances', label: 'Team Finances', group: 'Transactions' },
-  { id: 'coaching', label: 'Coaching', group: 'Transactions' },
-  { id: 'saveload', label: 'Save/Load', group: 'System' },
-  { id: 'settings', label: 'Settings', group: 'System' },
-  { id: 'commissioner', label: 'Commissioner', group: 'System' },
-  { id: 'godMode', label: 'God Mode', group: 'System' }
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'playerDashboard', label: 'Career' },
+  { id: 'legacy', label: 'Player Legacy' },
+  { id: 'roster', label: 'Roster' },
+  { id: 'schedule', label: 'Schedule' },
+  { id: 'playoffs', label: 'Playoffs' },
+  { id: 'allStarWeekend', label: 'All-Star Weekend' },
+  { id: 'standings', label: 'Standings' },
+  { id: 'powerRankings', label: 'Power Rankings' },
+  { id: 'awards', label: 'Awards' },
+  { id: 'seasonSummary', label: 'Season Recap' },
+  { id: 'history', label: 'History' },
+  { id: 'frivolities', label: 'Frivolities' },
+  { id: 'careerLedger', label: 'Career Ledger' },
+  { id: 'playerComparison', label: 'Compare Players' },
+  { id: 'news', label: 'League News' },
+  { id: 'feed', label: 'Live Feed' },
+  { id: 'trade', label: 'Trade Center' },
+  { id: 'freeagency', label: 'Free Agency' },
+  { id: 'draft', label: 'Draft' },
+  { id: 'scouting', label: 'Scouting' },
+  { id: 'salarycap', label: 'Salary Cap' },
+  { id: 'finances', label: 'Team Finances' },
+  { id: 'coaching', label: 'Coaching' },
+  { id: 'saveload', label: 'Save/Load' },
+  { id: 'settings', label: 'Settings' },
+  { id: 'commissioner', label: 'Commissioner' },
+  { id: 'godMode', label: 'God Mode' }
 ];
 
 // What the sidebar actually renders. Each hub owns an ordered list of view
@@ -124,46 +124,35 @@ function renderViewTabs(container, activeView, onNavigate, playMode, gameMode, h
   });
 }
 
-const NAV_GROUP_ORDER = ['Team', 'League', 'Transactions', 'System'];
-
+// Renders one button per hub. Clicking a hub lands on its first VISIBLE view,
+// not blindly on views[0] — in a GM game the System hub's fourth tab
+// (Commissioner) is filtered out, and a career-mode Career hub may have lost
+// its Legacy tab, so the landing view has to come from the filtered list.
+//
 // hasLegacy surfaces the Player Legacy view after a career-mode player retires.
 // At that point transitionToGMMode has already cleared gameMode, so the Career
-// item is gone — without this the legacy view was reachable only from the
+// tab is gone — without this the legacy view was reachable only from the
 // one-shot button on the retirement scene, and unreachable forever after.
 function renderNav(container, activeView, onNavigate, playMode, gameMode, hasLegacy) {
   container.innerHTML = '';
-  NAV_GROUP_ORDER.forEach(function (group) {
-    const items = NAV_ITEMS.filter(function (item) {
-      if (item.group !== group) return false;
-      if (item.id === 'commissioner' && playMode !== 'commissioner') return false;
-      if (item.id === 'playerDashboard' && gameMode !== 'playerCareer') return false;
-      if (item.id === 'legacy' && !hasLegacy) return false;
-      return true;
+  const activeHub = hubForView(activeView);
+
+  NAV_HUBS.forEach(function (hub) {
+    const views = visibleHubViews(hub, playMode, gameMode, hasLegacy);
+    if (views.length === 0) return;   // every view filtered out: skip entirely
+
+    const btn = document.createElement('button');
+    btn.textContent = hub.label;
+    btn.className = (activeHub && activeHub.id === hub.id) ? 'nav-item active' : 'nav-item';
+    btn.setAttribute('data-hub', hub.id);
+    btn.addEventListener('click', function () {
+      // The sidebar Roster entry always means "my team" — clears any
+      // in-progress inspection from clicking a team in Standings/Power
+      // Rankings (see script.js's BUILT_VIEWS.roster and ui/standings.js).
+      if (views[0] === 'roster') GameState.inspectTeamId = null;
+      onNavigate(views[0]);
     });
-    if (items.length === 0) return;
-
-    const groupEl = document.createElement('div');
-    groupEl.className = 'nav-group';
-    const label = document.createElement('div');
-    label.className = 'nav-group-label';
-    label.textContent = group;
-    groupEl.appendChild(label);
-
-    items.forEach(function (item) {
-      const btn = document.createElement('button');
-      btn.textContent = item.label;
-      btn.className = item.id === activeView ? 'nav-item active' : 'nav-item';
-      btn.addEventListener('click', function () {
-        // The sidebar Roster link always means "my team" — clears any
-        // in-progress inspection from clicking a team in Standings/Power
-        // Rankings (see script.js's BUILT_VIEWS.roster and ui/standings.js).
-        if (item.id === 'roster') GameState.inspectTeamId = null;
-        onNavigate(item.id);
-      });
-      groupEl.appendChild(btn);
-    });
-
-    container.appendChild(groupEl);
+    container.appendChild(btn);
   });
 }
 
