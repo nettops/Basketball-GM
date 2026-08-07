@@ -13,6 +13,7 @@ const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const golden = require(path.join(__dirname, 'fixtures', 'gamesim-golden.json'));
 
 function boxChecksum(boxScore) {
@@ -31,7 +32,7 @@ function boxChecksum(boxScore) {
 // The whole point of Stage 1: the refactor must not move a single number.
 function checkGoldenMaster() {
   golden.forEach(function (g) {
-    const result = possEngine.simulateGame(g.home, g.away, makeRng(g.seed));
+    const result = gameSim.simulateGame(g.home, g.away, makeRng(g.seed));
     assert.strictEqual(result.homeScore, g.homeScore,
       'seed ' + g.seed + ' home score drifted: ' + result.homeScore + ' vs golden ' + g.homeScore);
     assert.strictEqual(result.awayScore, g.awayScore,
@@ -50,9 +51,9 @@ checkGoldenMaster();
 function checkManualSteppingMatchesBatch() {
   const cases = [{ seed: 21, home: 'BOS', away: 'MIA' }, { seed: 34, home: 'DEN', away: 'GSW' }];
   cases.forEach(function (c) {
-    const batch = possEngine.simulateGame(c.home, c.away, makeRng(c.seed));
+    const batch = gameSim.simulateGame(c.home, c.away, makeRng(c.seed));
 
-    const sim = possEngine.createGameSim(c.home, c.away, makeRng(c.seed));
+    const sim = gameSim.createGameSim(c.home, c.away, makeRng(c.seed));
     let guard = 0;
     while (!sim.done) {
       sim.step();
@@ -72,7 +73,7 @@ checkManualSteppingMatchesBatch();
 // step() after completion must be a no-op, so an over-eager driver cannot
 // corrupt a finished game.
 function checkStepAfterDoneIsNoop() {
-  const sim = possEngine.createGameSim('BOS', 'LAL', makeRng(77));
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(77));
   while (!sim.done) sim.step();
   const before = sim.result();
   sim.step();

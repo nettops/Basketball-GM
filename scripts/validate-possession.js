@@ -13,6 +13,7 @@ const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 const simEngine = require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 
 function checkEngineRegistered() {
@@ -29,7 +30,7 @@ function checkBoxScoreConsistency() {
     const home = TEAMS[i % TEAMS.length];
     const away = TEAMS[(i + 7) % TEAMS.length];
     if (home.id === away.id) continue;
-    const result = possEngine.simulateGame(home.id, away.id, rng);
+    const result = gameSim.simulateGame(home.id, away.id, rng);
     assert.notStrictEqual(result.homeScore, result.awayScore, 'games cannot end in a tie');
     assert.ok(result.homeScore >= 60 && result.homeScore <= 170, 'home score should be in a realistic NBA range: ' + result.homeScore);
     assert.ok(result.awayScore >= 60 && result.awayScore <= 170, 'away score should be in a realistic NBA range: ' + result.awayScore);
@@ -64,7 +65,7 @@ function checkInjuredPlayersExcluded() {
   const star = roster.find(function (p) { return p.id === 'bos-jayson-tatum'; });
   const originalInjury = star.status.injury;
   star.status.injury = { severity: 'Season Ending', gamesRemaining: 999 };
-  const result = possEngine.simulateGame('BOS', 'LAL', rng);
+  const result = gameSim.simulateGame('BOS', 'LAL', rng);
   assert.ok(!(star.id in result.boxScore), 'an injured player should not appear in the box score at all');
   star.status.injury = originalInjury;
   console.log('checkInjuredPlayersExcluded: OK');

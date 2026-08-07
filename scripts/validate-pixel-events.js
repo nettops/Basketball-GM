@@ -13,6 +13,7 @@ const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 
 const EVENT_TYPES = ['possession', 'turnover', 'block', 'shot', 'rebound', 'foul-ft', 'tiebreak'];
@@ -23,9 +24,9 @@ function checkNoRngDrift() {
     const home = TEAMS[seed % TEAMS.length];
     const away = TEAMS[(seed + 11) % TEAMS.length];
     if (home.id === away.id) continue;
-    const plain = possEngine.simulateGame(home.id, away.id, makeRng(seed));
+    const plain = gameSim.simulateGame(home.id, away.id, makeRng(seed));
     const events = [];
-    const captured = possEngine.simulateGame(home.id, away.id, makeRng(seed), { events: events });
+    const captured = gameSim.simulateGame(home.id, away.id, makeRng(seed), { events: events });
     assert.strictEqual(captured.homeScore, plain.homeScore, 'homeScore drift at seed ' + seed);
     assert.strictEqual(captured.awayScore, plain.awayScore, 'awayScore drift at seed ' + seed);
     assert.strictEqual(JSON.stringify(captured.boxScore), JSON.stringify(plain.boxScore), 'boxScore drift at seed ' + seed);
@@ -41,7 +42,7 @@ function checkEventIntegrity() {
     const away = TEAMS[(seed + 13) % TEAMS.length];
     if (home.id === away.id) continue;
     const events = [];
-    const result = possEngine.simulateGame(home.id, away.id, makeRng(seed), { events: events });
+    const result = gameSim.simulateGame(home.id, away.id, makeRng(seed), { events: events });
 
     const homeIds = league.getTeamRoster(home.id).map(function (p) { return p.id; });
     const awayIds = league.getTeamRoster(away.id).map(function (p) { return p.id; });

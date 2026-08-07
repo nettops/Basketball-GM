@@ -13,6 +13,7 @@ const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 const choreo = require(path.join(__dirname, '..', 'ui', 'pixelChoreographer.js'));
 
@@ -20,7 +21,7 @@ function buildSession(seed) {
   const home = TEAMS[seed % TEAMS.length];
   const away = TEAMS[(seed + 9) % TEAMS.length];
   const events = [];
-  const result = possEngine.simulateGame(home.id, away.id, makeRng(seed), { events: events });
+  const result = gameSim.simulateGame(home.id, away.id, makeRng(seed), { events: events });
   return {
     session: {
       events: events,
