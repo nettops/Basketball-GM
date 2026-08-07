@@ -56,17 +56,6 @@ function shotSpot(offenseTeam, zone, jitterSeed) {
   return clampToCourt(hoop.x + dir * dist, hoop.y + dy);
 }
 
-// The engine has no bench/rotation, so the view fields each team's five
-// most-used players (by minutes) and swaps a sprite in whenever an event
-// names someone not currently shown (swap out the lowest-minutes non-participant).
-function startingFive(roster, boxScore) {
-  return roster
-    .filter(function (p) { return boxScore[p.id]; })
-    .slice()
-    .sort(function (a, b) { return boxScore[b.id].minutes - boxScore[a.id].minutes; })
-    .slice(0, 5);
-}
-
 // Sort the current five into PG/SG/SF/PF/C display slots: exact position match
 // first, remaining players fill leftover slots in order.
 function assignSlots(five) {
@@ -80,23 +69,6 @@ function assignSlots(five) {
     if (!slots[posName]) slots[posName] = unassigned.shift();
   });
   return slots; // { PG: player, SG: player, ... }
-}
-
-function ensureOnCourt(five, roster, boxScore, neededIds) {
-  neededIds.forEach(function (pid) {
-    if (!pid) return;
-    if (five.some(function (p) { return p.id === pid; })) return;
-    const sub = roster.find(function (p) { return p.id === pid; });
-    if (!sub) return;
-    // Swap out the lowest-minutes player not needed this possession.
-    let outIdx = -1, outMin = Infinity;
-    five.forEach(function (p, i) {
-      if (neededIds.indexOf(p.id) !== -1) return;
-      const m = boxScore[p.id] ? boxScore[p.id].minutes : 0;
-      if (m < outMin) { outMin = m; outIdx = i; }
-    });
-    if (outIdx !== -1) five[outIdx] = sub;
-  });
 }
 
 // Beat durations at 1x (ms). Deliberately unhurried — a possession runs about
@@ -299,57 +271,118 @@ function crashPositions(pos, shooterId, hoop, seed) {
   return out;
 }
 
-function buildTimeline(session) {
-  const events = session.events;
-  const rosters = { home: session.homeRoster, away: session.awayRoster };
-  const boxScore = session.boxScore;
-  const five = {
-    home: startingFive(session.homeRoster, boxScore),
-    away: startingFive(session.awayRoster, boxScore)
-  };
+// Groups a flat event log into per-possession slices. A `possession` event
+// opens one; everything until the next `possession` belongs to it.
+function groupPossessions(events) {
+  const slices = [];
+  events.forEach(function (ev) {
+    if (ev.type === 'possession') slices.push([ev]);
+    else if (slices.length > 0) slices[slices.length - 1].push(ev);
+  });
+  return slices;
+}
 
-  // Broadcast-feed name/team lookups (optional in session — Node validate
-  // scripts don't pass them).
+// The incremental choreographer. Playback needs to draw a possession while
+// the ones after it have not been simulated yet, so every whole-game pass the
+// old buildTimeline did has been made per-possession:
+//
+//   - the clock is now the engine's own instead of 720s divided by a
+//     possession count that isn't known until the game ends;
+//   - the on-court five is now the engine's own instead of being inferred by
+//     sorting the final box score by minutes;
+//   - the shot-clock pass only ever needed one possession's bounds, so it
+//     runs at the end of each append;
+//   - the line score accumulates at period boundaries and is closed by
+//     finish().
+//
+// buildTimeline() below is a loop over this, so a replayed game and a live
+// game cannot produce different timelines.
+function createChoreographer(session) {
   const teamNames = { home: session.homeName || 'home side', away: session.awayName || 'road side' };
   const abbrs = { home: session.homeAbbr || 'HOME', away: session.awayAbbr || 'AWAY' };
+
   const nameById = {};
   const playerById = {};
-  session.homeRoster.concat(session.awayRoster).forEach(function (p) { nameById[p.id] = p.name; playerById[p.id] = p; });
+  session.homeRoster.concat(session.awayRoster).forEach(function (p) {
+    nameById[p.id] = p.name;
+    playerById[p.id] = p;
+  });
   function ln(pid) {
     return nameById[pid] ? nameById[pid].split(' ').pop() : 'the big man';
   }
-
-  // Group events into possessions: a 'possession' event opens one; terminal
-  // events (turnover/block/shot) close it; rebound/foul-ft trail the terminal.
-  const possessions = [];
-  let current = null;
-  events.forEach(function (ev) {
-    if (ev.type === 'possession') {
-      // A possession that begins right after the other team lost the ball
-      // live — a steal or a defensive board — is a fast break: the defense
-      // has NOT had time to set, so the transition beat plays differently.
-      const prev = possessions[possessions.length - 1];
-      let fastBreak = false;
-      if (prev && prev.team !== ev.team && prev.plays.length > 0) {
-        const lastPlay = prev.plays[prev.plays.length - 1];
-        fastBreak = (lastPlay.type === 'turnover' && !!lastPlay.defenderId) ||
-                    (lastPlay.type === 'rebound' && !lastPlay.offensive);
-      }
-      current = { team: ev.team, quarter: ev.quarter, handlerId: ev.playerId, plays: [], fastBreak: fastBreak };
-      possessions.push(current);
-    } else if (current) {
-      current.plays.push(ev);
-    }
-  });
-
-  // Clock: divide each quarter's 720s evenly across its possessions.
-  const perQuarter = {};
-  possessions.forEach(function (p) { perQuarter[p.quarter] = (perQuarter[p.quarter] || 0) + 1; });
+  function teamOfPlayer(id) {
+    return session.homeRoster.some(function (p) { return p.id === id; }) ? 'home' : 'away';
+  }
 
   const keyframes = [];
-  let t = 0;
+  const snapshots = [];
+  const lineScore = [];
+  const runPts = {};
+  const runFouls = {};
   const score = [0, 0];
-  const quarterSeen = {};
+
+  let t = 0;
+  let possCounter = -1;
+  let prevPoss = null;          // for fast-break detection
+  let five = { home: [], away: [] };   // players (not ids) currently on court
+  let linePeriod = null;        // period the line score is currently accruing
+  let atPeriodStart = [0, 0];
+  let finished = false;
+
+  const timeline = {
+    keyframes: keyframes,
+    durationMs: 0,
+    snapshots: snapshots,
+    lineScore: lineScore,
+    finalStats: { points: runPts, fouls: runFouls }
+  };
+
+  function snapshot() {
+    const scorers = Object.keys(runPts)
+      .map(function (id) { return { id: id, pts: runPts[id], team: teamOfPlayer(id) }; })
+      .sort(function (a, b) { return b.pts - a.pts; })
+      .slice(0, 4);
+    const trouble = Object.keys(runFouls)
+      .filter(function (id) { return runFouls[id] >= 4; })
+      .map(function (id) { return { id: id, fouls: runFouls[id] }; })
+      .sort(function (a, b) { return b.fouls - a.fouls; });
+    snapshots.push({ leaders: scorers, foulTrouble: trouble });
+  }
+
+  function addPoints(id, n) {
+    if (!n) return;
+    runPts[id] = (runPts[id] || 0) + n;
+    snapshot();
+  }
+
+  function addFoul(id) {
+    if (!id) return;
+    runFouls[id] = (runFouls[id] || 0) + 1;
+    if (runFouls[id] >= 4) snapshot();
+  }
+
+  snapshot(); // index 0: empty board at tip-off
+
+  // `sfx` names the sound this beat should trigger (see ui/pixelAudio.js's
+  // synth). Naming it here rather than sniffing the display text keeps the
+  // audio honest: a miss and a make are different events even though both
+  // end with the ball at the rim.
+  function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx) {
+    t += dt;
+    // Every keyframe goes through the collision pass so sprites never stack;
+    // the current ball holder is the protected (immovable) body.
+    const resolved = separatePositions(pos, ball.holder);
+    keyframes.push({
+      t: t, pos: resolved, ball: ball, score: score.slice(),
+      period: period, quarter: quarter,
+      clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '',
+      sfx: sfx || '',
+      // index into timeline.snapshots (running leaders / foul trouble) and
+      // which possession this beat belongs to, used to derive a shot clock
+      snap: snapshots.length - 1,
+      possIdx: possCounter
+    });
+  }
 
   function positionsFor(offenseTeam) {
     const pos = {};
@@ -366,9 +399,7 @@ function buildTimeline(session) {
   // Possession-start snapshot: the DEFENSE is already back at its formation
   // spots (they hold those same spots through the formation beat, so they
   // read as a set defense waiting), while the offense is still strung out
-  // toward its own half, about to flow in. This replaces the old single
-  // formation keyframe that slid both entire teams across the floor in one
-  // synchronized lerp.
+  // toward its own half, about to flow in.
   // On a fast break the roles invert: the OFFENSE is already streaking toward
   // the rim while the DEFENSE is the group scrambling back from the other
   // end, which is what makes a break read as a break rather than a walk-up.
@@ -400,81 +431,64 @@ function buildTimeline(session) {
     return pos;
   }
 
-  // `sfx` names the sound this beat should trigger (see ui/pixelGameView.js's
-  // synth). Naming it here rather than sniffing the display text keeps the
-  // audio honest: a miss and a make are different events even though both
-  // end with the ball at the rim.
-  function push(dt, pos, ball, quarter, clock, text, commentary, sfx) {
-    t += dt;
-    // Every keyframe goes through the collision pass so sprites never stack;
-    // the current ball holder is the protected (immovable) body.
-    const resolved = separatePositions(pos, ball.holder);
-    keyframes.push({
-      t: t, pos: resolved, ball: ball, score: score.slice(), quarter: quarter,
-      clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '',
-      sfx: sfx || '',
-      // index into timeline.snapshots (running leaders / foul trouble) and
-      // which possession this beat belongs to, used to derive a shot clock
-      snap: snapshots.length - 1,
-      possIdx: possCounter
-    });
+  // Shot clock for ONE possession: 24 at the inbound, ticking to 0 at the
+  // terminal beat. Only ever needed this possession's own bounds, which is
+  // why it can run per-append instead of as a whole-game post-pass.
+  function applyShotClock(fromIndex) {
+    const start = keyframes[fromIndex].t;
+    const end = keyframes[keyframes.length - 1].t;
+    const span = Math.max(1, end - start);
+    for (let i = fromIndex; i < keyframes.length; i++) {
+      keyframes[i].shotClock = Math.max(0, Math.round(24 - 24 * ((keyframes[i].t - start) / span)));
+    }
   }
 
-  // Running scoring and fouls. Snapshots are pushed only when something
-  // changes (roughly 200 times a game) and keyframes point at the current
-  // one, so per-keyframe stat data stays cheap.
-  const runPts = {};
-  const runFouls = {};
-  const snapshots = [];
-  let possCounter = -1;
+  function appendEvents(events) {
+    if (finished) throw new Error('appendEvents after finish()');
+    const head = events[0];
+    if (!head || head.type !== 'possession') return;
 
-  function snapshot() {
-    const scorers = Object.keys(runPts)
-      .map(function (id) { return { id: id, pts: runPts[id], team: teamOfPlayer(id) }; })
-      .sort(function (a, b) { return b.pts - a.pts; })
-      .slice(0, 4);
-    const trouble = Object.keys(runFouls)
-      .filter(function (id) { return runFouls[id] >= 4; })
-      .map(function (id) { return { id: id, fouls: runFouls[id] }; })
-      .sort(function (a, b) { return b.fouls - a.fouls; });
-    snapshots.push({ leaders: scorers, foulTrouble: trouble });
-  }
-
-  function teamOfPlayer(id) {
-    return session.homeRoster.some(function (p) { return p.id === id; }) ? 'home' : 'away';
-  }
-
-  function addPoints(id, n) {
-    if (!n) return;
-    runPts[id] = (runPts[id] || 0) + n;
-    snapshot();
-  }
-
-  function addFoul(id) {
-    if (!id) return;
-    runFouls[id] = (runFouls[id] || 0) + 1;
-    if (runFouls[id] >= 4) snapshot();
-  }
-
-  snapshot(); // index 0: empty board at tip-off
-
-  possessions.forEach(function (poss, pi) {
+    const pi = possCounter + 1;
     possCounter = pi;
-    quarterSeen[poss.quarter] = (quarterSeen[poss.quarter] || 0) + 1;
-    const clock = 720 - (quarterSeen[poss.quarter] / perQuarter[poss.quarter]) * 720;
-    const clockStart = 720 - ((quarterSeen[poss.quarter] - 1) / perQuarter[poss.quarter]) * 720;
+    const firstKf = keyframes.length;
 
-    const neededIds = [poss.handlerId];
-    poss.plays.forEach(function (ev) {
-      neededIds.push(ev.playerId);
-      if (ev.defenderId) neededIds.push(ev.defenderId);
-      if (ev.assistPlayerId) neededIds.push(ev.assistPlayerId);
-    });
-    ensureOnCourt(five[poss.team], rosters[poss.team], boxScore,
-      neededIds.filter(function (id) { return rosters[poss.team].some(function (p) { return p.id === id; }); }));
-    const defSide = poss.team === 'home' ? 'away' : 'home';
-    ensureOnCourt(five[defSide], rosters[defSide], boxScore,
-      neededIds.filter(function (id) { return rosters[defSide].some(function (p) { return p.id === id; }); }));
+    const plays = events.slice(1);
+    const period = head.period;
+    const quarter = head.quarter;
+    const clock = head.clock;
+
+    // Close the previous period's line-score row the moment the period turns
+    // over, so a live timeline always has every completed period's row.
+    if (linePeriod === null) {
+      linePeriod = period;
+    } else if (period !== linePeriod) {
+      lineScore.push({
+        quarter: linePeriod,
+        home: score[0] - atPeriodStart[0],
+        away: score[1] - atPeriodStart[1]
+      });
+      atPeriodStart = score.slice();
+      linePeriod = period;
+    }
+
+    // Real substitutions: the engine's five, not an inference from minutes.
+    five = {
+      home: head.lineups.home.map(function (id) { return playerById[id]; }).filter(Boolean),
+      away: head.lineups.away.map(function (id) { return playerById[id]; }).filter(Boolean)
+    };
+
+    // A possession that begins right after the other team lost the ball live
+    // — a steal or a defensive board — is a fast break: the defense has NOT
+    // had time to set, so the transition beat plays differently.
+    let fastBreak = false;
+    if (prevPoss && prevPoss.team !== head.team && prevPoss.plays.length > 0) {
+      const lastPlay = prevPoss.plays[prevPoss.plays.length - 1];
+      fastBreak = (lastPlay.type === 'turnover' && !!lastPlay.defenderId) ||
+                  (lastPlay.type === 'rebound' && !lastPlay.offensive);
+    }
+    prevPoss = { team: head.team, plays: plays };
+
+    const poss = { team: head.team, quarter: quarter, period: period, handlerId: head.playerId, plays: plays, fastBreak: fastBreak };
 
     const pos = positionsFor(poss.team);
     const handlerPos = pos[poss.handlerId] || formationSpot(poss.team, 'PG', poss.team);
@@ -485,24 +499,26 @@ function buildTimeline(session) {
     // realistic), sometimes a bring-up line, periodically the score.
     let transComment = '';
     if (pi % 9 === 4) {
-      const mins = Math.floor(clockStart / 60);
-      const secs = Math.round(clockStart % 60);
+      const mins = Math.floor(clock / 60);
+      const secs = Math.round(clock % 60);
       transComment = abbrs.home + ' ' + score[0] + ', ' + abbrs.away + ' ' + score[1] +
-        ' — ' + mins + ':' + (secs < 10 ? '0' : '') + secs + ' to go in Q' + poss.quarter;
+        ' — ' + mins + ':' + (secs < 10 ? '0' : '') + secs + ' to go in ' +
+        (period <= 4 ? 'Q' + period : 'OT' + (period - 4));
     } else if (pi % 4 === 1) {
       transComment = fillT(COMMENT.bringUp, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
+    }
+    if (poss.fastBreak) {
+      transComment = transComment || fillT(COMMENT.fastBreak, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
     }
 
     // Beat 1: transition. Half-court: the defense is already set and the
     // offense walks into it. Fast break: the offense is gone and the defense
     // is chasing — and it happens quicker.
-    if (poss.fastBreak) {
-      transComment = transComment || fillT(COMMENT.fastBreak, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
-    }
     push(poss.fastBreak ? BEAT.fastBreak : BEAT.transition, transPos,
-      { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, poss.quarter, clockStart, '', transComment);
+      { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, period, quarter, clock, '', transComment);
     // Beat 2: the offense flows into its set against the waiting defense.
-    push(poss.fastBreak ? BEAT.fastBreak : BEAT.formation, pos, { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, poss.quarter, clockStart, '');
+    push(poss.fastBreak ? BEAT.fastBreak : BEAT.formation, pos,
+      { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, period, quarter, clock, '');
 
     const hoop = attackingHoop(poss.team);
 
@@ -518,21 +534,21 @@ function buildTimeline(session) {
         const stealer = ev.defenderId && cutPos[ev.defenderId] ? ev.defenderId : null;
         if (stealer) {
           // pocket picked: ball pops loose, then the stealer collects it
-          push(BEAT.release, cutPos, { x: handlerCut[0], y: handlerCut[1] - 6, holder: null }, poss.quarter, clock, '');
-          push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, poss.quarter, clock, 'Steal!',
+          push(BEAT.release, cutPos, { x: handlerCut[0], y: handlerCut[1] - 6, holder: null }, period, quarter, clock, '');
+          push(BEAT.pass, cutPos, { x: cutPos[stealer][0], y: cutPos[stealer][1], holder: stealer }, period, quarter, clock, 'Steal!',
             fillT(COMMENT.steal, pi + ei, { d: ln(stealer), h: ln(poss.handlerId) }), 'squeak');
         } else {
-          push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, poss.quarter, clock, 'Turnover',
+          push(BEAT.resolve, cutPos, { x: handlerCut[0], y: handlerCut[1], holder: null }, period, quarter, clock, 'Turnover',
             fillT(COMMENT.turnover, pi + ei, { h: ln(poss.handlerId) }));
         }
       } else if (ev.type === 'block') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
-        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock, '');
-        push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, poss.quarter, clock, '');
+        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shotPos[ev.playerId] ? ev.playerId : null }, period, quarter, clock, '');
+        push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, period, quarter, clock, '');
         // swatted sideways, not through the net
-        push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, poss.quarter, clock, 'Blocked!',
+        push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, period, quarter, clock, 'Blocked!',
           fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }), 'block');
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
@@ -571,11 +587,11 @@ function buildTimeline(session) {
           const from = shotPos[chain[c]] || pos[chain[c]] || handlerPos;
           const to = shotPos[chain[c + 1]];
           if (!to) continue;
-          push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, poss.quarter, clock, '');
-          push(BEAT.pass, shotPos, { x: to[0], y: to[1] - 8, holder: chain[c + 1] }, poss.quarter, clock, '');
+          push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, period, quarter, clock, '');
+          push(BEAT.pass, shotPos, { x: to[0], y: to[1] - 8, holder: chain[c + 1] }, period, quarter, clock, '');
         }
         // windup: shooter gathers, everyone else finishes their cuts
-        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null }, poss.quarter, clock, '');
+        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null }, period, quarter, clock, '');
         // inside shots drive to the rim before finishing
         let releasePos = shotPos;
         let relSpot = sp;
@@ -584,7 +600,7 @@ function buildTimeline(session) {
           releasePos = Object.assign({}, shotPos);
           releasePos[ev.playerId] = rimSpot;
           relSpot = rimSpot;
-          push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, poss.quarter, clock, '');
+          push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock, '');
         }
         if (ev.made) {
           score[ev.team === 'home' ? 0 : 1] += ev.points;
@@ -598,7 +614,7 @@ function buildTimeline(session) {
               : LAYUP_FINISHES[(pi + ei) % LAYUP_FINISHES.length])
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
         // release: ball leaves the hands...
-        push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, poss.quarter, clock, '');
+        push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
         // ...and flies to the rim while everyone crashes the glass — the
         // floor keeps moving for the whole flight instead of freezing
         const crashPos = crashPositions(releasePos, ev.playerId, hoop, pi + ei);
@@ -609,13 +625,13 @@ function buildTimeline(session) {
         if (ev.made && ev.assistPlayerId && (pi + ei) % 2 === 0) {
           shotComment += ' (' + ln(ev.assistPlayerId) + ' with the dime)';
         }
-        push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
+        push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
           ev.made ? madeLabel : '', shotComment,
           ev.made ? (dunking ? 'dunk' : 'swish') : 'clang');
         curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
-          push(BEAT.bounce, crashPos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, poss.quarter, clock, '');
+          push(BEAT.bounce, crashPos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, period, quarter, clock, '');
         }
       } else if (ev.type === 'rebound') {
         const rp = clampToCourt(hoop.x + (poss.team === 'home' ? -22 : 22), hoop.y + ((pi % 2) ? 18 : -18));
@@ -624,7 +640,7 @@ function buildTimeline(session) {
         const rebComment = ev.offensive
           ? fillT(COMMENT.oreb, pi + ei, { r: ln(ev.playerId) })
           : (pi % 3 === 0 ? fillT(COMMENT.dreb, pi + ei, { r: ln(ev.playerId) }) : '');
-        push(BEAT.resolve, rpos, { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, poss.quarter, clock,
+        push(BEAT.resolve, rpos, { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, period, quarter, clock,
           ev.offensive ? 'Offensive board' : '', rebComment);
         curPos = rpos;
       } else if (ev.type === 'foul-ft') {
@@ -634,52 +650,52 @@ function buildTimeline(session) {
         if (ev.team === 'home') score[0] += ev.points; else score[1] += ev.points;
         addFoul(ev.defenderId);
         addPoints(ev.playerId, ev.points);
-        push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, poss.quarter, clock,
+        push(BEAT.ft, fpos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
           'FTs: ' + ev.made + ' of ' + ev.attempts,
           fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }), 'whistle');
         curPos = fpos;
       }
     });
-  });
 
-  // Shot clock: the engine has no clock concept, so it's derived from how far
-  // each possession has progressed — 24 at the inbound, ticking toward 0 at
-  // the shot. Needs the possession's full span, so it's a post-pass.
-  const possBounds = {};
-  keyframes.forEach(function (kf) {
-    const b = possBounds[kf.possIdx];
-    if (!b) possBounds[kf.possIdx] = { start: kf.t, end: kf.t };
-    else b.end = kf.t;
-  });
-  keyframes.forEach(function (kf) {
-    const b = possBounds[kf.possIdx];
-    const span = Math.max(1, b.end - b.start);
-    kf.shotClock = Math.max(0, Math.round(24 - 24 * ((kf.t - b.start) / span)));
-  });
+    applyShotClock(firstKf);
+    timeline.durationMs = t;
+  }
 
-  // Quarter-by-quarter line score, read off the running score at each break.
-  const lineScore = [];
-  let prevQuarter = 1;
-  let atQuarterStart = [0, 0];
-  keyframes.forEach(function (kf) {
-    if (kf.quarter !== prevQuarter) {
-      lineScore.push({ quarter: prevQuarter, home: kf.score[0] - atQuarterStart[0], away: kf.score[1] - atQuarterStart[1] });
-      atQuarterStart = kf.score.slice();
-      prevQuarter = kf.quarter;
-    }
-  });
-  const finalScore = keyframes.length ? keyframes[keyframes.length - 1].score : [0, 0];
-  lineScore.push({ quarter: prevQuarter, home: finalScore[0] - atQuarterStart[0], away: finalScore[1] - atQuarterStart[1] });
+  function finish() {
+    if (finished) return timeline;
+    finished = true;
+    lineScore.push({
+      quarter: linePeriod === null ? 1 : linePeriod,
+      home: score[0] - atPeriodStart[0],
+      away: score[1] - atPeriodStart[1]
+    });
+    timeline.durationMs = t;
+    return timeline;
+  }
 
   return {
-    keyframes: keyframes,
-    durationMs: t,
-    snapshots: snapshots,
-    lineScore: lineScore,
-    finalStats: { points: runPts, fouls: runFouls }
+    timeline: timeline,
+    appendEvents: appendEvents,
+    finish: finish
   };
 }
 
+// Whole-game entry point, retained for replaying a completed game from its
+// stored event log. Implemented as a loop over the incremental API so the two
+// paths cannot drift (scripts/validate-pixel-choreographer.js asserts they
+// produce identical timelines).
+function buildTimeline(session) {
+  const choreo = createChoreographer(session);
+  groupPossessions(session.events).forEach(function (slice) { choreo.appendEvents(slice); });
+  return choreo.finish();
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { PIXEL_STAGE: PIXEL_STAGE, buildTimeline: buildTimeline, startingFive: startingFive, assignSlots: assignSlots };
+  module.exports = {
+    PIXEL_STAGE: PIXEL_STAGE,
+    buildTimeline: buildTimeline,
+    createChoreographer: createChoreographer,
+    groupPossessions: groupPossessions,
+    assignSlots: assignSlots
+  };
 }

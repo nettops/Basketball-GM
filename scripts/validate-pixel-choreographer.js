@@ -162,4 +162,110 @@ function checkStatsAndLineScore() {
 }
 checkStatsAndLineScore();
 
+// --- Task 3: incremental choreography ------------------------------------
+
+function possessionSlices(events) {
+  const slices = [];
+  events.forEach(function (ev) {
+    if (ev.type === 'possession') slices.push([ev]);
+    else if (slices.length) slices[slices.length - 1].push(ev);
+  });
+  return slices;
+}
+
+function checkIncrementalEqualsBatch() {
+  const built = buildSession(11);
+  const batch = choreo.buildTimeline(built.session);
+
+  const live = choreo.createChoreographer({
+    homeRoster: built.session.homeRoster,
+    awayRoster: built.session.awayRoster
+  });
+  possessionSlices(built.session.events).forEach(function (slice) { live.appendEvents(slice); });
+  live.finish();
+
+  assert.deepStrictEqual(live.timeline.keyframes, batch.keyframes, 'incremental keyframes match batch exactly');
+  assert.strictEqual(live.timeline.durationMs, batch.durationMs, 'durations match');
+  assert.deepStrictEqual(live.timeline.lineScore, batch.lineScore, 'line scores match');
+  assert.deepStrictEqual(live.timeline.snapshots, batch.snapshots, 'snapshots match');
+  assert.deepStrictEqual(live.timeline.finalStats, batch.finalStats, 'final stats match');
+  console.log('checkIncrementalEqualsBatch: OK');
+}
+checkIncrementalEqualsBatch();
+
+function checkTimelineGrowsAsAppended() {
+  const built = buildSession(12);
+  const live = choreo.createChoreographer({
+    homeRoster: built.session.homeRoster,
+    awayRoster: built.session.awayRoster
+  });
+  const slices = possessionSlices(built.session.events);
+  let lastDuration = 0;
+  let lastCount = 0;
+  slices.slice(0, 10).forEach(function (slice) {
+    live.appendEvents(slice);
+    assert.ok(live.timeline.keyframes.length > lastCount, 'each possession adds keyframes');
+    assert.ok(live.timeline.durationMs > lastDuration, 'duration grows monotonically');
+    assert.strictEqual(live.timeline.durationMs, live.timeline.keyframes[live.timeline.keyframes.length - 1].t,
+      'durationMs always equals the last keyframe time');
+    lastCount = live.timeline.keyframes.length;
+    lastDuration = live.timeline.durationMs;
+  });
+  console.log('checkTimelineGrowsAsAppended: OK');
+}
+checkTimelineGrowsAsAppended();
+
+function checkClockComesFromTheEngine() {
+  const built = buildSession(13);
+  const tl = choreo.buildTimeline(built.session);
+  const byPossession = {};
+  built.session.events.filter(function (ev) { return ev.type === 'possession'; })
+    .forEach(function (ev, i) { byPossession[i] = ev; });
+
+  tl.keyframes.forEach(function (kf) {
+    const src = byPossession[kf.possIdx];
+    assert.ok(src, 'every keyframe maps to a possession');
+    assert.strictEqual(kf.clock, src.clock, 'keyframe clock is the engine clock for its possession');
+    assert.strictEqual(kf.period, src.period, 'keyframe period is the engine period');
+  });
+  console.log('checkClockComesFromTheEngine: OK');
+}
+checkClockComesFromTheEngine();
+
+function checkOvertimeIsRepresented() {
+  // Force a tie at the buzzer, then confirm the extra period reaches the
+  // keyframes as period 5 rather than being flattened into Q4.
+  const events = [];
+  const sim = gameSim.createGameSim('SAS', 'HOU', makeRng(31), { events: events });
+  while (!sim.done) {
+    sim.step();
+    if (sim.period === 4 && sim.clock <= 60 && sim.homeScore !== sim.awayScore) {
+      // nudge the score to a tie so regulation ends level
+      if (sim.homeScore > sim.awayScore) sim.awayScore = sim.homeScore;
+      else sim.homeScore = sim.awayScore;
+    }
+  }
+  assert.ok(sim.period > 4, 'the game reached overtime');
+
+  const tl = choreo.buildTimeline({
+    events: events,
+    homeRoster: league.getTeamRoster('SAS'),
+    awayRoster: league.getTeamRoster('HOU')
+  });
+  assert.ok(tl.keyframes.some(function (kf) { return kf.period > 4; }), 'overtime keyframes carry period > 4');
+  assert.ok(tl.keyframes.every(function (kf) { return kf.quarter >= 1 && kf.quarter <= 4; }), 'quarter still clamps to 1-4');
+  console.log('checkOvertimeIsRepresented: OK');
+}
+checkOvertimeIsRepresented();
+
+function checkLineupsDriveTheFloor() {
+  const built = buildSession(14);
+  const tl = choreo.buildTimeline(built.session);
+  tl.keyframes.forEach(function (kf) {
+    assert.strictEqual(Object.keys(kf.pos).length, 10, 'exactly ten sprites on the floor every keyframe');
+  });
+  console.log('checkLineupsDriveTheFloor: OK');
+}
+checkLineupsDriveTheFloor();
+
 console.log('All pixel choreographer validations passed');
