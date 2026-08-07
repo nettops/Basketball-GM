@@ -86,4 +86,69 @@ function checkStepAfterDoneIsNoop() {
 }
 checkStepAfterDoneIsNoop();
 
+// The engine must field five players a side, always — the old behaviour let
+// every healthy player on the roster shoot on any possession.
+function checkFivePlayersOnCourt() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(41));
+  let guard = 0;
+  // Math.min guards the degenerate case the spec calls out: a roster with
+  // fewer than five healthy bodies fields everyone it has rather than
+  // inventing players. Real rosters are 13-15, so this is 5 in practice.
+  const homeFive = Math.min(5, sim.homeRoster.length);
+  const awayFive = Math.min(5, sim.awayRoster.length);
+  while (!sim.done) {
+    assert.strictEqual(sim.onCourt.home.length, homeFive, 'home must field five');
+    assert.strictEqual(sim.onCourt.away.length, awayFive, 'away must field five');
+    assert.strictEqual(new Set(sim.onCourt.home).size, homeFive, 'no duplicate home players on court');
+    assert.strictEqual(new Set(sim.onCourt.away).size, awayFive, 'no duplicate away players on court');
+    sim.onCourt.home.forEach(function (id) {
+      assert.ok(sim.homeBox[id], 'on-court home player must have a box line: ' + id);
+    });
+    sim.step();
+    assert.ok(guard++ < 5000, 'step() must terminate');
+  }
+  console.log('checkFivePlayersOnCourt: OK');
+}
+checkFivePlayersOnCourt();
+
+// Only players who were actually on the floor may accrue stats.
+function checkBenchPlayersRecordNothing() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(42));
+  const everOnCourt = {};
+  while (!sim.done) {
+    sim.onCourt.home.concat(sim.onCourt.away).forEach(function (id) { everOnCourt[id] = true; });
+    sim.step();
+  }
+  const box = sim.result().boxScore;
+  Object.keys(box).forEach(function (id) {
+    if (everOnCourt[id]) return;
+    const line = box[id];
+    assert.strictEqual(line.minutes, 0, 'a player who never played must have 0 minutes: ' + id);
+    assert.strictEqual(line.points, 0, 'a player who never played must have 0 points: ' + id);
+    assert.strictEqual(line.fga, 0, 'a player who never played must have 0 attempts: ' + id);
+  });
+  console.log('checkBenchPlayersRecordNothing: OK');
+}
+checkBenchPlayersRecordNothing();
+
+// Minutes are now measured, not distributed: five players on the floor for a
+// 48-minute regulation game is 240 player-minutes, plus 25 per overtime.
+function checkMinutesAreEmergent() {
+  for (const seed of [43, 44, 45]) {
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
+    while (!sim.done) sim.step();
+    const box = sim.result().boxScore;
+    let homeMin = 0, awayMin = 0;
+    Object.keys(box).forEach(function (id) {
+      if (box[id].teamId === 'BOS') homeMin += box[id].minutes;
+      else awayMin += box[id].minutes;
+    });
+    // +-3 absorbs per-player rounding to whole minutes.
+    assert.ok(Math.abs(homeMin - awayMin) <= 3, 'both teams play the same clock: ' + homeMin + ' vs ' + awayMin);
+    assert.ok(homeMin >= 237 && homeMin <= 243, 'regulation home minutes should be ~240, got ' + homeMin);
+  }
+  console.log('checkMinutesAreEmergent: OK');
+}
+checkMinutesAreEmergent();
+
 console.log('All game sim validations passed');

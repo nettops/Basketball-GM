@@ -5,17 +5,17 @@
 // behaviour-identical, so it had room to grow without turning
 // simEnginePossession.js into a grab bag.
 var _GAMESIM_DATA = (typeof require !== 'undefined')
-  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js') }
+  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js') }
   : {
       poss: {
         POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,
         simulatePossession: simulatePossession,
         eligibleRoster: eligibleRoster,
-        initBoxLine: initBoxLine,
-        simulateTeamMinutes: simulateTeamMinutes
+        initBoxLine: initBoxLine
       },
       simEngine: { registerEngine: registerEngine },
-      composite: { computeTeamSynergy: computeTeamSynergy }
+      composite: { computeTeamSynergy: computeTeamSynergy },
+      box: { minutesWeight: minutesWeight }
     };
 
 // The game-level state machine. step() advances exactly one possession pair
@@ -34,10 +34,26 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const awayBox = {};
   awayRoster.forEach(function (p) { awayBox[p.id] = Object.assign(_GAMESIM_DATA.poss.initBoxLine(), { teamId: awayTeamId }); });
 
-  const homeMinutes = _GAMESIM_DATA.poss.simulateTeamMinutes(homeRoster);
-  const awayMinutes = _GAMESIM_DATA.poss.simulateTeamMinutes(awayRoster);
-  homeRoster.forEach(function (p) { homeBox[p.id].minutes = homeMinutes[p.id]; });
-  awayRoster.forEach(function (p) { awayBox[p.id].minutes = awayMinutes[p.id]; });
+  // Starters are the five highest by the same weighting that used to decide
+  // minutes, so "who plays most" is unchanged in spirit — it is now expressed
+  // by actually being on the floor rather than by a post-hoc number.
+  function pickStarters(roster) {
+    return roster.slice()
+      .sort(function (a, b) { return _GAMESIM_DATA.box.minutesWeight(b) - _GAMESIM_DATA.box.minutesWeight(a); })
+      .slice(0, 5)
+      .map(function (p) { return p.id; });
+  }
+
+  const secondsPlayed = {};
+  homeRoster.concat(awayRoster).forEach(function (p) { secondsPlayed[p.id] = 0; });
+
+  const onCourt = { home: pickStarters(homeRoster), away: pickStarters(awayRoster) };
+  const byId = {};
+  homeRoster.concat(awayRoster).forEach(function (p) { byId[p.id] = p; });
+
+  function lineup(team) {
+    return onCourt[team].map(function (id) { return byId[id]; });
+  }
 
   // Synergy depends only on roster composition, not anything that changes
   // possession-to-possession, so it's computed once per game.
@@ -63,7 +79,10 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     possessionIndex: 0,
     quarter: 1,
     done: false,
-    playByPlay: playByPlay
+    playByPlay: playByPlay,
+    onCourt: onCourt,
+    secondsPlayed: secondsPlayed,
+    byId: byId
   };
 
   sim.step = function () {
@@ -76,8 +95,13 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     }
     const homeCtx = captureEvents ? { events: captureEvents, team: 'home', quarter: quarter } : null;
     const awayCtx = captureEvents ? { events: captureEvents, team: 'away', quarter: quarter } : null;
-    sim.homeScore += _GAMESIM_DATA.poss.simulatePossession(homeRoster, homeBox, awayRoster, awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
-    sim.awayScore += _GAMESIM_DATA.poss.simulatePossession(awayRoster, awayBox, homeRoster, homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
+    sim.homeScore += _GAMESIM_DATA.poss.simulatePossession(lineup('home'), homeBox, lineup('away'), awayBox, rng, { offense: homeSynergy, defense: awaySynergy }, playByPlay, homeCtx);
+    sim.awayScore += _GAMESIM_DATA.poss.simulatePossession(lineup('away'), awayBox, lineup('home'), homeBox, rng, { offense: awaySynergy, defense: homeSynergy }, playByPlay, awayCtx);
+
+    // Until Task 6 introduces the clock, a possession pair is a fixed slice of
+    // regulation: 2880 seconds over POSSESSIONS_PER_TEAM pairs.
+    const pairSeconds = 2880 / _GAMESIM_DATA.poss.POSSESSIONS_PER_TEAM;
+    onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += pairSeconds; });
 
     sim.possessionIndex += 1;
     if (sim.possessionIndex >= _GAMESIM_DATA.poss.POSSESSIONS_PER_TEAM) {
@@ -101,7 +125,26 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     }
   }
 
+  sim.applySubstitutions = function (team, swaps) {
+    if (!swaps || swaps.length === 0) return;
+    swaps.forEach(function (swap) {
+      const idx = onCourt[team].indexOf(swap.out);
+      if (idx === -1) return;                                  // not on the floor
+      if (onCourt[team].indexOf(swap.in) !== -1) return;       // already on the floor
+      if (!byId[swap.in]) return;                              // not on this roster
+      onCourt[team][idx] = swap.in;
+    });
+  };
+
+  function writeMinutes() {
+    Object.keys(secondsPlayed).forEach(function (id) {
+      const line = homeBox[id] || awayBox[id];
+      if (line) line.minutes = Math.round(secondsPlayed[id] / 60);
+    });
+  }
+
   sim.result = function () {
+    writeMinutes();
     return {
       homeScore: sim.homeScore,
       awayScore: sim.awayScore,

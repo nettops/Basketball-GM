@@ -18,6 +18,7 @@ const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
 require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 
 // A stable digest of every stat line, so the fixture catches distribution
 // changes and not just the final score.
@@ -46,7 +47,7 @@ const CASES = [
 ];
 
 const out = CASES.map(function (c) {
-  const result = possEngine.simulateGame(c.home, c.away, makeRng(c.seed));
+  const result = gameSim.simulateGame(c.home, c.away, makeRng(c.seed));
   return {
     seed: c.seed, home: c.home, away: c.away,
     homeScore: result.homeScore, awayScore: result.awayScore,

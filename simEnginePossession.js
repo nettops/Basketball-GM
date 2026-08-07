@@ -82,9 +82,9 @@ function foulTroubleMultiplier(fouls) {
 // Wraps a base selection-weight function so it also accounts for this
 // game's accumulated energy drain and foul trouble — used for every
 // weightedPick call in simulatePossession so a gassed or foul-plagued
-// player gradually stops being picked as the primary option, which is this
-// engine's stand-in for a coach going to a fresher body (see the module
-// comment on why there's no explicit on-court/bench rotation).
+// player gradually stops being picked as the primary option WITHIN the five
+// currently on the floor. Actually going to a fresher body is a separate
+// concern handled a level up, by gameSim.js's rotations.
 function energyAware(baseWeightFn, box, applyFoulTrouble) {
   return function (p) {
     const line = box[p.id];
@@ -262,13 +262,6 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   return points;
 }
 
-function simulateTeamMinutes(roster) {
-  const minutes = _POSS_DATA.box.distributeInt(240, roster.map(_POSS_DATA.box.minutesWeight));
-  const byId = {};
-  roster.forEach(function (p, i) { byId[p.id] = minutes[i]; });
-  return byId;
-}
-
 // Named distinctly from simEngineBoxScore.js's own simulateGame — see that
 // file's comment on this same function name for why. Play-by-play is always
 // generated (the string-building cost is negligible next to the possession
@@ -285,7 +278,6 @@ if (typeof module !== 'undefined' && module.exports) {
     simulatePossession: simulatePossession,
     eligibleRoster: eligibleRoster,
     initBoxLine: initBoxLine,
-    simulateTeamMinutes: simulateTeamMinutes,
     energyMultiplier: energyMultiplier
   };
 }
