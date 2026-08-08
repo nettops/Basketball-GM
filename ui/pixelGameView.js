@@ -498,9 +498,12 @@ function renderPixelGame(container) {
     // Snap zoom on a highlight. Inside the shake transform and before the
     // sprites, so the court and players scale together; the in-canvas
     // scoreboard is painted after ctx.restore() below and is left untouched.
-    const impactZoomNow = impactZoom(playbackMs);
+    const impactZoomNow = impactZoom(playbackMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
     if (impactZoomNow) {
-      ctx.translate(impactZoomNow.cx, impactZoomNow.cy);
+      // Centre on cx/cy rather than pinning it in place. Zooming about a fixed
+      // point leaves the subject wherever it already sat, which for a poster is
+      // the rim — 14px from the edge — so it framed the dunk in the corner.
+      ctx.translate(PIXEL_STAGE.w / 2, PIXEL_STAGE.h / 2);
       ctx.scale(impactZoomNow.scale, impactZoomNow.scale);
       ctx.translate(-impactZoomNow.cx, -impactZoomNow.cy);
     }

@@ -238,9 +238,41 @@ function checkEffectTiming() {
   impact.startImpact(poster, 1000, full);
   const z = impact.impactZoom(1010);
   assert.ok(z && z.scale > 1, 'a poster zooms in while it holds');
-  assert.strictEqual(z.cx, 100, 'zoom is centred on the impact point');
-  assert.strictEqual(z.cy, 100);
+  assert.strictEqual(z.cx, 120, 'centre is clamped so the magnified view stays on court (x=100 → 120)');
+  assert.strictEqual(z.cy, 100, 'y needed no clamping here');
   assert.strictEqual(impact.impactZoom(1000 + 5000), null, 'the zoom releases');
+
+  // A poster resolves AT the rim, 14px from the court edge. Unclamped, the
+  // magnified viewport would run off the stage and put the dunk in the corner.
+  impact.resetImpact();
+  impact.startImpact({ kind: 'poster', at: { x: 34, y: 160 }, byId: 'a', onId: 'b' }, 1000, full);
+  const rimZoom = impact.impactZoom(1010, 480, 270);
+  assert.strictEqual(rimZoom.cx, 120, 'a left-rim poster clamps to half a viewport in from the edge');
+  assert.ok(rimZoom.cx - 480 / (2 * 2) >= 0, 'the magnified viewport never starts left of the stage');
+  impact.resetImpact();
+  impact.startImpact({ kind: 'poster', at: { x: 446, y: 160 }, byId: 'a', onId: 'b' }, 1000, full);
+  assert.strictEqual(impact.impactZoom(1010, 480, 270).cx, 360, 'and the right rim clamps symmetrically');
+
+  // The property that actually matters, and the one a clamp can silently break:
+  // whatever the play's position, the impact point must still be ON SCREEN
+  // under the transform the view applies, and the magnified window must not run
+  // off the court into black bars. Clamping the focus without centring on it
+  // pushed a left-rim dunk to screen x=-52 — visible in no frame at all.
+  const W = 480, H = 270, S = 2;
+  [[34, 160], [446, 160], [240, 135], [30, 250], [470, 20]].forEach(function (pt) {
+    impact.resetImpact();
+    impact.startImpact({ kind: 'poster', at: { x: pt[0], y: pt[1] }, byId: 'a', onId: 'b' }, 1000, full);
+    const z = impact.impactZoom(1010, W, H);
+    // mirrors ui/pixelGameView.js: translate(W/2,H/2) → scale → translate(-cx,-cy)
+    const screenX = (pt[0] - z.cx) * S + W / 2;
+    const screenY = (pt[1] - z.cy) * S + H / 2;
+    assert.ok(screenX >= 0 && screenX <= W && screenY >= 0 && screenY <= H,
+      'impact at ' + pt[0] + ',' + pt[1] + ' lands off screen at ' + Math.round(screenX) + ',' + Math.round(screenY));
+    assert.ok(z.cx - W / (2 * S) >= 0 && z.cx + W / (2 * S) <= W,
+      'the magnified window must stay on the court horizontally');
+    assert.ok(z.cy - H / (2 * S) >= 0 && z.cy + H / (2 * S) <= H,
+      'and vertically');
+  });
 
   // blocks never zoom, at any speed
   impact.resetImpact();
@@ -277,22 +309,33 @@ function checkDrawCallsAreSafe() {
   impact.drawImpactFlash(ctx, 0, 480, 270);
   assert.strictEqual(calls.length, 0, 'with no impact armed, neither draw call should touch the context');
 
-  // a live poster paints lines and a flash, and balances save/restore
+  // The flash and the lines hand off rather than overlap. Drawing them at the
+  // same time put the lines' brightest frames under a white wash, so they were
+  // never actually seen — this asserts the ordering that fixed it.
   impact.startImpact(poster, 0, { reduceMotion: false, speed: 1 });
+
   calls.length = 0;
-  impact.drawImpactLines(ctx, 10);
   impact.drawImpactFlash(ctx, 10, 480, 270);
-  assert.ok(calls.indexOf('stroke') !== -1, 'a poster should paint radial lines');
-  assert.ok(calls.indexOf('fillRect') !== -1, 'a poster should paint a flash');
+  impact.drawImpactLines(ctx, 10);
+  assert.ok(calls.indexOf('fillRect') !== -1, 'the flash paints in its own opening window');
+  assert.strictEqual(calls.indexOf('stroke'), -1,
+    'the lines must stay silent while the flash is up, or they are drawn under it and wasted');
+
+  calls.length = 0;
+  impact.drawImpactFlash(ctx, 150, 480, 270);
+  impact.drawImpactLines(ctx, 150);
+  assert.strictEqual(calls.indexOf('fillRect'), -1, 'the flash is done by 150ms');
+  assert.ok(calls.indexOf('stroke') !== -1, 'the lines take over once the flash clears');
   assert.strictEqual(calls.filter(function (c) { return c === 'save'; }).length,
     calls.filter(function (c) { return c === 'restore'; }).length,
     'every save must be balanced by a restore, or the whole scene inherits the state');
 
-  // blocks flash but never draw lines
+  // blocks flash but never draw lines, at any point in their life
   impact.resetImpact();
   impact.startImpact(block, 0, { reduceMotion: false, speed: 1 });
   calls.length = 0;
   impact.drawImpactLines(ctx, 10);
+  impact.drawImpactLines(ctx, 150);
   assert.strictEqual(calls.indexOf('stroke'), -1, 'tier 2 draws no radial lines');
 
   // both go quiet once their window has passed
