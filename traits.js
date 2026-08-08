@@ -166,19 +166,72 @@ function generatePersonality(player, rng) {
   };
 }
 
-// Shot-mix values are an approximate normalized split (they won't sum to
-// exactly 100 after independent rounding — that's fine, they're a bias input
-// to simEngineBoxScore.js, not a precise possession accounting).
+// Shot selection is where player identity actually lives, and this used to be
+// a plain linear share: `rawThree / (rawThree + rawMid + rawInside)`. A linear
+// share barely responds, because the numerator and the denominator move
+// together — a great shooter's total rises along with his three-point rating,
+// so the ratio stays near where it started.
+//
+// Measured from reference/zengm/data/real-player-stats.basketball.json (2025,
+// min 300 FGA): real per-player 3PA share runs 4.5% to 71.6%, a 67-point
+// spread, while true 3P% talent spans about 14. Real basketball differentiates
+// players roughly five times more by WHICH shot they take than by how well they
+// make it. Ours was the inverse.
+//
+// amplifyShare pushes the raw share through a piecewise map with a steep middle
+// segment — the same shape ZenGM uses for shootingThreePointerScaled2 in
+// GameSim.basketball/index.ts, where a slope-3.5 band encodes "you are either a
+// shooter or you are not". Below SHARE_LOW the map crushes you toward zero;
+// between LOW and HIGH a small difference in skill swings volume hard; above
+// HIGH a specialist is compressed so nobody runs away to shooting only threes.
+// Breakpoints calibrated by measured rate — the sweep is in this task's commit.
+// The map PIVOTS on the league median so it spreads players without moving the
+// league. A first attempt ran the steep band from 0.28 to 0.38 and sent the
+// median player from a 30% three-point share to 15%: the spread went to 54.7
+// points but league 3PA share fell 29.1% -> 22.3%, buying individual identity
+// with the league's identity. Exactly the mistake the transition shot-mix
+// calibration already made once, paying for the rim out of threes.
+//
+// Measured raw share distribution over the 380 rostered players:
+//   p05 0.100   p25 0.217   p50 0.300   p75 0.372   p95 0.447   mean 0.291
+// so PIVOT is set at that median and mapped to itself.
+const SHARE_LOW = 0.20, SHARE_PIVOT = 0.30, SHARE_HIGH = 0.40;
+const SHARE_LOW_OUT = 0.08, SHARE_PIVOT_OUT = 0.30, SHARE_HIGH_OUT = 0.56;
+const SHARE_TAIL_SLOPE = 0.6;
+
+function amplifyShare(share) {
+  if (share <= 0) return 0;
+  if (share < SHARE_LOW) return share * (SHARE_LOW_OUT / SHARE_LOW);
+  if (share < SHARE_PIVOT) {
+    return SHARE_LOW_OUT +
+      (share - SHARE_LOW) * ((SHARE_PIVOT_OUT - SHARE_LOW_OUT) / (SHARE_PIVOT - SHARE_LOW));
+  }
+  if (share < SHARE_HIGH) {
+    return SHARE_PIVOT_OUT +
+      (share - SHARE_PIVOT) * ((SHARE_HIGH_OUT - SHARE_PIVOT_OUT) / (SHARE_HIGH - SHARE_PIVOT));
+  }
+  return Math.min(0.95, SHARE_HIGH_OUT + (share - SHARE_HIGH) * SHARE_TAIL_SLOPE);
+}
+
 function generateTendencies(player, rng) {
   const a = player.attributes;
-  const rawThree = a.threePoint;
-  const rawMid = a.midRange;
-  const rawInside = a.insideScoring + a.postScoring / 2;
+  const rawThree = Math.max(1, a.threePoint);
+  const rawMid = Math.max(1, a.midRange);
+  const rawInside = Math.max(1, a.insideScoring + a.postScoring / 2);
   const shotTotal = rawThree + rawMid + rawInside;
+
+  // Amplify the three-point share, then split what is left between mid and
+  // inside in their original proportion — so a stretch big who loses volume to
+  // the amplifier loses it from both other zones rather than only one.
+  const three = amplifyShare(rawThree / shotTotal);
+  const rest = rawMid + rawInside;
+  const t3 = Math.round(three * 100);
+  const tm = Math.round((1 - three) * (rawMid / rest) * 100);
   return {
-    threeTendency: Math.round((rawThree / shotTotal) * 100),
-    midTendency: Math.round((rawMid / shotTotal) * 100),
-    insideTendency: Math.round((rawInside / shotTotal) * 100),
+    threeTendency: t3,
+    midTendency: tm,
+    // Absorbs the rounding so the three always sum to exactly 100.
+    insideTendency: 100 - t3 - tm,
     isoTendency: personalityAxis(a.ballHandling, 60, rng),
     catchAndShootTendency: personalityAxis(a.threePoint, 60, rng),
     postTendency: personalityAxis(a.postScoring, 60, rng),

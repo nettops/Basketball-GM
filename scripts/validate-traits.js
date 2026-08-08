@@ -218,6 +218,47 @@ function checkWeightFunctionTraitBias() {
 
 checkWeightFunctionTraitBias();
 
+// Player identity in real basketball lives in shot SELECTION, not accuracy.
+// Measured from reference/zengm/data/real-player-stats.basketball.json (2025,
+// min 300 FGA): per-player 3PA share ran 4.5% to 71.6%, a 67-point spread,
+// while true 3P% talent spanned about 14. Ours ran 12.7 points at the plan's
+// baseline — the ratio was inverted, and superstars separated themselves by
+// efficiency instead of by what shot they chose to take.
+function checkShotMixSeparatesPlayers() {
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  const roster = playersMod.PLAYERS_2026;
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(roster);
+  const shares = roster.map(function (p) { return p.hiddenTendencies.threeTendency; })
+    .sort(function (a, b) { return a - b; });
+  const p05 = shares[Math.floor(0.05 * shares.length)];
+  const p95 = shares[Math.floor(0.95 * shares.length)];
+  assert.ok(p95 - p05 >= 40,
+    'three-point tendency should span at least 40 points p05-p95, got ' +
+    p05 + '% - ' + p95 + '% (' + (p95 - p05) + ')');
+  assert.ok(p05 <= 15, 'the least willing shooter in the league should be under 15%, got ' + p05);
+  assert.ok(p95 >= 55, 'the most willing should be over 55%, got ' + p95);
+  console.log('checkShotMixSeparatesPlayers: OK (' + p05 + '% - ' + p95 + '%, spread ' + (p95 - p05) + ')');
+}
+
+// The amplifier must not break the invariant pickShotZone relies on.
+function checkTendenciesStillSumToOneHundred() {
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(playersMod.PLAYERS_2026);
+  playersMod.PLAYERS_2026.forEach(function (p) {
+    const t = p.hiddenTendencies;
+    const sum = t.threeTendency + t.midTendency + t.insideTendency;
+    assert.strictEqual(sum, 100,
+      'shot tendencies must sum to exactly 100 for ' + p.id + ', got ' + sum);
+    [t.threeTendency, t.midTendency, t.insideTendency].forEach(function (v) {
+      assert.ok(v >= 0 && v <= 100, 'tendency out of range for ' + p.id + ': ' + v);
+    });
+  });
+  console.log('checkTendenciesStillSumToOneHundred: OK');
+}
+
+checkShotMixSeparatesPlayers();
+checkTendenciesStillSumToOneHundred();
+
 function checkProgressionTraitIntegration() {
   const progressionModule = require(path.join(__dirname, '..', 'progression.js'));
   const dataModule = require(path.join(__dirname, '..', 'data.js'));
