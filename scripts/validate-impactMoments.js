@@ -167,9 +167,17 @@ function checkMarkerReachesTheKeyframe() {
   const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
   const league = require(path.join(__dirname, '..', 'league.js'));
 
+  // Blocks run about 3.6 per game, so a single fixture game legitimately
+  // contains zero — this used to ride on seed 4242 happening to have one, and
+  // tripped the first time an unrelated change shifted the sim. Searches until
+  // it finds a game with a block, then uses that one for the checks below.
   const home = TEAMS[0], away = TEAMS[9];
-  const events = [];
-  const result = gameSim.simulateGame(home.id, away.id, makeRng(4242), { events: events });
+  let events = null, result = null, blockEvents = [];
+  for (let s = 0; s < 12 && blockEvents.length === 0; s++) {
+    events = [];
+    result = gameSim.simulateGame(home.id, away.id, makeRng(4242 + s), { events: events });
+    blockEvents = events.filter(function (e) { return e.type === 'block'; });
+  }
   const timeline = choreo.buildTimeline({
     events: events,
     homeRoster: league.getTeamRoster(home.id),
@@ -177,8 +185,7 @@ function checkMarkerReachesTheKeyframe() {
     boxScore: result.boxScore
   });
 
-  const blockEvents = events.filter(function (e) { return e.type === 'block'; });
-  assert.ok(blockEvents.length > 0, 'the fixture game should contain at least one block');
+  assert.ok(blockEvents.length > 0, 'no seed in 4242-4253 produced a block; the fixture can no longer find one');
 
   const marked = timeline.keyframes.filter(function (k) { return k.impact; });
   const blockMarkers = marked.filter(function (k) { return k.impact.kind === 'block'; });

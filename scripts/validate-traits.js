@@ -256,8 +256,104 @@ function checkTendenciesStillSumToOneHundred() {
   console.log('checkTendenciesStillSumToOneHundred: OK');
 }
 
+// Trait GENERATION keys off `overall`, so it moved when overall was rescaled
+// and nothing noticed. Left alone, `(overall - 45) / 9` gave 86% of the league
+// exactly one trait where the median player used to carry three, and the tier
+// mix inverted — legendary 25% -> 6%, bronze 15% -> 38%. The trait system was
+// gutted by a change that never touched this file.
+//
+// Pinned as a DISTRIBUTION rather than exact counts: this must catch the system
+// being hollowed out, not fail on ordinary variation in a seeded roster.
+function checkTraitGenerationSurvivesTheRatingScale() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  const roster = playersMod.PLAYERS_2026;
+  traitsModule.ensureHiddenPlayerData(roster);
+
+  let total = 0;
+  const tiers = {};
+  roster.forEach(function (p) {
+    total += p.hiddenTraits.length;
+    p.hiddenTraits.forEach(function (t) { tiers[t.tier] = (tiers[t.tier] || 0) + 1; });
+  });
+  const perPlayer = total / roster.length;
+  assert.ok(perPlayer >= 2.5 && perPlayer <= 4.0,
+    'the league should average 2.5-4 traits per player (3.28 before the rescale), got ' + perPlayer.toFixed(2));
+
+  // Every tier has to be reachable. A ladder whose top rung is never rolled is
+  // a feature nobody ever sees.
+  traitsModule.TRAIT_TIERS.forEach(function (tier) {
+    const share = (tiers[tier] || 0) / total;
+    assert.ok(share >= 0.05,
+      'tier "' + tier + '" is only ' + (100 * share).toFixed(1) + '% of rolled traits — effectively unreachable');
+  });
+  const topHeavy = (tiers.legendary || 0) / total;
+  assert.ok(topHeavy <= 0.35,
+    'legendary traits are ' + (100 * topHeavy).toFixed(1) + '% of all rolls — the ladder has collapsed upward');
+  console.log('checkTraitGenerationSurvivesTheRatingScale: OK (' + perPlayer.toFixed(2) + '/player, ' +
+    traitsModule.TRAIT_TIERS.map(function (t) {
+      return t.slice(0, 2) + ' ' + (100 * (tiers[t] || 0) / total).toFixed(0) + '%';
+    }).join(' ') + ')');
+}
+
+// The tier VALUES, checked where they actually land: the share of events a
+// player wins in weightedPick. This is the assertion that was missing when
+// minutesWeight silently made a legendary usage trait worth 103% of a median
+// player's entire weight.
+//
+// Measured on five players at the league's real scoringWeight spread, the
+// ladder runs +2.6% / +5.1% / +7.6% / +12.7% / +20.2% relative pick share. The
+// values themselves did NOT need rescaling — the apparent over-strength was an
+// artifact of broken generation concentrating traits on very few players.
+function checkTraitTierLadderIsMeaningfulButNotDominant() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const dataMod = require(path.join(__dirname, '..', 'data.js'));
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  const box = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+
+  const weights = playersMod.PLAYERS_2026.map(function (p) {
+    const a = p.attributes;
+    return (a.insideScoring + a.midRange + a.threePoint + a.postScoring) / 4;
+  }).sort(function (x, y) { return x - y; });
+  const at = function (f) { return weights[Math.floor(f * weights.length)]; };
+  const five = [at(0.9), at(0.7), at(0.5), at(0.3), at(0.1)];
+
+  // Mirrors weightedPick's normalisation (power + 5% floor).
+  const POWER = 1.4, FLOOR = 0.05;
+  function share(ws, i) {
+    let p = ws.map(function (x) { return Math.pow(Math.max(0, x), POWER); });
+    const raw = p.reduce(function (a, b) { return a + b; }, 0);
+    const floor = FLOOR * raw;
+    p = p.map(function (x) { return Math.max(x, floor); });
+    const tot = p.reduce(function (a, b) { return a + b; }, 0);
+    return p[i] / tot;
+  }
+  const base = share(five, 2);
+  let last = 0;
+  traitsModule.TRAIT_TIERS.forEach(function (tier) {
+    const bonus = Math.abs(traitsModule.TRAIT_TIER_SCALE[tier]);
+    const mod = five.slice();
+    mod[2] = five[2] + bonus;
+    const gain = share(mod, 2) / base - 1;
+    assert.ok(gain > last,
+      'tier "' + tier + '" must be worth strictly more than the one below it');
+    last = gain;
+  });
+  const top = share((function () { const m = five.slice(); m[2] = five[2] + traitsModule.TRAIT_TIER_SCALE.legendary; return m; })(), 2) / base - 1;
+  assert.ok(top >= 0.08 && top <= 0.45,
+    'a legendary trait should shift pick share 8-45%, got ' + (100 * top).toFixed(1) +
+    '% — below that it is invisible, above it the trait outweighs the ratings it modifies');
+  const bottom = share((function () { const m = five.slice(); m[2] = five[2] + traitsModule.TRAIT_TIER_SCALE.bronze; return m; })(), 2) / base - 1;
+  assert.ok(bottom >= 0.005,
+    'even a bronze trait has to do something measurable, got ' + (100 * bottom).toFixed(2) + '%');
+  console.log('checkTraitTierLadderIsMeaningfulButNotDominant: OK (bronze +' +
+    (100 * bottom).toFixed(1) + '%, legendary +' + (100 * top).toFixed(1) + '% pick share)');
+}
+
 checkShotMixSeparatesPlayers();
 checkTendenciesStillSumToOneHundred();
+checkTraitGenerationSurvivesTheRatingScale();
+checkTraitTierLadderIsMeaningfulButNotDominant();
 
 function checkProgressionTraitIntegration() {
   const progressionModule = require(path.join(__dirname, '..', 'progression.js'));

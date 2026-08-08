@@ -118,9 +118,33 @@ function traitWeight(player, def) {
   return w;
 }
 
+// Same rescale problem, one level down. The roll is a fixed 0-100 draw nudged
+// by how good the player is, so BOTH the anchor and the width of that nudge
+// depend on the rating scale. Old skill (ovr+pot)/2 ran mean 76.9 sd 6.8, so
+// `skill - 60` was a shift of mean +16.9 sd 6.8. New skill runs mean 50.4
+// sd 8.8 — left alone the shift became mean -9.6, which is what pushed the
+// league from 25% legendary traits to 6%.
+//
+// Only the ANCHOR is rescaled: 60 sat at -2.49 standard deviations on the old
+// skill distribution, which against the new one is 28.5. Measured tier mix
+// against the pre-rescale target (bronze 15 / silver 23 / gold 25 / hof 14 /
+// legendary 25):
+//   anchor 28.5, skill narrowed x0.773  ->  21 / 24 / 22 / 12 / 21
+//   anchor 28.5, natural width          ->  18 / 24 / 21 / 13 / 25   <- chosen
+//   anchor 24,   natural width          ->  16 / 23 / 20 / 14 / 27
+//   anchor 20,   natural width          ->  15 / 21 / 20 / 13 / 31
+//
+// The first attempt also narrowed the skill term by 6.8/8.8 to hold its spread,
+// and undershot the top of the ladder: the skill distribution changed SHAPE,
+// not just its moments, so preserving two moments did not preserve the mix.
+// Leaving the term at its natural width puts legendary exactly on 25%. The
+// residue is a few points of gold sitting in bronze — the ladder is slightly
+// more polarised than before, which is coherent on a more polarised scale.
+const TIER_SKILL_ANCHOR = 28.5;
+
 function pickPositiveTier(player, rng) {
   const skill = (player.overall + player.potential) / 2;
-  const roll = rng() * 100 + (skill - 60);
+  const roll = rng() * 100 + (skill - TIER_SKILL_ANCHOR);
   if (roll < 30) return 'bronze';
   if (roll < 55) return 'silver';
   if (roll < 78) return 'gold';
@@ -141,8 +165,26 @@ function pickNegativeTier(rng) {
 // rotation player (60 OVR), up to 5-6 for a top-tier star (95+ OVR). Superstar
 // traits are only reachable via traitWeight's overall/potential gate above,
 // and even then a candidate has to win the weighted draw against everything else.
+// How many traits a player carries, and how good they are, both key off
+// `overall` — so both moved when overall was rescaled onto a true 0-100 scale
+// and its mean fell from 74.7 to 47.8. Left alone, `(overall - 45) / 9` gave
+// 86% of the league exactly ONE trait where the median player used to carry
+// three, and the tier mix inverted: legendary went 25% -> 6% and bronze
+// 15% -> 38%. The trait system was quietly gutted by a change that never
+// touched it.
+//
+// Converted by z-score rather than re-picked, so the same slice of the league
+// lands in the same place: on the old distribution (overall mean 74.7, sd 7.6)
+// the offset sat at -3.90 standard deviations, which against the new one
+// (mean 47.8, sd 9.9) is 9; the divisor scales with the sd ratio, 9 -> 12.
+// Verified at three points — p05 overall 32 -> 2 traits (old 65 -> 2),
+// p50 48 -> 3 (old 74 -> 3), p95 66 -> 5 (old 89 -> 5).
+const TRAIT_COUNT_FLOOR = 9;
+const TRAIT_COUNT_STEP = 12;
+
 function generateHiddenTraits(player, rng) {
-  const traitCount = Math.max(1, Math.min(6, Math.round((player.overall - 45) / 9)));
+  const traitCount = Math.max(1, Math.min(6,
+    Math.round((player.overall - TRAIT_COUNT_FLOOR) / TRAIT_COUNT_STEP)));
   const candidates = TRAIT_TAXONOMY.filter(function (def) { return traitWeight(player, def) > 0; });
   const selected = weightedSampleWithoutReplacement(candidates, function (def) { return traitWeight(player, def); }, Math.min(traitCount, candidates.length), rng);
   return selected.map(function (def) {
@@ -268,6 +310,12 @@ if (typeof module !== 'undefined' && module.exports) {
     TRAIT_TAXONOMY: TRAIT_TAXONOMY,
     TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY,
     TRAIT_TIERS: TRAIT_TIERS,
+    // Exported so scripts/validate-traits.js can check the tier ladder where it
+    // actually lands — the share of events a trait wins in weightedPick —
+    // rather than trusting the constants to still mean what they meant on a
+    // different rating scale.
+    TRAIT_TIER_SCALE: TRAIT_TIER_SCALE,
+    SUPERSTAR_TIER_SCALE: SUPERSTAR_TIER_SCALE,
     getTraitBonus: getTraitBonus,
     generateHiddenTraits: generateHiddenTraits,
     generatePersonality: generatePersonality,
