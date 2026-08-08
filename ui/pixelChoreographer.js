@@ -753,7 +753,7 @@ function createChoreographer(session) {
 
       push(BEAT.release, transPos, { x: from[0], y: from[1] - 6, holder: null },
         period, quarter, clock, '');
-      push(BEAT.fbOutlet, transPos,
+      push(BEAT.fbOutlet, flowPositions(transPos, [h, deep], pi * 31),
         { x: transHandler[0], y: transHandler[1] - 6, holder: h, arc: 5 },
         period, quarter, clock, '', transComment);
       // filling the lanes — everyone actually travels, so the leg cycle runs
@@ -767,7 +767,9 @@ function createChoreographer(session) {
       push(BEAT.transition, transPos,
         { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, period, quarter, clock, '', transComment);
       // Beat 2: the offense flows into its set against the waiting defense.
-      push(BEAT.formation, pos,
+      // Flowed: at 540ms this is the longest beat in a half-court possession
+      // and half the floor was holding still through it.
+      push(BEAT.formation, flowPositions(pos, [poss.handlerId], pi * 29),
         { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, period, quarter, clock, '');
     }
 
@@ -924,8 +926,10 @@ function createChoreographer(session) {
             // his man mirrors, a beat late and a step short
             if (p[him]) p[him] = clampToCourt(p[him][0] + lx * dir * offLat * 0.6,
               p[him][1] + ly * dir * offLat * 0.6);
-            push(BEAT.isoSize, p, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
-            return p;
+            // the four men who cleared out do not stand and watch him work
+            const flowed = flowPositions(p, [me, him], pi * 37 + seed);
+            push(BEAT.isoSize, flowed, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
+            return flowed;
           }
           probe(11, 6, 1);
           const back = probe(-9, 2, 2);
@@ -1093,10 +1097,17 @@ function createChoreographer(session) {
           // ENDS, so the rise keyframe is the apex — arming there put the camera
           // in only after he was already up. On the gather it covers the whole
           // ascent, which is the part worth magnifying.
-          push(BEAT.dunkGather, releasePos, { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+          // The weak side keeps moving through the dunk. Without this the
+          // whole floor froze for the four beats of every finish at the rim,
+          // which got worse the moment transition started producing more of
+          // them — frozen player-beats went 12% to 24% on that change alone.
+          const dunkLock = [ev.playerId, ev.defenderId];
+          push(BEAT.dunkGather, flowPositions(releasePos, dunkLock, pi * 19 + ei),
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null,
             { phase: 'gather', id: dunkBy, zoomTo: impactKind === 'poster' ? impactAt : null });
-          push(BEAT.dunkRise, apexPos, { x: rimX, y: hoop.y, holder: ev.playerId },
+          push(BEAT.dunkRise, flowPositions(apexPos, dunkLock, pi * 23 + ei),
+            { x: rimX, y: hoop.y, holder: ev.playerId },
             period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
           push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
             period, quarter, clock, madeLabel, shotComment, 'dunk', impactMarker, { phase: 'slam', id: dunkBy });

@@ -97,11 +97,38 @@ function energyAware(baseWeightFn, box, applyFoulTrouble) {
 // generateTendencies) — same "hidden information drives outcomes" spirit as
 // the box-score engine's deriveShootingLine, just resolved per-shot instead
 // of after the fact.
-function pickShotZone(shooter, rng) {
+// In transition the rim is open, so the shot mix swings hard toward it. The
+// engine had no concept of a break at all: shot zone came off flat tendencies
+// whatever the situation, so a possession that began with a steal ended at the
+// rim 40% of the time against 44% for a walk-up half-court set — breaks
+// finished at the rim LESS often than everything else, which is backwards.
+// Calibrated by measured rate, not picked. A first sweep scaled the rim up and
+// BOTH other zones down — x2.2 gave 79% inside (nearly every break a layup,
+// which trades one kind of sameness for another), x1.55 gave 63%.
+//
+// But paying for the rim out of threes was wrong. It dropped the league's 3PA
+// share from 29.9% to 25.3% — a real distortion of the league's identity, to
+// model a situation that in reality suppresses the MID-RANGE. Transition
+// offence is the rim and the trailer three; the pull-up 18-footer is the shot
+// that disappears. Taking the volume from mid instead holds 3PA at 29.1%
+// against a 29.9% baseline while still putting 63% of break shots at the rim.
+const TRANSITION_INSIDE_MULT = 1.6;
+const TRANSITION_THREE_MULT = 1.0;
+const TRANSITION_MID_MULT = 0.35;
+
+function pickShotZone(shooter, rng, inTransition) {
   const t = shooter.hiddenTendencies || {};
-  const three = t.threeTendency !== undefined ? Math.max(1, t.threeTendency) : 33;
-  const mid = t.midTendency !== undefined ? Math.max(1, t.midTendency) : 33;
-  const inside = t.insideTendency !== undefined ? Math.max(1, t.insideTendency) : 34;
+  let three = t.threeTendency !== undefined ? Math.max(1, t.threeTendency) : 33;
+  let mid = t.midTendency !== undefined ? Math.max(1, t.midTendency) : 33;
+  let inside = t.insideTendency !== undefined ? Math.max(1, t.insideTendency) : 34;
+  if (inTransition) {
+    // Scaled, not replaced: a stretch big who never gets to the rim in the
+    // half court should still be the least likely man on the break to finish
+    // there. The bias moves the mix, it does not flatten the players.
+    inside *= TRANSITION_INSIDE_MULT;
+    three *= TRANSITION_THREE_MULT;
+    mid *= TRANSITION_MID_MULT;
+  }
   const total = three + mid + inside;
   let r = rng() * total;
   if ((r -= three) <= 0) return 'three';
@@ -163,9 +190,15 @@ function pushEvent(eventCtx, ev) {
 // simulatePossessionGame (see computeTeamSynergy), not recomputed here.
 // `log`, if supplied, gets a human-readable line appended for whatever
 // happened this possession.
-function simulatePossession(offense, offenseBox, defense, defenseBox, rng, synergy, log, eventCtx) {
+// `inTransition` says this possession began off a live ball — a steal or a
+// defensive rebound — and biases the shot mix toward the rim. `outcome`, if
+// supplied, is filled in with how THIS possession ended so the caller can set
+// inTransition for the next one; the events context is null in a plain season
+// sim, so the handoff cannot be read back off the event log.
+function simulatePossession(offense, offenseBox, defense, defenseBox, rng, synergy, log, eventCtx, inTransition, outcome) {
   const offSyn = synergy ? synergy.offense : { offense: 1, defense: 1, rebound: 1 };
   const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
+  if (outcome) outcome.liveBallToDefense = false;
 
   const handler = weightedPick(offense, energyAware(ballHandlingWeight, offenseBox, false), rng);
   const onBallDefender = weightedPick(defense, energyAware(perimDefenseWeight, defenseBox, true), rng);
@@ -180,11 +213,13 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
     logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''));
     pushEvent(eventCtx, { type: 'turnover', playerId: handler.id, defenderId: stolen ? onBallDefender.id : null });
+    // only a STEAL is a live ball; a dead-ball turnover is inbounded
+    if (outcome) outcome.liveBallToDefense = stolen;
     return 0;
   }
 
   const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng);
-  const zone = pickShotZone(shooter, rng);
+  const zone = pickShotZone(shooter, rng, inTransition);
   const defComposite = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
   const shotDefender = weightedPick(defense, energyAware(function (p) { return _POSS_DATA.composite.computeComposite(p, defComposite); }, defenseBox, true), rng);
   drainEnergy(offenseBox[shooter.id], shooter);
@@ -248,6 +283,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
       // clock while all the others had them.
       pushEvent(eventCtx && Object.assign({}, eventCtx, { team: eventCtx.team === 'home' ? 'away' : 'home' }),
         { type: 'rebound', playerId: rebounder.id, offensive: false });
+      if (outcome) outcome.liveBallToDefense = true;
     }
   }
 

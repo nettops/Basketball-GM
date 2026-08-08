@@ -91,14 +91,19 @@ checkBallCustodyAndScore();
 function checkClockNeverRunsBackward() {
   const built = buildSession(21);
   const tl = choreo.buildTimeline(built.session);
-  let lastQuarter = 1, lastClock = 720;
+  // Keyed on PERIOD, not quarter. gameSim sets quarter = min(period, 4), so
+  // in overtime the quarter stays 4 while the clock resets to 300 — against
+  // `quarter` that reads as the clock running backward. This check keyed on
+  // quarter from the day it was written and only ever passed because seed 21
+  // finished in regulation; the first change that pushed it to OT failed it.
+  let lastPeriod = 1, lastClock = 720;
   tl.keyframes.forEach(function (kf) {
-    if (kf.quarter === lastQuarter) {
-      assert.ok(kf.clock <= lastClock, 'clock must not run backward within a quarter');
+    if (kf.period === lastPeriod) {
+      assert.ok(kf.clock <= lastClock, 'clock must not run backward within a period');
     } else {
-      assert.ok(kf.quarter > lastQuarter, 'quarter only advances');
+      assert.ok(kf.period > lastPeriod, 'period only advances');
     }
-    lastQuarter = kf.quarter;
+    lastPeriod = kf.period;
     lastClock = kf.clock;
   });
   console.log('checkClockNeverRunsBackward: OK');

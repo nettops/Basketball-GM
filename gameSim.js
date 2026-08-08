@@ -197,9 +197,15 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     const offSyn = team === 'home' ? homeSynergy : awaySynergy;
     const defSyn = team === 'home' ? awaySynergy : homeSynergy;
 
+    // A possession that starts off a live ball — a steal or a defensive board
+    // — is a break, and the engine biases its shot mix toward the rim. Tracked
+    // here rather than read back off the event log because a plain season sim
+    // passes no event context at all.
+    const outcome = {};
     const points = _GAMESIM_DATA.poss.simulatePossession(
       lineup(team), offBox, lineup(other), defBox, rng,
-      { offense: offSyn, defense: defSyn }, playByPlay, ctx);
+      { offense: offSyn, defense: defSyn }, playByPlay, ctx, sim.inTransition, outcome);
+    sim.inTransition = !!outcome.liveBallToDefense;
 
     if (team === 'home') sim.homeScore += points; else sim.awayScore += points;
 
