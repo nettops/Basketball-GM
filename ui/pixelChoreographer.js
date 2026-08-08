@@ -109,6 +109,9 @@ const BEAT = {
   // Isolation, and live dribbling. A size-up beat is short so two of them read
   // as probing rather than as jogging in a circle.
   isoClear: 400, isoSize: 240, isoAttack: 280, liveDribble: 230,
+  // Fast break. Short beats covering a lot of floor — that ratio IS the break;
+  // the same distance over the half-court beats would read as a jog.
+  fbOutlet: 300, fbLanes: 400, fbAttack: 340,
   resolve: 500, bounce: 350, ft: 700
 };
 
@@ -551,6 +554,47 @@ function createChoreographer(session) {
   // On a fast break the roles invert: the OFFENSE is already streaking toward
   // the rim while the DEFENSE is the group scrambling back from the other
   // end, which is what makes a break read as a break rather than a walk-up.
+  // A fast break, laid out as three lanes running at a retreating defense.
+  // `advance` is 0 at the outlet and 1 at the rim, so the same function draws
+  // the whole break and the players genuinely travel between beats rather than
+  // teleporting into a set.
+  //
+  // Before this a break was the half-court possession with two shorter beats:
+  // 2.3 passes against 2.2, 3.5s against 4.4s, and no lanes, no outlet, no
+  // numbers advantage. 35% of possessions looked like something they weren't.
+  const FB_LANE = { PG: 0, SG: -54, SF: 54, PF: 24, C: -24 };
+  // Separate start and end depths. A single constant trail made the bigs only
+  // ~54px behind the ball at the outlet, so the outlet pass came out SHORTER
+  // than an ordinary perimeter swing — backwards for what should be the
+  // longest pass in the game. They now start deep and close the gap as the
+  // break runs, which is also what makes the trailer arrive late.
+  const FB_START = { PG: 0, SG: 14, SF: 14, PF: 88, C: 112 };
+  const FB_END   = { PG: 0, SG: 4, SF: 4, PF: 40, C: 50 };
+  function fastBreakLanes(offenseTeam, advance) {
+    const pos = {};
+    const hoop = attackingHoop(offenseTeam);
+    const dir = offenseTeam === 'home' ? -1 : 1;
+    ['home', 'away'].forEach(function (side) {
+      const slots = assignSlots(five[side]);
+      POSITION_ORDER.forEach(function (posName) {
+        const p = slots[posName];
+        if (!p) return;
+        if (side === offenseTeam) {
+          const startDx = 175 + FB_START[posName];
+          const endDx = 30 + FB_END[posName];
+          const dx = startDx + (endDx - startDx) * advance;
+          pos[p.id] = clampToCourt(hoop.x + dir * dx, hoop.y + FB_LANE[posName]);
+        } else {
+          // only the two quickest get back in time; the bigs are still running
+          const late = (posName === 'PG' || posName === 'SG') ? 0 : 58;
+          const dx = 128 + (26 - 128) * advance + late;
+          pos[p.id] = clampToCourt(hoop.x + dir * dx, hoop.y + FB_LANE[posName] * 0.55);
+        }
+      });
+    });
+    return separatePositions(pos, null);
+  }
+
   function transitionFor(offenseTeam, fastBreak) {
     const pos = {};
     const hoop = attackingHoop(offenseTeam);
@@ -638,9 +682,12 @@ function createChoreographer(session) {
 
     const poss = { team: head.team, quarter: quarter, period: period, handlerId: head.playerId, plays: plays, fastBreak: fastBreak };
 
-    const pos = positionsFor(poss.team);
+    // On a break the possession ENDS at the rim end of the lanes, not in a
+    // half-court set — otherwise the shot yanks everyone back into formation
+    // and undoes the break that just ran.
+    const pos = poss.fastBreak ? fastBreakLanes(poss.team, 1) : positionsFor(poss.team);
     const handlerPos = pos[poss.handlerId] || formationSpot(poss.team, 'PG', poss.team);
-    const transPos = transitionFor(poss.team, poss.fastBreak);
+    const transPos = poss.fastBreak ? fastBreakLanes(poss.team, 0) : transitionFor(poss.team, false);
     const transHandler = transPos[poss.handlerId] || handlerPos;
 
     // Broadcast color on the way up the floor: usually nothing (dead air is
@@ -692,14 +739,37 @@ function createChoreographer(session) {
       }
     }
 
-    // Beat 1: transition. Half-court: the defense is already set and the
-    // offense walks into it. Fast break: the offense is gone and the defense
-    // is chasing — and it happens quicker.
-    push(poss.fastBreak ? BEAT.fastBreak : BEAT.transition, transPos,
-      { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, period, quarter, clock, '', transComment);
-    // Beat 2: the offense flows into its set against the waiting defense.
-    push(poss.fastBreak ? BEAT.fastBreak : BEAT.formation, pos,
-      { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, period, quarter, clock, '');
+    if (poss.fastBreak) {
+      // Outlet, then run. The ball is thrown AHEAD to the man already gone
+      // rather than walked up: the deepest offensive player makes the outlet,
+      // which is the long flat pass the half-court set never produces.
+      const midPos = fastBreakLanes(poss.team, 0.55);
+      const h = poss.handlerId;
+      const dir = poss.team === 'home' ? -1 : 1;
+      const deep = Object.keys(transPos)
+        .filter(function (id) { return id !== h && pos[id]; })
+        .sort(function (a, b) { return (transPos[b][0] - transPos[a][0]) * dir; })[0];
+      const from = deep ? transPos[deep] : transHandler;
+
+      push(BEAT.release, transPos, { x: from[0], y: from[1] - 6, holder: null },
+        period, quarter, clock, '');
+      push(BEAT.fbOutlet, transPos,
+        { x: transHandler[0], y: transHandler[1] - 6, holder: h, arc: 5 },
+        period, quarter, clock, '', transComment);
+      // filling the lanes — everyone actually travels, so the leg cycle runs
+      push(BEAT.fbLanes, midPos,
+        { x: midPos[h][0], y: midPos[h][1], holder: h }, period, quarter, clock, '');
+      push(BEAT.fbAttack, pos,
+        { x: handlerPos[0], y: handlerPos[1], holder: h }, period, quarter, clock, '');
+    } else {
+      // Beat 1: transition. The defense is already set and the offense walks
+      // into it.
+      push(BEAT.transition, transPos,
+        { x: transHandler[0], y: transHandler[1], holder: poss.handlerId }, period, quarter, clock, '', transComment);
+      // Beat 2: the offense flows into its set against the waiting defense.
+      push(BEAT.formation, pos,
+        { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, period, quarter, clock, '');
+    }
 
     const hoop = attackingHoop(poss.team);
 
@@ -761,7 +831,9 @@ function createChoreographer(session) {
         const chain = [poss.handlerId];
         // 0-3 rather than always 1-2, so possessions differ in how much the
         // ball moves and not just in how long each beat lasts
-        const swings = isoPlay ? 0 : ((pi * 3 + ei) % 4);
+        // A break that swings the ball three times is not a break any more —
+        // it has become a half-court set that happened to start quickly.
+        const swings = isoPlay ? 0 : (poss.fastBreak ? (pi % 2) : ((pi * 3 + ei) % 4));
         for (let s = 0; s < swings; s++) {
           const cands = offenseIds.filter(function (id) {
             return id !== chain[chain.length - 1] && id !== ev.playerId && id !== ev.assistPlayerId;
