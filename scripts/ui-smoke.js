@@ -695,6 +695,55 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The highlight treatment is driven by a structured marker and suppressed by
+  // playback speed and by reduced motion. The scoreboard assertion is the one
+  // that catches the layering being done wrong: the in-canvas scoreboard is
+  // painted after the scene transform, so a zoom must not move it. That is
+  // invisible in any still frame where nothing happens to be zooming, and it
+  // needs a control — the crowd is inside the transform and does zoom, so a
+  // sample that catches crowd pixels reports movement that isn't the board's.
+  function checkImpactMoments() {
+    const results = [];
+
+    results.push(ok('impact:module-loaded',
+      typeof startImpact === 'function' && typeof impactZoom === 'function'));
+    if (typeof startImpact !== 'function') return results;
+
+    const poster = { kind: 'poster', at: { x: 240, y: 160 }, byId: 'a', onId: 'b' };
+    const block = { kind: 'block', at: { x: 240, y: 160 }, byId: 'a', onId: 'b' };
+
+    resetImpact();
+    startImpact(poster, 0, { reduceMotion: false, speed: 1 });
+    const z = impactZoom(10);
+    results.push(ok('impact:poster-zooms', !!z && z.scale > 1,
+      z ? 'scale ' + z.scale : 'no zoom'));
+
+    resetImpact();
+    startImpact(block, 0, { reduceMotion: false, speed: 1 });
+    results.push(ok('impact:block-does-not-zoom', impactZoom(10) === null));
+
+    resetImpact();
+    startImpact(poster, 0, { reduceMotion: true, speed: 1 });
+    results.push(ok('impact:reduced-motion-suppresses', impactZoom(10) === null &&
+      impactFreezeMs(poster, { reduceMotion: true, speed: 1 }) === 0));
+
+    resetImpact();
+    startImpact(poster, 0, { reduceMotion: false, speed: 8 });
+    results.push(ok('impact:nothing-at-8x', impactZoom(10) === null &&
+      impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) === 0));
+
+    results.push(ok('impact:4x-halves-the-freeze',
+      impactFreezeMs(poster, { reduceMotion: false, speed: 4 }) ===
+        Math.round(impactFreezeMs(poster, { reduceMotion: false, speed: 1 }) / 2)));
+
+    // Leaving state armed here would zoom the first frame of whatever the user
+    // opens next, which is exactly the leak stopPixelPlayback exists to close.
+    resetImpact();
+    results.push(ok('impact:reset-clears-state', impactZoom(10) === null));
+
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
@@ -702,6 +751,7 @@ const UI_SMOKE = (function () {
     boxscore: checkScheduleBoxScore,
     align: checkTableAlignment,
     chrome: checkChromeLabels,
+    impact: checkImpactMoments,
     advance: checkAdvanceRepaints,
     empty: checkNoStrandedHeadings,
     scroll: checkScrollOnNavigate,
