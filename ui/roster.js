@@ -40,10 +40,19 @@ function moraleStatusHtml(player) {
     MORALE_EMOJI[tier] + ' ' + Math.round(morale) + '</span>';
 }
 
+// Thresholds converted by z-score when ratings moved to a true 0-100 scale, so
+// the colour bands still pick out the same slice of the league rather than the
+// same literal numbers. On the old 62-98 distribution (mean 74.7, sd 7.6) the
+// cuts sat at +2.02, +0.70 and -0.61 standard deviations; against the derived
+// overall (mean 47.8, sd 9.9) that is 68 / 55 / 42, which puts 3.2% of the
+// league in elite, 23.7% at high or better and 71.8% at mid or better.
+//
+// Left at 90/80/70 nothing would ever have been gold again — the highest
+// overall in the league is 78.
 function ratingTier(value) {
-  if (value >= 90) return 'tier-elite';
-  if (value >= 80) return 'tier-high';
-  if (value >= 70) return 'tier-mid';
+  if (value >= 68) return 'tier-elite';
+  if (value >= 55) return 'tier-high';
+  if (value >= 42) return 'tier-mid';
   return 'tier-low';
 }
 

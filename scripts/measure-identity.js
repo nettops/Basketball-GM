@@ -127,13 +127,28 @@ function simulated() {
   };
 }
 
-const report = {
-  shapes: attributeShapes(),
-  players: PLAYERS_2026.length,
-  attributes: attributeDistribution(),
-  synergy: synergyShares(),
-  sim: simulated()
-};
+function buildReport() {
+  return {
+    shapes: attributeShapes(),
+    players: PLAYERS_2026.length,
+    attributes: attributeDistribution(),
+    synergy: synergyShares(),
+    sim: simulated()
+  };
+}
+
+// Exported so scripts/validate-identity.js gates on the SAME numbers a
+// calibration sweep reads. Reimplementing the metrics there would let the two
+// drift apart, which is how a build ends up green against a metric nobody
+// actually tuned.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { report: buildReport };
+}
+
+// Only print when run directly, not when required by the validator.
+if (require.main !== module) return;
+
+const report = buildReport();
 
 if (process.argv.indexOf('--json') !== -1) {
   console.log(JSON.stringify(report, null, 2));

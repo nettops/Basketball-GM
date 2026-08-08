@@ -1,0 +1,17 @@
+ATTRIBUTES
+  distinct shapes              380 / 380            (target: nearly all distinct)
+  league mean / sd             48.8 / 16.6        (target: ~50 / 11-18)
+  min / max                    0 / 100
+SYNERGY QUALIFYING SHARE                      (target: 15-25%)
+  shooter                      18.7%
+  defender                     19.2%
+  rebounder                    21.1%
+LEAGUE (300 games, n=206 players with 400+ min)
+  FG%                          46.7               (target: 46-49)
+  3P%                          36.2               (target: 35-37, NBA 36.3)
+  3PA share                    30.2%              (hold near 29%)
+  pts/game/team                103.3              (target: 108-118)
+IDENTITY
+  3PA share p05-p95            4.7% - 59.6%  (54.9 pts)   (target ~48, NBA 67)
+  shot volume p95:p05          2.72x             (target ~2.5x, NBA 2.9x)
+  assist rate p95:p05          15.86x             (target 4x+)
