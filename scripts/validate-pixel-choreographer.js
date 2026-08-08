@@ -268,4 +268,45 @@ function checkLineupsDriveTheFloor() {
 }
 checkLineupsDriveTheFloor();
 
+function checkFloorIsNotFrozen() {
+  // The floor used to be a diorama: 63.7% of all player-beats held an
+  // IDENTICAL position across a keyframe pair, with beats averaging 330ms.
+  // Two thirds of that sat in three long beats — the ball swing (78% frozen),
+  // the windup (98%) and the rebound bounce (100%).
+  const tl = choreo.buildTimeline(buildSession(4242).session);
+  const kfs = tl.keyframes;
+  let still = 0, total = 0, offCourt = 0;
+  const crt = { x: 20, y: 64, w: 440, h: 192 };
+  for (let i = 0; i < kfs.length - 1; i++) {
+    Object.keys(kfs[i].pos).forEach(function (id) {
+      if (!kfs[i + 1].pos[id]) return;
+      total += 1;
+      const a = kfs[i].pos[id], b = kfs[i + 1].pos[id];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.5) still += 1;
+    });
+  }
+  kfs.forEach(function (k) {
+    Object.keys(k.pos).forEach(function (id) {
+      const p = k.pos[id];
+      if (p[0] < crt.x || p[0] > crt.x + crt.w || p[1] < crt.y || p[1] > crt.y + crt.h) offCourt += 1;
+    });
+  });
+  const frozen = still / total;
+  assert.ok(frozen < 0.30,
+    'too much of the floor is frozen: ' + (frozen * 100).toFixed(1) + '% of player-beats (was 63.7%, budget 30%)');
+  assert.strictEqual(offCourt, 0, 'off-ball flow pushed ' + offCourt + ' player-positions off the court');
+
+  // The ball handler is never flowed — he is where the choreography put him.
+  let handlerMoved = 0;
+  kfs.forEach(function (k) {
+    if (!k.ball.holder || !k.pos[k.ball.holder]) return;
+    const h = k.pos[k.ball.holder];
+    if (Math.hypot(h[0] - k.ball.x, h[1] - k.ball.y) > 40) handlerMoved += 1;
+  });
+  assert.ok(handlerMoved < kfs.length * 0.10,
+    'the ball drifted away from its holder on ' + handlerMoved + ' keyframes');
+  console.log('checkFloorIsNotFrozen: OK (' + (frozen * 100).toFixed(1) + '% frozen)');
+}
+checkFloorIsNotFrozen();
+
 console.log('All pixel choreographer validations passed');

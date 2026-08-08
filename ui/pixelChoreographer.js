@@ -82,6 +82,25 @@ function assignSlots(five) {
 const BEAT = {
   transition: 700, formation: 650, fastBreak: 420, pass: 340, windup: 300, drive: 500,
   release: 60, flight3: 850, flightMid: 650, flightIn: 420,
+  // Dunk beats. The rise is short and the hang is shorter — a leap that takes
+  // as long as a jump shot's flight reads as floating, not exploding.
+  dunkGather: 170, dunkRise: 150, dunkSlam: 90, dunkLand: 130,
+  // Crossover beats. The jab has to last long enough for the defender to
+  // visibly commit to it, or the cut back reads as a sidestep rather than a
+  // player being sent the wrong way.
+  crossJab: 200, crossCut: 140, crossClear: 190,
+  // Inbound after a made basket. Short — a live ball inbound is quick, and
+  // this fires after most made shots, so any longer and it drags the game.
+  inboundSet: 340, inboundPass: 260,
+  // Jump shot. The whole motion used to live inside the 60ms release beat —
+  // three or four frames — so the dip, the rise and the arms never appeared at
+  // all. A three is a bigger gather than a pull-up, so it gets longer beats.
+  jumpGatherMid: 140, jumpRiseMid: 120,
+  jumpGatherThree: 180, jumpRiseThree: 150,
+  jumpRelease: 60,
+  // Ball screen. The set has to hold long enough to read as a screen being
+  // set rather than two players brushing past each other.
+  screenSet: 380, screenUse: 300,
   resolve: 600, bounce: 350, ft: 700
 };
 
@@ -93,6 +112,59 @@ function flightBeat(zone) {
 // shotSpot's jitter: variety without touching any rng.
 function cutJitter(seed, spread) {
   return (((seed * 31) % (2 * spread + 1)) - spread);
+}
+
+// Pass character. Every pass in the game used to be the same 340ms beat with
+// the same distance-scaled arc, so a 30px dish and a 343px cross-court skip
+// took identical time and the skip lobbed at the 32px arc ceiling. Real passes
+// differ by what they are for.
+//
+// Duration grows with distance but sub-linearly, so long passes are FASTER in
+// px/s (a skip is a line drive, not a rainbow): a 30px dish covers 166px/s, a
+// 343px skip covers ~800px/s.
+//
+// `arc` rides on the ball object rather than a 14th push parameter — it is a
+// property of the ball's flight, and the view already reads fr.b.ball.
+function passShape(fromPt, toPt, isFeed) {
+  const dist = Math.hypot(toPt[0] - fromPt[0], toPt[1] - fromPt[1]);
+  const ms = Math.max(170, Math.min(430, Math.round(150 + dist * 1.05)));
+  let arc;
+  // Thresholds calibrated against the real distribution rather than picked:
+  // chain passes run p10 41 / p50 74 / p90 112 / max 129 before skips existed,
+  // so a ">150" skip branch was unreachable dead code.
+  if (dist < 46) arc = 2;          // dish / handoff — barely leaves the floor
+  else if (dist > 105) arc = 5;    // skip pass — flat and hard across the floor
+  else arc = 9;                    // ordinary chest pass
+  // the feed that sets up the shot floats a touch more, so the eye catches it
+  return { ms: isFeed ? ms + 70 : ms, arc: isFeed ? arc + 6 : arc };
+}
+
+// Off-ball flow. Measured across a full game, 66% of all frozen player-beats
+// sat in three beats — the ball swing (78% frozen), the windup (98%) and the
+// rebound bounce (100%) — where the choreographer hands the SAME positions to
+// consecutive keyframes and everyone away from the ball stands like furniture.
+//
+// Each off-ball player orbits the spot he was given, on his own phase,
+// advancing once per beat. Anchored rather than cumulative so nobody wanders
+// off his assignment, and derived from a beat seed rather than rng so a replay
+// reproduces the same floor exactly.
+//
+// Amplitude is deliberately above the view's `moving` threshold: ~7px across a
+// 340ms beat is ~20px/timeline-second, which trips the leg cycle, so these
+// players actually jog rather than sliding.
+function flowPositions(pos, lockedIds, beatSeed) {
+  const locked = {};
+  (lockedIds || []).forEach(function (id) { if (id) locked[id] = true; });
+  const out = {};
+  let i = 0;
+  Object.keys(pos).forEach(function (pid) {
+    i += 1;
+    const p = pos[pid];
+    if (locked[pid]) { out[pid] = [p[0], p[1]]; return; }
+    const phase = beatSeed * 0.9 + i * 2.3;
+    out[pid] = clampToCourt(p[0] + Math.sin(phase) * 7, p[1] + Math.cos(phase * 1.3) * 5);
+  });
+  return out;
 }
 
 // Off-ball movement: everyone except the ball handler/shooter drifts to a
@@ -374,6 +446,10 @@ function createChoreographer(session) {
   let possCounter = -1;
   let prevPoss = null;          // for fast-break detection
   let five = { home: [], away: [] };   // players (not ids) currently on court
+  // Did the previous possession end with the ball going in? Drives the
+  // inbound: after a make the other team walks it in from the endline, after a
+  // live rebound or a steal they are already playing.
+  let prevMade = false;
   let linePeriod = null;        // period the line score is currently accruing
   let atPeriodStart = [0, 0];
   let finished = false;
@@ -416,7 +492,7 @@ function createChoreographer(session) {
   // synth). Naming it here rather than sniffing the display text keeps the
   // audio honest: a miss and a make are different events even though both
   // end with the ball at the rim.
-  function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx, impact) {
+  function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx, impact, dunk, cross, jump) {
     t += dt;
     // Every keyframe goes through the collision pass so sprites never stack;
     // the current ball holder is the protected (immovable) body.
@@ -426,6 +502,18 @@ function createChoreographer(session) {
       period: period, quarter: quarter,
       clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '',
       sfx: sfx || '',
+      // Dunk phase ('gather' | 'rise' | 'slam' | 'land') or null. The view
+      // turns this into sprite lift and the airborne pose; the height lives
+      // there rather than here so the timeline stays pure positions.
+      dunk: dunk || null,
+      // Jump-shot phase ('gather' | 'rise' | 'release' | 'follow') plus who is
+      // shooting. Same split as `dunk`: the beats live here, the height and the
+      // pose live in the view.
+      jump: jump || null,
+      // Crossover phase ('jab' | 'cross' | 'clear' | 'recover') plus who did it
+      // to whom, or null. Positions carry the separation; this carries who is
+      // off balance, which is not derivable from coordinates alone.
+      cross: cross || null,
       // Structured highlight marker, or null. ui/pixelGameView.js reads this
       // field rather than matching on `text` — see classifyImpact above.
       impact: impact || null,
@@ -563,6 +651,39 @@ function createChoreographer(session) {
       transComment = transComment || fillT(COMMENT.fastBreak, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] });
     }
 
+    // Beat 0: the inbound. After a made basket the ball does not change hands
+    // by teleporting — somebody steps to the endline and puts it in play. Only
+    // after a make: a rebound or a steal is a live ball and running one of
+    // these would be wrong as well as slow.
+    if (prevMade && !poss.fastBreak) {
+      const crt = PIXEL_STAGE.court;
+      const scoredOn = attackingHoop(poss.team === 'home' ? 'away' : 'home');
+      const leftEnd = scoredOn.x < crt.x + crt.w / 2;
+      // separatePositions() clamps every player back inside the court, so the
+      // inbounder stands ON the endline rather than behind it. At a 10px sprite
+      // width he still reads as out of bounds, and exempting him would mean
+      // loosening a clamp every other position in the game depends on.
+      const outX = leftEnd ? crt.x : crt.x + crt.w;
+      const inX = leftEnd ? crt.x + 30 : crt.x + crt.w - 30;
+      const mates = five[poss.team]
+        .map(function (p) { return p.id; })
+        .filter(function (id) { return id !== poss.handlerId && transPos[id]; });
+      const inbounder = mates.length ? mates[pi % mates.length] : null;
+      if (inbounder) {
+        const setPos = Object.assign({}, transPos);
+        setPos[inbounder] = [outX, scoredOn.y + cutJitter(pi, 14)];
+        setPos[poss.handlerId] = clampToCourt(inX, scoredOn.y + cutJitter(pi + 3, 24));
+        push(BEAT.inboundSet, setPos,
+          { x: setPos[inbounder][0], y: setPos[inbounder][1], holder: inbounder },
+          period, quarter, clock, '',
+          pi % 5 === 2 ? fillT(COMMENT.bringUp, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] }) : '');
+        // everyone but the two men on the ball spreads out to receive
+        push(BEAT.inboundPass, flowPositions(setPos, [inbounder, poss.handlerId], pi * 17),
+          { x: setPos[poss.handlerId][0], y: setPos[poss.handlerId][1], holder: poss.handlerId },
+          period, quarter, clock, '');
+      }
+    }
+
     // Beat 1: transition. Half-court: the defense is already set and the
     // offense walks into it. Fast break: the offense is gone and the defense
     // is chasing — and it happens quicker.
@@ -628,7 +749,24 @@ function createChoreographer(session) {
             return id !== chain[chain.length - 1] && id !== ev.playerId && id !== ev.assistPlayerId;
           });
           if (cands.length === 0) break;
-          chain.push(cands[(pi * 7 + ei * 3 + s * 5) % cands.length]);
+          // Occasionally swing it all the way across. Before this the offense
+          // never moved the ball further than 129px on a 440px floor — every
+          // pass was a short perimeter swing, so the weak side never came into
+          // play and a skip pass did not exist in the game.
+          const prev = shotPos[chain[chain.length - 1]];
+          const skip = prev && ((pi * 5 + ei + s) % 4 === 0);
+          if (skip) {
+            let far = cands[0], farD = -1;
+            cands.forEach(function (id) {
+              const q = shotPos[id];
+              if (!q) return;
+              const dd = Math.hypot(q[0] - prev[0], q[1] - prev[1]);
+              if (dd > farD) { farD = dd; far = id; }
+            });
+            chain.push(far);
+          } else {
+            chain.push(cands[(pi * 7 + ei * 3 + s * 5) % cands.length]);
+          }
         }
         if (ev.assistPlayerId && shotPos[ev.assistPlayerId] && chain[chain.length - 1] !== ev.assistPlayerId) {
           chain.push(ev.assistPlayerId);
@@ -640,11 +778,108 @@ function createChoreographer(session) {
           const from = shotPos[chain[c]] || pos[chain[c]] || handlerPos;
           const to = shotPos[chain[c + 1]];
           if (!to) continue;
+          // the last pass of the chain is the feed to the shooter
+          const isFeed = (c === chain.length - 2) && !!ev.assistPlayerId;
+          const shape = passShape(from, to, isFeed);
           push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, period, quarter, clock, '');
-          push(BEAT.pass, shotPos, { x: to[0], y: to[1] - 8, holder: chain[c + 1] }, period, quarter, clock, '');
+          // The ball swing is the single biggest pocket of frozen players in
+          // the game. The passer and receiver stay put; everyone else cuts.
+          push(shape.ms, flowPositions(shotPos, [chain[c], chain[c + 1]], pi * 3 + c),
+            { x: to[0], y: to[1] - 8, holder: chain[c + 1], arc: shape.arc }, period, quarter, clock, '');
         }
-        // windup: shooter gathers, everyone else finishes their cuts
-        push(BEAT.windup, shotPos, { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null }, period, quarter, clock, '');
+        // Ball screen. There was no screen anywhere in the timeline — the one
+        // structure that makes a half-court possession read as a designed play
+        // rather than five men passing. The screener steps into the handler's
+        // defender, the handler comes off it with separation, and the screener
+        // rolls to the rim.
+        //
+        // Not on every possession: a screen on all of them would be as
+        // characterless as none. Skipped on fast breaks (nobody screens in
+        // transition) and when the shooter already has a crossover coming, so
+        // the two moves never stack on the same shot.
+        if (!poss.fastBreak && shooterOn && (pi + ei) % 3 === 0 && ev.defenderId && shotPos[ev.defenderId]) {
+          const bigs = five[poss.team]
+            .map(function (p) { return p.id; })
+            .filter(function (id) { return id !== ev.playerId && shotPos[id]; });
+          const screener = bigs.length ? bigs[(pi + ei) % bigs.length] : null;
+          if (screener) {
+            const dOn = shotPos[ev.defenderId];
+            const toHoopX = hoop.x - sp[0], toHoopY = hoop.y - sp[1];
+            const hl = Math.sqrt(toHoopX * toHoopX + toHoopY * toHoopY) || 1;
+            // set the pick on the defender's up-court shoulder
+            const setPos = Object.assign({}, shotPos);
+            setPos[screener] = clampToCourt(dOn[0] - (toHoopX / hl) * 11, dOn[1] - (toHoopY / hl) * 11);
+            push(BEAT.screenSet, setPos, { x: sp[0], y: sp[1], holder: ev.playerId },
+              period, quarter, clock, '');
+            // handler comes off it; the defender is a step behind; big rolls
+            const usePos = Object.assign({}, setPos);
+            usePos[ev.defenderId] = clampToCourt(dOn[0] - (toHoopX / hl) * 7, dOn[1] - (toHoopY / hl) * 7);
+            usePos[screener] = clampToCourt(setPos[screener][0] + (toHoopX / hl) * 26,
+              setPos[screener][1] + (toHoopY / hl) * 26);
+            push(BEAT.screenUse, usePos, { x: sp[0], y: sp[1], holder: ev.playerId },
+              period, quarter, clock, '');
+            // the roll and the recovery stand for the rest of the possession
+            shotPos[screener] = usePos[screener];
+            shotPos[ev.defenderId] = usePos[ev.defenderId];
+          }
+        }
+
+        // Classification is hoisted above the windup because an ankle breaker
+        // has to be choreographed BEFORE the shot goes up — the move is what
+        // creates the shot, not a decoration on top of it.
+        const shooterPlayer = playerById[ev.playerId];
+        const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
+        const impactKind = ev.made
+          ? classifyImpact(ev, shooterPlayer, playerById[ev.defenderId])
+          : null;
+
+        // The crossover. Worked ACROSS the defender rather than at him: the
+        // lateral axis is perpendicular to the line to the rim, so the jab and
+        // the cut back read as side-to-side even on a corner three.
+        let crossMeta = null;
+        if (impactKind === 'ankle' && shooterOn && ev.defenderId && shotPos[ev.defenderId]) {
+          const vx = hoop.x - sp[0], vy = hoop.y - sp[1];
+          const vlen = Math.sqrt(vx * vx + vy * vy) || 1;
+          const lx = -vy / vlen, ly = vx / vlen;
+          const dir = ((pi + ei) % 2) ? 1 : -1;
+          const handler = ev.playerId, victim = ev.defenderId;
+          const dstart = shotPos[victim];
+          crossMeta = { by: handler, on: victim };
+
+          function step(hOff, dOff) {
+            const p = Object.assign({}, shotPos);
+            p[handler] = clampToCourt(sp[0] + lx * dir * hOff, sp[1] + ly * dir * hOff);
+            p[victim] = clampToCourt(dstart[0] + lx * dir * dOff, dstart[1] + ly * dir * dOff);
+            return p;
+          }
+          // jab one way — the defender bites HARDER than the jab, which is the
+          // whole trick: he has to be further across than the man he guards
+          const jab = step(7, 13);
+          push(BEAT.crossJab, jab, { x: jab[handler][0], y: jab[handler][1], holder: handler },
+            period, quarter, clock, '', '', '', null, null, { phase: 'jab', by: handler, on: victim });
+          // cut back hard; he keeps going the wrong way
+          const cut = step(-8, 17);
+          push(BEAT.crossCut, cut, { x: cut[handler][0], y: cut[handler][1], holder: handler },
+            period, quarter, clock, '', '', 'squeak', null, null, { phase: 'cross', by: handler, on: victim });
+          // and rise into the shot with the separation already open
+          const clear = step(0, 19);
+          push(BEAT.crossClear, clear, { x: sp[0], y: sp[1], holder: handler },
+            period, quarter, clock, '', '', '', null, null, { phase: 'clear', by: handler, on: victim });
+          // the defender STAYS beaten for the rest of the possession — leaving
+          // him displaced is what makes the shot look uncontested
+          shotPos[victim] = clear[victim];
+        }
+
+        // windup: shooter gathers, everyone else finishes their cuts. 98% of
+        // players were frozen through this beat — the comment described cuts
+        // the positions never actually contained. The shooter and his defender
+        // hold; after a crossover the beaten defender especially must not drift
+        // back into him, which is why he is locked rather than flowed.
+        push(BEAT.windup,
+          flowPositions(shotPos, [ev.playerId, ev.defenderId], pi * 5 + 1),
+          { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null },
+          period, quarter, clock, '', '', '', null, null,
+          crossMeta ? { phase: 'recover', by: crossMeta.by, on: crossMeta.on } : null);
         // inside shots drive to the rim before finishing
         let releasePos = shotPos;
         let relSpot = sp;
@@ -653,23 +888,19 @@ function createChoreographer(session) {
           releasePos = Object.assign({}, shotPos);
           releasePos[ev.playerId] = rimSpot;
           relSpot = rimSpot;
-          push(BEAT.drive, releasePos, { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock, '');
+          // the driver and his man hold; the weak side rotates
+          push(BEAT.drive, flowPositions(releasePos, [ev.playerId, ev.defenderId], pi * 13 + ei),
+            { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock, '');
         }
         if (ev.made) {
           score[ev.team === 'home' ? 0 : 1] += ev.points;
           addPoints(ev.playerId, ev.points);
         }
-        const shooterPlayer = playerById[ev.playerId];
-        const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
         const madeLabel = ev.zone === 'inside'
           ? (dunking
               ? DUNK_FINISHES[(pi + ei) % DUNK_FINISHES.length]
               : LAYUP_FINISHES[(pi + ei) % LAYUP_FINISHES.length])
           : (ev.points === 3 ? 'Three-pointer!' : 'It\'s good!');
-        // release: ball leaves the hands...
-        push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
-        // ...and flies to the rim while everyone crashes the glass — the
-        // floor keeps moving for the whole flight instead of freezing
         const crashPos = crashPositions(releasePos, ev.playerId, hoop, pi + ei);
         const shotTemplates = ev.zone === 'three' ? COMMENT.threeMake : (ev.zone === 'mid' ? COMMENT.midMake : COMMENT.insideMake);
         let shotComment = ev.made
@@ -678,26 +909,92 @@ function createChoreographer(session) {
         if (ev.made && ev.assistPlayerId && (pi + ei) % 2 === 0) {
           shotComment += ' (' + ln(ev.assistPlayerId) + ' with the dime)';
         }
-        // Highlight classification. Only made shots qualify; the shooter and
-        // the contesting defender both come straight off the event.
-        const impactKind = ev.made
-          ? classifyImpact(ev, playerById[ev.playerId], playerById[ev.defenderId])
-          : null;
         // Posters resolve at the rim, ankle breakers where the shot went up.
+        // (impactKind is classified above the windup — see the crossover.)
         const impactAt = impactKind === 'poster'
           ? { x: hoop.x, y: hoop.y }
           : { x: relSpot[0], y: relSpot[1] };
         const impactMarker = impactKind
           ? { kind: impactKind, at: impactAt, byId: ev.playerId, onId: ev.defenderId }
           : null;
-        push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
-          ev.made ? madeLabel : '', shotComment,
-          ev.made ? (dunking ? 'dunk' : 'swish') : 'clang',
-          impactMarker);
-        curPos = crashPos;
+        if (ev.made && dunking && shooterOn) {
+          // A dunk is not a release and a flight — the ball never leaves the
+          // hand until it goes through. Gather, rise to the rim carrying it,
+          // slam, land. Drawn as four beats so the view can hang the sprite at
+          // the top instead of sliding it past the rim at constant speed.
+          const rimX = hoop.x + (poss.team === 'home' ? -3 : 3);
+          const apexPos = Object.assign({}, releasePos);
+          apexPos[ev.playerId] = clampToCourt(rimX, hoop.y);
+          const landPos = Object.assign({}, crashPos);
+          landPos[ev.playerId] = apexPos[ev.playerId];  // he stays at the rim, not crashing the glass
+          // Posterized: the defender is driven back off the rim. Without this
+          // the victim stands politely still and it reads as an uncontested
+          // dunk — the defender's reaction IS the poster.
+          const victim = ev.defenderId;
+          if (impactKind === 'poster' && victim && landPos[victim]) {
+            const away = (poss.team === 'home' ? 1 : -1);   // back away from this hoop
+            landPos[victim] = clampToCourt(
+              landPos[victim][0] + away * 9,
+              landPos[victim][1] + ((pi + ei) % 2 ? 5 : -5)
+            );
+          }
+          const dunkBy = ev.playerId;
+          // `zoomTo` rides the GATHER beat, not the rise. Keyframes sit at beat
+          // ENDS, so the rise keyframe is the apex — arming there put the camera
+          // in only after he was already up. On the gather it covers the whole
+          // ascent, which is the part worth magnifying.
+          push(BEAT.dunkGather, releasePos, { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '', '', '', null,
+            { phase: 'gather', id: dunkBy, zoomTo: impactKind === 'poster' ? impactAt : null });
+          push(BEAT.dunkRise, apexPos, { x: rimX, y: hoop.y, holder: ev.playerId },
+            period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
+          push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
+            period, quarter, clock, madeLabel, shotComment, 'dunk', impactMarker, { phase: 'slam', id: dunkBy });
+          push(BEAT.dunkLand, landPos, { x: hoop.x, y: hoop.y + 7, holder: null },
+            period, quarter, clock, '', '', '', null, { phase: 'land', id: dunkBy });
+          curPos = landPos;
+        } else if (ev.zone === 'mid' || ev.zone === 'three') {
+          // The jump shot, with an actual jump in it. Measured before this: the
+          // whole motion occupied 3-4 frames (48-64ms) because it lived inside
+          // the 60ms release beat, so the dip and the rise were never visible.
+          // A three gets a deeper gather than a pull-up.
+          const three = ev.zone === 'three';
+          const jumpBy = ev.playerId;
+          // Positions do NOT change through the jump — only height, which lives
+          // in the view. That matters: an ankle breaker's camera is aimed at
+          // relSpot, and the shooter has to still be standing on it.
+          push(three ? BEAT.jumpGatherThree : BEAT.jumpGatherMid, releasePos,
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '', '', '', null, null, null, { phase: 'gather', id: jumpBy, three: three });
+          push(three ? BEAT.jumpRiseThree : BEAT.jumpRiseMid, releasePos,
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '', '', '', null, null, null, { phase: 'rise', id: jumpBy, three: three });
+          // the ball leaves at the apex, not from a standing sprite
+          push(BEAT.jumpRelease, releasePos, { x: relSpot[0], y: relSpot[1] - 20, holder: null },
+            period, quarter, clock, '', '', '', null, null, null, { phase: 'release', id: jumpBy, three: three });
+          // ...and he holds the follow-through while it is in the air
+          push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
+            ev.made ? madeLabel : '', shotComment,
+            ev.made ? 'swish' : 'clang', impactMarker, null, null,
+            { phase: 'follow', id: jumpBy, three: three });
+          curPos = crashPos;
+        } else {
+          // release: ball leaves the hands...
+          push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
+          // ...and flies to the rim while everyone crashes the glass — the
+          // floor keeps moving for the whole flight instead of freezing
+          push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
+            ev.made ? madeLabel : '', shotComment,
+            ev.made ? (dunking ? 'dunk' : 'swish') : 'clang',
+            impactMarker);
+          curPos = crashPos;
+        }
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
-          push(BEAT.bounce, crashPos, { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, period, quarter, clock, '');
+          // 100% of players were frozen through the rim rattle. A live ball off
+          // the iron is the one moment everybody SHOULD be moving.
+          push(BEAT.bounce, flowPositions(crashPos, [], pi * 7 + ei),
+            { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, period, quarter, clock, '');
         }
       } else if (ev.type === 'rebound') {
         const rp = clampToCourt(hoop.x + (poss.team === 'home' ? -22 : 22), hoop.y + ((pi % 2) ? 18 : -18));
@@ -706,7 +1003,8 @@ function createChoreographer(session) {
         const rebComment = ev.offensive
           ? fillT(COMMENT.oreb, pi + ei, { r: ln(ev.playerId) })
           : (pi % 3 === 0 ? fillT(COMMENT.dreb, pi + ei, { r: ln(ev.playerId) }) : '');
-        push(BEAT.resolve, rpos, { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, period, quarter, clock,
+        push(BEAT.resolve, flowPositions(rpos, [ev.playerId], pi * 11 + ei),
+          { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, period, quarter, clock,
           ev.offensive ? 'Offensive board' : '', rebComment);
         curPos = rpos;
       } else if (ev.type === 'foul-ft') {
@@ -721,6 +1019,15 @@ function createChoreographer(session) {
           fillT(COMMENT.ft, pi + ei, { s: ln(ev.playerId), made: ev.made, att: ev.attempts }), 'whistle');
         curPos = fpos;
       }
+    });
+
+    // Record how this possession ENDED, for the next one's inbound. Walked in
+    // order and last-write-wins: an offensive rebound that turns a miss into a
+    // putback has to end up counting as a make.
+    plays.forEach(function (ev) {
+      if (ev.type === 'shot') prevMade = !!ev.made;
+      else if (ev.type === 'ft') prevMade = ev.made > 0;
+      else if (ev.type === 'turnover') prevMade = false;
     });
 
     applyShotClock(firstKf);
