@@ -101,7 +101,12 @@ function pixelRenderInfoStrip(stripEl, snap, playerById, teamColorFor) {
     return '<span class="pixel-foul' + (f.fouls >= 6 ? ' is-out' : '') + '">' +
       escapeHtml(p ? p.name : f.id) + ' ' + f.fouls + (f.fouls >= 6 ? ' — FOULED OUT' : ' fouls') + '</span>';
   }).join('');
-  stripEl.innerHTML = '<span class="pixel-strip-label">Leaders</span>' + leadHtml +
+  // Both labels are conditional. Nobody has scored until the first basket
+  // drops, so an unconditional "Leaders" left the label stranded over nothing
+  // for the opening possessions of every game — which is exactly when a viewer
+  // is looking at this strip. Foul trouble was already guarded this way.
+  stripEl.innerHTML =
+    (leadHtml ? '<span class="pixel-strip-label">Leaders</span>' + leadHtml : '') +
     (troubleHtml ? '<span class="pixel-strip-label">Foul trouble</span>' + troubleHtml : '');
 }
 
