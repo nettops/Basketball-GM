@@ -88,6 +88,9 @@ function getReplayHistory() { return _replayHistory; }
 function stopPixelPlayback() {
   if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null; }
   suspendPixelAudio();
+  // Module-level state in ui/pixelImpact.js, so a highlight still holding when
+  // the view closes would zoom the first frame of the NEXT watched game.
+  resetImpact();
 }
 
 function pixelLerp(a, b, f) { return a + (b - a) * f; }
@@ -455,6 +458,16 @@ function renderPixelGame(container) {
           rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
         }
       }
+      // Highlight plays. Read off a structured field, never the label text.
+      // hitchMs is REUSED rather than paired with a second freeze clock: a
+      // poster is also a made shot, so both paths fire on the same frame and
+      // Math.max lets the longer hold win instead of two timers disagreeing.
+      if (fr.a.impact) {
+        const impactOpts = { reduceMotion: reduceMotion, speed: speed };
+        startImpact(fr.a.impact, playbackMs, impactOpts);
+        hitchMs = Math.max(hitchMs, impactFreezeMs(fr.a.impact, impactOpts));
+        if (!reduceMotion && speed < 8) shakeStartMs = playbackMs;
+      }
       // Event audio. Above 4x the beats blur together into a machine-gun
       // rattle, so the one-shots drop out and only the crowd bed remains.
       if (fr.a.sfx && speed <= 4) playPixelSfx(fr.a.sfx);
@@ -482,6 +495,15 @@ function renderPixelGame(container) {
     }
     ctx.save();
     ctx.translate(shakeX, shakeY);
+    // Snap zoom on a highlight. Inside the shake transform and before the
+    // sprites, so the court and players scale together; the in-canvas
+    // scoreboard is painted after ctx.restore() below and is left untouched.
+    const impactZoomNow = impactZoom(playbackMs);
+    if (impactZoomNow) {
+      ctx.translate(impactZoomNow.cx, impactZoomNow.cy);
+      ctx.scale(impactZoomNow.scale, impactZoomNow.scale);
+      ctx.translate(-impactZoomNow.cx, -impactZoomNow.cy);
+    }
     ctx.drawImage(courtCanvas, 0, 0);
 
     const excitement = Math.max(0, 1 - (playbackMs - excitementStartMs) / 1800);
@@ -787,7 +809,13 @@ function renderPixelGame(container) {
       ctx.fillStyle = '#ffffff';
       ctx.fillText(label, hp[0] - w / 2 + 2, hp[1] + 11);
     }
+    // Radial lines are anchored to the action, so they belong inside the zoom.
+    drawImpactLines(ctx, playbackMs);
     ctx.restore();
+
+    // The flash is full-frame, so it goes outside the zoom and the shake —
+    // inside them it would scale and slide with the court.
+    drawImpactFlash(ctx, playbackMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
 
     // In-scene pixel scoreboard, drawn unshaken in the same pixel grid as
     // the court (an HTML bar above the canvas read as chrome bolted onto
