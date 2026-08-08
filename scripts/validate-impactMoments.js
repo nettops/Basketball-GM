@@ -150,12 +150,69 @@ function checkRateStaysInBand() {
     'blocks fire ' + blockRate.toFixed(2) + '/game, outside the expected 2-7 — the engine changed, revisit the two-tier split');
 }
 
+// The marker has to survive the trip through buildTimeline onto a keyframe —
+// that is the contract ui/pixelGameView.js reads. Structured field, never a
+// display string: this codebase has twice been bitten by logic keyed to
+// human-readable text.
+function checkMarkerReachesTheKeyframe() {
+  // Drive a REAL simulated game rather than a hand-built event list: the
+  // session shape and the possession grouping are then exactly what the view
+  // uses. Mirrors buildSession in scripts/validate-pixel-choreographer.js.
+  require(path.join(__dirname, '..', 'data.js'));
+  const { TEAMS } = require(path.join(__dirname, '..', 'teams.js'));
+  const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(PLAYERS_2026);
+  const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
+  const league = require(path.join(__dirname, '..', 'league.js'));
+
+  const home = TEAMS[0], away = TEAMS[9];
+  const events = [];
+  const result = gameSim.simulateGame(home.id, away.id, makeRng(4242), { events: events });
+  const timeline = choreo.buildTimeline({
+    events: events,
+    homeRoster: league.getTeamRoster(home.id),
+    awayRoster: league.getTeamRoster(away.id),
+    boxScore: result.boxScore
+  });
+
+  const blockEvents = events.filter(function (e) { return e.type === 'block'; });
+  assert.ok(blockEvents.length > 0, 'the fixture game should contain at least one block');
+
+  const marked = timeline.keyframes.filter(function (k) { return k.impact; });
+  const blockMarkers = marked.filter(function (k) { return k.impact.kind === 'block'; });
+  assert.strictEqual(blockMarkers.length, blockEvents.length,
+    'every block event should produce exactly one marked keyframe');
+
+  // byId / onId orientation: for a block, the DEFENDER is the one who did it
+  const first = blockMarkers[0].impact;
+  assert.strictEqual(first.byId, blockEvents[0].defenderId, 'byId is who did it — the blocker');
+  assert.strictEqual(first.onId, blockEvents[0].playerId, 'onId is who it was done to — the shooter');
+  assert.strictEqual(typeof first.at.x, 'number');
+  assert.strictEqual(typeof first.at.y, 'number');
+
+  // the field must always exist, so the view never reads undefined
+  timeline.keyframes.forEach(function (k) {
+    assert.ok(k.impact === null || (k.impact && typeof k.impact.kind === 'string'),
+      'impact must always be present as null or a well-formed marker');
+  });
+
+  // and a marked shot keyframe must orient the other way round
+  const shotMarkers = marked.filter(function (k) { return k.impact.kind !== 'block'; });
+  if (shotMarkers.length) {
+    assert.ok(shotMarkers[0].impact.byId && shotMarkers[0].impact.onId,
+      'a poster or ankle breaker names both the scorer and the defender');
+  }
+}
+
 checkEdgesRespondToMatchup();
 checkPosterNeedsAllThreeConditions();
 checkAnkleBreakerIsOutsideOnly();
 checkPosterAndAnkleAreDisjoint();
 checkBlockIsAlwaysTierTwo();
 checkUnknownAndMalformedEventsAreIgnored();
+checkMarkerReachesTheKeyframe();
 checkRateStaysInBand();
 
 console.log('All impactMoments validations passed');

@@ -416,7 +416,7 @@ function createChoreographer(session) {
   // synth). Naming it here rather than sniffing the display text keeps the
   // audio honest: a miss and a make are different events even though both
   // end with the ball at the rim.
-  function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx) {
+  function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx, impact) {
     t += dt;
     // Every keyframe goes through the collision pass so sprites never stack;
     // the current ball holder is the protected (immovable) body.
@@ -426,6 +426,9 @@ function createChoreographer(session) {
       period: period, quarter: quarter,
       clock: Math.max(0, Math.round(clock)), text: text || '', commentary: commentary || '',
       sfx: sfx || '',
+      // Structured highlight marker, or null. ui/pixelGameView.js reads this
+      // field rather than matching on `text` — see classifyImpact above.
+      impact: impact || null,
       // index into timeline.snapshots (running leaders / foul trouble) and
       // which possession this beat belongs to, used to derive a shot clock
       snap: snapshots.length - 1,
@@ -598,7 +601,8 @@ function createChoreographer(session) {
         push(BEAT.release, shotPos, { x: sp[0], y: sp[1] - 10, holder: null }, period, quarter, clock, '');
         // swatted sideways, not through the net
         push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, period, quarter, clock, 'Blocked!',
-          fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }), 'block');
+          fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }), 'block',
+          { kind: 'block', at: { x: sp[0], y: sp[1] }, byId: ev.defenderId, onId: ev.playerId });
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
@@ -674,9 +678,22 @@ function createChoreographer(session) {
         if (ev.made && ev.assistPlayerId && (pi + ei) % 2 === 0) {
           shotComment += ' (' + ln(ev.assistPlayerId) + ' with the dime)';
         }
+        // Highlight classification. Only made shots qualify; the shooter and
+        // the contesting defender both come straight off the event.
+        const impactKind = ev.made
+          ? classifyImpact(ev, playerById[ev.playerId], playerById[ev.defenderId])
+          : null;
+        // Posters resolve at the rim, ankle breakers where the shot went up.
+        const impactAt = impactKind === 'poster'
+          ? { x: hoop.x, y: hoop.y }
+          : { x: relSpot[0], y: relSpot[1] };
+        const impactMarker = impactKind
+          ? { kind: impactKind, at: impactAt, byId: ev.playerId, onId: ev.defenderId }
+          : null;
         push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
           ev.made ? madeLabel : '', shotComment,
-          ev.made ? (dunking ? 'dunk' : 'swish') : 'clang');
+          ev.made ? (dunking ? 'dunk' : 'swish') : 'clang',
+          impactMarker);
         curPos = crashPos;
         // missed shots rattle off the rim before the board scramble
         if (!ev.made) {
