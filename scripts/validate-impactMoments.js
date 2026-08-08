@@ -206,6 +206,106 @@ function checkMarkerReachesTheKeyframe() {
   }
 }
 
+// Effect timing. Everything except the two draw calls is a pure function of a
+// marker and a clock, so it is asserted here rather than in the browser.
+function checkEffectTiming() {
+  const impact = require(path.join(__dirname, '..', 'ui', 'pixelImpact.js'));
+  const poster = { kind: 'poster', at: { x: 100, y: 100 }, byId: 'a', onId: 'b' };
+  const block = { kind: 'block', at: { x: 100, y: 100 }, byId: 'a', onId: 'b' };
+  const full = { reduceMotion: false, speed: 1 };
+
+  // tier 1 freezes for longer than tier 2
+  assert.ok(impact.impactFreezeMs(poster, full) > impact.impactFreezeMs(block, full),
+    'a poster should hold longer than a block');
+
+  // speed policy: full at 1x and 2x, halved at 4x, nothing at 8x
+  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 2 }),
+    impact.impactFreezeMs(poster, full), '2x keeps the full freeze');
+  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 4 }),
+    Math.round(impact.impactFreezeMs(poster, full) / 2), '4x halves the freeze');
+  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 8 }), 0,
+    '8x suppresses the freeze entirely');
+
+  // reduced motion removes motion, not information
+  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: true, speed: 1 }), 0,
+    'reduced motion suppresses the freeze');
+  impact.resetImpact();
+  impact.startImpact(poster, 1000, { reduceMotion: true, speed: 1 });
+  assert.strictEqual(impact.impactZoom(1000), null, 'reduced motion never zooms');
+
+  // zoom is active during the hold and gone afterwards
+  impact.resetImpact();
+  impact.startImpact(poster, 1000, full);
+  const z = impact.impactZoom(1010);
+  assert.ok(z && z.scale > 1, 'a poster zooms in while it holds');
+  assert.strictEqual(z.cx, 100, 'zoom is centred on the impact point');
+  assert.strictEqual(z.cy, 100);
+  assert.strictEqual(impact.impactZoom(1000 + 5000), null, 'the zoom releases');
+
+  // blocks never zoom, at any speed
+  impact.resetImpact();
+  impact.startImpact(block, 1000, full);
+  assert.strictEqual(impact.impactZoom(1010), null, 'tier 2 is flash and shake only');
+
+  // 8x starts nothing at all
+  impact.resetImpact();
+  impact.startImpact(poster, 1000, { reduceMotion: false, speed: 8 });
+  assert.strictEqual(impact.impactZoom(1010), null, 'nothing fires at 8x');
+
+  impact.resetImpact();
+}
+
+// The two draw calls need a canvas, so Node cannot check what they paint — but
+// it can check they run without throwing and respect their own gates. A typo
+// in here would otherwise surface only as a dead frame in a watched game.
+function checkDrawCallsAreSafe() {
+  const impact = require(path.join(__dirname, '..', 'ui', 'pixelImpact.js'));
+  const calls = [];
+  const ctx = {
+    save: function () { calls.push('save'); },
+    restore: function () { calls.push('restore'); },
+    beginPath: function () {}, moveTo: function () {}, lineTo: function () {},
+    stroke: function () { calls.push('stroke'); },
+    fillRect: function () { calls.push('fillRect'); }
+  };
+  const poster = { kind: 'poster', at: { x: 100, y: 100 }, byId: 'a', onId: 'b' };
+  const block = { kind: 'block', at: { x: 100, y: 100 }, byId: 'a', onId: 'b' };
+
+  // nothing armed: both calls must be inert rather than throwing
+  impact.resetImpact();
+  impact.drawImpactLines(ctx, 0);
+  impact.drawImpactFlash(ctx, 0, 480, 270);
+  assert.strictEqual(calls.length, 0, 'with no impact armed, neither draw call should touch the context');
+
+  // a live poster paints lines and a flash, and balances save/restore
+  impact.startImpact(poster, 0, { reduceMotion: false, speed: 1 });
+  calls.length = 0;
+  impact.drawImpactLines(ctx, 10);
+  impact.drawImpactFlash(ctx, 10, 480, 270);
+  assert.ok(calls.indexOf('stroke') !== -1, 'a poster should paint radial lines');
+  assert.ok(calls.indexOf('fillRect') !== -1, 'a poster should paint a flash');
+  assert.strictEqual(calls.filter(function (c) { return c === 'save'; }).length,
+    calls.filter(function (c) { return c === 'restore'; }).length,
+    'every save must be balanced by a restore, or the whole scene inherits the state');
+
+  // blocks flash but never draw lines
+  impact.resetImpact();
+  impact.startImpact(block, 0, { reduceMotion: false, speed: 1 });
+  calls.length = 0;
+  impact.drawImpactLines(ctx, 10);
+  assert.strictEqual(calls.indexOf('stroke'), -1, 'tier 2 draws no radial lines');
+
+  // both go quiet once their window has passed
+  impact.resetImpact();
+  impact.startImpact(poster, 0, { reduceMotion: false, speed: 1 });
+  calls.length = 0;
+  impact.drawImpactLines(ctx, 10000);
+  impact.drawImpactFlash(ctx, 10000, 480, 270);
+  assert.strictEqual(calls.length, 0, 'both draw calls must go quiet after their window');
+
+  impact.resetImpact();
+}
+
 checkEdgesRespondToMatchup();
 checkPosterNeedsAllThreeConditions();
 checkAnkleBreakerIsOutsideOnly();
@@ -213,6 +313,8 @@ checkPosterAndAnkleAreDisjoint();
 checkBlockIsAlwaysTierTwo();
 checkUnknownAndMalformedEventsAreIgnored();
 checkMarkerReachesTheKeyframe();
+checkEffectTiming();
+checkDrawCallsAreSafe();
 checkRateStaysInBand();
 
 console.log('All impactMoments validations passed');
