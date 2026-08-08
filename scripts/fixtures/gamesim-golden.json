@@ -12,9 +12,9 @@
     "seed": 2,
     "home": "DEN",
     "away": "MIA",
-    "homeScore": 122,
+    "homeScore": 121,
     "awayScore": 101,
-    "boxChecksum": 89984,
+    "boxChecksum": 89780,
     "playByPlayLength": 278
   },
   {
@@ -48,18 +48,18 @@
     "seed": 6,
     "home": "CLE",
     "away": "MEM",
-    "homeScore": 96,
-    "awayScore": 86,
-    "boxChecksum": 88671,
-    "playByPlayLength": 285
+    "homeScore": 95,
+    "awayScore": 61,
+    "boxChecksum": 73365,
+    "playByPlayLength": 277
   },
   {
     "seed": 7,
     "home": "SAS",
     "away": "HOU",
-    "homeScore": 101,
-    "awayScore": 115,
-    "boxChecksum": 102660,
+    "homeScore": 116,
+    "awayScore": 102,
+    "boxChecksum": 104137,
     "playByPlayLength": 298
   },
   {

@@ -193,6 +193,45 @@ function generateHiddenTraits(player, rng) {
   });
 }
 
+// Which shot a scoring trait actually improves, derived from the trait's own
+// `affinity` attribute rather than a new taxonomy field. Every scoring trait
+// already declares one, and it is exactly the right routing:
+//
+//   Sharpshooter (threePoint)   -> threes
+//   Finisher (insideScoring)    -> inside
+//   Post Threat (postScoring)   -> inside
+//   Free Throw Ace (freeThrow)  -> the line
+//
+// Traits whose affinity has no shooting meaning — Elite Speed (speed), Clutch
+// Gene (basketballIQ), Alpha Dog (leadership), Human Highlight Reel (vertical)
+// — deliberately map to NOTHING here and stay volume-only. Earning more shots
+// is what those traits are; improving the stroke is not. A blanket accuracy
+// bonus on `boxscore/scoring` would have had Elite Speed fixing your jumper.
+const SHOT_ZONE_BY_AFFINITY = {
+  threePoint: 'three',
+  midRange: 'mid',
+  insideScoring: 'inside',
+  postScoring: 'inside',
+  freeThrow: 'ft'
+};
+
+// Returns the raw trait points a player brings to a given shot zone. Callers
+// scale it — simEnginePossession divides by SHOT_TRAIT_DIV to turn points into
+// probability.
+//
+// NEGATIVE scoring traits (Streaky, Choke Artist) carry no affinity, so routing
+// strictly by zone would silently make them free. A flaw in your shot shows up
+// wherever you shoot from, so they apply everywhere.
+function shotQualityBonus(player, zone) {
+  return (player.hiddenTraits || []).reduce(function (sum, t) {
+    const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+    if (!def || def.effect.system !== 'boxscore' || def.effect.stat !== 'scoring') return sum;
+    const value = def.tierValues[t.tier] * def.effect.direction;
+    if (value < 0) return sum + value;
+    return SHOT_ZONE_BY_AFFINITY[def.affinity] === zone ? sum + value : sum;
+  }, 0);
+}
+
 function personalityAxis(base, spread, rng) {
   return Math.max(0, Math.min(100, Math.round(base + (rng() - 0.5) * spread)));
 }
@@ -317,6 +356,8 @@ if (typeof module !== 'undefined' && module.exports) {
     TRAIT_TIER_SCALE: TRAIT_TIER_SCALE,
     SUPERSTAR_TIER_SCALE: SUPERSTAR_TIER_SCALE,
     getTraitBonus: getTraitBonus,
+    shotQualityBonus: shotQualityBonus,
+    SHOT_ZONE_BY_AFFINITY: SHOT_ZONE_BY_AFFINITY,
     generateHiddenTraits: generateHiddenTraits,
     generatePersonality: generatePersonality,
     generateTendencies: generateTendencies,

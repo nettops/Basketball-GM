@@ -264,7 +264,7 @@ function checkOverallPredictsProduction() {
   }
 
   const acc = {};
-  for (let i = 0; i < 480; i++) {
+  for (let i = 0; i < 960; i++) {
     if (i % 30 === 0) scramble();
     const home = TEAMS[i % TEAMS.length];
     const away = TEAMS[(i + 11) % TEAMS.length];
@@ -278,7 +278,7 @@ function checkOverallPredictsProduction() {
   }
   PLAYERS_2026.forEach(function (p) { p.teamId = originalTeam[p.id]; });
 
-  const ids = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 500; });
+  const ids = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 800; });
   const x = ids.map(function (id) { return ratings.computeOverall(byId[id]); });
   const y = ids.map(function (id) { return acc[id].pm / acc[id].min; });
   const n = x.length;

@@ -350,8 +350,56 @@ function checkTraitTierLadderIsMeaningfulButNotDominant() {
     (100 * bottom).toFixed(1) + '%, legendary +' + (100 * top).toFixed(1) + '% pick share)');
 }
 
+// A scoring trait used to affect only WHO SHOOTS, never whether the ball went
+// in — shotMakeProbability took composites and synergy and no trait input at
+// all. So a legendary Sharpshooter did not shoot threes better; he simply took
+// about two more shots per 36 of his usual mix. The name promised something
+// the sim never delivered.
+//
+// Routed by the trait's own `affinity` attribute rather than a new taxonomy
+// field: threePoint -> threes, insideScoring/postScoring -> inside, freeThrow
+// -> the line. Traits whose affinity has no shooting meaning (speed,
+// leadership, basketballIQ, strength, vertical) stay volume-only, which is the
+// right answer — Elite Speed earning you more shots is basketball, Elite Speed
+// fixing your jumper is not.
+function checkScoringTraitsChangeShotQuality() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const dataMod = require(path.join(__dirname, '..', 'data.js'));
+  const attrs = {};
+  dataMod.ATTRIBUTE_KEYS.forEach(function (k) { attrs[k] = 50; });
+  const plain = { id: 'plain', attributes: attrs, hiddenTraits: [] };
+  const shooter = { id: 'shot', attributes: attrs, hiddenTraits: [{ key: 'sharpshooter', tier: 'legendary' }] };
+  const bigman = { id: 'big', attributes: attrs, hiddenTraits: [{ key: 'finisher', tier: 'legendary' }] };
+  const streaky = { id: 'bad', attributes: attrs, hiddenTraits: [{ key: 'streaky', tier: 'legendary' }] };
+
+  const q = traitsModule.shotQualityBonus;
+  assert.ok(q(shooter, 'three') > 0, 'a Sharpshooter must shoot threes better');
+  assert.strictEqual(q(shooter, 'inside'), 0, 'a Sharpshooter must NOT finish inside better');
+  assert.strictEqual(q(shooter, 'mid'), 0, 'a Sharpshooter must not improve the mid-range either');
+  assert.ok(q(bigman, 'inside') > 0, 'a Finisher must finish inside better');
+  assert.strictEqual(q(bigman, 'three'), 0, 'a Finisher must NOT shoot threes better');
+  assert.strictEqual(q(plain, 'three'), 0, 'a player with no scoring trait gets nothing');
+
+  // A flaw in your shot shows up everywhere — negatives carry no affinity, so
+  // routing them by zone would silently make them free.
+  ['three', 'mid', 'inside'].forEach(function (z) {
+    assert.ok(q(streaky, z) < 0, 'Streaky must hurt the ' + z + ' shot, not just the shot count');
+  });
+
+  // Tiers have to ladder here too, or every Sharpshooter shoots alike.
+  let last = -Infinity;
+  traitsModule.TRAIT_TIERS.forEach(function (tier) {
+    const v = q({ attributes: attrs, hiddenTraits: [{ key: 'sharpshooter', tier: tier }] }, 'three');
+    assert.ok(v > last, 'shot-quality bonus must increase with tier, stalled at ' + tier);
+    last = v;
+  });
+  console.log('checkScoringTraitsChangeShotQuality: OK (legendary Sharpshooter +' +
+    q(shooter, 'three').toFixed(1) + ' on threes, 0 elsewhere)');
+}
+
 checkShotMixSeparatesPlayers();
 checkTendenciesStillSumToOneHundred();
+checkScoringTraitsChangeShotQuality();
 checkTraitGenerationSurvivesTheRatingScale();
 checkTraitTierLadderIsMeaningfulButNotDominant();
 

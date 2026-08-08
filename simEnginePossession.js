@@ -10,7 +10,7 @@ var _POSS_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js'), composite: require('./compositeRatings.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
-      traits: { getTraitBonus: getTraitBonus },
+      traits: { getTraitBonus: getTraitBonus, shotQualityBonus: shotQualityBonus },
       box: {
         distributeInt: distributeInt, scoringWeight: scoringWeight, reboundWeight: reboundWeight,
         assistWeight: assistWeight, stealWeight: stealWeight, blockWeight: blockWeight, minutesWeight: minutesWeight
@@ -64,6 +64,13 @@ function weightedPick(players, weightFn, rng, power) {
 // team-game: 0.11 measured 17.7, 0.125 measured 19.8, 0.140 measures 22.3.
 const SHOOTING_FOUL_RATE = 0.140;
 const FT_BASE = 0.78, FT_DIV = 500;
+
+// Turns trait points into shot probability. A legendary scoring trait is worth
+// 8 points, so at 300 that is +2.7 percentage points on the zone it applies to
+// — meaningful against a ~13-point spread of pure shooting talent, without the
+// trait outweighing the ratings underneath it. Calibrated by measured rate; the
+// sweep is in this task's commit message.
+const SHOT_TRAIT_DIV = 300;
 
 // One number per event, calibrated by the measured spread each produces — the
 // sweep is in this task's commit message. ZenGM's equivalents: usage 1.25,
@@ -195,7 +202,13 @@ function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSyn
   const skillAdj = (shootComposite - 50) / 250 * (shooterEnergyMult !== undefined ? shooterEnergyMult : 1);
   const defAdj = (defComposite - 50) / 350 * (defenderEnergyMult !== undefined ? defenderEnergyMult : 1);
   const synergyAdj = (offenseSynergy || 1) - (defenseSynergy || 1);
-  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synergyAdj));
+  // Scoring traits reach the SHOT, not just the shot count. Until this, a
+  // legendary Sharpshooter did not shoot threes any better — traits only fed
+  // scoringWeight, so the trait bought volume and the name promised accuracy.
+  // Routed by zone in traits.js (shotQualityBonus), so this only fires for the
+  // shot the trait is actually about.
+  const traitAdj = _POSS_DATA.traits.shotQualityBonus(shooter, zone) / SHOT_TRAIT_DIV;
+  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synergyAdj + traitAdj));
 }
 
 // Appends a play-by-play line if `log` was supplied (simulatePossessionGame
@@ -366,8 +379,11 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     // the league-average shooter computed to 0.486 and the 0.55 floor did all
     // the work, flattening every player onto the same number. Now centred on 50
     // with a spread wide enough to separate a 60% shooter from a 90% one.
+    // Free Throw Ace's affinity is `freeThrow`, so shotQualityBonus routes it
+    // to the 'ft' zone — it belongs here rather than on any field-goal zone.
     const ftPct = Math.max(0.45, Math.min(0.95,
-      FT_BASE + (shooter.attributes.freeThrow - 50) / FT_DIV));
+      FT_BASE + (shooter.attributes.freeThrow - 50) / FT_DIV +
+      _POSS_DATA.traits.shotQualityBonus(shooter, 'ft') / SHOT_TRAIT_DIV));
     let made2 = 0;
     for (let i = 0; i < ftAttempts; i++) { if (rng() < ftPct) made2 += 1; }
     offenseBox[shooter.id].fta += ftAttempts;
