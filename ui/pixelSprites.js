@@ -110,7 +110,13 @@ function drawPixelText(ctx, x, y, text, color, scale) {
 
 // ~10 wide x 24 tall, anchored center-bottom at (x, y).
 // opts: frame (0|1, leg/arm cycle — only meaningful while moving),
-// shooting (arms up), highlight (ball-handler ring), facing (-1 left,
+// shooting (arms up), dunking (airborne: legs tucked, one arm extended
+// over the head — overrides both the leg cycle and shooting),
+// stumbling (beaten off the dribble: legs splayed, arms flung out for
+// balance — overrides the leg cycle and shooting, but not dunking),
+// following (jump-shot follow-through: shooting hand up and snapped over,
+// guide hand dropped — held while the ball is in the air),
+// highlight (ball-handler ring), facing (-1 left,
 // 0 camera, 1 right — leans the head into the run direction), moving
 // (enables the leg cycle and arm swing; still players stand planted).
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
@@ -124,12 +130,32 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     ctx.fillRect(left - 1, Math.round(y) - 1, 12, 2);
   }
 
-  // legs: 2-frame stride while moving, planted when still
+  // legs: 2-frame stride while moving, planted when still. A dunker in the
+  // air has nothing to stand on — the legs tuck and split, which is most of
+  // what separates an airborne silhouette from a standing one at this size.
   ctx.fillStyle = colors.skin;
+  // declared out here because the running-arms branch below swings opposite
+  // these same values
   const bob = opts.moving && opts.frame ? 1 : 0;
   const bob2 = opts.moving ? 1 - bob : 0;
-  ctx.fillRect(left + 2, top + 18 + bob, 2, 6 - bob);
-  ctx.fillRect(left + 6, top + 18 + bob2, 2, 6 - bob2);
+  // A player who is not running still shifts his weight. Without this a
+  // standing sprite has ZERO moving pixels — the old ±0.7px positional sway
+  // rounded away to nothing — and 64% of the floor is standing at any moment.
+  // One pixel of alternating weight is enough to read as breathing.
+  const idle = (!opts.moving && !opts.dunking && !opts.stumbling && opts.idleFrame) ? 1 : 0;
+  if (opts.dunking) {
+    ctx.fillRect(left + 1, top + 18, 2, 4);  // trail leg, bent back
+    ctx.fillRect(left + 6, top + 17, 2, 3);  // lead knee driven up
+  } else if (opts.stumbling) {
+    // legs splayed wide and short — weight going somewhere the body isn't
+    ctx.fillRect(left - 1, top + 20, 3, 4);
+    ctx.fillRect(left + 8, top + 20, 3, 4);
+  } else {
+    // idle shifts the weight onto one leg: that hip drops a pixel and the
+    // other leg shortens, which is the smallest change that reads as alive
+    ctx.fillRect(left + 2, top + 18 + bob + idle, 2, 6 - bob - idle);
+    ctx.fillRect(left + 6, top + 18 + bob2, 2, 6 - bob2 - idle);
+  }
   // shorts
   ctx.fillStyle = colors.jersey;
   ctx.fillRect(left + 1, top + 15, 8, 4);
@@ -139,14 +165,35 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   ctx.fillRect(left + 1, top + 8, 8, 1); // shoulder trim
   // arms: raised when shooting, swinging opposite the legs when running
   ctx.fillStyle = colors.skin;
-  if (opts.shooting) {
+  if (opts.dunking) {
+    // One arm reaches ABOVE the head with the ball; the other trails. A
+    // shooter's arms stop at the hairline, so the extended arm is what reads
+    // as "going up at the rim" rather than "taking a jumper".
+    const ballSide = (opts.facing || 0) >= 0;
+    ctx.fillRect(left + (ballSide ? 8 : 0), top - 6, 2, 14);
+    ctx.fillRect(left + (ballSide ? 0 : 8), top + 3, 2, 7);
+  } else if (opts.stumbling) {
+    // both arms flung out low, hunting for balance — the opposite silhouette
+    // to the shooter's tidy vertical arms
+    ctx.fillRect(left - 2, top + 11, 3, 2);
+    ctx.fillRect(left + 9, top + 11, 3, 2);
+  } else if (opts.following) {
+    // Follow-through: shooting hand still up and snapped over, guide hand
+    // dropped away. Held while the ball is in the air — this is the pose that
+    // actually says "jump shot" rather than "player with both arms up".
+    const hand = (opts.facing || 0) >= 0;
+    ctx.fillRect(left + (hand ? 8 : 0), top - 2, 2, 10);
+    ctx.fillRect(left + (hand ? 8 : 0) + (hand ? -1 : 1), top - 3, 2, 1);   // snapped wrist
+    ctx.fillRect(left + (hand ? 0 : 8), top + 10, 2, 5);
+  } else if (opts.shooting) {
     ctx.fillRect(left, top + 2, 2, 7);
     ctx.fillRect(left + 8, top + 2, 2, 7);
   } else if (opts.moving) {
     ctx.fillRect(left, top + 9 - bob2, 2, 6);
     ctx.fillRect(left + 8, top + 9 - bob, 2, 6);
   } else {
-    ctx.fillRect(left, top + 9, 2, 6);
+    // the arms ride the weight shift too, opposite shoulders
+    ctx.fillRect(left, top + 9 + idle, 2, 6);
     ctx.fillRect(left + 8, top + 9, 2, 6);
   }
   // head + hair, leaning 1px into the direction of travel

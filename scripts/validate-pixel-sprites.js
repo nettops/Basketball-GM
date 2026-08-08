@@ -66,4 +66,38 @@ function checkPixelTextWidth() {
 }
 checkPixelTextWidth();
 
+function checkEveryPoseDraws() {
+  // Every pose branch must actually run. This exists because a refactor moved
+  // the leg-bob locals inside one branch while the running-arms branch still
+  // read them — a ReferenceError on the single most common pose in the game,
+  // and this file passed anyway because it never called drawPlayerSprite.
+  // A pose that is never invoked is a pose that is never checked.
+  const colors = { skin: '#a', jersey: '#b', trim: '#c', hair: '#d' };
+  const poses = [
+    { moving: true, frame: 0 }, { moving: true, frame: 1 },
+    { shooting: true }, { dunking: true, facing: 1 }, { dunking: true, facing: -1 },
+    { highlight: true }, {}
+  ];
+  poses.forEach(function (opts) {
+    let rects = 0;
+    const ctx = { fillStyle: '', fillRect: function () { rects += 1; } };
+    sprites.drawPlayerSprite(ctx, 50, 50, colors, '23', opts);
+    assert.ok(rects > 10, 'pose ' + JSON.stringify(opts) + ' drew only ' + rects + ' rects');
+  });
+  // The dunk pose must be a DIFFERENT silhouette from the shot, or the leap
+  // reads as an ordinary jumper no matter how high the view lifts it.
+  function trace(opts) {
+    const out = [];
+    const ctx = { fillStyle: '', fillRect: function (x, y, w, h) { out.push([x, y, w, h].join(',')); } };
+    sprites.drawPlayerSprite(ctx, 50, 50, colors, '23', opts);
+    return out.join(' ');
+  }
+  assert.notStrictEqual(trace({ dunking: true, facing: 1 }), trace({ shooting: true }),
+    'dunking pose is identical to shooting pose');
+  assert.notStrictEqual(trace({ dunking: true, facing: 1 }), trace({ dunking: true, facing: -1 }),
+    'dunk arm does not switch sides with facing');
+  console.log('checkEveryPoseDraws: OK');
+}
+checkEveryPoseDraws();
+
 console.log('All pixel sprite validations passed');
