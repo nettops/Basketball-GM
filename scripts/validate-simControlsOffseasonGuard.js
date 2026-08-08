@@ -17,9 +17,13 @@
 // the bug to the new entry point — the point of a regression test is the
 // behaviour, not the function name that used to provide it.
 const assert = require('assert');
+const path = require('path');
 
-const NBA_DIR = 'C:\\Users\\cory\\Desktop\\nba';
-function req(name) { return require(NBA_DIR + '\\' + name); }
+// Resolved from this file's own location, the same way every other validator
+// here does it. It used to be an absolute path off one machine's desktop,
+// which meant this guard silently failed to load anywhere else — the one
+// regression test for a data-corruption bug, never actually running.
+function req(name) { return require(path.join(__dirname, '..', name)); }
 
 // ui/simControls.js reads evaluateStop/STOP_REASONS as bare globals, exactly
 // as it does in the browser where index.html loads simRunner.js first. They
@@ -43,6 +47,12 @@ global.canUndo = function () { return false; };
 global.canRedo = function () { return false; };
 global.renderView = function () {};
 global.autosave = function () {};
+// Defined in script.js and called once per simulated step. Only reachable if
+// the guard fails to halt the loop, so without this stub a broken guard would
+// blow up here with a ReferenceError instead of failing the assertions below
+// — the mutant would die, but for the wrong reason, and the assertions would
+// never be shown to work at all.
+global.refreshAdvanceFrame = function () {};
 
 const playersModule = req('players-2026.js');
 
@@ -62,7 +72,7 @@ global.GameState = {
   automation: {}                       // autoDraft off — the user drafts
 };
 
-const simControls = req('ui\\simControls.js');
+const simControls = req('ui/simControls.js');
 
 const playersBefore = playersModule.PLAYERS_2026.length;
 const draftClassBefore = global.GameState.upcomingDraftClass.length;
