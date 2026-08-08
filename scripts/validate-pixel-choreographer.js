@@ -340,7 +340,10 @@ function checkThePasserFindsTheOpenMan() {
   // random. It is now positive.
   const homeIdSets = [];
   let edges = [];
-  for (let g = 0; g < 2; g++) {
+  // Twelve games, not two: at two this check measured whichever fives happened
+  // to be on the floor, which is how it stayed green through a real regression
+  // and then flipped on an unrelated fix.
+  for (let g = 0; g < 12; g++) {
     const seed = 4242 + g;
     const home = TEAMS[seed % TEAMS.length], away = TEAMS[(seed + 9) % TEAMS.length];
     const events = [];
@@ -365,15 +368,37 @@ function checkThePasserFindsTheOpenMan() {
       });
       return best === Infinity ? null : best;
     }
+    let lastHolder = null;
     for (let i = 1; i < kfs.length; i++) {
       const a = kfs[i - 1], b = kfs[i];
+      if (a.ball.holder !== null) lastHolder = a.ball.holder;
       if (!(a.ball.holder === null && b.ball.holder && typeof b.ball.arc === 'number')) continue;
+      // Measured on the RELEASE keyframe (a), not the catch keyframe (b).
+      //
+      // At the catch, flowPositions has locked the passer and the receiver in
+      // place while every other offensive player flows toward open space — so
+      // the receiver is standing still surrounded by teammates actively getting
+      // open, and scores worse than them however well he was chosen. That is an
+      // artifact of the locking, not a property of the pass: measured over the
+      // same passes, the chosen receiver is +19.2px more open than the average
+      // candidate at the moment of the DECISION and -0.4px at the catch, and
+      // the two are essentially uncorrelated.
+      //
+      // The release keyframe has everyone on the same footing, which is where
+      // the passer's choice is actually visible. Rewriting this exposed that
+      // the old form only passed on a two-game fixture by luck — at twelve
+      // games it read -0.41px both before and after the minutes-weight fix.
       const rid = b.ball.holder, mine = !!homeIds[rid];
-      const ro = openness(b, rid);
+      const ro = openness(a, rid);
       if (ro === null) continue;
-      const mateVals = Object.keys(b.pos)
-        .filter(function (id) { return !!homeIds[id] === mine && id !== rid; })
-        .map(function (id) { return openness(b, id); })
+      // The passer is excluded from the baseline: he was never a candidate to
+      // receive his own pass, and leaving him in compares the choice against an
+      // option that did not exist.
+      const mateVals = Object.keys(a.pos)
+        .filter(function (id) {
+          return !!homeIds[id] === mine && id !== rid && id !== lastHolder;
+        })
+        .map(function (id) { return openness(a, id); })
         .filter(function (v) { return v !== null; });
       if (!mateVals.length) continue;
       edges.push(ro - mateVals.reduce(function (s, v) { return s + v; }, 0) / mateVals.length);

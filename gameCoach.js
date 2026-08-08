@@ -53,11 +53,18 @@ function isGarbageTime(sim) {
 
 // Target minutes come from a player's RANK in the rotation, not from his
 // share of the roster's total weight. That distinction matters a lot:
-// minutesWeight only spans about 2x from best player to worst (roughly 56 to
-// 29), so splitting 240 minutes proportionally hands the star ~25 and the
-// 14th man ~13 — a flat rotation no real team plays. That was harmless while
-// minutes were cosmetic, but rotations make minutes real, and a proportional
-// split held a franchise player to 25 minutes and ~13 points a night.
+// minutesWeight spans only about 2.7x from the best player in the league to
+// the worst (78 to 29), so splitting 240 minutes proportionally hands the star
+// ~25 and the 14th man ~13 — a flat rotation no real team plays. That was
+// harmless while minutes were cosmetic, but rotations make minutes real, and a
+// proportional split held a franchise player to 25 minutes and ~13 points a
+// night.
+//
+// Because only the ORDER matters here, this is also where a minutesWeight bug
+// does its damage: when the 0-100 rating rescale left the old `overall - 40`
+// offset in place, 104 players collapsed onto an identical weight and their
+// rank order became arbitrary. scripts/validate-ratings.js now pins the
+// monotonicity this sort depends on.
 //
 // These are a conventional NBA rotation, summing to exactly 240 across ten
 // players; anyone past tenth in the pecking order is a healthy scratch.

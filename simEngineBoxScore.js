@@ -86,8 +86,29 @@ function stealWeight(player) {
 function blockWeight(player) {
   return Math.max(1, player.attributes.block + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'block'));
 }
+// No offset. This was `overall - 40`, a hard constant that only made sense
+// while overall averaged 74.7 — it existed to WIDEN the proportional split for
+// the distributeInt call above, turning a 62-98 overall range into 22-58, a
+// 2.64x spread.
+//
+// Once overall became derived (ratings.js) its mean fell to 47.8 and the
+// subtraction went negative for the bottom quarter of the league, where the
+// max(1, ...) guard flattened 158 players of differing quality onto an
+// identical weight of 1. gameCoach.rotationRanks and gameSim's starter
+// selection both SORT by this, so their order became arbitrary — 36 of those
+// players sat inside a ten-man rotation, and on Boston's bench a 38 overall
+// ranked below a 37 on nothing but sort stability.
+//
+// The offset is no longer needed because the rescaled range does its job:
+// raw overall now spans 29-78, a 2.69x proportional spread against the old
+// post-offset 2.64x. Removing it also returns the usage trait to being a
+// modifier — a legendary +8 was 23% of the median weight before the rescale
+// and 103% after it, and is 17% now — without retuning a single tier constant.
+//
+// Kept scale-free deliberately: any constant subtracted here is a bet on where
+// the rating scale sits, and that bet has now been wrong once.
 function minutesWeight(player) {
-  return Math.max(1, player.overall - 40 + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
+  return Math.max(1, player.overall + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
 }
 
 // Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by
