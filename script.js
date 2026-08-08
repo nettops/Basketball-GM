@@ -53,7 +53,7 @@ const GameState = {
   // it was on.
   godMode: { enabled: false, autoWinEnabled: false },
   settings: {
-    simEngine: 'boxscore', simSpeed: 'normal',
+    simEngine: 'possession', simSpeed: 'normal',
     // madePlayoffs/missedPlayoffs fire once a season and keyInjury is rare —
     // each is the game telling you something, so they default on. Continue
     // would otherwise sail past every notable moment in silence.
