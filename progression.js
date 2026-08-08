@@ -76,26 +76,26 @@ function mentalAgeModifier(age) {
 }
 
 var RATING_PROFILES = {
-  insideScoring:    { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
-  midRange:         { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
-  threePoint:       { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
-  freeThrow:        { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
-  postScoring:      { ageModifier: shootingAgeModifier,         changeLimits: [-3, 13] },
-  passing:          { ageModifier: skillAgeModifier,            changeLimits: [-2, 5] },
-  ballHandling:     { ageModifier: skillAgeModifier,            changeLimits: [-2, 5] },
-  perimeterDefense: { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
-  interiorDefense:  { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
-  steal:            { ageModifier: defenseAgeModifier,          changeLimits: [-4, 8] },
-  block:            { ageModifier: athleticDefenseAgeModifier,   changeLimits: [-12, 4] },
-  offReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-2, 5] },
-  defReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-2, 5] },
-  speed:            { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
-  acceleration:     { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
-  strength:         { ageModifier: strengthAgeModifier,         changeLimits: [-3, 6] },
-  vertical:         { ageModifier: athleticAgeModifier,         changeLimits: [-12, 2] },
-  basketballIQ:     { ageModifier: iqAgeModifier,               changeLimits: [-3, 13] },
-  leadership:       { ageModifier: iqAgeModifier,               changeLimits: [-2, 8] },
-  workEthic:        { ageModifier: mentalAgeModifier,           changeLimits: [-2, 4] }
+  insideScoring:    { ageModifier: shootingAgeModifier,         changeLimits: [-5, 23] },
+  midRange:         { ageModifier: shootingAgeModifier,         changeLimits: [-5, 23] },
+  threePoint:       { ageModifier: shootingAgeModifier,         changeLimits: [-5, 23] },
+  freeThrow:        { ageModifier: shootingAgeModifier,         changeLimits: [-5, 23] },
+  postScoring:      { ageModifier: shootingAgeModifier,         changeLimits: [-5, 23] },
+  passing:          { ageModifier: skillAgeModifier,            changeLimits: [-4, 9] },
+  ballHandling:     { ageModifier: skillAgeModifier,            changeLimits: [-4, 9] },
+  perimeterDefense: { ageModifier: defenseAgeModifier,          changeLimits: [-7, 14] },
+  interiorDefense:  { ageModifier: defenseAgeModifier,          changeLimits: [-7, 14] },
+  steal:            { ageModifier: defenseAgeModifier,          changeLimits: [-7, 14] },
+  block:            { ageModifier: athleticDefenseAgeModifier,   changeLimits: [-21, 7] },
+  offReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-4, 9] },
+  defReb:           { ageModifier: shootingAgeModifier,         changeLimits: [-4, 9] },
+  speed:            { ageModifier: athleticAgeModifier,         changeLimits: [-21, 4] },
+  acceleration:     { ageModifier: athleticAgeModifier,         changeLimits: [-21, 4] },
+  strength:         { ageModifier: strengthAgeModifier,         changeLimits: [-5, 11] },
+  vertical:         { ageModifier: athleticAgeModifier,         changeLimits: [-21, 4] },
+  basketballIQ:     { ageModifier: iqAgeModifier,               changeLimits: [-5, 23] },
+  leadership:       { ageModifier: iqAgeModifier,               changeLimits: [-4, 14] },
+  workEthic:        { ageModifier: mentalAgeModifier,           changeLimits: [-4, 7] }
 };
 
 function calcBaseChange(age, rng) {

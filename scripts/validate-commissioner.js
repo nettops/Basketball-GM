@@ -9,6 +9,7 @@ const tradeEvaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.
 const saveModule = require(path.join(__dirname, '..', 'save.js'));
 const playersModule = require(path.join(__dirname, '..', 'players-2026.js'));
 const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+const dataModule = require(path.join(__dirname, '..', 'data.js'));
 
 // Restoring TEAMS alone is not enough to undo an expansion: createExpansionTeam
 // also reassigns donor players' teamId/jerseyNumber and appends brand-new filler
@@ -52,10 +53,13 @@ function checkEditPlayerRatings() {
   const player = leagueModule.getTeamRoster(team.id)[0];
   const result = commissionerModule.editPlayerRatings(player.id, { overall: 500, potential: -50, attributes: { threePoint: 999, block: -999 } });
   assert.strictEqual(result.success, true, 'edit should report success for a real player');
-  assert.strictEqual(player.overall, 99, 'overall should clamp to RATING_MAX');
-  assert.strictEqual(player.potential, 25, 'potential should clamp to RATING_MIN');
-  assert.strictEqual(player.attributes.threePoint, 99, 'attribute should clamp to RATING_MAX');
-  assert.strictEqual(player.attributes.block, 25, 'attribute should clamp to RATING_MIN');
+  // Read from data.js rather than hard-coded, so a future scale change cannot
+  // leave this passing against numbers that no longer exist.
+  const RMIN = dataModule.RATING_MIN, RMAX = dataModule.RATING_MAX;
+  assert.strictEqual(player.overall, RMAX, 'overall should clamp to RATING_MAX');
+  assert.strictEqual(player.potential, RMIN, 'potential should clamp to RATING_MIN');
+  assert.strictEqual(player.attributes.threePoint, RMAX, 'attribute should clamp to RATING_MAX');
+  assert.strictEqual(player.attributes.block, RMIN, 'attribute should clamp to RATING_MIN');
   const missing = commissionerModule.editPlayerRatings('not-a-real-id', { overall: 80 });
   assert.strictEqual(missing.success, false, 'editing an unknown player id should fail cleanly');
   console.log('checkEditPlayerRatings: OK');
@@ -287,7 +291,10 @@ function checkEditTeamAttributes() {
 
   const clamped = commissionerModule.editTeamAttributes('MEM', { prestige: 500 });
   assert.strictEqual(clamped.success, true);
-  assert.strictEqual(team.prestige, 99, 'prestige should clamp to RATING_MAX (99), not accept an out-of-range value');
+  // Team prestige rides the same clampRating as player ratings, so it moved
+  // with the scale. Read from data.js rather than hard-coded.
+  assert.strictEqual(team.prestige, dataModule.RATING_MAX,
+    'prestige should clamp to RATING_MAX, not accept an out-of-range value');
 
   const missing = commissionerModule.editTeamAttributes('not-a-real-team', { prestige: 50 });
   assert.strictEqual(missing.success, false);

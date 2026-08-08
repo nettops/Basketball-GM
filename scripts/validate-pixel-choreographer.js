@@ -240,17 +240,28 @@ checkClockComesFromTheEngine();
 function checkOvertimeIsRepresented() {
   // Force a tie at the buzzer, then confirm the extra period reaches the
   // keyframes as period 5 rather than being flattened into Q4.
-  const events = [];
-  const sim = gameSim.createGameSim('SAS', 'HOU', makeRng(31), { events: events });
-  while (!sim.done) {
-    sim.step();
-    if (sim.period === 4 && sim.clock <= 60 && sim.homeScore !== sim.awayScore) {
-      // nudge the score to a tie so regulation ends level
-      if (sim.homeScore > sim.awayScore) sim.awayScore = sim.homeScore;
-      else sim.homeScore = sim.awayScore;
+  //
+  // The nudge RACES the final possession: the last step of Q4 both scores and
+  // ends the period, so a game whose closing basket lands after the last nudge
+  // finishes regulation untied and never reaches overtime. That made this a
+  // one-seed fixture — it passed on seed 31 by arithmetic accident, and the
+  // first change to the ratings broke it. Searching seeds instead tests the
+  // invariant we actually care about (an extra period carries period > 4)
+  // without depending on any single game's closing sequence.
+  let events = null, sim = null;
+  for (let seed = 31; seed < 131 && (!sim || sim.period <= 4); seed++) {
+    events = [];
+    sim = gameSim.createGameSim('SAS', 'HOU', makeRng(seed), { events: events });
+    while (!sim.done) {
+      sim.step();
+      if (sim.period === 4 && sim.clock <= 60 && sim.homeScore !== sim.awayScore) {
+        // nudge the score to a tie so regulation ends level
+        if (sim.homeScore > sim.awayScore) sim.awayScore = sim.homeScore;
+        else sim.homeScore = sim.awayScore;
+      }
     }
   }
-  assert.ok(sim.period > 4, 'the game reached overtime');
+  assert.ok(sim.period > 4, 'no seed in 31-130 reached overtime; the fixture can no longer force one');
 
   const tl = choreo.buildTimeline({
     events: events,

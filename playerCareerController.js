@@ -34,8 +34,13 @@ class PlayerCareerController {
     const seasonStats = { gamesPlayed: 0 };
     SEASON_STAT_KEYS.forEach(function (k) { seasonStats[k] = 0; });
 
+    // Hoisted out of the literal: makeAttributes now seeds a player's
+    // per-attribute variation from their id, so the id has to exist before the
+    // attributes are built rather than being assigned alongside them.
+    const playerId = this.generatePlayerId();
+
     const player = {
-      id: this.generatePlayerId(),
+      id: playerId,
       teamId: null,
       name: name,
       position: position,
@@ -46,9 +51,14 @@ class PlayerCareerController {
       weightLb: 210,
       jerseyNumber: null,
       yearsPro: 0,
-      overall: archetypeData.startingOverall,
-      potential: archetypeData.startingPotential,
-      attributes: makeAttributes(archetypeData.startingOverall, attrArchetype),
+      // startingOverall/startingPotential are authored on the same pre-rescale
+      // scale as players-2026.js's 450 judgments, so they go through the same
+      // affine map — otherwise a created rookie outranks the whole league.
+      // The attributes are anchored on the UNSCALED value, because
+      // makeAttributes applies the map itself.
+      overall: rescaleAnchor(archetypeData.startingOverall),
+      potential: rescaleAnchor(archetypeData.startingPotential),
+      attributes: makeAttributes(archetypeData.startingOverall, attrArchetype, playerId),
       badges: selectedBadges, // Array of badge strings
       traits: selectedTraits, // Array of trait strings
       hiddenTraits: [],

@@ -5,8 +5,8 @@
 // directly, since re-declaring an identifier that's already a page-global
 // `const` from an earlier <script> tag would be a SyntaxError in the browser.
 var _DATA = (typeof require !== 'undefined')
-  ? require('./data.js')
-  : { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX };
+  ? Object.assign({}, require('./data.js'), { makeRng: require('./rng.js').makeRng })
+  : { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, makeRng: makeRng };
 
 // Archetype attribute offsets applied to a player's overall rating to produce
 // a realistic 20-attribute spread, clamped to [RATING_MIN, RATING_MAX].
@@ -23,12 +23,69 @@ const ARCHETYPES = {
   raw_prospect:    { insideScoring: -2, midRange: -4, threePoint: -4, freeThrow: -2, passing: -2, ballHandling: -2, postScoring: -2, perimeterDefense: -2, interiorDefense: -2, steal: -2, block: -2, offReb: -2, defReb: -2, speed: 4, acceleration: 4, strength: -4, vertical: 4, basketballIQ: -8, leadership: -6, workEthic: 0 }
 };
 
-function makeAttributes(overall, archetype) {
-  const offsets = ARCHETYPES[archetype];
+// The ~450 hand-picked (overall, archetype) judgments in this file are the
+// ANCHOR, not the whole player. `overall` positions him on the curve and the
+// archetype gives him a shape; deterministic per-attribute variation, seeded
+// from his own id, makes him an individual.
+//
+// This used to be, in full, `attrs[key] = overall + offsets[key]`. That gave
+// the league SEVENTEEN distinct attribute shapes across 380 players — the 8
+// archetypes plus 9 single-player clamp artifacts — so two players with the
+// same overall and archetype were byte-identical, and `threePoint minus
+// insideScoring`, the number that governs shot mix, took 9 distinct values
+// league-wide. Every compressed spread in identity-baseline.txt (3PA share
+// over 13 points against the NBA's 67, shot volume 1.44x against 2.9x) is
+// downstream of that, not a separate problem.
+//
+// Three sources of variance, each doing a different job:
+//   SCALE_SD    - between players. How far apart a star and a scrub are.
+//   OFFSET_AMP  - between archetypes. Why a rim protector cannot shoot.
+//   JITTER_SD   - within an archetype. Why two rim protectors differ.
+// All three calibrated by measured rate against scripts/measure-identity.js;
+// the sweep is in the commit that introduced them.
+const OLD_MEAN = 74.67, OLD_SD = 7.60;   // measured over the 450 authored `overall` values
+const SCALE_MEAN = 50, SCALE_SD = 9;
+const OFFSET_AMP = 2.4;
+const JITTER_SD = 6;
+
+// Deterministic string -> uint32, same shape as traits.js's hashId, so a
+// player's attributes are a pure function of his id and survive a reload,
+// a save, and a golden-master regeneration.
+function attrHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+
+// Box-Muller. The jitter has to be normal rather than flat: a flat jitter
+// would put as many players at +2sd on a skill as at their own mean, which
+// reads as noise instead of as a player having a strength.
+function gauss(rng) {
+  const u = Math.max(1e-9, rng());
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
+}
+
+// `potential` is authored on the same 62-98 scale the old `overall` used, and
+// progression pulls young players toward it via `potential - overall`. Once
+// overall is derived from the rescaled attributes (ratings.js) that gap would
+// be ~30 points for every player in the league instead of ~3-20, and everyone
+// would develop like a lottery pick. Mapped through the same affine transform
+// as the attribute anchor so the two stay commensurate.
+function rescaleAnchor(v) {
+  return Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX,
+    Math.round(SCALE_MEAN + ((v - OLD_MEAN) / OLD_SD) * SCALE_SD)));
+}
+
+function makeAttributes(overall, archetype, playerId) {
+  const offsets = ARCHETYPES[archetype] || {};
+  const rng = _DATA.makeRng(attrHash(playerId));
+  const z = (overall - OLD_MEAN) / OLD_SD;
   const attrs = {};
   _DATA.ATTRIBUTE_KEYS.forEach(function (key) {
-    const raw = overall + (offsets[key] || 0);
-    attrs[key] = Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX, raw));
+    const raw = SCALE_MEAN + z * SCALE_SD
+      + (offsets[key] || 0) * OFFSET_AMP
+      + gauss(rng) * JITTER_SD;
+    attrs[key] = Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX, Math.round(raw)));
   });
   return attrs;
 }
@@ -51,8 +108,12 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
     position: position,
     jerseyNumber: jerseyNumber,
     yearsPro: yearsPro,
-    overall: overall,
-    potential: potential,
+    // `overall` is still stored here; Task 3 of the ratings-and-overall plan
+    // replaces it with a getter derived from the attributes. Rescaled now so
+    // it does not sit 25 points above the attributes it is supposed to
+    // summarise while the two coexist.
+    overall: rescaleAnchor(overall),
+    potential: rescaleAnchor(potential),
     contract: {
       salary: salary,
       yearsRemaining: yearsRemaining,
@@ -60,7 +121,12 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
       teamOption: !!opts.teamOption
     },
     status: { morale: opts.morale || 70, fatigue: 0, injury: null },
-    attributes: makeAttributes(overall, archetype),
+    // Kept on the player rather than discarded after generation: it is the
+    // shape half of the (overall, archetype) judgment, and without it there
+    // is no way to measure whether the 8 archetypes still read as distinct
+    // roles once per-player variation is layered on top of them.
+    archetype: archetype,
+    attributes: makeAttributes(overall, archetype, pid(teamId, name)),
     hiddenTraits: [],
     hiddenPersonality: {},
     hiddenTendencies: {},
@@ -920,5 +986,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // makeAttributes/ARCHETYPES are exported so Node validation scripts can build
   // a player the same way the browser does — playerCareerController.js reads
   // makeAttributes as a page global, which doesn't exist under require().
-  module.exports = { PLAYERS_2026: PLAYERS_2026, makeAttributes: makeAttributes, ARCHETYPES: ARCHETYPES };
+  // rescaleAnchor is exported for the same reason: playerCareerController.js
+  // authors its custom players' startingOverall/startingPotential on the same
+  // pre-rescale scale this file's 450 judgments use, so it needs the identical
+  // affine map or a created player lands 25 points above the league.
+  module.exports = {
+    PLAYERS_2026: PLAYERS_2026,
+    makeAttributes: makeAttributes,
+    ARCHETYPES: ARCHETYPES,
+    rescaleAnchor: rescaleAnchor
+  };
 }

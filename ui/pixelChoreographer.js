@@ -246,12 +246,17 @@ function cutPositions(pos, excludeId, seed) {
 const DUNK_FINISHES = ['Slams it home!', 'Throws it down!', 'Rises up and JAMS it!'];
 const LAYUP_FINISHES = ['Lays it in!', 'Finishes inside!', 'Kisses it off the glass'];
 
-// The threshold is calibrated against the ACTUAL player pool, not a 0-100
-// scale: everyone in this league is elite, so an absolute cutoff picked off
-// raw rating numbers marked ~95% of them as dunkers (30 dunks to 1 layup in
-// a test game). 82 sits near the pool's 65th percentile, so roughly the top
-// third of finishers throw it down and the rest lay it in.
-const DUNK_LIFT_THRESHOLD = 82;
+// The threshold is calibrated against the ACTUAL player pool, not read off the
+// rating numbers: an absolute cutoff picked by eye once marked ~95% of the
+// league as dunkers (30 dunks to 1 layup in a test game). The rule is "the
+// pool's 65th percentile", so roughly the top third of finishers throw it down
+// and the rest lay it in — and that rule is what survives a scale change.
+//
+// Was 82 on the old 48-99 attributes. The 0-100 rescale dropped vertical and
+// strength by ~24 each, taking dunkLift down with them; left at 82 it gated
+// nearly everyone out and poster impacts fell to 0.39/game. Re-solved against
+// the new pool: p35 53.5, p50 58.6, p65 63.6, p80 69.3.
+const DUNK_LIFT_THRESHOLD = 64;
 
 function dunkLift(player) {
   const a = player.attributes;
@@ -276,7 +281,16 @@ function isDunker(player) {
 //
 // checkRateStaysInBand in scripts/validate-impactMoments.js holds these to
 // 0.5-4/game so progression cannot silently turn them into confetti.
-const IMPACT_THRESHOLDS = { poster: 24, ankle: 21 };
+// Recalibrated for the 0-100 rating scale. These were 24/21, chosen by rate on
+// the old 48-99 attributes; the same edges are roughly twice as large now that
+// the ratings use the whole scale, and at 24/21 ankle breakers fired 6.92 per
+// game against a 0.5-4 band. Re-solved the same way — measured over 40 games
+// (1661 inside makes, 1296 jumpers) and read off the edge that yields the
+// target rate, rather than scaled by eye:
+//   1.0/game -> poster 51.3, ankle 37.8
+//   2.0/game -> poster 46.7, ankle 33.5
+//   2.5/game -> poster 44.3, ankle 32.0
+const IMPACT_THRESHOLDS = { poster: 47, ankle: 34 };
 
 // How badly the finisher beat the man protecting the rim.
 function posterEdge(shooter, defender) {

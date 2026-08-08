@@ -146,8 +146,17 @@ function checkRecordedResultIsTheGameThatWasPlayed() {
     'recorded box score covers the same players');
   const totalMinutes = Object.keys(target.boxScore)
     .reduce(function (s, id) { return s + target.boxScore[id].minutes; }, 0);
-  assert.ok(totalMinutes >= 460 && totalMinutes <= 500,
-    'a complete game was recorded, not a partial one (total minutes ' + totalMinutes + ')');
+  // Expected minutes depend on how many periods were actually played: five
+  // players x 48 regulation minutes x 2 teams, plus 50 for each overtime.
+  // A flat 460-500 band assumed regulation, so this failed on any seed whose
+  // game went to overtime — it passed only because seed 8 happened not to.
+  // The invariant is "a COMPLETE game was recorded", so it has to be stated
+  // against the game that was played, not against a fixed number.
+  const overtimes = Math.max(0, sim.period - 4);
+  const expectedMinutes = 480 + overtimes * 50;
+  assert.ok(Math.abs(totalMinutes - expectedMinutes) <= 20,
+    'a complete game was recorded, not a partial one (total minutes ' + totalMinutes +
+    ', expected ~' + expectedMinutes + ' for ' + sim.period + ' periods)');
 
   console.log('checkRecordedResultIsTheGameThatWasPlayed: OK');
 }

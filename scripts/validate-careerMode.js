@@ -29,6 +29,7 @@ global.PLAYER_ARCHETYPES = dataModule.PLAYER_ARCHETYPES;
 global.SEASON_STAT_KEYS = leagueModule.SEASON_STAT_KEYS;
 global.PLAYERS_2026 = playersModule.PLAYERS_2026;
 global.makeAttributes = playersModule.makeAttributes;
+global.rescaleAnchor = playersModule.rescaleAnchor;
 global.ensureCareerData = historyModule.ensureCareerData;
 global.getPlayerById = leagueModule.getPlayerById;
 global.archiveRetiree = historyModule.archiveRetiree;

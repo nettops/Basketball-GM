@@ -10,8 +10,14 @@ function checkDataConstants() {
   assert.deepStrictEqual(data.CONFERENCES, ['Eastern', 'Western']);
   assert.strictEqual(data.DIVISIONS.Eastern.length, 3);
   assert.strictEqual(data.DIVISIONS.Western.length, 3);
-  assert.strictEqual(data.RATING_MIN, 25);
-  assert.strictEqual(data.RATING_MAX, 99);
+  // A true 0-100 scale, matching ZenGM's. Asserted as a full-scale INVARIANT
+  // rather than as the literal pair of numbers, because the thing that matters
+  // is that 50 is the midpoint every downstream `(composite - 50) / K` formula
+  // assumes — not that the bounds happen to read 0 and 100.
+  assert.strictEqual(data.RATING_MIN, 0);
+  assert.strictEqual(data.RATING_MAX, 100);
+  assert.strictEqual((data.RATING_MIN + data.RATING_MAX) / 2, 50,
+    'the rating scale must be centred on 50; every composite formula assumes it');
   console.log('checkDataConstants: OK');
 }
 

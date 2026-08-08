@@ -45,9 +45,16 @@ function synergyRamp(countQualifying, cutoff, maxBonus) {
   return 1 + (sigmoid - 0.5) * 2 * maxBonus;
 }
 
-const SHOOTER_THRESHOLD = 72;
-const DEFENDER_THRESHOLD = 72;
-const REBOUNDER_THRESHOLD = 70;
+// Solved for a ~20% qualifying UNION, not set at each composite's own top-20%:
+// the shooter and defender tests below are ORs, so per-composite percentiles
+// would union out to nearly 40%. On the old 48-99 rating scale these were
+// 72/72/70, which selected 65.5% of the league as shooters, 76.3% as defenders
+// and 70.8% as rebounders — a roster-construction bonus three quarters of the
+// league earned, which is no bonus at all. ZenGM's equivalent skill cutoffs
+// pick out roughly the top 10-25%.
+const SHOOTER_THRESHOLD = 68;
+const DEFENDER_THRESHOLD = 67;
+const REBOUNDER_THRESHOLD = 60;
 
 // Computed once per game (not per possession — composites/synergy don't
 // change possession-to-possession) from a team's active rotation. Returns

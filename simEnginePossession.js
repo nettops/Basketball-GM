@@ -226,7 +226,30 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   drainEnergy(defenseBox[shotDefender.id], shotDefender);
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
 
-  const blockChance = zone === 'three' ? 0.01 : Math.max(0, (shotDefender.attributes.block - 50) / 900);
+  // This was `max(0, (block - 50) / 900)`, which assumed 50 was the BOTTOM of
+  // the rating scale rather than its middle — on the old 48-99 attributes
+  // nobody was ever clipped, but on a true 0-100 scale it zeroed half the
+  // league and blocks fell from 1.86 to 0.87 per team-game. Reshaped to a base
+  // plus a deviation so a below-average shot-blocker is merely unlikely to
+  // block rather than literally unable to.
+  //
+  // BLOCK_BASE calibrated to RESTORE the pre-rescale rate (1.86 blocks per
+  // team-game; 0.020 measures 1.78), deliberately NOT to the real NBA's ~4.9.
+  //
+  // This rescale's job is to not break anything, and the block rate was
+  // already 2.6x under the real league before it. Fixing that is a balance
+  // change, and it is not free: validate-impactMoments.js gates the block
+  // comic-panel population at 2-7 per game, so an NBA-realistic block rate
+  // (BLOCK_BASE 0.085 measures 4.73/team, 9.5/game) would roughly triple the
+  // tier-2 impact effects. How many comic panels a game should carry is a
+  // feel decision, not an arithmetic one. Left for the recalibration task with
+  // the sweep already measured:
+  //   0.020 -> 1.78/team   0.030 -> 2.20   0.055 -> 3.28
+  //   0.070 -> 4.38        0.085 -> 4.73 (NBA-realistic)
+  const BLOCK_BASE = 0.020, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
+  const blockChance = zone === 'three'
+    ? 0.008
+    : Math.max(BLOCK_MIN, Math.min(BLOCK_MAX, BLOCK_BASE + (shotDefender.attributes.block - 50) / BLOCK_DIV));
   if (rng() < blockChance) {
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;

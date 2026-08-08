@@ -41,8 +41,13 @@ function getEffectiveSalaryFloor(capLevel) {
   return Math.round(CAP_CONSTANTS.SALARY_FLOOR * (capLevel || 1));
 }
 
-const RATING_MIN = 25;
-const RATING_MAX = 99;
+// A true 0-100 scale, matching ZenGM's. These were 25/99, which combined with
+// the old `attribute = overall + archetypeOffset` generator put every rating
+// in 48-99 with a league mean of 74.2 — while every formula downstream is
+// written as `(composite - 50) / K` and assumes 50 is average. See
+// docs/superpowers/plans/2026-08-08-ratings-and-overall.md.
+const RATING_MIN = 0;
+const RATING_MAX = 100;
 
 const PLAYER_ARCHETYPES = {
   scorer: {
