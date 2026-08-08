@@ -439,6 +439,41 @@ const UI_SMOKE = (function () {
   // that matters: every view still reachable by clicking hubs and tabs. A view
   // orphaned from all hubs renders perfectly when navigated to directly, so
   // nothing else in this suite would notice it had become unreachable.
+  // Switching views used to inherit the previous view's scroll offset, so
+  // reading the standings to the bottom and then opening the roster dropped you
+  // into the middle of the roster with no indication you weren't at the top.
+  // The reset has to be conditional: views re-render in place to sort and
+  // filter, and resetting there would fight the user on every column click.
+  function checkScrollOnNavigate() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+    const vc = document.getElementById('view-content');
+
+    renderView('standings');
+    vc.scrollTop = 400;
+    const parked = vc.scrollTop;
+    if (parked === 0) {
+      // Nothing to prove if the view is too short to scroll at this size.
+      results.push(ok('nav:scroll-resets-on-view-change', true, 'skipped — standings not scrollable here'));
+      results.push(ok('nav:scroll-survives-same-view-rerender', true, 'skipped'));
+      renderView(startView);
+      return results;
+    }
+
+    renderView('roster');
+    results.push(ok('nav:scroll-resets-on-view-change', vc.scrollTop === 0,
+      'landed at ' + vc.scrollTop + ' after switching views'));
+
+    vc.scrollTop = 300;
+    renderView('roster');   // same view: a sort/filter redraw
+    results.push(ok('nav:scroll-survives-same-view-rerender', vc.scrollTop === 300,
+      'same-view redraw moved scroll to ' + vc.scrollTop));
+
+    renderView(startView);
+    return results;
+  }
+
   function checkNav() {
     requireSeason();
     const results = [];
@@ -581,6 +616,7 @@ const UI_SMOKE = (function () {
     boxscore: checkScheduleBoxScore,
     align: checkTableAlignment,
     chrome: checkChromeLabels,
+    scroll: checkScrollOnNavigate,
     nav: checkNav,
     dock: checkDock,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the

@@ -565,6 +565,7 @@ function renderView(viewName) {
     if (!confirmLeaveLiveGame(viewName)) return;
     finishPendingPixelGame();
   }
+  const previousView = GameState.currentView;
   GameState.currentView = viewName;
   const container = document.getElementById('view-content');
   const renderer = BUILT_VIEWS[viewName];
@@ -573,6 +574,13 @@ function renderView(viewName) {
   } else {
     renderPlaceholder(container);
   }
+  // #view-content is the scroller, and it kept its offset across a view swap —
+  // reading the standings to the bottom and then opening the roster dropped you
+  // into the middle of the roster. Only on a real view CHANGE: views re-render
+  // themselves in place for sorting and filtering (ui/roster.js's draw(), and
+  // the Back to My Roster button, both land here with the same viewName), and
+  // yanking the page to the top on every sort would be its own bug.
+  if (previousView !== viewName) container.scrollTop = 0;
   renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderViewTabs(document.getElementById('view-tabs'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderTopBar(document.getElementById('app-topbar'));
