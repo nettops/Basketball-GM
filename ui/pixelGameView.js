@@ -50,7 +50,40 @@ const PIXEL_SPEEDS = [1, 2, 4, 8];
 
 // Keyframe texts that mean "the ball just went in" — drives the rim flash.
 // Must stay in sync with the made-shot labels in ui/pixelChoreographer.js.
-const MAKE_LABELS = ['It\'s good!', 'Three-pointer!', 'Slams it home!', 'Lays it in!', 'Finishes inside!'];
+// A made basket, read off the structured sfx field rather than the display
+// string. The old hand-maintained MAKE_LABELS list had drifted out of sync
+// with the choreographer's finish lines: 'Throws it down!', 'Rises up and
+// JAMS it!' and 'Kisses it off the glass' were all missing, so two of the
+// three dunk finishes and one of the three layups landed with no rim shake,
+// no net splash and no freeze at all. Misses are 'clang', free throws
+// 'whistle'; only these two are makes.
+function isMakeKeyframe(kf) {
+  return kf.sfx === 'swish' || kf.sfx === 'dunk';
+}
+
+// How high off the floor the dunker's sprite sits at each dunk beat, in
+// stage pixels. The choreographer marks the beats; the height lives here so
+// the timeline stays pure positions. Interpolated between keyframes like
+// everything else, so seeking mid-leap lands at the right height.
+const DUNK_LIFT = { gather: -2, rise: 16, slam: 13, land: 0 };
+function dunkLiftAt(kf) {
+  const d = kf && kf.dunk;
+  return (d && DUNK_LIFT[d.phase] !== undefined) ? DUNK_LIFT[d.phase] : 0;
+}
+
+// Jump shot. Smaller than a dunk on purpose — a pull-up is not a leap — but a
+// three gets more of everything, because a deep shot is a bigger effort.
+const JUMP_LIFT = { gather: -3, rise: 9, release: 9, follow: 0 };
+// How long the shooter holds his hand up after the release. Shorter than a
+// three's flight time on purpose — the pose should end while the ball is still
+// up, not carry into the rebound.
+const JUMP_FOLLOW_MAX_MS = 520;
+function jumpLiftAt(kf) {
+  const j = kf && kf.jump;
+  if (!j || JUMP_LIFT[j.phase] === undefined) return 0;
+  const base = JUMP_LIFT[j.phase];
+  return j.three ? Math.round(base * 1.35) : base;
+}
 
 // The subset of plays the crowd goes wild for.
 const BIG_PLAY_LABELS = [
@@ -164,6 +197,13 @@ function renderPixelGame(container) {
   logoImg.src = getTeamLogoUrl(session.homeTeamId);
 
   let playbackMs = 0;
+  // Impact effects run on a REAL-time clock, not playbackMs. They exist to
+  // decorate the freeze — and the freeze works by holding playbackMs still,
+  // so anything aged off playbackMs is frozen at age 0 for the whole hold.
+  // That silenced the speed lines (gated to age >= 70ms) for the entire panel
+  // and pinned the flash at full alpha, then played both AFTER the freeze
+  // lifted, over resumed play, around a rim the players had already left.
+  let impactRealMs = 0;
   let speed = 1;
   let paused = false;
   let lastFrameTs = null;
@@ -410,6 +450,7 @@ function renderPixelGame(container) {
   const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   let rimShakeStart = -Infinity; // set when a shot goes through
   let rimShakeSide = 'right';
+  let rimShakeHard = false;      // a dunk rattles it harder than a jumper
 
   function distToNearestHoop(pt) {
     const L = PIXEL_STAGE.hoops.left;
@@ -430,6 +471,8 @@ function renderPixelGame(container) {
   }
 
   function draw(realDt) {
+    // advances through the freeze, unlike playbackMs — see its declaration
+    impactRealMs += realDt;
     const fr = currentFrame();
     // Linear target: the spring below supplies all the smoothing, so no
     // per-segment ease (that is what caused the stop-start stiffness).
@@ -450,11 +493,13 @@ function renderPixelGame(container) {
       if (!reduceMotion && (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1 && fr.a.text !== 'Steal!' && fr.a.text !== 'Three-pointer!')) {
         shakeStartMs = playbackMs;
       }
-      if (MAKE_LABELS.indexOf(fr.a.text) !== -1) {
+      if (isMakeKeyframe(fr.a)) {
         if (!reduceMotion) {
           hitchMs = Math.max(hitchMs, 120);
           spawnNetSplash(fr.a.ball.x, fr.a.ball.y);
           rimShakeStart = playbackMs;
+          // a dunk rattles the rim harder and longer than a jumper dropping in
+          rimShakeHard = fr.a.sfx === 'dunk';
           rimShakeSide = fr.a.ball.x > PIXEL_STAGE.w / 2 ? 'right' : 'left';
         }
       }
@@ -462,9 +507,15 @@ function renderPixelGame(container) {
       // hitchMs is REUSED rather than paired with a second freeze clock: a
       // poster is also a made shot, so both paths fire on the same frame and
       // Math.max lets the longer hold win instead of two timers disagreeing.
+      // Camera lead-in on the takeoff, so the leap plays magnified instead of
+      // the zoom arriving once he is already hanging on the rim.
+      if (fr.a.dunk && fr.a.dunk.zoomTo) {
+        armImpactZoom({ kind: 'poster', at: fr.a.dunk.zoomTo }, impactRealMs,
+          { reduceMotion: reduceMotion, speed: speed });
+      }
       if (fr.a.impact) {
         const impactOpts = { reduceMotion: reduceMotion, speed: speed };
-        startImpact(fr.a.impact, playbackMs, impactOpts);
+        startImpact(fr.a.impact, impactRealMs, impactOpts);
         hitchMs = Math.max(hitchMs, impactFreezeMs(fr.a.impact, impactOpts));
         if (!reduceMotion && speed < 8) shakeStartMs = playbackMs;
       }
@@ -498,7 +549,7 @@ function renderPixelGame(container) {
     // Snap zoom on a highlight. Inside the shake transform and before the
     // sprites, so the court and players scale together; the in-canvas
     // scoreboard is painted after ctx.restore() below and is left untouched.
-    const impactZoomNow = impactZoom(playbackMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
+    const impactZoomNow = impactZoom(impactRealMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
     if (impactZoomNow) {
       // Centre on cx/cy rather than pinning it in place. Zooming about a fixed
       // point leaves the subject wherever it already sat, which for a poster is
@@ -517,6 +568,47 @@ function renderPixelGame(container) {
     // is the current ball sequence a shot (heading to a rim) or a pass?
     const lookAhead = kfs[Math.min(kfIndex + 2, kfs.length - 1)];
     const shotComing = lookAhead.ball.holder === null && distToNearestHoop(lookAhead.ball) < 20;
+
+    // Who is airborne on a dunk, and how high. Resolved once per frame rather
+    // than per sprite because the ball needs it too — and after the slam the
+    // holder is null, so the id has to come off the keyframe, not the ball.
+    const dunkA = fr.a.dunk, dunkB = fr.b.dunk;
+    const dunkerId = (dunkA && dunkA.id) || (dunkB && dunkB.id) || null;
+    let dunkerLift = 0;
+    if (dunkerId && !reduceMotion) {
+      const la = dunkLiftAt(fr.a), lb = dunkLiftAt(fr.b);
+      // snap up, fall away — a symmetric ease makes the leap look weightless
+      const ef = lb > la ? 1 - Math.pow(1 - fr.f, 2) : Math.pow(fr.f, 1.6);
+      dunkerLift = Math.round(la + (lb - la) * ef);
+    }
+
+    // Who just got crossed over. The stumble starts on the CUT — he is still
+    // upright while he bites on the jab — and holds through the windup so he
+    // is visibly beaten while the shot goes up, not just displaced.
+    const crossA = fr.a.cross;
+    const stumbleId = (crossA && (crossA.phase === 'cross' || crossA.phase === 'clear' || crossA.phase === 'recover'))
+      ? crossA.on : null;
+
+    // The jumper. The descent is deliberately NOT spread across the beat: the
+    // last beat of a jump shot is the ball's whole flight (650-850ms), and
+    // easing him down over all of it would leave him hanging in the air until
+    // the ball reached the rim. He comes down in a fixed 170ms whatever the
+    // beat length, then stands in his follow-through.
+    const jumpA = fr.a.jump, jumpB = fr.b.jump;
+    const jumperId = (jumpA && jumpA.id) || (jumpB && jumpB.id) || null;
+    let jumperLift = 0, jumpFollow = false;
+    if (jumperId && !reduceMotion) {
+      const la = jumpLiftAt(fr.a), lb = jumpLiftAt(fr.b);
+      const spanMs = Math.max(1, fr.b.t - fr.a.t);
+      const f = lb < la ? Math.min(1, fr.f * (spanMs / 170)) : fr.f;
+      const ef = lb > la ? 1 - Math.pow(1 - f, 2) : Math.pow(f, 1.4);
+      jumperLift = Math.round(la + (lb - la) * ef);
+      // Follow-through runs from the release, for as long as the ball is in
+      // the air — but capped. Left uncapped it rode the 'follow' keyframe into
+      // the rebound beat as well, so shooters stood posing with their hand up
+      // for 1.6s while the board was being fought for.
+      jumpFollow = !!(jumpA && jumpA.phase === 'release' && fr.f * spanMs < JUMP_FOLLOW_MAX_MS);
+    }
 
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
@@ -655,23 +747,51 @@ function renderPixelGame(container) {
       const stride = Math.max(80, 260 - vmag * 1.6); // faster feet when moving faster
       // players are never perfectly still: a slow weight shift on an
       // individual period keeps standing bodies alive
-      const sway = moving ? 0 : Math.sin((playbackMs + phase * 3) / 900) * 0.7;
+      // Positional idle. Raised from 0.7px because drawPlayerSprite rounds x,
+      // so anything under 1px rounded away and the "sway" was invisible. Two
+      // axes on different periods so it drifts rather than sliding on a rail —
+      // 64% of player-beats hold an IDENTICAL keyframe position, and this plus
+      // the pose shift is what stops that reading as a freeze frame.
+      const sway = moving ? 0 : Math.sin((playbackMs + phase * 3) / 900) * 1.5;
+      const swayY = moving ? 0 : Math.cos((playbackMs + phase * 5) / 1240) * 0.9;
       const x = s.x + sway;
-      const y = s.y;
+      const y = s.y + swayY;
 
       const isHolder = fr.a.ball.holder === pid;
-      const shooting = isHolder && fr.b.ball.holder === null && shotComing;
+      const isDunkerNow = pid === dunkerId;
+      const isJumperNow = pid === jumperId;
+      // The jump phases own the shooter outright now; the old 60ms-window
+      // detection would otherwise fight them for the pose.
+      const shooting = !isDunkerNow && !isJumperNow &&
+        isHolder && fr.b.ball.holder === null && shotComing;
+      // A dunk owns the shooter's vertical outright: its arc is three times a
+      // jumper's and runs past the release, so the two must not both apply.
       // anticipation: dip into the legs before rising into the shot
-      const jumpLift = shooting
-        ? Math.round(fr.f < 0.18 ? -(fr.f / 0.18) * 1.5 : Math.sin(((fr.f - 0.18) / 0.82) * Math.PI) * 5)
-        : 0;
+      const jumpLift = isDunkerNow
+        ? dunkerLift
+        : (isJumperNow
+            ? jumperLift
+            : (shooting
+                ? Math.round(fr.f < 0.18 ? -(fr.f / 0.18) * 1.5 : Math.sin(((fr.f - 0.18) / 0.82) * Math.PI) * 5)
+                : 0));
+      // pose off actual height, not the beat name — he is still on the floor
+      // during the gather, and the tucked legs would read as a bug there
+      const dunkPose = isDunkerNow && jumpLift >= 3;
       // ground shadow stays planted even when the sprite lifts
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
       const p = playerById[pid];
       drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
         frame: Math.floor((playbackMs + phase) / stride) % 2,
-        shooting: shooting,
+        // each player breathes on his own period, so ten sprites never pulse
+        // in unison — the give-away that it is one global timer
+        idleFrame: Math.floor((playbackMs + phase * 11) / (760 + (phase % 7) * 90)) % 2,
+        // rising into the shot reads as arms-up; after the ball is gone he
+        // holds the follow-through, which is what a jumper actually looks like
+        shooting: shooting || (isJumperNow && !jumpFollow && jumpLift > -1),
+        following: isJumperNow && jumpFollow,
+        dunking: dunkPose,
+        stumbling: !reduceMotion && pid === stumbleId,
         highlight: isHolder,
         facing: facingById[pid] || 0,
         moving: moving
@@ -714,7 +834,18 @@ function renderPixelGame(container) {
       const hx = hs.x;
       const hy = hs.y;
       const holderShooting = fr.b.ball.holder === null && shotComing;
-      if (holderShooting) {
+      if (holder === jumperId && jumperLift !== 0) {
+        // gathered in front of the chest on the dip, raised overhead as he
+        // rises — the ball has to travel with the shot, not sit at a fixed
+        // offset while the body moves under it
+        bx = hx + ((facingById[holder] || 1) >= 0 ? 2 : -2);
+        by = hy - jumperLift - (jumperLift > 0 ? 26 : 17);
+      } else if (holder === dunkerId && dunkerLift > 0) {
+        // cocked in the raised hand, riding the leap — not gathered at the
+        // chest, or the ball visibly lags the body on the way up
+        bx = hx + ((facingById[holder] || 1) >= 0 ? 4 : -4);
+        by = hy - dunkerLift - 30;
+      } else if (holderShooting) {
         bx = hx;
         by = hy - 24; // gathered overhead for the release
       } else {
@@ -733,7 +864,15 @@ function renderPixelGame(container) {
       // parabolic rise and fall. (Easing the horizontal axis made shots
       // visibly brake in mid-air.)
       const flightDist = Math.abs(fr.b.ball.x - fr.a.ball.x) + Math.abs(fr.b.ball.y - fr.a.ball.y);
-      const arcHeight = Math.max(4, Math.min(32, flightDist * 0.3));
+      // A slam is the one ball path with no arc in it — it goes straight down
+      // through the rim. The default floor of 4px would lob it upward.
+      const slamming = fr.a.dunk && fr.a.dunk.phase === 'slam';
+      // A pass carries its own arc (see passShape): a dish barely leaves the
+      // floor, a skip is a flat line drive. Falling back to the distance
+      // formula made every long pass lob at the 32px ceiling.
+      const arcHeight = slamming ? 0
+        : (typeof fr.b.ball.arc === 'number' ? fr.b.ball.arc
+           : Math.max(4, Math.min(32, flightDist * 0.3)));
       bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fr.f);
       groundY = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f);
       by = groundY - Math.sin(fr.f * Math.PI) * arcHeight;
@@ -774,10 +913,15 @@ function renderPixelGame(container) {
 
     // Rim flex: the hoop itself springs after a make (harder on a dunk),
     // redrawn over the static court art.
+    // (the "harder on a dunk" part of that sentence was a comment describing
+    // behaviour the code did not have — a jumper and a two-hand slam flexed
+    // the rim by exactly the same 2px for exactly the same 340ms)
+    const rimMs = rimShakeHard ? 470 : 340;
+    const rimAmp = rimShakeHard ? 3.5 : 2;
     const rimAge = playbackMs - rimShakeStart;
-    if (rimAge >= 0 && rimAge < 340) {
+    if (rimAge >= 0 && rimAge < rimMs) {
       const hoop = PIXEL_STAGE.hoops[rimShakeSide];
-      const flex = Math.sin(rimAge / 34) * Math.max(0, 1 - rimAge / 340) * 2;
+      const flex = Math.sin(rimAge / 34) * Math.max(0, 1 - rimAge / rimMs) * rimAmp;
       ctx.fillStyle = '#c9974f'; // clear the painted rim
       ctx.fillRect(hoop.x - 3, hoop.y - 3, 7, 7);
       ctx.fillStyle = '#e05a2b';
@@ -792,7 +936,7 @@ function renderPixelGame(container) {
 
     // Make flash: an expanding ring at the rim while a made-basket keyframe
     // is current (its ball position sits on the hoop).
-    if (MAKE_LABELS.indexOf(fr.a.text) !== -1 && fr.f < 0.6) {
+    if (isMakeKeyframe(fr.a) && fr.f < 0.6) {
       const r = 3 + fr.f * 10;
       ctx.strokeStyle = 'rgba(255, 235, 59, ' + (1 - fr.f / 0.6).toFixed(2) + ')';
       ctx.lineWidth = 1;
@@ -813,12 +957,12 @@ function renderPixelGame(container) {
       ctx.fillText(label, hp[0] - w / 2 + 2, hp[1] + 11);
     }
     // Radial lines are anchored to the action, so they belong inside the zoom.
-    drawImpactLines(ctx, playbackMs);
+    drawImpactLines(ctx, impactRealMs);
     ctx.restore();
 
     // The flash is full-frame, so it goes outside the zoom and the shake —
     // inside them it would scale and slide with the court.
-    drawImpactFlash(ctx, playbackMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
+    drawImpactFlash(ctx, impactRealMs, PIXEL_STAGE.w, PIXEL_STAGE.h);
 
     // In-scene pixel scoreboard, drawn unshaken in the same pixel grid as
     // the court (an HTML bar above the canvas read as chrome bolted onto

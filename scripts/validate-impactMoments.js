@@ -349,6 +349,237 @@ function checkDrawCallsAreSafe() {
   impact.resetImpact();
 }
 
+// The whole effect exists to decorate the freeze. The freeze works by holding
+// playbackMs still, so an effect aged off playbackMs is frozen at age 0 for
+// the entire hold: the lines (gated to age >= 70ms) never drew on the panel at
+// all, and the flash sat at full alpha instead of decaying. Both then played
+// AFTER the freeze lifted, over resumed play, around a rim the players had
+// already left. The fix is a real-time clock, and this is what pins it down.
+function checkEffectsUseARealTimeClock() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'ui', 'pixelGameView.js'), 'utf8');
+
+  assert.ok(/impactRealMs\s*\+=\s*realDt/.test(src),
+    'the view must accumulate a real-time clock for impact effects');
+
+  // Every impact entry point must be handed that clock, never playbackMs.
+  [
+    ['drawImpactLines', /drawImpactLines\(\s*ctx\s*,\s*impactRealMs\s*\)/],
+    ['drawImpactFlash', /drawImpactFlash\(\s*ctx\s*,\s*impactRealMs\s*,/],
+    ['impactZoom', /impactZoom\(\s*impactRealMs\s*,/],
+    ['startImpact', /startImpact\(\s*fr\.a\.impact\s*,\s*impactRealMs\s*,/],
+    ['armImpactZoom', /armImpactZoom\([^)]*,\s*impactRealMs\s*,/]
+  ].forEach(function (pair) {
+    assert.ok(pair[1].test(src), pair[0] + ' must be driven by impactRealMs, not playbackMs');
+  });
+  assert.ok(!/(drawImpactLines|drawImpactFlash|impactZoom)\(\s*(ctx\s*,\s*)?playbackMs/.test(src),
+    'no impact effect may be aged off playbackMs — it stops during the freeze');
+  console.log('checkEffectsUseARealTimeClock: OK');
+}
+
+// With a clock that advances, the lines must own the middle of the freeze
+// rather than arriving after it.
+function checkLinesPlayInsideTheFreeze() {
+  const impact = require(path.join(__dirname, '..', 'ui', 'pixelImpact.js'));
+  const poster = { kind: 'poster', at: { x: 240, y: 135 } };
+  let strokes = 0, fills = 0;
+  const ctx = {
+    save: function () {}, restore: function () {}, beginPath: function () {},
+    moveTo: function () {}, lineTo: function () {}, arc: function () {},
+    stroke: function () { strokes++; }, fillRect: function () { fills++; },
+    globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1, lineCap: ''
+  };
+  const freeze = impact.IMPACT_TIER1_FREEZE_MS;   // 320
+  impact.resetImpact();
+  impact.startImpact(poster, 0, { reduceMotion: false, speed: 1 });
+
+  function at(t) {
+    strokes = 0; fills = 0;
+    impact.drawImpactLines(ctx, t);
+    impact.drawImpactFlash(ctx, t, 480, 270);
+    return { strokes: strokes, fills: fills };
+  }
+  const early = at(10);
+  assert.ok(early.fills > 0 && early.strokes === 0, 'flash owns the opening, lines silent');
+  const mid = at(Math.round(freeze / 2));
+  assert.ok(mid.strokes > 0, 'lines must draw in the MIDDLE of the freeze, not after it');
+  assert.strictEqual(mid.fills, 0, 'flash must be finished by mid-freeze');
+  const justInside = at(freeze - 10);
+  assert.ok(justInside.strokes > 0, 'lines must still be alive at the end of the freeze');
+  impact.resetImpact();
+  console.log('checkLinesPlayInsideTheFreeze: OK');
+}
+
+// The camera pushes in on the takeoff; the flash and lines wait for the slam.
+function checkZoomLeadIn() {
+  const impact = require(path.join(__dirname, '..', 'ui', 'pixelImpact.js'));
+  const poster = { kind: 'poster', at: { x: 446, y: 160 } };
+  const opts = { reduceMotion: false, speed: 1 };
+  let strokes = 0, fills = 0;
+  const ctx = {
+    save: function () {}, restore: function () {}, beginPath: function () {},
+    moveTo: function () {}, lineTo: function () {},
+    stroke: function () { strokes++; }, fillRect: function () { fills++; },
+    globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1, lineCap: ''
+  };
+  // Armed at a SMALL clock value on purpose. `startMs` is null during the
+  // lead-in, and `nowMs - null` is `nowMs` — so at a large clock the age lands
+  // past both windows and the effects stay quiet by luck rather than by the
+  // guard. A poster early in playback is the case that actually exercises it.
+  impact.resetImpact();
+  impact.armImpactZoom(poster, 20, opts);
+  assert.ok(impact.impactZoom(20, 480, 270), 'lead-in must zoom immediately');
+  assert.ok(impact.impactZoom(200, 480, 270), 'lead-in zoom must hold through the rise');
+  impact.drawImpactLines(ctx, 30);
+  impact.drawImpactFlash(ctx, 30, 480, 270);
+  impact.drawImpactLines(ctx, 200);
+  impact.drawImpactFlash(ctx, 200, 480, 270);
+  assert.strictEqual(strokes + fills, 0, 'lead-in is camera only — no flash, no lines');
+
+  // the slam upgrades it in place, and the flash starts from the SLAM
+  impact.startImpact(poster, 240, opts);
+  fills = 0;
+  impact.drawImpactFlash(ctx, 245, 480, 270);
+  assert.ok(fills > 0, 'flash must fire at the slam');
+  assert.ok(impact.impactZoom(300, 480, 270), 'zoom continues through the freeze');
+  assert.strictEqual(impact.impactZoom(240 + impact.IMPACT_TIER1_FREEZE_MS + 50, 480, 270), null,
+    'zoom must release after the freeze');
+
+  // a block never zooms, lead-in or otherwise
+  impact.resetImpact();
+  impact.armImpactZoom({ kind: 'block', at: { x: 100, y: 100 } }, 0, opts);
+  assert.strictEqual(impact.impactZoom(0, 480, 270), null, 'blocks must never zoom');
+  impact.resetImpact();
+  console.log('checkZoomLeadIn: OK');
+}
+
+// An ankle breaker has to BE an ankle breaker. Before this, the classifier
+// picked a shot where the handler badly out-rated his man and the view zoomed
+// in on... a player standing still shooting a jumper, with the defender at
+// ordinary spacing. The move has to exist in the choreography, not just in the
+// camera work.
+function checkAnkleBreakerHasACrossover() {
+  require(path.join(__dirname, '..', 'data.js'));
+  const { TEAMS } = require(path.join(__dirname, '..', 'teams.js'));
+  const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(PLAYERS_2026);
+  const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
+  const league = require(path.join(__dirname, '..', 'league.js'));
+
+  function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+
+  let checked = 0;
+  for (let s = 0; s < 6; s++) {
+    const home = TEAMS[s % 30], away = TEAMS[(s + 11) % 30];
+    const events = [];
+    const res = gameSim.simulateGame(home.id, away.id, makeRng(5300 + s), { events: events });
+    const kfs = choreo.buildTimeline({
+      events: events,
+      homeRoster: league.getTeamRoster(home.id),
+      awayRoster: league.getTeamRoster(away.id),
+      boxScore: res.boxScore
+    }).keyframes;
+
+    kfs.forEach(function (k, i) {
+      if (!k.impact || k.impact.kind !== 'ankle') return;
+      const by = k.impact.byId, on = k.impact.onId;
+      const found = {};
+      for (let j = i; j >= 0 && j > i - 14; j--) {
+        const c = kfs[j].cross;
+        if (c && c.by === by && c.on === on && !found[c.phase]) found[c.phase] = kfs[j];
+      }
+      ['jab', 'cross', 'clear', 'recover'].forEach(function (p) {
+        assert.ok(found[p], 'ankle breaker is missing its "' + p + '" beat');
+      });
+      // the separation has to actually open, or it is a sidestep
+      const gJab = dist(found.jab.pos[by], found.jab.pos[on]);
+      const gClear = dist(found.clear.pos[by], found.clear.pos[on]);
+      assert.ok(gClear > gJab + 4,
+        'crossover must open real separation (jab ' + gJab.toFixed(1) + ' -> clear ' + gClear.toFixed(1) + ')');
+      // and he must STAY beaten while the shot is gathered. Asserted at the
+      // windup ('recover') rather than at the shot itself: by the shot keyframe
+      // crashPositions has moved everyone goalward and would mask a defender
+      // who snapped straight back to his man the instant the cut finished.
+      const gRecover = dist(found.recover.pos[by], found.recover.pos[on]);
+      assert.ok(gRecover > gClear - 4,
+        'defender must stay beaten through the windup (clear ' + gClear.toFixed(1) +
+        ' -> windup ' + gRecover.toFixed(1) + ')');
+      // the defender bites HARDER than the jab — he ends up further across than
+      // the man he is guarding, which is what selling the fake means
+      assert.ok(found.cross.cross.phase === 'cross', 'cut beat must be tagged "cross"');
+      checked += 1;
+    });
+  }
+  assert.ok(checked >= 5, 'expected several ankle breakers across the fixture games, saw ' + checked);
+
+  // A plain jump shot must NOT get a crossover — the move is the rare thing,
+  // and a league where every jumper is preceded by a crossover is worse than
+  // one with none. Exactly four cross beats per ankle breaker, no strays.
+  const events2 = [];
+  const res2 = gameSim.simulateGame(TEAMS[3].id, TEAMS[17].id, makeRng(991), { events: events2 });
+  const kfs2 = choreo.buildTimeline({
+    events: events2,
+    homeRoster: league.getTeamRoster(TEAMS[3].id),
+    awayRoster: league.getTeamRoster(TEAMS[17].id),
+    boxScore: res2.boxScore
+  }).keyframes;
+  const ankleCount = kfs2.filter(function (k) { return k.impact && k.impact.kind === 'ankle'; }).length;
+  const crossBeats = kfs2.filter(function (k) { return k.cross; }).length;
+  assert.ok(ankleCount > 0, 'fixture game should contain at least one ankle breaker');
+  assert.strictEqual(crossBeats, ankleCount * 4,
+    'expected exactly 4 cross beats per ankle breaker — ' + crossBeats + ' beats for ' + ankleCount + ' breakers');
+  console.log('checkAnkleBreakerHasACrossover: OK (' + checked + ' verified, ' +
+    ankleCount + ' in the strays fixture with ' + crossBeats + ' beats)');
+}
+
+// The camera frames impact.at. Off-ball flow now moves most of the floor every
+// beat, so the one thing that must NOT move is the player the camera is about
+// to zoom in on — otherwise the effect fires on empty hardwood.
+function checkTheCameraStillLandsOnTheActor() {
+  require(path.join(__dirname, '..', 'data.js'));
+  const { TEAMS } = require(path.join(__dirname, '..', 'teams.js'));
+  const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(PLAYERS_2026);
+  const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
+  const league = require(path.join(__dirname, '..', 'league.js'));
+
+  let checked = 0;
+  for (let s = 0; s < 4; s++) {
+    const home = TEAMS[s % 30], away = TEAMS[(s + 9) % 30];
+    const events = [];
+    const res = gameSim.simulateGame(home.id, away.id, makeRng(4242 + s), { events: events });
+    const kfs = choreo.buildTimeline({
+      events: events,
+      homeRoster: league.getTeamRoster(home.id),
+      awayRoster: league.getTeamRoster(away.id),
+      boxScore: res.boxScore
+    }).keyframes;
+    kfs.forEach(function (k) {
+      if (!k.impact) return;
+      // a block resolves where the SHOT was (onId); a poster and an ankle
+      // breaker resolve on the man who made them (byId)
+      const whoId = k.impact.kind === 'block' ? k.impact.onId : k.impact.byId;
+      const who = k.pos[whoId];
+      if (!who) return;
+      const off = Math.hypot(who[0] - k.impact.at.x, who[1] - k.impact.at.y);
+      assert.ok(off <= 8,
+        k.impact.kind + ' fires ' + off.toFixed(1) + 'px away from its actor — the zoom would frame empty court');
+      checked += 1;
+    });
+  }
+  assert.ok(checked >= 15, 'expected a decent sample of impacts, saw ' + checked);
+  console.log('checkTheCameraStillLandsOnTheActor: OK (' + checked + ' impacts on the mark)');
+}
+
+checkTheCameraStillLandsOnTheActor();
+checkAnkleBreakerHasACrossover();
+checkEffectsUseARealTimeClock();
+checkLinesPlayInsideTheFreeze();
+checkZoomLeadIn();
 checkEdgesRespondToMatchup();
 checkPosterNeedsAllThreeConditions();
 checkAnkleBreakerIsOutsideOnly();
