@@ -59,8 +59,15 @@ function renderScoutingReport(container, playerId) {
 function renderScouting(container, userTeamId) {
   function draw() {
     const state = GameState.scouting;
+    // autoScout defaults on, and it spends the week's points the day they
+    // arrive — so this counter reads 0 essentially always. Left unexplained it
+    // looks like a broken feature rather than a chore already being handled,
+    // and nothing on this screen pointed at the setting that governs it.
+    const autoScouting = !!(GameState.automation && GameState.automation.autoScout);
     let html = '<div class="view-header"><h2>Scouting</h2><span class="view-sub">' +
-      Math.round(state.pointsAvailable) + ' scout points available this week</span></div>';
+      Math.round(state.pointsAvailable) + ' scout points available this week' +
+      (autoScouting ? ' — your staff spends these automatically (see Settings)' : '') +
+      '</span></div>';
 
     const watchlistIds = Object.keys(state.targets).filter(function (id) { return state.targets[id].watchlisted; });
     html += '<div class="panel"><div class="panel-header">Watchlist</div>';
