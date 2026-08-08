@@ -309,75 +309,149 @@ function checkOverallPredictsProduction() {
 // this one got through. Checking the invariants rather than the constants:
 // distinct inputs must give distinct weights, the spread must stay usable, and
 // a trait must stay a modifier rather than becoming the whole number.
+//
+// Applied to EVERY weight in simEngineBoxScore, not just minutesWeight. All six
+// share one shape — Math.max(1, <attribute base> + traitBonus) — so all six
+// share the failure mode, and minutesWeight was only the one whose collapse was
+// visible because rotation order is user-facing. Checking the survivor and not
+// its five identical siblings is how the next one gets through.
+//
+// Mirrors simEngineBoxScore.js:68-113. The bases are restated here rather than
+// imported because they are module-private; checkTheBasesStillMatch below fails
+// loudly if the two ever drift, so a formula change cannot silently leave this
+// check measuring a stale definition.
+const DOWNSTREAM_WEIGHTS = [
+  { name: 'scoringWeight', stat: 'scoring',
+    base: function (p) { const a = p.attributes; return (a.insideScoring + a.midRange + a.threePoint + a.postScoring) / 4; } },
+  { name: 'reboundWeight', stat: 'rebound',
+    base: function (p) { const a = p.attributes; return (a.offReb + a.defReb) / 2; } },
+  { name: 'assistWeight', stat: 'assist',
+    base: function (p) { const a = p.attributes; return (a.passing + a.ballHandling) / 2; } },
+  { name: 'stealWeight', stat: 'steal', base: function (p) { return p.attributes.steal; } },
+  { name: 'blockWeight', stat: 'block', base: function (p) { return p.attributes.block; } },
+  { name: 'minutesWeight', stat: 'usage', base: function (p) { return p.overall; } }
+];
+
 function checkDownstreamWeightsSurviveTheScale() {
   const box = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
   const traits = require(path.join(__dirname, '..', 'traits.js'));
+  const N = PLAYERS_2026.length;
+  const report = [];
 
-  // 1. The weight must stay MONOTONIC in overall for players without a usage
-  //    trait. A better player must never sort below a worse one. (A trait
-  //    carrier legitimately jumps the queue — that is what the trait is for —
-  //    so carriers are excluded rather than counted as failures. An earlier
-  //    draft of this check flagged 80 players by counting every member of any
-  //    weight group a carrier had landed in, which indicted the innocent.)
-  const noTrait = PLAYERS_2026.filter(function (p) {
-    return traits.getTraitBonus(p, 'boxscore', 'usage') === 0;
-  });
-  let inverted = 0;
-  for (let i = 0; i < noTrait.length; i++) {
-    for (let j = 0; j < noTrait.length; j++) {
-      if (noTrait[i].overall > noTrait[j].overall &&
-          box.minutesWeight(noTrait[i]) <= box.minutesWeight(noTrait[j])) inverted += 1;
+  DOWNSTREAM_WEIGHTS.forEach(function (w) {
+    const fn = box[w.name];
+    assert.ok(typeof fn === 'function', w.name + ' is not exported from simEngineBoxScore');
+    function bonus(p) { return traits.getTraitBonus(p, 'boxscore', w.stat); }
+    const weights = PLAYERS_2026.map(fn);
+
+    // 0. THE MECHANISM. max(1, ...) is a divide-by-zero guard for distributeInt,
+    //    not a value-producing path — every player it catches is a player whose
+    //    quality stopped being represented. That is precisely how the bug did
+    //    its damage: at `overall - 40` it clamped 94 players onto the floor and
+    //    104 onto a single weight. Measured across the whole healthy range this
+    //    is flat zero (offsets 0 through 25 clamp nobody), and the mildest
+    //    mutant that breaks it clamps 10, so the 1% bound sits 3.3x below the
+    //    first real failure while leaving room for a genuine 0-attribute player.
+    //
+    //    This is the assertion the repo was missing. The ordering and tie checks
+    //    below describe the SYMPTOM and only trip once the damage is broad; this
+    //    one names the cause and trips as soon as the scale slips at all.
+    const clamped = PLAYERS_2026.filter(function (p) { return w.base(p) + bonus(p) < 1; }).length;
+    assert.ok(clamped <= N * 0.01,
+      w.name + ': the max(1, ...) floor is clamping ' + clamped + ' players (' +
+      (100 * clamped / N).toFixed(1) + '% of the league) — it is a guard, not a value, ' +
+      'and everyone it catches has had their quality erased');
+
+    // 1. MONOTONIC in the underlying skill, for players without the matching
+    //    trait. A better player must never sort below a worse one. (A trait
+    //    carrier legitimately jumps the queue — that is what the trait is for —
+    //    so carriers are excluded rather than counted as failures. An earlier
+    //    draft of this check flagged 80 players by counting every member of any
+    //    weight group a carrier had landed in, which indicted the innocent.)
+    const noTrait = PLAYERS_2026.filter(function (p) { return bonus(p) === 0; });
+    let inverted = 0;
+    for (let i = 0; i < noTrait.length; i++) {
+      for (let j = 0; j < noTrait.length; j++) {
+        if (w.base(noTrait[i]) > w.base(noTrait[j]) &&
+            fn(noTrait[i]) <= fn(noTrait[j])) inverted += 1;
+      }
     }
-  }
-  assert.strictEqual(inverted, 0,
-    inverted + ' pairs of players sort by minutes weight in the wrong order relative to their overall');
+    assert.strictEqual(inverted, 0,
+      w.name + ': ' + inverted + ' pairs of players sort in the wrong order relative to their skill');
 
-  // 2. No mass flattening. The bug put 104 players — 27% of the league — onto a
-  //    single weight value, which is what made rotation order arbitrary. Ties
-  //    between players of genuinely equal overall are fine and unavoidable
-  //    (overall is an integer over a ~50-point range across 380 players), so
-  //    this bounds the size of the largest tie rather than forbidding ties.
-  const groups = {};
-  PLAYERS_2026.forEach(function (p) {
-    const w = box.minutesWeight(p);
-    groups[w] = (groups[w] || 0) + 1;
+    // 2. No mass flattening. The bug put 104 players — 27% of the league — onto
+    //    a single weight, which is what made rotation order arbitrary. Ties
+    //    between genuinely equal players are fine and unavoidable (attributes
+    //    are integers across 380 players), so this bounds the largest tie
+    //    rather than forbidding ties.
+    const groups = {};
+    weights.forEach(function (v) { groups[v] = (groups[v] || 0) + 1; });
+    const biggest = Math.max.apply(null, Object.keys(groups).map(function (k) { return groups[k]; }));
+    assert.ok(biggest <= N * 0.12,
+      w.name + ': ' + biggest + ' players share one weight (' +
+      (100 * biggest / N).toFixed(0) + '% of the league) — order is arbitrary among them');
+
+    // 3. A trait is a modifier, not the number itself. A legendary usage trait
+    //    adds +8; against a median weight of ~8 that was 103% of the player,
+    //    which is what made the collapse visible. Read off the taxonomy rather
+    //    than hard-coded, so retuning TRAIT_TIER_SCALE re-checks itself here
+    //    instead of silently becoming dominant.
+    const sorted = weights.slice().sort(function (a, b) { return a - b; });
+    const median = sorted[Math.floor(sorted.length / 2)];
+    let maxTier = 0;
+    traits.TRAIT_TAXONOMY.forEach(function (t) {
+      if (t.effect.system !== 'boxscore' || t.effect.stat !== w.stat) return;
+      traits.TRAIT_TIERS.forEach(function (tier) {
+        maxTier = Math.max(maxTier, Math.abs(t.tierValues[tier]));
+      });
+    });
+    assert.ok(maxTier / median <= 0.45,
+      w.name + ': the largest trait bonus is ' + (100 * maxTier / median).toFixed(0) +
+      '% of the median weight — a modifier should not dominate the rating it modifies');
+
+    report.push(w.name.replace('Weight', '') + ' ' + (100 * maxTier / median).toFixed(0) + '%');
   });
-  const biggest = Math.max.apply(null, Object.keys(groups).map(function (w) { return groups[w]; }));
-  assert.ok(biggest <= PLAYERS_2026.length * 0.12,
-    biggest + ' players share one minutes weight (' +
-    (100 * biggest / PLAYERS_2026.length).toFixed(0) + '% of the league) — rotation order is arbitrary among them');
 
-  // 2. The proportional spread has to stay usable: simEngineBoxScore splits 240
-  //    minutes with distributeInt in proportion to this. Too narrow and every
-  //    player gets the same minutes; too wide and the bench never plays.
-  const weights = PLAYERS_2026.map(function (p) { return box.minutesWeight(p); });
-  const spread = Math.max.apply(null, weights) / Math.min.apply(null, weights);
+  // 4. minutesWeight ALONE carries a spread bound. simEngineBoxScore splits 240
+  //    minutes with distributeInt in proportion to it, so too narrow and
+  //    everyone plays the same minutes, too wide and the bench never plays. The
+  //    other five are deliberately exempt: blockWeight legitimately spans 104x
+  //    because a rim protector really does block two orders of magnitude more
+  //    than a small guard, and bounding that would be asserting a preference,
+  //    not an invariant.
+  const mw = PLAYERS_2026.map(box.minutesWeight);
+  const spread = Math.max.apply(null, mw) / Math.min.apply(null, mw);
   assert.ok(spread >= 1.8 && spread <= 4.5,
     'minutes-weight spread should be 1.8-4.5x (it was 2.64x before the rescale), got ' + spread.toFixed(2));
 
-  // 3. A trait is a modifier, not the number itself. The tier scale tops out at
-  //    +8 for a usage trait; against a median weight of ~8 that was 103% of the
-  //    player, which is what made the collapse visible.
-  const sorted = weights.slice().sort(function (a, b) { return a - b; });
-  const median = sorted[Math.floor(sorted.length / 2)];
-  // Read the real tier values off the taxonomy rather than hard-coding them, so
-  // retuning TRAIT_TIER_SCALE re-checks itself here instead of silently
-  // becoming dominant.
-  let maxTier = 0;
-  traits.TRAIT_TAXONOMY.forEach(function (t) {
-    if (t.effect.system !== 'boxscore' || t.effect.stat !== 'usage') return;
-    traits.TRAIT_TIERS.forEach(function (tier) {
-      maxTier = Math.max(maxTier, Math.abs(t.tierValues[tier]));
+  console.log('checkDownstreamWeightsSurviveTheScale: OK (' + DOWNSTREAM_WEIGHTS.length +
+    ' weights, 0 clamped, minutes spread ' + spread.toFixed(2) + 'x, max trait ' + report.join(' / ') + ')');
+}
+
+// The bases above are a hand-copy of module-private formulas, so they can rot.
+// Wherever the floor is not in play the weight must equal base + bonus exactly;
+// if simEngineBoxScore's formula changes and this table does not, every check
+// that reads `base` starts measuring a definition the engine no longer uses —
+// silently, and in the passing direction. This is the tripwire for that.
+function checkTheBasesStillMatch() {
+  const box = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  const traits = require(path.join(__dirname, '..', 'traits.js'));
+  DOWNSTREAM_WEIGHTS.forEach(function (w) {
+    const fn = box[w.name];
+    PLAYERS_2026.forEach(function (p) {
+      const raw = w.base(p) + traits.getTraitBonus(p, 'boxscore', w.stat);
+      if (raw < 1) return;                       // floor legitimately in play
+      assert.ok(Math.abs(fn(p) - raw) < 1e-9,
+        w.name + ': validate-ratings\' copy of the base formula no longer matches ' +
+        'simEngineBoxScore for ' + p.name + ' (' + fn(p) + ' vs ' + raw + ') — ' +
+        'update DOWNSTREAM_WEIGHTS to match simEngineBoxScore.js');
     });
   });
-  assert.ok(maxTier / median <= 0.45,
-    'the largest trait bonus is ' + (100 * maxTier / median).toFixed(0) +
-    '% of the median minutes weight — a modifier should not dominate the rating it modifies');
-  console.log('checkDownstreamWeightsSurviveTheScale: OK (spread ' + spread.toFixed(2) +
-    'x, median weight ' + median + ', max trait ' + (100 * maxTier / median).toFixed(0) + '% of it)');
+  console.log('checkTheBasesStillMatch: OK (' + DOWNSTREAM_WEIGHTS.length + ' formulas mirror the engine)');
 }
 
 checkPlusMinusBalances();
+checkTheBasesStillMatch();
 checkDownstreamWeightsSurviveTheScale();
 checkOverallIsDerived();
 checkOverallNeverDriftsFromAttributes();
