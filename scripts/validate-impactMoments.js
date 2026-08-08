@@ -100,11 +100,62 @@ function checkUnknownAndMalformedEventsAreIgnored() {
   assert.strictEqual(choreo.classifyImpact({ type: 'shot', made: true, zone: 'mid' }, null, weakPerimeter), null);
 }
 
+// The check that survives the league aging. Progression moves ratings every
+// season; a cutoff that is right in 2026 could fire on every possession by
+// 2034. The band is wide on purpose — this catches drift and misconfiguration,
+// it is not a golden master and must not fail on ordinary rng variation.
+function checkRateStaysInBand() {
+  require(path.join(__dirname, '..', 'data.js'));
+  const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
+  require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(PLAYERS_2026);
+  const rngMod = require(path.join(__dirname, '..', 'rng.js'));
+  require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+  require(path.join(__dirname, '..', 'gameSim.js'));
+  const se = require(path.join(__dirname, '..', 'simEngine.js'));
+  const league = require(path.join(__dirname, '..', 'league.js'));
+  const teams = require(path.join(__dirname, '..', 'teams.js'));
+  const engine = se.getActiveEngine({ simEngine: 'possession' });
+
+  const ids = teams.TEAMS.map(function (t) { return t.id; });
+  const byId = {};
+  ids.forEach(function (id) { league.getTeamRoster(id).forEach(function (p) { byId[p.id] = p; }); });
+
+  const count = { poster: 0, ankle: 0, block: 0 };
+  let games = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const home = ids[i], away = ids[(i + 7) % ids.length];
+    for (let g = 0; g < 4; g++) {
+      const rng = rngMod.makeRng(81000 + i * 100 + g);
+      const ev = [];
+      engine.simulateGame(home, away, rng, { events: ev });
+      games++;
+      ev.forEach(function (e) {
+        const kind = choreo.classifyImpact(e, byId[e.playerId], byId[e.defenderId]);
+        if (kind) count[kind] += 1;
+      });
+    }
+  }
+
+  ['poster', 'ankle'].forEach(function (kind) {
+    const rate = count[kind] / games;
+    assert.ok(rate >= 0.5 && rate <= 4,
+      kind + ' fires ' + rate.toFixed(2) + '/game over ' + games +
+      ' games, outside the 0.5-4 band — recalibrate IMPACT_THRESHOLDS in ui/pixelChoreographer.js');
+  });
+
+  // Blocks are a real event, not a derived judgement: no threshold shrinks
+  // them, so this asserts the tier-2 population is what the design assumed.
+  const blockRate = count.block / games;
+  assert.ok(blockRate >= 2 && blockRate <= 7,
+    'blocks fire ' + blockRate.toFixed(2) + '/game, outside the expected 2-7 — the engine changed, revisit the two-tier split');
+}
+
 checkEdgesRespondToMatchup();
 checkPosterNeedsAllThreeConditions();
 checkAnkleBreakerIsOutsideOnly();
 checkPosterAndAnkleAreDisjoint();
 checkBlockIsAlwaysTierTwo();
 checkUnknownAndMalformedEventsAreIgnored();
+checkRateStaysInBand();
 
 console.log('All impactMoments validations passed');

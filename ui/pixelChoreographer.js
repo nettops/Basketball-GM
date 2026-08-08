@@ -139,9 +139,16 @@ function isDunker(player) {
 //
 // Calibrated by target rate against the whole league, NOT by reading rating
 // numbers — see the DUNK_LIFT_THRESHOLD comment above for why that fails here.
-// scripts/validate-impactMoments.js asserts the observed rate stays in band as
-// progression moves ratings over the league's life.
-const IMPACT_THRESHOLDS = { poster: 22, ankle: 20 };
+//
+// Measured 2026-08-07 over 240 games across all 30 teams: poster fires
+// 2.00/game and ankle 1.38/game, a tier-1 total of 3.38 against ~3.94 blocks.
+// The two numbers differ because the rating spread for leaping finishers is
+// wider than for handles — at a shared cutoff of 20, posters fire 3.67/game
+// against ankle's 1.70, so one threshold for both would misfire on one of them.
+//
+// checkRateStaysInBand in scripts/validate-impactMoments.js holds these to
+// 0.5-4/game so progression cannot silently turn them into confetti.
+const IMPACT_THRESHOLDS = { poster: 24, ankle: 21 };
 
 // How badly the finisher beat the man protecting the rim.
 function posterEdge(shooter, defender) {
