@@ -51,15 +51,30 @@ function assertLeagueRostersAreLegal(context) {
 function checkEditPlayerRatings() {
   const team = teamsModule.TEAMS[0];
   const player = leagueModule.getTeamRoster(team.id)[0];
-  const result = commissionerModule.editPlayerRatings(player.id, { overall: 500, potential: -50, attributes: { threePoint: 999, block: -999 } });
-  assert.strictEqual(result.success, true, 'edit should report success for a real player');
   // Read from data.js rather than hard-coded, so a future scale change cannot
   // leave this passing against numbers that no longer exist.
   const RMIN = dataModule.RATING_MIN, RMAX = dataModule.RATING_MAX;
-  assert.strictEqual(player.overall, RMAX, 'overall should clamp to RATING_MAX');
+
+  // `overall` is derived from the attributes now, so these are no longer
+  // independent knobs and asking for both at once is self-contradictory: the
+  // original single edit set overall to the maximum AND block to the minimum,
+  // which cannot both be true of one player. editPlayerRatings applies the
+  // overall solve first and explicit attributes after, so the attributes win —
+  // that precedence is the thing worth pinning, and it is checked below.
+  const overallOnly = commissionerModule.editPlayerRatings(player.id, { overall: 500, potential: -50 });
+  assert.strictEqual(overallOnly.success, true, 'edit should report success for a real player');
+  assert.strictEqual(player.overall, RMAX, 'an out-of-range overall should drive the attributes to RATING_MAX');
   assert.strictEqual(player.potential, RMIN, 'potential should clamp to RATING_MIN');
+
+  const attrEdit = commissionerModule.editPlayerRatings(player.id, { attributes: { threePoint: 999, block: -999 } });
+  assert.strictEqual(attrEdit.success, true);
   assert.strictEqual(player.attributes.threePoint, RMAX, 'attribute should clamp to RATING_MAX');
   assert.strictEqual(player.attributes.block, RMIN, 'attribute should clamp to RATING_MIN');
+
+  // An explicit attribute must beat the overall solve in the same edit.
+  commissionerModule.editPlayerRatings(player.id, { overall: 500, attributes: { block: 0 } });
+  assert.strictEqual(player.attributes.block, RMIN,
+    'an explicit attribute must win over the overall solve in the same edit');
   const missing = commissionerModule.editPlayerRatings('not-a-real-id', { overall: 80 });
   assert.strictEqual(missing.success, false, 'editing an unknown player id should fail cleanly');
   console.log('checkEditPlayerRatings: OK');

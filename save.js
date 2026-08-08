@@ -14,6 +14,7 @@ function _makeMemoryStorage() {
 var _SAVE_DATA = (typeof require !== 'undefined')
   ? {
       players: require('./players-2026.js'),
+      ratings: require('./ratings.js'),
       teams: require('./teams.js'),
       league: require('./league.js'),
       rng: require('./rng.js'),
@@ -22,6 +23,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
     }
   : {
       players: { PLAYERS_2026: PLAYERS_2026 },
+      ratings: { defineOverall: defineOverall },
       teams: { TEAMS: TEAMS },
       league: { getPlayerById: getPlayerById },
       rng: { makeRng: makeRng },
@@ -231,8 +233,14 @@ function applySavedState(payload, gameState) {
 
   // PLAYERS_2026 grows/shrinks over a save's lifetime (draft picks added,
   // retirements removed) — full replace rather than in-place field restore.
+  // `overall` is a derived getter (ratings.js), and it is non-enumerable so it
+  // is never serialised. That means a player coming back off a save has NO
+  // overall at all until the getter is reinstalled here — every roster screen,
+  // every trade valuation and the rotation weights would read undefined.
   _SAVE_DATA.players.PLAYERS_2026.length = 0;
-  payload.players.forEach(function (p) { _SAVE_DATA.players.PLAYERS_2026.push(p); });
+  payload.players.forEach(function (p) {
+    _SAVE_DATA.players.PLAYERS_2026.push(_SAVE_DATA.ratings.defineOverall(p));
+  });
 
   gameState.season = payload.season ? {
     games: payload.season.games.map(function (g) {

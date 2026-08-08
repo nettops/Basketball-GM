@@ -223,10 +223,16 @@ function checkProgressionTraitIntegration() {
   const dataModule = require(path.join(__dirname, '..', 'data.js'));
   const rng = makeRng(33);
 
+  // `overall` is derived from the attributes (ratings.js). A plain `overall: 70`
+  // field would be a frozen literal that progressPlayer — which now only moves
+  // attributes — can never change, so every trial would measure zero and this
+  // check would compare 0 against 0.
+  const ratingsModule = require(path.join(__dirname, '..', 'ratings.js'));
   function freshPlayer(overrides) {
-    const p = { age: 22, yearsPro: 2, overall: 70, potential: 80, attributes: {} };
+    const p = { age: 22, yearsPro: 2, potential: 80, attributes: {} };
     dataModule.ATTRIBUTE_KEYS.forEach(function (k) { p.attributes[k] = 70; });
-    return Object.assign(p, overrides || {});
+    Object.assign(p, overrides || {});
+    return ratingsModule.defineOverall(p);
   }
 
   const coachable = freshPlayer({ hiddenTraits: [{ key: 'coachable', tier: 'legendary' }], hiddenPersonality: { coachability: 100 } });

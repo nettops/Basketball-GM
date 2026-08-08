@@ -55,8 +55,11 @@ function checkDraftClassHitRates() {
   const bosRoster = leagueModule.getTeamRoster('BOS');
   const highOverallPlayer = bosRoster[0];
   const lowOverallPlayer = bosRoster[1];
-  highOverallPlayer.overall = 85;
-  lowOverallPlayer.overall = 60;
+  // `overall` is derived from the attributes (ratings.js) and cannot be
+  // assigned; move the attributes that produce it instead.
+  const ratingsModule = require(path.join(__dirname, '..', 'ratings.js'));
+  ratingsModule.scaleAttributesToOverall(highOverallPlayer, 85);
+  ratingsModule.scaleAttributesToOverall(lowOverallPlayer, 60);
 
   historyModule.LEAGUE_HISTORY.draftClasses.push({
     leagueYear: 2050,

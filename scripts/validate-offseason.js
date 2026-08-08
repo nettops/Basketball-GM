@@ -10,38 +10,60 @@ function checkProgression() {
   const progressionModule = require(path.join(__dirname, '..', 'progression.js'));
   const rng = makeRng(1);
 
+  // `overall` is derived from the attributes (ratings.js), so these synthetic
+  // players get the real getter installed rather than a plain number field —
+  // otherwise `overall` is a frozen literal, progressPlayer (which now only
+  // moves attributes) can never change it, and every trial measures zero.
+  // Resetting between trials means restoring the ATTRIBUTES; assigning to
+  // overall throws, by design.
+  const ratingsModule = require(path.join(__dirname, '..', 'ratings.js'));
+  function synth(fields, attrValue) {
+    const pl = Object.assign({ attributes: {} }, fields);
+    dataModule.ATTRIBUTE_KEYS.forEach(function (k) { pl.attributes[k] = attrValue; });
+    return ratingsModule.defineOverall(pl);
+  }
+  function snapshot(pl) {
+    const out = {};
+    dataModule.ATTRIBUTE_KEYS.forEach(function (k) { out[k] = pl.attributes[k]; });
+    return out;
+  }
+  function restore(pl, snap) {
+    dataModule.ATTRIBUTE_KEYS.forEach(function (k) { pl.attributes[k] = snap[k]; });
+  }
+
   // A young high-potential player should trend upward on average over many rolls.
-  const youngProspect = { age: 20, yearsPro: 2, overall: 65, potential: 88, attributes: {} };
-  dataModule.ATTRIBUTE_KEYS.forEach(function (k) { youngProspect.attributes[k] = 65; });
+  const youngProspect = synth({ age: 20, yearsPro: 2, potential: 88 }, 65);
+  const youngSnap = snapshot(youngProspect);
   let totalChange = 0;
   const TRIALS = 200;
   for (let i = 0; i < TRIALS; i++) {
     const before = youngProspect.overall;
     progressionModule.progressPlayer(youngProspect, rng);
     totalChange += youngProspect.overall - before;
-    youngProspect.overall = before; // reset for an independent trial
+    restore(youngProspect, youngSnap); // reset for an independent trial
     youngProspect.age = 20;
     youngProspect.yearsPro = 2;
+    youngProspect.potential = 88;
   }
   assert.ok(totalChange / TRIALS > 0, 'a young player far below potential should trend upward on average');
 
   // A declining veteran should trend downward on average.
-  const veteran = { age: 35, yearsPro: 13, overall: 78, potential: 78, attributes: {} };
-  dataModule.ATTRIBUTE_KEYS.forEach(function (k) { veteran.attributes[k] = 78; });
+  const veteran = synth({ age: 35, yearsPro: 13, potential: 78 }, 78);
+  const vetSnap = snapshot(veteran);
   let veteranChange = 0;
   for (let i = 0; i < TRIALS; i++) {
     const before = veteran.overall;
     progressionModule.progressPlayer(veteran, rng);
     veteranChange += veteran.overall - before;
-    veteran.overall = before;
+    restore(veteran, vetSnap);
     veteran.age = 35;
     veteran.yearsPro = 13;
+    veteran.potential = 78;
   }
   assert.ok(veteranChange / TRIALS < 0, 'a 35-year-old should trend downward on average');
 
   // Invariant and range checks after a single real progression call.
-  const p = { age: 24, yearsPro: 3, overall: 90, potential: 90, attributes: {} };
-  dataModule.ATTRIBUTE_KEYS.forEach(function (k) { p.attributes[k] = 90; });
+  const p = synth({ age: 24, yearsPro: 3, potential: 90 }, 90);
   progressionModule.progressPlayer(p, rng);
   assert.strictEqual(p.yearsPro, 4, 'yearsPro must increment alongside age each offseason');
   assert.ok(p.potential >= p.overall, 'potential must stay >= overall after progression');

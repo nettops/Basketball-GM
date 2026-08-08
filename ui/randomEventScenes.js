@@ -83,7 +83,9 @@ function handleEventDecision(eventId, decisionIdx) {
   if (statusEffect) {
     const player = getPlayerById(event.playerId);
     if (player) {
-      player.overall = Math.max(25, Math.min(99, player.overall + statusEffect.statsPenalty));
+      // `overall` is derived from the attributes now, so a stats penalty has
+      // to land on the attributes — writing to overall would throw.
+      scaleAttributesToOverall(player, Math.max(0, Math.min(100, player.overall + statusEffect.statsPenalty)));
       if (player.status) {
         player.status.morale = Math.max(0, Math.min(100, player.status.morale + statusEffect.moralePenalty));
       }

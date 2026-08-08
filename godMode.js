@@ -17,7 +17,8 @@ var _GODMODE_DATA = (typeof require !== 'undefined')
 function maxOutRoster(teamId) {
   const roster = _GODMODE_DATA.league.getTeamRoster(teamId);
   roster.forEach(function (p) {
-    p.overall = _GODMODE_DATA.data.RATING_MAX;
+    // `overall` is derived, so maxing the attributes IS maxing the overall.
+    // Assigning to it here would have thrown against the getter.
     p.potential = _GODMODE_DATA.data.RATING_MAX;
     _GODMODE_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
       p.attributes[key] = _GODMODE_DATA.data.RATING_MAX;

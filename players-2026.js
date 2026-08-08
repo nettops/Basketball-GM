@@ -5,8 +5,14 @@
 // directly, since re-declaring an identifier that's already a page-global
 // `const` from an earlier <script> tag would be a SyntaxError in the browser.
 var _DATA = (typeof require !== 'undefined')
-  ? Object.assign({}, require('./data.js'), { makeRng: require('./rng.js').makeRng })
-  : { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, makeRng: makeRng };
+  ? Object.assign({}, require('./data.js'), {
+      makeRng: require('./rng.js').makeRng,
+      defineOverall: require('./ratings.js').defineOverall
+    })
+  : {
+      ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX,
+      makeRng: makeRng, defineOverall: defineOverall
+    };
 
 // Archetype attribute offsets applied to a player's overall rating to produce
 // a realistic 20-attribute spread, clamped to [RATING_MIN, RATING_MAX].
@@ -46,6 +52,10 @@ const ARCHETYPES = {
 const OLD_MEAN = 74.67, OLD_SD = 7.60;   // measured over the 450 authored `overall` values
 const SCALE_MEAN = 50, SCALE_SD = 9;
 const OFFSET_AMP = 2.4;
+// How an authored headroom (`potential - overall`, written on the old scale)
+// converts to the new one. Exported so draftProspects.js expresses a
+// prospect's ceiling the same way.
+const ANCHOR_SD_RATIO = SCALE_SD / OLD_SD;
 const JITTER_SD = 6;
 
 // Deterministic string -> uint32, same shape as traits.js's hashId, so a
@@ -76,8 +86,10 @@ function rescaleAnchor(v) {
     Math.round(SCALE_MEAN + ((v - OLD_MEAN) / OLD_SD) * SCALE_SD)));
 }
 
-function makeAttributes(overall, archetype, playerId) {
-  const offsets = ARCHETYPES[archetype] || {};
+// `offsetTable` lets draftProspects.js reuse this generator with its own
+// archetype offsets — the offsets are allowed to diverge, the SCALE is not.
+function makeAttributes(overall, archetype, playerId, offsetTable) {
+  const offsets = (offsetTable || ARCHETYPES)[archetype] || {};
   const rng = _DATA.makeRng(attrHash(playerId));
   const z = (overall - OLD_MEAN) / OLD_SD;
   const attrs = {};
@@ -108,12 +120,15 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
     position: position,
     jerseyNumber: jerseyNumber,
     yearsPro: yearsPro,
-    // `overall` is still stored here; Task 3 of the ratings-and-overall plan
-    // replaces it with a getter derived from the attributes. Rescaled now so
-    // it does not sit 25 points above the attributes it is supposed to
-    // summarise while the two coexist.
-    overall: rescaleAnchor(overall),
-    potential: rescaleAnchor(potential),
+    // No `overall` field. It is a derived getter installed by
+    // ratings.js's defineOverall at the bottom of this function — the
+    // authored `overall` argument survives only as the anchor makeAttributes
+    // positions the player with.
+    //
+    // `potential` is set below rather than here, because it has to be at least
+    // the derived overall and the getter does not exist until defineOverall
+    // has run.
+    potential: 0,
     contract: {
       salary: salary,
       yearsRemaining: yearsRemaining,
@@ -133,6 +148,20 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
     college: opts.college || autoData.college || null,
     dateOfBirth: opts.dateOfBirth || autoData.dateOfBirth || null
   };
+  _DATA.defineOverall(player);
+  // Potential is the authored HEADROOM re-expressed on the new scale, not the
+  // authored level. Mapping the absolute value instead looked right and was
+  // wrong: overall is now a regression while potential was an affine map, so
+  // the two agreed in distribution but crossed for individual players, and
+  // clamping that away with a max() collapsed the gap to ~0 for most of the
+  // league. progression.js pulls young players by `potential - overall`, so a
+  // zero gap means nobody develops — three development validators caught it.
+  //
+  // Scaling the gap by SCALE_SD / OLD_SD keeps a 10-point authored ceiling
+  // worth the same fraction of a standard deviation as the author intended,
+  // and potential >= overall then holds by construction.
+  player.potential = Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX,
+    player.overall + Math.round(Math.max(0, potential - overall) * ANCHOR_SD_RATIO)));
   return player;
 }
 
@@ -994,6 +1023,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PLAYERS_2026: PLAYERS_2026,
     makeAttributes: makeAttributes,
     ARCHETYPES: ARCHETYPES,
-    rescaleAnchor: rescaleAnchor
+    rescaleAnchor: rescaleAnchor,
+    ANCHOR_SD_RATIO: ANCHOR_SD_RATIO
   };
 }

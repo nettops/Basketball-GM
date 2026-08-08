@@ -151,7 +151,156 @@ function checkSynergyThresholdsAreSelective() {
     }).join(', ') + ')');
 }
 
+// `overall` must be a pure function of the attributes. It used to be a stored
+// field that progression updated separately, and it drifted up to 7.3 points
+// away from what the attributes supported over 12 seasons — while
+// simEngineBoxScore's minutesWeight read `overall` and every other weight read
+// attributes, so a drifted player drew star minutes with role-player skills.
+function checkOverallIsDerived() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const p = PLAYERS_2026[0];
+  const before = p.overall;
+  const original = p.attributes.threePoint;
+  p.attributes.threePoint = Math.min(100, original + 25);
+  assert.notStrictEqual(p.overall, before,
+    'overall must react to an attribute change; it is still a stored field');
+  p.attributes.threePoint = original;
+  assert.strictEqual(p.overall, before, 'overall must return to its prior value');
+  assert.strictEqual(p.overall, ratings.computeOverall(p),
+    'p.overall and computeOverall must agree');
+
+  // Assignment has to FAIL LOUDLY. A getter with no setter is a silent no-op in
+  // sloppy mode, which is worse than the bug being fixed — six call sites in
+  // this codebase were assigning to overall.
+  assert.throws(function () { p.overall = 99; }, /cannot be assigned/,
+    'assigning to overall must throw rather than silently do nothing');
+
+  // And it must never be serialised, or a loaded save carries a frozen value
+  // that never updates again — the stored-overall bug through the back door.
+  assert.strictEqual(JSON.parse(JSON.stringify(p)).overall, undefined,
+    'overall must be non-enumerable so it never round-trips through a save');
+  console.log('checkOverallIsDerived: OK');
+}
+
+// Progression must not be able to separate them, however many seasons run.
+function checkOverallNeverDriftsFromAttributes() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  require(path.join(__dirname, '..', 'coaches.js'));
+  const prog = require(path.join(__dirname, '..', 'progression.js'));
+  const rng = makeRng(777);
+  // Deep-copying through JSON drops the getter (it is non-enumerable), which is
+  // exactly what a save does — so reinstalling it here also exercises the
+  // rehydration path save.js depends on.
+  const players = JSON.parse(JSON.stringify(PLAYERS_2026)).map(function (p) {
+    return ratings.defineOverall(p);
+  });
+  for (let y = 0; y < 12; y++) {
+    players.forEach(function (p) { if (p.age < 38) prog.progressPlayer(p, rng, [], {}); });
+  }
+  let worst = 0;
+  players.forEach(function (p) {
+    worst = Math.max(worst, Math.abs(p.overall - ratings.computeOverall(p)));
+    assert.ok(p.potential >= p.overall,
+      'potential must stay >= overall through progression for ' + p.id +
+      ' (' + p.potential + ' vs ' + p.overall + ')');
+  });
+  assert.strictEqual(worst, 0,
+    'overall cannot drift from the attributes; worst divergence after 12 seasons was ' + worst);
+  console.log('checkOverallNeverDriftsFromAttributes: OK (12 seasons, zero drift)');
+}
+
+// Added because a mutation SURVIVED: zeroing the headroom conversion in
+// players-2026.js left every check in this file green. Young players have to
+// carry real room above their current overall, because progression pulls them
+// toward it — with no headroom nobody develops, and three development
+// validators fail while the file that owns the derivation says nothing.
+function checkYoungPlayersHaveHeadroom() {
+  const young = PLAYERS_2026.filter(function (p) { return p.age <= 23; });
+  assert.ok(young.length >= 20, 'expected a meaningful under-24 population, got ' + young.length);
+  const gaps = young.map(function (p) { return p.potential - p.overall; })
+    .sort(function (a, b) { return a - b; });
+  const median = gaps[Math.floor(gaps.length / 2)];
+  assert.ok(median >= 5,
+    'the median under-24 player needs real room to grow into, median headroom was ' + median);
+  const withRoom = PLAYERS_2026.filter(function (p) { return p.potential > p.overall; }).length;
+  assert.ok(withRoom >= PLAYERS_2026.length * 0.4,
+    'a good share of the league should still be improvable, got ' + withRoom + '/' + PLAYERS_2026.length);
+  PLAYERS_2026.forEach(function (p) {
+    assert.ok(p.potential >= p.overall,
+      'potential must never sit below overall for ' + p.id);
+  });
+  console.log('checkYoungPlayersHaveHeadroom: OK (median under-24 headroom ' + median +
+    ', ' + withRoom + '/' + PLAYERS_2026.length + ' improvable)');
+}
+
+// The fit has to be worth having. Measured against the sim's own plus/minus per
+// minute on SCRAMBLED rosters, which is the only way the signal is legible:
+// with real rotations, even the old stored overall — the number the attributes
+// were generated from — reached only r=0.372, because good players always share
+// a floor and a player's plus/minus is mostly his teammates'. ZenGM hit the same
+// wall and solved it the same way, with elevated injuries for lineup variety.
+//
+// The 0.6 bar is the FIT's quality, not a number chosen to pass: the full fit
+// (1800 games, 400-minute floor) measures 0.823, and r here is sample-limited
+// rather than fit-limited. Measured convergence, so the game count below is
+// justified rather than picked -- 240 games/120min 0.451, 240/300 0.501,
+// 480/300 0.578, 480/500 0.605, 900/500 0.693. 480 games at a 500-minute floor
+// is the cheapest point that clears the real bar.
+function checkOverallPredictsProduction() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const rng = makeRng(2026);
+  const byId = {};
+  PLAYERS_2026.forEach(function (p) { byId[p.id] = p; });
+  const originalTeam = {};
+  PLAYERS_2026.forEach(function (p) { originalTeam[p.id] = p.teamId; });
+
+  function scramble() {
+    const pool = PLAYERS_2026.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+    }
+    pool.forEach(function (p, i) { p.teamId = TEAMS[i % TEAMS.length].id; });
+  }
+
+  const acc = {};
+  for (let i = 0; i < 480; i++) {
+    if (i % 30 === 0) scramble();
+    const home = TEAMS[i % TEAMS.length];
+    const away = TEAMS[(i + 11) % TEAMS.length];
+    if (home.id === away.id) continue;
+    const r = gameSim.simulateGame(home.id, away.id, rng);
+    Object.keys(r.boxScore).forEach(function (id) {
+      const l = r.boxScore[id];
+      const q = acc[id] || (acc[id] = { min: 0, pm: 0 });
+      q.min += l.minutes; q.pm += (l.plusMinus || 0);
+    });
+  }
+  PLAYERS_2026.forEach(function (p) { p.teamId = originalTeam[p.id]; });
+
+  const ids = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 500; });
+  const x = ids.map(function (id) { return ratings.computeOverall(byId[id]); });
+  const y = ids.map(function (id) { return acc[id].pm / acc[id].min; });
+  const n = x.length;
+  const mx = x.reduce(function (a, b) { return a + b; }, 0) / n;
+  const my = y.reduce(function (a, b) { return a + b; }, 0) / n;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (x[i] - mx) * (y[i] - my);
+    sxx += (x[i] - mx) * (x[i] - mx);
+    syy += (y[i] - my) * (y[i] - my);
+  }
+  const r = sxy / Math.sqrt(sxx * syy);
+  assert.ok(n >= 100, 'need a real sample, got ' + n);
+  assert.ok(r >= 0.6, 'overall should predict plus/minus per minute, r was ' + r.toFixed(3));
+  console.log('checkOverallPredictsProduction: OK (r ' + r.toFixed(3) + ', n ' + n + ')');
+}
+
 checkPlusMinusBalances();
+checkOverallIsDerived();
+checkOverallNeverDriftsFromAttributes();
+checkYoungPlayersHaveHeadroom();
+checkOverallPredictsProduction();
 checkPlayersAreIndividuals();
 checkRatingsUseTheWholeScale();
 checkGenerationIsDeterministic();

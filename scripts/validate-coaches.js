@@ -76,6 +76,15 @@ checkCoachFitMultiplier();
 
 // progression.js: Coachable/Stubborn should be gated by coach fit, not applied
 // unconditionally (the pre-Phase-C behavior, back when no coach entity existed).
+// Object.assign drops non-enumerable properties, so a shallow-copied player
+// loses the derived `overall` getter entirely. Every test clone has to go
+// through here.
+function clonePlayer(player) {
+  const ratingsMod = require(path.join(__dirname, '..', 'ratings.js'));
+  const copy = Object.assign({}, player, { attributes: Object.assign({}, player.attributes) });
+  return ratingsMod.defineOverall(copy);
+}
+
 function checkProgressionRespectsCoachFit() {
   const leagueModule = require(path.join(__dirname, '..', 'league.js'));
   const progressionModule = require(path.join(__dirname, '..', 'progression.js'));
@@ -92,7 +101,10 @@ function checkProgressionRespectsCoachFit() {
 
   team.coach = { overall: 90, specialty: 'development' }; // strong fit
   const goodFitOverallBefore = player.overall;
-  progressionModule.progressPlayer(Object.assign({}, player), rngA, []);
+  // Object.assign does NOT copy non-enumerable properties, and `overall` is a
+  // non-enumerable derived getter (ratings.js) — a plain shallow copy comes
+  // back with overall === undefined. Clone the data and reinstall the getter.
+  progressionModule.progressPlayer(clonePlayer(player), rngA, []);
 
   team.coach = { overall: 55, specialty: 'defense' }; // weak/mismatched fit for an offense-leaning young player
   player.attributes.insideScoring = 85; player.attributes.midRange = 80; player.attributes.threePoint = 75; player.attributes.passing = 70;
@@ -102,9 +114,11 @@ function checkProgressionRespectsCoachFit() {
   // exact deltas depend on rng draws shared with other change terms, so this
   // checks the wiring (team lookup + coachFitMultiplier call) rather than an
   // exact numeric outcome.
-  const clone = Object.assign({}, player, { attributes: Object.assign({}, player.attributes) });
+  const clone = clonePlayer(player);
   progressionModule.progressPlayer(clone, rngB, []);
-  assert.ok(clone.overall >= 25 && clone.overall <= 99);
+  const dataMod = require(path.join(__dirname, '..', 'data.js'));
+  assert.ok(clone.overall >= dataMod.RATING_MIN && clone.overall <= dataMod.RATING_MAX,
+    'a progressed clone should still hold a valid derived overall, got ' + clone.overall);
 
   console.log('checkProgressionRespectsCoachFit: OK (before=' + goodFitOverallBefore + ')');
 }

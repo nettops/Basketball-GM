@@ -10,7 +10,8 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       tradeEvaluator: require('./tradeEvaluator.js'),
       coaches: require('./coaches.js'),
       rosterMoves: require('./rosterMoves.js'),
-      faces: require('./faces.js')
+      faces: require('./faces.js'),
+      ratings: require('./ratings.js')
     }
   : {
       league: { getPlayerById: getPlayerById, getTeamRoster: getTeamRoster },
@@ -20,6 +21,7 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       prospects: { mkProspect: mkProspect },
       traits: { ensureHiddenPlayerData: ensureHiddenPlayerData },
       faces: { ensurePlayerFace: ensurePlayerFace },
+      ratings: { scaleAttributesToOverall: scaleAttributesToOverall },
       coaches: { ensureTeamCoach: ensureTeamCoach },
       rosterMoves: { getFreeAgents: getFreeAgents },
       trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
@@ -39,7 +41,12 @@ function commissionerClampRating(v) {
 function editPlayerRatings(playerId, changes) {
   const player = _COMMISSIONER_DATA.league.getPlayerById(playerId);
   if (!player) return { success: false, reason: 'Player not found.' };
-  if (changes.overall !== undefined) player.overall = commissionerClampRating(changes.overall);
+  // `overall` is derived from the attributes (ratings.js), so "set this player
+  // to a 90" has to move the attributes that produce a 90. Applied FIRST, so
+  // an edit that also names specific attributes still wins on those.
+  if (changes.overall !== undefined) {
+    _COMMISSIONER_DATA.ratings.scaleAttributesToOverall(player, commissionerClampRating(changes.overall));
+  }
   if (changes.potential !== undefined) player.potential = commissionerClampRating(changes.potential);
   if (changes.attributes) {
     Object.keys(changes.attributes).forEach(function (key) {

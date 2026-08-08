@@ -1,10 +1,12 @@
 var _PROSPECT_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js'), players: require('./players-2026.js'), ratings: require('./ratings.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS },
       traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies },
       faces: { generateFace: generateFace },
-      progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo }
+      progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo },
+      players: { makeAttributes: makeAttributes, ANCHOR_SD_RATIO: ANCHOR_SD_RATIO },
+      ratings: { defineOverall: defineOverall }
     };
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
@@ -24,14 +26,18 @@ const PROSPECT_ARCHETYPES = {
   raw_prospect:    { insideScoring: -2, midRange: -4, threePoint: -4, freeThrow: -2, passing: -2, ballHandling: -2, postScoring: -2, perimeterDefense: -2, interiorDefense: -2, steal: -2, block: -2, offReb: -2, defReb: -2, speed: 4, acceleration: 4, strength: -4, vertical: 4, basketballIQ: -8, leadership: -6, workEthic: 0 }
 };
 
-function makeProspectAttributes(overall, archetype) {
-  const offsets = PROSPECT_ARCHETYPES[archetype];
-  const attrs = {};
-  _PROSPECT_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
-    const raw = overall + (offsets[key] || 0);
-    attrs[key] = Math.max(_PROSPECT_DATA.data.RATING_MIN, Math.min(_PROSPECT_DATA.data.RATING_MAX, raw));
-  });
-  return attrs;
+// Same generation as players-2026.js's makeAttributes — anchor on the authored
+// (overall, archetype), amplify the archetype shape, then add deterministic
+// per-attribute variation seeded from the prospect's own id. Kept in step with
+// that file deliberately: a draft class built the old `overall + offset` way
+// would arrive on a different scale from the league it is joining, and every
+// prospect of a given archetype and overall would be the same person.
+//
+// The constants are imported rather than duplicated. The archetype OFFSETS
+// stay duplicated above, as they always were, so prospect and veteran
+// archetype tuning can diverge — but the scale cannot.
+function makeProspectAttributes(overall, archetype, prospectId) {
+  return _PROSPECT_DATA.players.makeAttributes(overall, archetype, prospectId, PROSPECT_ARCHETYPES);
 }
 
 function slugify(name) {
@@ -47,7 +53,11 @@ let _staticProspectSeq = 0;
 function mkProspect(name, age, heightIn, weightLb, position, overall, potential, archetype, bustChance, nbaComparison, opts) {
   opts = opts || {};
   const autoData = PROSPECT_DATA_MAP[name] || {};
-  return {
+  // Hoisted out of the literal: makeProspectAttributes seeds a prospect's
+  // per-attribute variation from his id, so the id has to exist first.
+  const prospectId = 'prospect-' + slugify(name) + '-' +
+    (opts.rng ? Math.floor(opts.rng() * 1000000) : (++_staticProspectSeq));
+  const prospect = {
     // Deterministic either way. Every other value a generated prospect gets
     // comes from the seeded league rng; the id was the one exception, and it
     // defeated reproducibility outright — save.js captures the rng position
@@ -59,7 +69,7 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
     // The suffix exists to separate GENERATED prospects, whose names repeat
     // from a small pool; the fixed class below has unique real names and just
     // needs a stable counter.
-    id: 'prospect-' + slugify(name) + '-' + (opts.rng ? Math.floor(opts.rng() * 1000000) : (++_staticProspectSeq)),
+    id: prospectId,
     teamId: null,
     name: name,
     age: age,
@@ -68,11 +78,12 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
     position: position,
     jerseyNumber: null, // assigned when drafted
     yearsPro: 0,
-    overall: overall,
-    potential: potential,
+    // No `overall` — it is a derived getter (ratings.js), installed below.
+    // `potential` is likewise set below, since it is expressed relative to the
+    // derived overall.
     contract: { salary: 0, yearsRemaining: 0, playerOption: false, teamOption: false }, // set on draft
     status: { morale: 70, fatigue: 0, injury: null },
-    attributes: makeProspectAttributes(overall, archetype),
+    attributes: makeProspectAttributes(overall, archetype, prospectId),
     hiddenTraits: [],
     hiddenPersonality: {},
     hiddenTendencies: {},
@@ -81,6 +92,13 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
     college: opts.college || autoData.college || null,
     dateOfBirth: opts.dateOfBirth || autoData.dateOfBirth || null
   };
+  _PROSPECT_DATA.ratings.defineOverall(prospect);
+  // Same headroom-preserving rule as players-2026.js's mkPlayer: the authored
+  // gap re-expressed on the new scale, so `potential - overall` still drives
+  // progression's development pull and potential >= overall holds.
+  prospect.potential = Math.max(_PROSPECT_DATA.data.RATING_MIN, Math.min(_PROSPECT_DATA.data.RATING_MAX,
+    prospect.overall + Math.round(Math.max(0, potential - overall) * _PROSPECT_DATA.players.ANCHOR_SD_RATIO)));
+  return prospect;
 }
 
 // College and estimated birth date for the real 2026 mock draft class (see

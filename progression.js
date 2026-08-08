@@ -1,10 +1,11 @@
 var _PROGRESSION_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX },
       traits: { getTraitBonus: getTraitBonus },
       teams: { getTeamById: getTeamById },
-      coaches: { coachFitMultiplier: coachFitMultiplier }
+      coaches: { coachFitMultiplier: coachFitMultiplier },
+      ratings: { computeOverall: computeOverall }
     };
 
 function clampRating(v) {
@@ -160,7 +161,6 @@ function progressPlayer(player, rng, teammates, options) {
 
   baseChange *= 1 + (baseChange > 0 ? 1 : -1) * (fit - 1) * 0.3;
 
-  var changeSum = 0;
   _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     var profile = RATING_PROFILES[key];
     var ageMod = profile ? profile.ageModifier(player.age) : 0;
@@ -170,12 +170,20 @@ function progressPlayer(player, rng, teammates, options) {
       limits[0], limits[1]
     );
     player.attributes[key] = clampRating(player.attributes[key] + ratingChange);
-    changeSum += ratingChange;
   });
 
-  var avgChange = changeSum / _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.length;
-  player.overall = clampRating(player.overall + avgChange);
-  player.potential = Math.max(player.potential, player.overall);
+  // `overall` is derived from the attributes (ratings.js) — there is nothing
+  // to update here, and nothing that CAN be updated: it is a getter.
+  //
+  // This used to be `player.overall = clampRating(player.overall + avgChange)`,
+  // where avgChange averaged the change each attribute was ASKED for while the
+  // attribute itself stored the change after clampRating truncated it. Any
+  // rating pinned at a bound moved overall without moving the attributes, so
+  // the two drifted apart — measured at up to 7.3 points over 12 seasons, with
+  // 349 attribute-slots sitting at the ceiling and 210 at the floor. Since
+  // minutesWeight read `overall` and every other weight read attributes, a
+  // drifted player earned star minutes with role-player skills.
+  player.potential = Math.max(player.potential, _PROGRESSION_DATA.ratings.computeOverall(player));
 
   applyCareerModeTraining(player);
 }
@@ -227,16 +235,22 @@ function estimatePotentialMonteCarlo(player, rng) {
 
   const maxOveralls = [];
   for (let sim = 0; sim < MONTE_CARLO_SIMULATIONS; sim++) {
-    const copy = {
+    // The copy needs the DERIVED overall getter, not a plain snapshot of the
+    // number. With a plain field, progressPlayer — which now only moves
+    // attributes — would leave copy.overall frozen at its starting value, and
+    // every trajectory would report zero growth: every prospect's estimated
+    // potential would come back equal to his current overall.
+    const copy = _PROGRESSION_DATA.ratings.defineOverall({
       age: player.age,
       yearsPro: player.yearsPro,
-      overall: player.overall,
-      potential: player.overall, // unused while suppressPotentialPull is set, but keeps the invariant player.potential >= player.overall valid
       attributes: Object.assign({}, player.attributes),
       teamId: null,
       hiddenPersonality: player.hiddenPersonality || {},
       isCustomPlayer: false
-    };
+    });
+    // Unused while suppressPotentialPull is set, but keeps the
+    // potential >= overall invariant valid for anything that reads the copy.
+    copy.potential = copy.overall;
     let maxOverall = copy.overall;
     while (copy.age < MONTE_CARLO_TARGET_AGE) {
       progressPlayer(copy, rng, [], { suppressPotentialPull: true });

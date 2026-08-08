@@ -531,17 +531,26 @@ function checkAnkleBreakerHasACrossover() {
   // A plain jump shot must NOT get a crossover — the move is the rare thing,
   // and a league where every jumper is preceded by a crossover is worse than
   // one with none. Exactly four cross beats per ankle breaker, no strays.
-  const events2 = [];
-  const res2 = gameSim.simulateGame(TEAMS[3].id, TEAMS[17].id, makeRng(991), { events: events2 });
-  const kfs2 = choreo.buildTimeline({
-    events: events2,
-    homeRoster: league.getTeamRoster(TEAMS[3].id),
-    awayRoster: league.getTeamRoster(TEAMS[17].id),
-    boxScore: res2.boxScore
-  }).keyframes;
-  const ankleCount = kfs2.filter(function (k) { return k.impact && k.impact.kind === 'ankle'; }).length;
-  const crossBeats = kfs2.filter(function (k) { return k.cross; }).length;
-  assert.ok(ankleCount > 0, 'fixture game should contain at least one ankle breaker');
+  // Ankle breakers fire around twice a game, so a single fixture game legitimately
+  // contains zero — this used to depend on seed 991 happening to have one.
+  // Accumulating over several games tests the real invariant (exactly four cross
+  // beats per breaker, no strays) without riding on one game's luck.
+  let ankleCount = 0, crossBeats = 0;
+  for (let s = 0; s < 8; s++) {
+    const events2 = [];
+    const home2 = TEAMS[(3 + s) % 30], away2 = TEAMS[(17 + s) % 30];
+    if (home2.id === away2.id) continue;
+    const res2 = gameSim.simulateGame(home2.id, away2.id, makeRng(991 + s), { events: events2 });
+    const kfs2 = choreo.buildTimeline({
+      events: events2,
+      homeRoster: league.getTeamRoster(home2.id),
+      awayRoster: league.getTeamRoster(away2.id),
+      boxScore: res2.boxScore
+    }).keyframes;
+    ankleCount += kfs2.filter(function (k) { return k.impact && k.impact.kind === 'ankle'; }).length;
+    crossBeats += kfs2.filter(function (k) { return k.cross; }).length;
+  }
+  assert.ok(ankleCount > 0, 'fixture games should contain at least one ankle breaker');
   assert.strictEqual(crossBeats, ankleCount * 4,
     'expected exactly 4 cross beats per ankle breaker — ' + crossBeats + ' beats for ' + ankleCount + ' breakers');
   console.log('checkAnkleBreakerHasACrossover: OK (' + checked + ' verified, ' +
