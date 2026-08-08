@@ -11,20 +11,34 @@ function renderFreeAgency(container, userTeamId) {
     const pool = getFreeAgents().slice().sort(function (a, b) { return b.overall - a.overall; });
 
     let html = '<div class="view-header"><h2>Free Agency</h2><span class="view-sub">' + pool.length + ' available</span></div>';
-    html += '<div class="toolbar"><button id="resolve-remaining-btn" class="btn-ghost">Resolve Remaining Free Agents</button></div>';
-    html += '<div class="panel"><table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Age</th>' +
-      '<th class="num">OVR</th><th class="num">Action</th></tr></thead><tbody>';
-    pool.forEach(function (p) {
-      html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
-        '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
-        '<td class="num">' + p.age + '</td>' +
-        '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
-        '<td class="actions"><button data-offer-id="' + p.id + '">Make Offer</button></td></tr>';
-    });
-    html += '</tbody></table></div>';
+    // Nothing to resolve when the pool is empty. Disabled rather than removed
+    // so the screen still says what it does, matching the dock's Watch/Undo.
+    html += '<div class="toolbar"><button id="resolve-remaining-btn" class="btn-ghost"' +
+      (pool.length === 0 ? ' disabled' : '') + '>Resolve Remaining Free Agents</button></div>';
+    if (pool.length === 0) {
+      // A header row over an empty tbody reads as a table that failed to load.
+      // Spectator mode above already uses empty-state for exactly this reason.
+      html += '<div class="empty-state">No free agents available — players reach free agency when their contracts expire in the offseason.</div>';
+    } else {
+      html += '<div class="panel"><table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Age</th>' +
+        '<th class="num">OVR</th><th class="num">Action</th></tr></thead><tbody>';
+      pool.forEach(function (p) {
+        html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
+          '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
+          '<td class="num">' + p.age + '</td>' +
+          '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+          '<td class="actions"><button data-offer-id="' + p.id + '">Make Offer</button></td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
     html += '<div id="bidding-panel"></div>';
-    html += '<div class="panel"><div class="panel-header">Recent Signings</div><ul class="stack-list" id="signing-log">' +
-      signingLog.slice(-15).map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul></div>';
+    // Same stranded-header problem: this panel titled itself before there was
+    // anything to list, so a mid-season visit showed "Recent Signings" over
+    // blank space. It appears once there is a signing to report.
+    if (signingLog.length) {
+      html += '<div class="panel"><div class="panel-header">Recent Signings</div><ul class="stack-list" id="signing-log">' +
+        signingLog.slice(-15).map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul></div>';
+    }
 
     container.innerHTML = html;
 

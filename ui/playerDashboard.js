@@ -1,7 +1,10 @@
 function renderPlayerDashboard(container, playerId) {
   const player = getPlayerById(playerId);
   if (!player) {
-    container.innerHTML = '<div class="panel">Player not found</div>';
+    // Reached whenever there is no controlled player — normal in GM mode, not
+    // an error. Matches ui/legacyView.js, the other half of the Career hub,
+    // which uses the same empty-state treatment rather than a bare panel.
+    container.innerHTML = '<div class="empty-state">No player career to display.</div>';
     return;
   }
 

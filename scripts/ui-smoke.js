@@ -572,6 +572,53 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // Headings that title nothing. This has now been shipped twice: the watched
+  // game's "Leaders" label sat over blank space until the first basket, and
+  // Free Agency showed a bare column header plus a "Recent Signings" panel with
+  // nothing under either. Both looked like a screen that had failed to load.
+  // A heading is only allowed when the thing it names actually has content.
+  function checkNoStrandedHeadings() {
+    requireSeason();
+    const results = [];
+    const bareTables = [];
+    const barePanels = [];
+    const restoreView = GameState.currentView;
+
+    applicableNavIds().forEach(function (id) {
+      try {
+        renderView(id);
+      } catch (e) {
+        return;
+      }
+      const vc = document.getElementById('view-content');
+
+      vc.querySelectorAll('table').forEach(function (t) {
+        if (t.querySelectorAll('thead th').length > 0 && t.querySelectorAll('tbody tr').length === 0) {
+          bareTables.push(id + ': ' +
+            Array.from(t.querySelectorAll('thead th')).map(function (th) { return th.textContent.trim(); })
+              .join('/').slice(0, 44));
+        }
+      });
+
+      vc.querySelectorAll('.panel-header').forEach(function (h) {
+        const siblings = Array.from(h.parentElement.children).filter(function (c) { return c !== h; });
+        const text = siblings.map(function (c) { return (c.textContent || '').trim(); }).join('');
+        // A panel of only controls (a form, a chart) is legitimately textless.
+        const hasControls = siblings.some(function (c) {
+          return c.querySelector && c.querySelector('input,select,button,canvas,img');
+        });
+        if (!text && !hasControls) barePanels.push(id + ': "' + h.textContent.trim() + '"');
+      });
+    });
+    renderView(restoreView);
+
+    results.push(ok('empty:no-header-row-without-rows', bareTables.length === 0,
+      bareTables.slice(0, 5).join('; ') || null));
+    results.push(ok('empty:no-panel-header-without-body', barePanels.length === 0,
+      barePanels.slice(0, 5).join('; ') || null));
+    return results;
+  }
+
   // Short labels that name one thing must not be broken across lines. The
   // topbar identity was squeezed to 46px by the status chips competing for the
   // same flex row, so "Eastern · Atlantic" rendered as three lines with the
@@ -616,6 +663,7 @@ const UI_SMOKE = (function () {
     boxscore: checkScheduleBoxScore,
     align: checkTableAlignment,
     chrome: checkChromeLabels,
+    empty: checkNoStrandedHeadings,
     scroll: checkScrollOnNavigate,
     nav: checkNav,
     dock: checkDock,
