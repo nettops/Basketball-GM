@@ -135,6 +135,48 @@ function isDunker(player) {
   return dunkLift(player) >= DUNK_LIFT_THRESHOLD;
 }
 
+// Which plays earn the comic-panel treatment (see ui/pixelImpact.js).
+//
+// Calibrated by target rate against the whole league, NOT by reading rating
+// numbers — see the DUNK_LIFT_THRESHOLD comment above for why that fails here.
+// scripts/validate-impactMoments.js asserts the observed rate stays in band as
+// progression moves ratings over the league's life.
+const IMPACT_THRESHOLDS = { poster: 22, ankle: 20 };
+
+// How badly the finisher beat the man protecting the rim.
+function posterEdge(shooter, defender) {
+  const a = shooter.attributes, d = defender.attributes;
+  return (a.vertical * 2 + a.insideScoring) / 3 - d.interiorDefense;
+}
+
+// How badly the ball-handler beat the man in front of him.
+function handleEdge(shooter, defender) {
+  const a = shooter.attributes, d = defender.attributes;
+  return (a.ballHandling * 2 + a.acceleration + a.speed) / 4 - d.perimeterDefense;
+}
+
+// → 'poster' | 'ankle' | 'block' | null
+//
+// Zone is what keeps poster and ankle disjoint: inside makes can only ever be
+// posters, outside makes only ever ankle breakers. There is no precedence rule
+// to get wrong, and validate-impactMoments.js pins that as a property.
+function classifyImpact(ev, shooter, defender) {
+  if (!ev) return null;
+  if (ev.type === 'block') return 'block';
+  if (ev.type !== 'shot' || !ev.made) return null;
+  // A shot whose shooter or defender could not be resolved is not a highlight.
+  if (!shooter || !shooter.attributes || !defender || !defender.attributes) return null;
+
+  if (ev.zone === 'inside') {
+    if (!isDunker(shooter)) return null;
+    return posterEdge(shooter, defender) >= IMPACT_THRESHOLDS.poster ? 'poster' : null;
+  }
+  if (ev.zone === 'mid' || ev.zone === 'three') {
+    return handleEdge(shooter, defender) >= IMPACT_THRESHOLDS.ankle ? 'ankle' : null;
+  }
+  return null;
+}
+
 // Broadcast commentary templates. Picked deterministically by possession
 // seed — variety without touching any rng. {s}=shooter, {h}=handler,
 // {d}=defender, {r}=rebounder, {a}=assister, {team}=team name.
@@ -696,6 +738,10 @@ if (typeof module !== 'undefined' && module.exports) {
     buildTimeline: buildTimeline,
     createChoreographer: createChoreographer,
     groupPossessions: groupPossessions,
-    assignSlots: assignSlots
+    assignSlots: assignSlots,
+    IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
+    posterEdge: posterEdge,
+    handleEdge: handleEdge,
+    classifyImpact: classifyImpact
   };
 }
