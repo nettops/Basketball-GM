@@ -23,7 +23,13 @@ const IMPACT_FLASH_ALPHA = 0.32;
 const IMPACT_LINES_DELAY_MS = IMPACT_FLASH_MS;
 const IMPACT_LINES_ALPHA = 0.8;
 
-let _impact = null;   // { kind, at, startMs, freezeMs, zoom }
+// startMs is null while only the lead-in zoom is armed — the camera has
+// pushed in on the takeoff but the ball has not gone down yet.
+let _impact = null;   // { kind, at, startMs, freezeMs, zoom, zoomStartMs }
+
+// Safety valve for the lead-in. The slam normally supersedes it a couple of
+// hundred ms later; this only matters if playback is torn down mid-leap.
+const IMPACT_ZOOM_LEAD_MAX_MS = 900;
 
 // The zoom SNAPS rather than tweens. An eased scale on a 480x270 canvas with
 // imageSmoothingEnabled = false lands sprite edges on fractional pixels every
@@ -39,17 +45,42 @@ function impactFreezeMs(marker, opts) {
   return base;
 }
 
+// Lead-in: push the camera in on the TAKEOFF rather than the landing. Armed
+// at the rise beat, so the leap itself plays magnified; without it the dunk
+// happened at full-court scale and the zoom only arrived once he was already
+// hanging on the rim. No freeze, no flash, no lines — just the camera.
+function armImpactZoom(marker, nowMs, opts) {
+  const o = opts || {};
+  if (!marker) return;
+  if (o.reduceMotion || o.speed >= 8) return;
+  if (marker.kind === 'block') return;   // blocks never zoom
+  _impact = {
+    kind: marker.kind,
+    at: marker.at,
+    startMs: null,
+    freezeMs: 0,
+    zoom: true,
+    zoomStartMs: nowMs
+  };
+}
+
 function startImpact(marker, nowMs, opts) {
   const o = opts || {};
   if (!marker) return;
   if (o.reduceMotion || o.speed >= 8) return;   // motion suppressed; caption still shows
+  // The slam supersedes any lead-in outright. It does NOT need to carry the
+  // lead-in's origin forward: the zoom is a snap at a fixed scale, not a
+  // tween, so there is nothing part-way to preserve — and once startMs is set
+  // impactZoom reads only that branch. (An earlier version stashed
+  // zoomStartMs here; nothing ever read it.)
   _impact = {
     kind: marker.kind,
     at: marker.at,
     startMs: nowMs,
     freezeMs: impactFreezeMs(marker, o),
     // only the rare tier zooms — a block four times a game would be seasick
-    zoom: marker.kind !== 'block'
+    zoom: marker.kind !== 'block',
+    zoomStartMs: nowMs
   };
 }
 
@@ -59,7 +90,12 @@ function resetImpact() { _impact = null; }
 // checks keep working without passing them.
 function impactZoom(nowMs, stageW, stageH) {
   if (!_impact || !_impact.zoom) return null;
-  if (nowMs - _impact.startMs > _impact.freezeMs) return null;
+  if (_impact.startMs === null) {
+    // lead-in: hold the push-in until the slam arms the full effect
+    if (nowMs - _impact.zoomStartMs > IMPACT_ZOOM_LEAD_MAX_MS) return null;
+  } else if (nowMs - _impact.startMs > _impact.freezeMs) {
+    return null;
+  }
 
   const w = stageW || 480, h = stageH || 270;
   // cx/cy is the point the view CENTRES on — the caller applies it as
@@ -81,7 +117,7 @@ function impactZoom(nowMs, stageW, stageH) {
 // Radial speed lines from the point of impact. Drawn INSIDE the scene
 // transform so they stay anchored to the action while it is zoomed.
 function drawImpactLines(ctx, nowMs) {
-  if (!_impact) return;
+  if (!_impact || _impact.startMs === null) return;   // lead-in zoom only
   const age = nowMs - _impact.startMs;
   // Hold off until the flash has cleared, or the lines spend their brightest
   // frames underneath a white wash and are never actually seen.
@@ -121,7 +157,7 @@ function drawImpactLines(ctx, nowMs) {
 // Full-frame white flash. Drawn AFTER the scene transform so the zoom and the
 // shake cannot skew or offset it.
 function drawImpactFlash(ctx, nowMs, stageW, stageH) {
-  if (!_impact) return;
+  if (!_impact || _impact.startMs === null) return;   // lead-in zoom only
   const age = nowMs - _impact.startMs;
   if (age < 0 || age > IMPACT_FLASH_MS) return;
   ctx.save();
@@ -136,6 +172,7 @@ if (typeof module !== 'undefined' && module.exports) {
     IMPACT_TIER1_FREEZE_MS: IMPACT_TIER1_FREEZE_MS,
     IMPACT_TIER2_FREEZE_MS: IMPACT_TIER2_FREEZE_MS,
     startImpact: startImpact,
+    armImpactZoom: armImpactZoom,
     resetImpact: resetImpact,
     impactFreezeMs: impactFreezeMs,
     impactZoom: impactZoom,
