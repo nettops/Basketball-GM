@@ -163,9 +163,28 @@ function passShape(fromPt, toPt, isFeed) {
 // Amplitude is deliberately above the view's `moving` threshold: ~7px across a
 // 340ms beat is ~20px/timeline-second, which trips the leg cycle, so these
 // players actually jog rather than sliding.
-function flowPositions(pos, lockedIds, beatSeed) {
+// Distance from `id` to the closest member of `others`. 999 when there is
+// nobody to measure against, so an unguarded player reads as maximally open
+// rather than as an error.
+function nearestOf(pos, id, others) {
+  const me = pos[id];
+  if (!me) return 999;
+  let best = Infinity;
+  others.forEach(function (o) {
+    const q = pos[o];
+    if (!q || o === id) return;
+    const d = Math.hypot(q[0] - me[0], q[1] - me[1]);
+    if (d < best) best = d;
+  });
+  return best === Infinity ? 999 : best;
+}
+
+function flowPositions(pos, lockedIds, beatSeed, defIds) {
   const locked = {};
   (lockedIds || []).forEach(function (id) { if (id) locked[id] = true; });
+  const isDef = {};
+  (defIds || []).forEach(function (id) { isDef[id] = true; });
+  const offIds = defIds ? Object.keys(pos).filter(function (id) { return !isDef[id]; }) : null;
   const out = {};
   let i = 0;
   Object.keys(pos).forEach(function (pid) {
@@ -173,7 +192,33 @@ function flowPositions(pos, lockedIds, beatSeed) {
     const p = pos[pid];
     if (locked[pid]) { out[pid] = [p[0], p[1]]; return; }
     const phase = beatSeed * 0.9 + i * 2.3;
-    out[pid] = clampToCourt(p[0] + Math.sin(phase) * 7, p[1] + Math.cos(phase * 1.3) * 5);
+    let dx = Math.sin(phase) * 7, dy = Math.cos(phase * 1.3) * 5;
+
+    // Read the floor. Given both rosters, players stop orbiting blindly and
+    // move for a reason: an offensive player works away from whoever is
+    // nearest him, a defender closes the man he is nearest to. It is a purely
+    // local rule — nobody plans — but ten of them running at once is what
+    // reads as spacing and rotation rather than milling about.
+    if (defIds) {
+      const foes = isDef[pid] ? offIds : defIds;
+      let near = null, nearD = Infinity;
+      foes.forEach(function (o) {
+        const q = pos[o];
+        if (!q) return;
+        const d = Math.hypot(q[0] - p[0], q[1] - p[1]);
+        if (d < nearD) { nearD = d; near = q; }
+      });
+      if (near && nearD > 0.5) {
+        const ux = (p[0] - near[0]) / nearD, uy = (p[1] - near[1]) / nearD;
+        // offense pushes off, defense closes — and only while the gap is worth
+        // reacting to, so nobody chases a man already 60px away
+        const urge = Math.max(0, Math.min(1, (34 - nearD) / 34));
+        const step = isDef[pid] ? -6.5 * urge : 6.5 * urge;
+        dx = dx * 0.45 + ux * step;
+        dy = dy * 0.45 + uy * step;
+      }
+    }
+    out[pid] = clampToCourt(p[0] + dx, p[1] + dy);
   });
   return out;
 }
@@ -595,6 +640,14 @@ function createChoreographer(session) {
     return separatePositions(pos, null);
   }
 
+  // The five defending `offenseTeam`, restricted to whoever is actually in the
+  // supplied position map.
+  function defendersOf(offenseTeam, pos) {
+    return five[offenseTeam === 'home' ? 'away' : 'home']
+      .map(function (p) { return p.id; })
+      .filter(function (id) { return pos[id]; });
+  }
+
   function transitionFor(offenseTeam, fastBreak) {
     const pos = {};
     const hoop = attackingHoop(offenseTeam);
@@ -733,7 +786,7 @@ function createChoreographer(session) {
           period, quarter, clock, '',
           pi % 5 === 2 ? fillT(COMMENT.bringUp, pi, { h: ln(poss.handlerId), team: teamNames[poss.team] }) : '');
         // everyone but the two men on the ball spreads out to receive
-        push(BEAT.inboundPass, flowPositions(setPos, [inbounder, poss.handlerId], pi * 17),
+        push(BEAT.inboundPass, flowPositions(setPos, [inbounder, poss.handlerId], pi * 17, defendersOf(poss.team, setPos)),
           { x: setPos[poss.handlerId][0], y: setPos[poss.handlerId][1], holder: poss.handlerId },
           period, quarter, clock, '');
       }
@@ -753,7 +806,7 @@ function createChoreographer(session) {
 
       push(BEAT.release, transPos, { x: from[0], y: from[1] - 6, holder: null },
         period, quarter, clock, '');
-      push(BEAT.fbOutlet, flowPositions(transPos, [h, deep], pi * 31),
+      push(BEAT.fbOutlet, flowPositions(transPos, [h, deep], pi * 31, defendersOf(poss.team, transPos)),
         { x: transHandler[0], y: transHandler[1] - 6, holder: h, arc: 5 },
         period, quarter, clock, '', transComment);
       // filling the lanes — everyone actually travels, so the leg cycle runs
@@ -769,7 +822,7 @@ function createChoreographer(session) {
       // Beat 2: the offense flows into its set against the waiting defense.
       // Flowed: at 540ms this is the longest beat in a half-court possession
       // and half the floor was holding still through it.
-      push(BEAT.formation, flowPositions(pos, [poss.handlerId], pi * 29),
+      push(BEAT.formation, flowPositions(pos, [poss.handlerId], pi * 29, defendersOf(poss.team, pos)),
         { x: handlerPos[0], y: handlerPos[1], holder: poss.handlerId }, period, quarter, clock, '');
     }
 
@@ -809,6 +862,10 @@ function createChoreographer(session) {
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
         if (shotPos[ev.playerId]) shotPos[ev.playerId] = sp;
         const shooterOn = !!shotPos[ev.playerId];
+        // who the offense is reading, and who is reading them
+        const defenderIds = five[poss.team === 'home' ? 'away' : 'home']
+          .map(function (p) { return p.id; })
+          .filter(function (id) { return shotPos[id]; });
         // the shot defender closes out to contest — collision keeps him a
         // body's width off the shooter instead of inside him
         if (ev.defenderId && shotPos[ev.defenderId]) {
@@ -841,24 +898,26 @@ function createChoreographer(session) {
             return id !== chain[chain.length - 1] && id !== ev.playerId && id !== ev.assistPlayerId;
           });
           if (cands.length === 0) break;
-          // Occasionally swing it all the way across. Before this the offense
-          // never moved the ball further than 129px on a 440px floor — every
-          // pass was a short perimeter swing, so the weak side never came into
-          // play and a skip pass did not exist in the game.
+          // Look for the open man. The target used to be a modular index —
+          // whoever happened to sit at (pi*7+ei*3+s*5) % n — so a third of all
+          // passes went to a receiver with a defender inside 12px. Now the ball
+          // goes to whoever actually has separation, which is what makes the
+          // off-ball movement mean something: getting open earns you the ball.
           const prev = shotPos[chain[chain.length - 1]];
           const skip = prev && ((pi * 5 + ei + s) % 4 === 0);
-          if (skip) {
-            let far = cands[0], farD = -1;
-            cands.forEach(function (id) {
-              const q = shotPos[id];
-              if (!q) return;
-              const dd = Math.hypot(q[0] - prev[0], q[1] - prev[1]);
-              if (dd > farD) { farD = dd; far = id; }
-            });
-            chain.push(far);
-          } else {
-            chain.push(cands[(pi * 7 + ei * 3 + s * 5) % cands.length]);
-          }
+          let pick = cands[0], bestScore = -Infinity;
+          cands.forEach(function (id, idx) {
+            const q = shotPos[id];
+            if (!q) return;
+            const open = nearestOf(shotPos, id, defenderIds);
+            // a skip looks for the open man on the FAR side; an ordinary swing
+            // just wants the open man
+            const reach = prev ? Math.hypot(q[0] - prev[0], q[1] - prev[1]) : 0;
+            const score = open + (skip ? reach * 0.6 : 0) +
+              ((pi * 7 + ei * 3 + s * 5 + idx) % 3);   // tie-break, keeps it from being one fixed answer
+            if (score > bestScore) { bestScore = score; pick = id; }
+          });
+          chain.push(pick);
         }
         if (ev.assistPlayerId && shotPos[ev.assistPlayerId] && chain[chain.length - 1] !== ev.assistPlayerId) {
           chain.push(ev.assistPlayerId);
@@ -876,7 +935,7 @@ function createChoreographer(session) {
           push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, period, quarter, clock, '');
           // The ball swing is the single biggest pocket of frozen players in
           // the game. The passer and receiver stay put; everyone else cuts.
-          push(shape.ms, flowPositions(shotPos, [chain[c], chain[c + 1]], pi * 3 + c),
+          push(shape.ms, flowPositions(shotPos, [chain[c], chain[c + 1]], pi * 3 + c, defenderIds),
             { x: to[0], y: to[1] - 8, holder: chain[c + 1], arc: shape.arc }, period, quarter, clock, '');
           // Live dribble. The receiver puts it on the floor and moves before
           // moving it on, so the ball handler is not a statue between passes —
@@ -927,7 +986,7 @@ function createChoreographer(session) {
             if (p[him]) p[him] = clampToCourt(p[him][0] + lx * dir * offLat * 0.6,
               p[him][1] + ly * dir * offLat * 0.6);
             // the four men who cleared out do not stand and watch him work
-            const flowed = flowPositions(p, [me, him], pi * 37 + seed);
+            const flowed = flowPositions(p, [me, him], pi * 37 + seed, defenderIds);
             push(BEAT.isoSize, flowed, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
             return flowed;
           }
@@ -1030,7 +1089,7 @@ function createChoreographer(session) {
         // hold; after a crossover the beaten defender especially must not drift
         // back into him, which is why he is locked rather than flowed.
         push(BEAT.windup,
-          flowPositions(shotPos, [ev.playerId, ev.defenderId], pi * 5 + 1),
+          flowPositions(shotPos, [ev.playerId, ev.defenderId], pi * 5 + 1, defenderIds),
           { x: sp[0], y: sp[1], holder: shooterOn ? ev.playerId : null },
           period, quarter, clock, '', '', '', null, null,
           crossMeta ? { phase: 'recover', by: crossMeta.by, on: crossMeta.on } : null);
@@ -1043,7 +1102,7 @@ function createChoreographer(session) {
           releasePos[ev.playerId] = rimSpot;
           relSpot = rimSpot;
           // the driver and his man hold; the weak side rotates
-          push(BEAT.drive, flowPositions(releasePos, [ev.playerId, ev.defenderId], pi * 13 + ei),
+          push(BEAT.drive, flowPositions(releasePos, [ev.playerId, ev.defenderId], pi * 13 + ei, defenderIds),
             { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock, '');
         }
         if (ev.made) {
@@ -1102,11 +1161,11 @@ function createChoreographer(session) {
           // which got worse the moment transition started producing more of
           // them — frozen player-beats went 12% to 24% on that change alone.
           const dunkLock = [ev.playerId, ev.defenderId];
-          push(BEAT.dunkGather, flowPositions(releasePos, dunkLock, pi * 19 + ei),
+          push(BEAT.dunkGather, flowPositions(releasePos, dunkLock, pi * 19 + ei, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null,
             { phase: 'gather', id: dunkBy, zoomTo: impactKind === 'poster' ? impactAt : null });
-          push(BEAT.dunkRise, flowPositions(apexPos, dunkLock, pi * 23 + ei),
+          push(BEAT.dunkRise, flowPositions(apexPos, dunkLock, pi * 23 + ei, defenderIds),
             { x: rimX, y: hoop.y, holder: ev.playerId },
             period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
           push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
@@ -1154,7 +1213,7 @@ function createChoreographer(session) {
         if (!ev.made) {
           // 100% of players were frozen through the rim rattle. A live ball off
           // the iron is the one moment everybody SHOULD be moving.
-          push(BEAT.bounce, flowPositions(crashPos, [], pi * 7 + ei),
+          push(BEAT.bounce, flowPositions(crashPos, [], pi * 7 + ei, defenderIds),
             { x: hoop.x + (poss.team === 'home' ? -6 : 6), y: hoop.y - 8, holder: null }, period, quarter, clock, '');
         }
       } else if (ev.type === 'rebound') {

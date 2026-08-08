@@ -314,4 +314,66 @@ function checkFloorIsNotFrozen() {
 }
 checkFloorIsNotFrozen();
 
+function checkThePasserFindsTheOpenMan() {
+  // Measured as SELECTION EDGE: how much more open the receiver is than the
+  // average teammate at the moment he catches it. That isolates the passer's
+  // choice from how hard the defence happens to be playing.
+  //
+  // A raw "passes into coverage" count is the wrong measure and was actively
+  // misleading here — it counts receivers with a defender nearby, so it
+  // improves when the defence stops closing. Switching the defence off scored
+  // BETTER on it while making both the basketball and the selection worse.
+  //
+  // Before the read, the edge was -3.6px: the modular pass target was
+  // systematically picking the LESS open teammate, worse than choosing at
+  // random. It is now positive.
+  const homeIdSets = [];
+  let edges = [];
+  for (let g = 0; g < 2; g++) {
+    const seed = 4242 + g;
+    const home = TEAMS[seed % TEAMS.length], away = TEAMS[(seed + 9) % TEAMS.length];
+    const events = [];
+    const result = gameSim.simulateGame(home.id, away.id, makeRng(seed), { events: events });
+    const hr = league.getTeamRoster(home.id), ar = league.getTeamRoster(away.id);
+    const homeIds = {};
+    hr.forEach(function (p) { homeIds[p.id] = true; });
+    homeIdSets.push(homeIds);
+    const kfs = choreo.buildTimeline({
+      events: events, homeRoster: hr, awayRoster: ar, boxScore: result.boxScore
+    }).keyframes;
+    function openness(kf, id) {
+      const me = kf.pos[id];
+      if (!me) return null;
+      const mine = !!homeIds[id];
+      let best = Infinity;
+      Object.keys(kf.pos).forEach(function (o) {
+        if (!!homeIds[o] === mine) return;
+        const q = kf.pos[o];
+        const d = Math.hypot(q[0] - me[0], q[1] - me[1]);
+        if (d < best) best = d;
+      });
+      return best === Infinity ? null : best;
+    }
+    for (let i = 1; i < kfs.length; i++) {
+      const a = kfs[i - 1], b = kfs[i];
+      if (!(a.ball.holder === null && b.ball.holder && typeof b.ball.arc === 'number')) continue;
+      const rid = b.ball.holder, mine = !!homeIds[rid];
+      const ro = openness(b, rid);
+      if (ro === null) continue;
+      const mateVals = Object.keys(b.pos)
+        .filter(function (id) { return !!homeIds[id] === mine && id !== rid; })
+        .map(function (id) { return openness(b, id); })
+        .filter(function (v) { return v !== null; });
+      if (!mateVals.length) continue;
+      edges.push(ro - mateVals.reduce(function (s, v) { return s + v; }, 0) / mateVals.length);
+    }
+  }
+  assert.ok(edges.length > 200, 'expected a decent sample of passes, got ' + edges.length);
+  const mean = edges.reduce(function (s, v) { return s + v; }, 0) / edges.length;
+  assert.ok(mean > 0,
+    'the passer must favour the OPEN man: selection edge ' + mean.toFixed(2) + 'px (was -3.6 before the read)');
+  console.log('checkThePasserFindsTheOpenMan: OK (selection edge +' + mean.toFixed(1) + 'px over ' + edges.length + ' passes)');
+}
+checkThePasserFindsTheOpenMan();
+
 console.log('All pixel choreographer validations passed');
