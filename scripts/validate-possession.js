@@ -124,4 +124,48 @@ function checkSeasonIntegrationWithPossessionEngine() {
 
 checkSeasonIntegrationWithPossessionEngine();
 
+// One number per event type controls whether it is a star event or a
+// spread-around event. Every event was effectively power 1 before this, so the
+// best scorer on the floor took 1.44x the shots of the worst against the real
+// NBA's 2.9x usage spread, and assists spread 1.68x against ZenGM's 17.6x —
+// our stars separated themselves by efficiency instead of by volume, which is
+// the inverse of real basketball.
+//
+// Reference, ZenGM's own exponents (ratingArray in GameSim.basketball), five
+// players at composites 0.70/0.55/0.50/0.45/0.35:
+//   usage ^1.25 -> star 29.5%, 2.4x     def. rebounds ^3 -> 44.6%,  8.0x
+//   steals ^4   -> 52.5%, 10.7x         off. rebounds ^5 -> 59.6%, 12.3x
+//   assists ^10 -> 79.3%, 17.6x         blocks ^10       -> 79.3%, 17.6x
+function checkStarsCarryTheVolume() {
+  const rng = makeRng(2026);
+  const acc = {};
+  for (let i = 0; i < 300; i++) {
+    const home = TEAMS[i % TEAMS.length];
+    const away = TEAMS[(i + 11) % TEAMS.length];
+    if (home.id === away.id) continue;
+    const r = gameSim.simulateGame(home.id, away.id, rng);
+    Object.keys(r.boxScore).forEach(function (id) {
+      const l = r.boxScore[id];
+      const q = acc[id] || (acc[id] = { min: 0, fga: 0, ast: 0 });
+      q.min += l.minutes; q.fga += l.fga; q.ast += l.assists;
+    });
+  }
+  const qual = Object.keys(acc).filter(function (id) { return acc[id].min >= 400; });
+  function spread(k) {
+    const v = qual.map(function (id) { return acc[id][k] / acc[id].min * 36; })
+      .sort(function (a, b) { return a - b; });
+    return v[Math.floor(0.95 * v.length)] / Math.max(0.01, v[Math.floor(0.05 * v.length)]);
+  }
+  const shots = spread('fga');
+  const assists = spread('ast');
+  assert.ok(qual.length >= 100, 'need a real sample, got ' + qual.length);
+  assert.ok(shots >= 2.2 && shots <= 3.4,
+    'shot volume p95:p05 should be 2.2-3.4x (real NBA usage is 2.9x), got ' + shots.toFixed(2));
+  assert.ok(assists >= 3.5,
+    'assists should concentrate on primary creators, p95:p05 was ' + assists.toFixed(2));
+  console.log('checkStarsCarryTheVolume: OK (shots ' + shots.toFixed(2) + 'x, assists ' + assists.toFixed(2) + 'x)');
+}
+
+checkStarsCarryTheVolume();
+
 console.log('All possession engine validations passed');

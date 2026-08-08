@@ -27,10 +27,28 @@ function eligibleRoster(teamId) {
   return roster.length > 0 ? roster : _POSS_DATA.league.getTeamRoster(teamId); // fully-depleted-roster fallback, shouldn't happen with real data
 }
 
-function weightedPick(players, weightFn, rng) {
-  const weights = players.map(weightFn);
+// `power` raises each weight before normalizing, which is how ZenGM controls
+// whether an event concentrates on one player or spreads across the floor
+// (ratingArray in GameSim.basketball/index.ts). Power 1 is a flat linear share;
+// power 10 gives the best player on the floor about 79% of the events. Every
+// pick here was effectively power 1, which is why the best scorer on the floor
+// took only 1.44x the shots of the worst against the real NBA's 2.9x.
+//
+// PICK_FLOOR mirrors ZenGM's 5% floor: a role player is never completely frozen
+// out. Without it, high powers produce players who literally never shoot, which
+// reads as broken rather than as authentic.
+//
+// Draws exactly one rng value, as before, so the rng stream stays aligned.
+const PICK_FLOOR = 0.05;
+
+function weightedPick(players, weightFn, rng, power) {
+  const p = (power === undefined) ? 1 : power;
+  let weights = players.map(function (pl) { return Math.pow(Math.max(0, weightFn(pl)), p); });
+  const raw = weights.reduce(function (a, b) { return a + b; }, 0);
+  if (raw <= 0) return players[Math.floor(rng() * players.length)];
+  const floor = PICK_FLOOR * raw;
+  weights = weights.map(function (w) { return Math.max(w, floor); });
   const total = weights.reduce(function (a, b) { return a + b; }, 0);
-  if (total <= 0) return players[Math.floor(rng() * players.length)];
   let r = rng() * total;
   for (let i = 0; i < players.length; i++) {
     r -= weights[i];
@@ -38,6 +56,29 @@ function weightedPick(players, weightFn, rng) {
   }
   return players[players.length - 1];
 }
+
+// Free throws and the shooting-foul rate, both recalibrated for the 0-100
+// rating scale. FT_BASE is the league-average free-throw shooter (~78% in the
+// real NBA); FT_DIV sets how far a great one separates from a poor one.
+// 0.140 calibrated by measured rate against the NBA's ~22 attempts per
+// team-game: 0.11 measured 17.7, 0.125 measured 19.8, 0.140 measures 22.3.
+const SHOOTING_FOUL_RATE = 0.140;
+const FT_BASE = 0.78, FT_DIV = 500;
+
+// One number per event, calibrated by the measured spread each produces — the
+// sweep is in this task's commit message. ZenGM's equivalents: usage 1.25,
+// turnovers 2, defensive rebounds 3, steals 4, offensive rebounds 5, assists 10,
+// blocks 10. Ours run lower on the shooter because our scoringWeight already
+// spans p95/p05 = 2.54x, against ZenGM's usage composite at 1.85x — the same
+// exponent bites harder on a wider input.
+const PICK_POWER = {
+  handler: 3,
+  shooter: 1.4,
+  passer: 6,
+  onBallDefender: 2,
+  shotDefender: 2,
+  rebounder: 3
+};
 
 function ballHandlingWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
@@ -148,7 +189,7 @@ function pickShotZone(shooter, rng, inTransition) {
 // contest is a beat late — without erasing the underlying rating gap.
 function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
   let base, shootComposite, defComposite;
-  if (zone === 'three') { base = 0.36; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingThree'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
+  if (zone === 'three') { base = 0.330; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingThree'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
   else if (zone === 'mid') { base = 0.42; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingMid'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
   else { base = 0.56; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingInside'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defenseInterior'); }
   const skillAdj = (shootComposite - 50) / 250 * (shooterEnergyMult !== undefined ? shooterEnergyMult : 1);
@@ -200,8 +241,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
   if (outcome) outcome.liveBallToDefense = false;
 
-  const handler = weightedPick(offense, energyAware(ballHandlingWeight, offenseBox, false), rng);
-  const onBallDefender = weightedPick(defense, energyAware(perimDefenseWeight, defenseBox, true), rng);
+  const handler = weightedPick(offense, energyAware(ballHandlingWeight, offenseBox, false), rng, PICK_POWER.handler);
+  const onBallDefender = weightedPick(defense, energyAware(perimDefenseWeight, defenseBox, true), rng, PICK_POWER.onBallDefender);
   drainEnergy(offenseBox[handler.id], handler);
   drainEnergy(defenseBox[onBallDefender.id], onBallDefender);
   pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
@@ -218,10 +259,10 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
-  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng);
+  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng, PICK_POWER.shooter);
   const zone = pickShotZone(shooter, rng, inTransition);
   const defComposite = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
-  const shotDefender = weightedPick(defense, energyAware(function (p) { return _POSS_DATA.composite.computeComposite(p, defComposite); }, defenseBox, true), rng);
+  const shotDefender = weightedPick(defense, energyAware(function (p) { return _POSS_DATA.composite.computeComposite(p, defComposite); }, defenseBox, true), rng, PICK_POWER.shotDefender);
   drainEnergy(offenseBox[shooter.id], shooter);
   drainEnergy(defenseBox[shotDefender.id], shotDefender);
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
@@ -275,7 +316,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     let assistLine = '';
     let assistPlayerId = null;
     if (rng() < 0.6) {
-      const passer = weightedPick(offense.filter(function (p) { return p.id !== shooter.id; }), energyAware(ballHandlingWeight, offenseBox, false), rng);
+      const passer = weightedPick(offense.filter(function (p) { return p.id !== shooter.id; }), energyAware(ballHandlingWeight, offenseBox, false), rng, PICK_POWER.passer);
       if (passer) {
         offenseBox[passer.id].assists += 1;
         assistLine = ' (assist: ' + passer.name + ')';
@@ -289,12 +330,12 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null });
     const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
-      const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng);
+      const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng, PICK_POWER.rebounder);
       offenseBox[rebounder.id].rebounds += 1;
       logPlay(log, rebounder.name + ' grabs the offensive rebound');
       pushEvent(eventCtx, { type: 'rebound', playerId: rebounder.id, offensive: true });
     } else {
-      const rebounder = weightedPick(defense, energyAware(reboundCompositeWeight, defenseBox, false), rng);
+      const rebounder = weightedPick(defense, energyAware(reboundCompositeWeight, defenseBox, false), rng, PICK_POWER.rebounder);
       defenseBox[rebounder.id].rebounds += 1;
       logPlay(log, rebounder.name + ' grabs the defensive rebound');
       // A defensive rebounder is on the OTHER side from the possession's
@@ -315,10 +356,18 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   // rough rate — this is a pace-of-play approximation, not a foul model).
   // Charged to the shot defender, feeding foulTroubleMultiplier above for
   // the rest of the game.
-  if (rng() < 0.11) {
+  // 0.125 calibrated by measured rate against the real NBA's ~22 free-throw
+  // attempts per team-game; at 0.11 this engine produced 17.7.
+  if (rng() < SHOOTING_FOUL_RATE) {
     defenseBox[shotDefender.id].fouls += 1;
     const ftAttempts = 2;
-    const ftPct = Math.max(0.55, Math.min(0.95, shooter.attributes.freeThrow / 105));
+    // Was `freeThrow / 105`, which centred a 78% free-throw shooter at a rating
+    // of 82 — fine when every rating lived in 48-99, but on a true 0-100 scale
+    // the league-average shooter computed to 0.486 and the 0.55 floor did all
+    // the work, flattening every player onto the same number. Now centred on 50
+    // with a spread wide enough to separate a 60% shooter from a 90% one.
+    const ftPct = Math.max(0.45, Math.min(0.95,
+      FT_BASE + (shooter.attributes.freeThrow - 50) / FT_DIV));
     let made2 = 0;
     for (let i = 0; i < ftAttempts; i++) { if (rng() < ftPct) made2 += 1; }
     offenseBox[shooter.id].fta += ftAttempts;

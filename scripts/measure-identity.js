@@ -31,7 +31,11 @@ const composite = require(path.join(__dirname, '..', 'compositeRatings.js'));
 
 const GAMES = 300;
 const SEED = 2026;
-const MIN_FGA = 150;
+// Qualification is on MINUTES, not on attempts. Filtering by FGA and then
+// measuring FGA spread selects on the very thing being measured and truncates
+// the low end: the same league read 2.05x on an FGA>=150 filter and 2.85x on a
+// minutes filter. Minutes are opportunity, which is the honest gate.
+const MIN_MINUTES = 400;
 
 function pct(arr, p) {
   const s = arr.slice().sort(function (a, b) { return a - b; });
@@ -105,7 +109,7 @@ function simulated() {
       q.ast += l.assists; q.pm += (l.plusMinus || 0);
     });
   }
-  const qual = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].fga >= MIN_FGA; });
+  const qual = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= MIN_MINUTES; });
   const share = qual.map(function (id) { return 100 * acc[id].tpa / acc[id].fga; });
   const vol = qual.map(function (id) { return acc[id].fga / acc[id].min * 36; });
   const ast = qual.map(function (id) { return acc[id].ast / acc[id].min * 36; });
@@ -145,7 +149,7 @@ if (process.argv.indexOf('--json') !== -1) {
   console.log('  shooter                      ' + (report.synergy.shooter * 100).toFixed(1) + '%');
   console.log('  defender                     ' + (report.synergy.defender * 100).toFixed(1) + '%');
   console.log('  rebounder                    ' + (report.synergy.rebounder * 100).toFixed(1) + '%');
-  console.log('LEAGUE (' + s.games + ' games, n=' + s.n + ' players with ' + MIN_FGA + '+ FGA)');
+  console.log('LEAGUE (' + s.games + ' games, n=' + s.n + ' players with ' + MIN_MINUTES + '+ min)');
   console.log('  FG%                          ' + s.fgPct.toFixed(1) + '               (target: 46-49)');
   console.log('  3P%                          ' + s.tpPct.toFixed(1) + '               (target: 35-37, NBA 36.3)');
   console.log('  3PA share                    ' + s.tpaShare.toFixed(1) + '%              (hold near 29%)');
