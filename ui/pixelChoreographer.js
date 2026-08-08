@@ -80,7 +80,12 @@ function assignSlots(five) {
 // holder-null keyframe at the moment the ball leaves the hands, a pass or
 // shot never flies — it teleports to its destination at the next keyframe.
 const BEAT = {
-  transition: 700, formation: 650, fastBreak: 420, pass: 340, windup: 300, drive: 500,
+  // Trimmed from 700/650/600. These three are the possession's dead air — the
+  // walk up the floor, the flow into the set, the reset after a board — and
+  // they were 34% of the game's running time. Now that isolations, live
+  // dribbling and screens fill the possession with something to watch, that
+  // time is better spent there than on players strolling into position.
+  transition: 580, formation: 540, fastBreak: 420, pass: 340, windup: 300, drive: 500,
   release: 60, flight3: 850, flightMid: 650, flightIn: 420,
   // Dunk beats. The rise is short and the hang is shorter — a leap that takes
   // as long as a jump shot's flight reads as floating, not exploding.
@@ -101,7 +106,10 @@ const BEAT = {
   // Ball screen. The set has to hold long enough to read as a screen being
   // set rather than two players brushing past each other.
   screenSet: 380, screenUse: 300,
-  resolve: 600, bounce: 350, ft: 700
+  // Isolation, and live dribbling. A size-up beat is short so two of them read
+  // as probing rather than as jogging in a circle.
+  isoClear: 400, isoSize: 240, isoAttack: 280, liveDribble: 230,
+  resolve: 500, bounce: 350, ft: 700
 };
 
 function flightBeat(zone) {
@@ -742,8 +750,18 @@ function createChoreographer(session) {
         // shooter, so an assisted make's final pass always comes from the
         // player the box score credits.
         const offenseIds = five[poss.team].map(function (p) { return p.id; }).filter(function (id) { return shotPos[id]; });
+        // Isolation. Every possession used to be the same play — swing it
+        // around the perimeter and shoot — and the pass count was only ever
+        // 2, 3 or 4, never fewer and never more. An iso clears the side out
+        // and lets one man work, which is a different SHAPE, not just
+        // different timing. Outside shots only; a big posting up is not this.
+        const isoPlay = shooterOn && ev.defenderId && shotPos[ev.defenderId] &&
+          ev.zone !== 'inside' && (pi * 7 + ei) % 5 === 0;
+
         const chain = [poss.handlerId];
-        const swings = 1 + ((pi + ei) % 2);
+        // 0-3 rather than always 1-2, so possessions differ in how much the
+        // ball moves and not just in how long each beat lasts
+        const swings = isoPlay ? 0 : ((pi * 3 + ei) % 4);
         for (let s = 0; s < swings; s++) {
           const cands = offenseIds.filter(function (id) {
             return id !== chain[chain.length - 1] && id !== ev.playerId && id !== ev.assistPlayerId;
@@ -786,7 +804,67 @@ function createChoreographer(session) {
           // the game. The passer and receiver stay put; everyone else cuts.
           push(shape.ms, flowPositions(shotPos, [chain[c], chain[c + 1]], pi * 3 + c),
             { x: to[0], y: to[1] - 8, holder: chain[c + 1], arc: shape.arc }, period, quarter, clock, '');
+          // Live dribble. The receiver puts it on the floor and moves before
+          // moving it on, so the ball handler is not a statue between passes —
+          // measured at 48% of beats stationary while holding. He has to
+          // actually MOVE for the view to draw a dribble at all: the bounce is
+          // gated on the holder, and the leg cycle on his velocity.
+          const rec = chain[c + 1];
+          if (rec !== ev.playerId && shotPos[rec] && (pi * 3 + ei + c) % 3 !== 0) {
+            const toRim = [hoop.x - to[0], hoop.y - to[1]];
+            const rl = Math.hypot(toRim[0], toRim[1]) || 1;
+            const step = clampToCourt(
+              to[0] + (toRim[0] / rl) * 12 + cutJitter(pi + c, 6),
+              to[1] + (toRim[1] / rl) * 12 + cutJitter(pi + c * 3, 8)
+            );
+            const dribPos = Object.assign({}, shotPos);
+            dribPos[rec] = step;
+            push(BEAT.liveDribble, dribPos, { x: step[0], y: step[1], holder: rec },
+              period, quarter, clock, '');
+            shotPos[rec] = step;   // he passes on from where he dribbled to
+          }
         }
+        // The isolation itself: clear the side, then let him work. Two size-up
+        // dribbles that actually MOVE him — a stationary "dribble" draws no
+        // bounce and no leg cycle, so probing has to be real displacement.
+        if (isoPlay) {
+          const me = ev.playerId, him = ev.defenderId;
+          const toRimX = hoop.x - sp[0], toRimY = hoop.y - sp[1];
+          const rl = Math.sqrt(toRimX * toRimX + toRimY * toRimY) || 1;
+          const lx = -toRimY / rl, ly = toRimX / rl;   // lateral, across his man
+          const dir = ((pi + ei) % 2) ? 1 : -1;
+
+          // everyone else vacates toward the weak side so the lane is his
+          const clear = Object.assign({}, shotPos);
+          five[poss.team].forEach(function (p) {
+            if (p.id === me || !clear[p.id]) return;
+            clear[p.id] = clampToCourt(clear[p.id][0] - lx * dir * 20, clear[p.id][1] - ly * dir * 20);
+          });
+          push(BEAT.isoClear, clear, { x: sp[0], y: sp[1], holder: me },
+            period, quarter, clock, '',
+            (pi % 3 === 0) ? fillT(COMMENT.bringUp, pi + ei, { h: ln(me), team: teamNames[poss.team] }) : '');
+
+          function probe(offLat, offRim, seed) {
+            const spot = clampToCourt(sp[0] + lx * dir * offLat + (toRimX / rl) * offRim,
+              sp[1] + ly * dir * offLat + (toRimY / rl) * offRim);
+            const p = Object.assign({}, clear);
+            p[me] = spot;
+            // his man mirrors, a beat late and a step short
+            if (p[him]) p[him] = clampToCourt(p[him][0] + lx * dir * offLat * 0.6,
+              p[him][1] + ly * dir * offLat * 0.6);
+            push(BEAT.isoSize, p, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
+            return p;
+          }
+          probe(11, 6, 1);
+          const back = probe(-9, 2, 2);
+          // and back to the spot the sim says he shot from
+          const attack = Object.assign({}, back);
+          attack[me] = sp;
+          push(BEAT.isoAttack, attack, { x: sp[0], y: sp[1], holder: me }, period, quarter, clock, '');
+          shotPos[me] = sp;
+          if (back[him]) shotPos[him] = back[him];
+        }
+
         // Ball screen. There was no screen anywhere in the timeline — the one
         // structure that makes a half-court possession read as a designed play
         // rather than five men passing. The screener steps into the handler's
