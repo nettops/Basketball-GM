@@ -77,6 +77,14 @@ if (typeof module !== 'undefined' && module.exports) {
     COMPOSITE_WEIGHTS: COMPOSITE_WEIGHTS,
     computeComposite: computeComposite,
     synergyRamp: synergyRamp,
-    computeTeamSynergy: computeTeamSynergy
+    computeTeamSynergy: computeTeamSynergy,
+    // Exported so scripts/measure-identity.js can report what share of the
+    // league actually clears each bar. Synergy is meant to reward roster
+    // CONSTRUCTION; if most of the league qualifies it cannot distinguish
+    // anything, which is what these thresholds were doing before the rating
+    // rescale — see docs/superpowers/identity-baseline.txt.
+    SHOOTER_THRESHOLD: SHOOTER_THRESHOLD,
+    DEFENDER_THRESHOLD: DEFENDER_THRESHOLD,
+    REBOUNDER_THRESHOLD: REBOUNDER_THRESHOLD
   };
 }

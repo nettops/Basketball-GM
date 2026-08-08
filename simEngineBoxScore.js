@@ -132,7 +132,15 @@ function deriveShootingLine(player, points, rng, threePointRateDial) {
   };
 }
 
-function simulateTeamBoxScore(teamId, teamScore, rng) {
+// `opponentScore` exists only to produce a plus/minus. This engine never
+// tracks who was on the floor together — it distributes whole-game totals
+// after the fact — so a real possession-level plus/minus is not available
+// here. A minutes-weighted share of the margin is correct in expectation and
+// preserves the identity the possession engine satisfies exactly: the team's
+// summed plus/minus equals five times the margin, because the minutes sum to
+// 240. Approximate, and honestly so; the possession engine is the one whose
+// plus/minus scripts/fit-overall.js regresses against.
+function simulateTeamBoxScore(teamId, teamScore, opponentScore, rng) {
   const roster = _ENGINE_DATA.league.getTeamRoster(teamId).filter(function (p) { return !p.status.injury; });
   const minutes = distributeInt(240, roster.map(minutesWeight));
   const points = distributeInt(teamScore, roster.map(scoringWeight));
@@ -164,7 +172,8 @@ function simulateTeamBoxScore(teamId, teamScore, rng) {
       tpm: shooting.tpm,
       tpa: shooting.tpa,
       ftm: shooting.ftm,
-      fta: shooting.fta
+      fta: shooting.fta,
+      plusMinus: Math.round((minutes[i] / 240) * 5 * (teamScore - opponentScore))
     };
   });
   return boxScore;
@@ -185,8 +194,8 @@ function simulateBoxScoreGame(homeTeamId, awayTeamId, rng) {
   const awayPace = awayTeam.strategy ? awayTeam.strategy.pace : 0;
   const paceAdjustment = ((homePace || 0) + (awayPace || 0)) / 2 * 4; // dial is roughly -1..1, worth up to ±4 possessions
   const score = simulateScore(homeRating, awayRating, rng, paceAdjustment);
-  const homeBox = simulateTeamBoxScore(homeTeamId, score.homeScore, rng);
-  const awayBox = simulateTeamBoxScore(awayTeamId, score.awayScore, rng);
+  const homeBox = simulateTeamBoxScore(homeTeamId, score.homeScore, score.awayScore, rng);
+  const awayBox = simulateTeamBoxScore(awayTeamId, score.awayScore, score.homeScore, rng);
   return {
     homeScore: score.homeScore,
     awayScore: score.awayScore,

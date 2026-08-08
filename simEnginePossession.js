@@ -50,7 +50,7 @@ function reboundCompositeWeight(player) {
 }
 
 function initBoxLine() {
-  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0 };
+  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0 };
 }
 
 // In-game stamina, separate from status.fatigue (fatigue.js's cross-game,

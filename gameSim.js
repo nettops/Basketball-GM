@@ -209,6 +209,26 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
 
     if (team === 'home') sim.homeScore += points; else sim.awayScore += points;
 
+    // Plus/minus, credited to the ten players who were actually on the floor
+    // for THIS possession — before applySubstitutions runs below, or the
+    // credit lands on the lineup that replaced them. Five players are on the
+    // floor for every point, so each team's summed plus/minus comes to exactly
+    // five times the final margin; scripts/validate-ratings.js asserts that
+    // identity, which is what catches a wrong sign or a wrong lineup.
+    //
+    // This is the value signal scripts/fit-overall.js regresses the derived
+    // `overall` against. It reads `points` after the possession has resolved
+    // and draws no randomness, so the rng stream — and both golden masters —
+    // are untouched by its presence.
+    if (points !== 0) {
+      onCourt[team].forEach(function (id) {
+        if (offBox[id]) offBox[id].plusMinus += points;
+      });
+      onCourt[other].forEach(function (id) {
+        if (defBox[id]) defBox[id].plusMinus -= points;
+      });
+    }
+
     if (points > 0) {
       if (sim.run.team === team) sim.run.points += points;
       else sim.run = { team: team, points: points };
