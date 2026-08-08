@@ -1,5 +1,37 @@
 # Ratings and Overall Implementation Plan
 
+> **STATUS: DONE.** Shipped 2026-08-08 in seven commits, `f849879..87a89ef` on
+> `live-game-sim`. This file is kept as the record of what was planned; the
+> commit messages are the record of what was measured and why. Where the two
+> disagree, **the commits are right** — read them first.
+>
+> Corrections applied to this file after execution, so it does not mislead:
+>
+> | the plan said | actually |
+> |---|---|
+> | goldens live in `docs/superpowers/` | `scripts/fixtures/` |
+> | pts/team target 108–118 | unreachable at this engine's pace — see the Target Rates note |
+> | Task 7 touches `ui/playerProfile.js` | only `ui/roster.js` had rating bands |
+> | 38 validators | 40 by the end (two added) |
+>
+> **The numeric constants in Tasks 2, 4, 5 and 6 are deliberately left as the
+> starting points they were written as.** Every one of them carries a
+> calibration step, and all of them moved when swept — `PICK_POWER.shooter` was
+> written 2.2 and shipped 1.4, `SCALE_SD` was written 14 and shipped 9. Editing
+> them to the shipped values would erase the thing this plan was most right
+> about: that they had to be measured, not picked. The shipped values and their
+> sweeps are in the commit messages.
+>
+> Tasks 5 and 6 shipped as one commit (`be29249`). They are not separable: the
+> shot-volume calibration cannot be judged while league scoring is low enough
+> that the bottom tail of team scores trips validate-possession's floor.
+>
+> One regression escaped this plan and was fixed afterwards in `87a89ef`:
+> `minutesWeight` still subtracted a hard 40 from `overall`, which collapsed
+> 158 players onto an identical rotation weight once Task 3 moved overall's
+> mean. Nothing here asserted that a value DOWNSTREAM of overall still had a
+> usable range — that is the gap worth carrying into the next plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Inline execution only — this project never uses subagent-driven development.
 
 **Goal:** Give players real individual identity by generating attributes for real on a true 0–100 scale, and make `overall` a derived measurement of what the sim actually rewards instead of a stored number the attributes are built from.
@@ -17,8 +49,8 @@
 - **Calibrate by measured rate, never by picked values.** Any constant introduced here (`OFFSET_AMP`, `JITTER_SD`, `TENDENCY_*`, `PICK_POWER_*`, threshold values) must be chosen by sweeping it and reading the resulting league rate, with the sweep recorded in the commit message.
 - **A/B against a control.** Measure the same seeds with the change off and on. A number without a control is not evidence.
 - **Verify from a fresh `git clone --local` of HEAD**, not the working tree.
-- **All 38 validators in `scripts/validate-*.js` must pass** at the end of every task. Run: `for f in scripts/validate-*.js; do node "$f" || echo "FAIL $f"; done`
-- **Golden masters** (`docs/superpowers/gamesim-golden.json`, `docs/superpowers/rollover-golden.json`) will change. Regeneration is correct here, but only in Task 7, only once, and the commit that does it must justify it with measured before/after league rates.
+- **All 38 validators in `scripts/validate-*.js` must pass** at the end of every task. Run: `for f in scripts/validate-*.js; do node "$f" || echo "FAIL $f"; done` *(40 by the end: `validate-ratings.js` and `validate-identity.js` were added.)*
+- **Golden masters** (`scripts/fixtures/gamesim-golden.json`, `scripts/fixtures/rollover-golden.json`) will change. Regeneration is correct here, but only in Task 7, only once, and the commit that does it must justify it with measured before/after league rates.
 
 ## Target Rates
 
@@ -31,11 +63,24 @@ Every task is judged against these. Baseline column is measured at HEAD (Task 1 
 | shot volume spread, FGA/36 best:worst | **1.4x** | **~2.5x** | 2.9x (usage%) |
 | league 3P% | 38.8% | 35–37% | 36.3% |
 | league FG% | 49.2% | 46–49% | — |
-| pts/game/team | 101.4 | 108–118 | — |
+| pts/game/team | 101.4 | ~~108–118~~ **96–112** | 114 (at ~100 poss) |
 | synergy "shooter" qualifying share | **61.6%** | 15–25% | — |
 | synergy "rebounder" qualifying share | **70.8%** | 15–25% | — |
 | `overall` → minutes | saturating (correct, keep) | keep | saturating |
 | `overall` → production convexity | mild | convex at the top | 6x from mid-scale to top |
+
+**The pts/team target above was wrong as written, and Task 6 corrected it.**
+108–118 imported NBA scoring without NBA pace. Measured, this engine runs
+**90.9 possessions per team-game** against the real league's ~100, so matching
+NBA scoring would demand 1.19 points per possession against the real 1.15 —
+i.e. the target could only have been hit by making the basketball *less*
+realistic. Shipped at 103.3 on 1.13 points per possession, which is internally
+consistent. Closing the remaining gap means raising `POSSESSIONS_PER_TEAM`, and
+that is a game-LENGTH decision (every watched game gets longer), not an
+arithmetic one. Left open deliberately.
+
+The lesson generalises: a target copied from a real-world number is only valid
+if the *denominator* it implies also matches. Check pace before importing rate.
 
 ---
 
@@ -282,7 +327,12 @@ function simulated() {
       q.pm += (l.plusMinus || 0);
     });
   }
-  const qual = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].fga >= 150; });
+  // NOTE (corrected during execution): gate on MINUTES, not on attempts.
+  // Filtering by FGA and then measuring FGA spread selects on the very quantity
+  // being measured and truncates the low end — the same league read 2.05x under
+  // an FGA>=150 filter and 2.85x under a minutes filter. Shipped as
+  // `acc[id].min >= 400`.
+  const qual = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 400; });
   const share = qual.map(function (id) { return 100 * acc[id].tpa / acc[id].fga; });
   const vol = qual.map(function (id) { return acc[id].fga / acc[id].min * 36; });
   return {
@@ -1447,8 +1497,8 @@ git commit -F <commit message file>
 
 **Files:**
 - Create: `scripts/validate-identity.js`
-- Modify: `docs/superpowers/gamesim-golden.json`, `docs/superpowers/rollover-golden.json`
-- Modify: `ui/playerProfile.js`, `ui/roster.js` (rating colour bands)
+- Modify: `scripts/fixtures/gamesim-golden.json`, `scripts/fixtures/rollover-golden.json`
+- Modify: `ui/roster.js` (rating colour bands — the plan also listed `ui/playerProfile.js`, which has none)
 
 - [ ] **Step 1: Turn the Target Rates table into assertions**
 
@@ -1460,7 +1510,16 @@ For each assertion, revert the specific change that satisfies it (the amplifier,
 
 - [ ] **Step 3: Fix the UI rating bands**
 
-`ui/playerProfile.js` and `ui/roster.js` colour ratings on the assumption that ~75 is average and ~90 is elite. On the new scale 50 is average and 80 is elite. Grep both files for hard-coded rating thresholds and rescale them, then confirm visually in the browser that a star's card is not solid red.
+`ui/roster.js` colours ratings on the assumption that ~75 is average and ~90 is elite. On the new scale 50 is average and 80 is elite.
+
+*(As executed: only `ui/roster.js` has rating bands — a single `ratingTier`
+function every other screen calls. `ui/playerProfile.js` has none. The
+thresholds were converted by z-score rather than re-picked: the old cuts sat at
++2.02/+0.70/-0.61 standard deviations on a mean-74.7 sd-7.6 distribution, which
+against the derived overall (mean 47.8, sd 9.9) is 68/55/42 — preserving the
+same slices of the league rather than the same literal numbers. Left at 90/80/70
+nothing would ever be gold again, because the best player in the league is a
+78.)*
 
 - [ ] **Step 4: Regenerate both golden masters — once**
 
@@ -1500,7 +1559,7 @@ Take a screenshot of a roster page and a live game and share both.
 - [ ] **Step 7: Final commit**
 
 ```bash
-git add scripts/validate-identity.js scripts/measure-identity.js docs/superpowers/gamesim-golden.json docs/superpowers/rollover-golden.json docs/superpowers/identity-after.txt ui/playerProfile.js ui/roster.js
+git add scripts/validate-identity.js scripts/measure-identity.js scripts/fixtures/gamesim-golden.json scripts/fixtures/rollover-golden.json docs/superpowers/identity-after.txt ui/roster.js
 git commit -F <commit message file>
 ```
 
@@ -1519,3 +1578,45 @@ git commit -F <commit message file>
 - The numeric constants in Tasks 4, 5 and 6 are deliberately left as starting points with a calibration step attached. That is not a placeholder: writing exact final values here would be picking them, which the project's own scar tissue says produces the wrong number. Each has a defined target, a defined measurement, and a requirement to record the sweep.
 
 **Risk.** Task 2 is by far the largest and touches the most-loaded data file in the project. If it goes badly, it reverts cleanly on its own — Task 1 is independently valuable (plus/minus is a stat worth having regardless) and nothing before Task 2 depends on it.
+
+---
+
+## Post-execution review
+
+How the self-review above held up, written after the work shipped.
+
+**The three flagged gaps all resolved, and one was the wrong worry.** `save.js`
+did route through a single restore point, so Task 3 Step 7 was a two-line edit.
+`draftProspects.js` needed more than expected — it had its own duplicate
+generator, which now shares `players-2026.js`'s (the archetype offsets stay
+duplicated so prospect and veteran tuning can diverge; the SCALE cannot). The
+"deliberately uncalibrated constants" call was correct: every one of them moved
+when swept, several by more than a factor of two.
+
+**The risk assessment was wrong about which task was dangerous.** Task 2 was
+large but landed cleanly. The damage came from Task 3, which nothing here
+flagged as risky: making `overall` a derived getter broke six assignment sites
+silently (a getter with no setter is a no-op in sloppy mode), and moved
+overall's mean far enough to break `minutesWeight` in a way no validator
+noticed until a later audit. Size was the wrong proxy for risk; **the dangerous
+change was the one that altered the meaning of a value 27 other files read.**
+
+**What the plan should have contained and did not.** An assertion that values
+DOWNSTREAM of a rescaled quantity still have a usable range. The plan carefully
+recalibrated `shotMakeProbability`, `turnoverChance` and `blockChance` because
+it knew they read `attribute - 50` — but it enumerated those by hand, and
+`minutesWeight` (`overall - 40`) and `ftPct` (`freeThrow / 105`) were not on the
+list. Two of the three were caught during execution by rates going visibly
+wrong; the third survived to production.
+
+The generalisable rule, for the next plan that moves a scale: **grep for every
+hard-coded constant that is compared against or subtracted from the quantity
+you are rescaling, and assert a range invariant on each — do not enumerate them
+from memory.**
+
+**Also corrected during execution:** eight pre-existing test bugs the rescale
+exposed rather than caused, including four validators that modelled a player as
+`{ overall: N, attributes: {} }` and measured deltas that were structurally
+always zero, and three fixtures whose seed or sample size made them pass by
+luck. Those are catalogued in the commits for `c745d07`, `ba0c3cd` and
+`87a89ef`.
