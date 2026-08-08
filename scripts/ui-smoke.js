@@ -572,6 +572,45 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The advance loop repaints as it goes. It used to mutate the league for the
+  // whole run while the screen kept its pre-Continue values, so a Continue that
+  // covered forty games showed the old record the entire time and only caught
+  // up when the user happened to click a tab.
+  //
+  // Asserted through refreshAdvanceFrame directly rather than by running an
+  // advance: this suite is synchronous, and the loop is not. The divergence is
+  // made by emptying the topbar rather than by touching the league, so the
+  // check cannot corrupt the save it is running against.
+  function checkAdvanceRepaints() {
+    requireSeason();
+    const results = [];
+
+    results.push(ok('advance:repaint-hook-exists', typeof refreshAdvanceFrame === 'function'));
+    if (typeof refreshAdvanceFrame !== 'function') return results;
+
+    const bar = document.getElementById('app-topbar');
+    const team = getTeamById(GameState.userTeamId);
+    const expected = team.record.wins + '-' + team.record.losses;
+
+    bar.innerHTML = '';
+    refreshAdvanceFrame();
+
+    const rec = bar.querySelector('.identity-record');
+    const shown = rec ? rec.textContent.replace(/\s/g, '') : '(no record element)';
+    results.push(ok('advance:repaint-restores-topbar-record', shown === expected,
+      'showed ' + shown + ', league says ' + expected));
+
+    // The loop must not rebuild the dock: replacing the Stop button under the
+    // cursor every step is what makes a long run impossible to interrupt.
+    const dockBefore = document.querySelector('#sim-controls button');
+    refreshAdvanceFrame();
+    const dockAfter = document.querySelector('#sim-controls button');
+    results.push(ok('advance:repaint-leaves-dock-alone', dockBefore === dockAfter,
+      'the dock button was replaced by a repaint'));
+
+    return results;
+  }
+
   // Headings that title nothing. This has now been shipped twice: the watched
   // game's "Leaders" label sat over blank space until the first basket, and
   // Free Agency showed a bare column header plus a "Recent Signings" panel with
@@ -663,6 +702,7 @@ const UI_SMOKE = (function () {
     boxscore: checkScheduleBoxScore,
     align: checkTableAlignment,
     chrome: checkChromeLabels,
+    advance: checkAdvanceRepaints,
     empty: checkNoStrandedHeadings,
     scroll: checkScrollOnNavigate,
     nav: checkNav,

@@ -213,6 +213,12 @@ async function runAdvance(options) {
     // the opposite of what a stop system is for.
     if (out.sceneShown) { stop = { reason: STOP_REASONS.NOTABLE_EVENT, label: '' }; break; }
 
+    // Show the day that was just simulated. Without this the record, the
+    // standings and the schedule all sat at their pre-Continue values for the
+    // whole run, so a long advance looked like nothing was happening. Cheap
+    // enough to do every step: ~0.1ms for the topbar and 1-4ms for a view,
+    // against ~9ms of possession sim for a single day's games.
+    refreshAdvanceFrame();
     setSimStatus('Simulating…');
     // ALWAYS yield, including at ultra where delayMs is 0. The old loops
     // skipped the await entirely at ultra, which froze the tab and made a run

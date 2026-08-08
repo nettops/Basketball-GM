@@ -597,6 +597,35 @@ function renderView(viewName) {
   // route; stepOnce covers the rest.
 }
 
+// Repaint mid-run, once per simulated day, from runAdvance's loop.
+//
+// The loop advanced the league without repainting anything but the status
+// line, so the record, day and standings on screen stayed frozen at whatever
+// they were when Continue was pressed. Switching tabs was the only way to see
+// the truth, by which point the run could be forty games further on.
+//
+// Deliberately NOT renderView: that rebuilds the dock, and replacing the Stop
+// button under the cursor every step is how you make a run impossible to
+// interrupt — the same reason the loop awaits even at ultra speed. The nav and
+// tab strip are skipped too; neither changes while a run is in flight.
+function refreshAdvanceFrame() {
+  if (!GameState.season) return;
+  // The watched game owns its own canvas and playback clock. Re-rendering it
+  // from here would restart the game the user is in the middle of watching.
+  if (GameState.currentView === 'pixelGame') return;
+
+  const container = document.getElementById('view-content');
+  const renderer = BUILT_VIEWS[GameState.currentView];
+  if (container && renderer) {
+    // Assigning innerHTML drops the scroll offset. Mid-run that reads as the
+    // page yanking itself to the top once per day while you try to read it.
+    const scrollTop = container.scrollTop;
+    renderer(container, GameState.userTeamId);
+    container.scrollTop = scrollTop;
+  }
+  renderTopBar(document.getElementById('app-topbar'));
+}
+
 function selectTeam(teamId, playMode) {
   GameState.userTeamId = teamId;
   GameState.playMode = playMode || 'gm';
