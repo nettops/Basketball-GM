@@ -232,6 +232,62 @@ function shotQualityBonus(player, zone) {
   }, 0);
 }
 
+// Which shot a DEFENSIVE badge contests, routed by the trait's own affinity —
+// the exact mirror of SHOT_ZONE_BY_AFFINITY above, and for the same reason. A
+// flat `boxscore/defense` bonus would have a perimeter stopper protecting the
+// rim, which is the error shotQualityBonus was created to avoid on offence.
+const DEFENSE_ZONES_BY_AFFINITY = {
+  perimeterDefense: ['three', 'mid'],
+  interiorDefense: ['inside']
+};
+
+// Points a defender takes OFF the shooter's chance in this zone. Always >= 0;
+// the caller subtracts it.
+//
+// Positives with no defensive zone (Charge Taker's basketballIQ, Two-Way Star's
+// absent affinity) return 0 here on purpose and earn their keep through the
+// ALLOCATION path instead — they draw tougher assignments rather than making
+// each contest better. Same shape as unrouted scoring traits being volume-only.
+//
+// NEGATIVES ARE EXCLUDED ENTIRELY. Foul Prone is the only one, and under the
+// scoring precedent it would apply to every zone — meaning opponents shoot
+// BETTER against a foul-prone defender. That is a poor model of what fouling
+// is, so it routes to the foul rate through foulProneness() instead. This is
+// the one place the offence/defence mirror is deliberately broken.
+function defenseQualityBonus(player, zone) {
+  return (player.hiddenTraits || []).reduce(function (sum, t) {
+    const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+    if (!def || def.effect.system !== 'boxscore' || def.effect.stat !== 'defense') return sum;
+    if (def.effect.direction < 0) return sum;                 // -> foulProneness
+    const zones = DEFENSE_ZONES_BY_AFFINITY[def.affinity];
+    if (!zones || zones.indexOf(zone) === -1) return sum;     // -> allocation only
+    return sum + def.tierValues[t.tier];
+  }, 0);
+}
+
+// Magnitude of a defender's foul-drawing badges. Always >= 0; the caller adds
+// it to the shooting-foul rate. Only negative `boxscore/defense` traits count —
+// a good defender is not rewarded with fewer fouls here, because that would
+// quietly make every positive defence badge a second, hidden effect.
+function foulProneness(player) {
+  return (player.hiddenTraits || []).reduce(function (sum, t) {
+    const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+    if (!def || def.effect.system !== 'boxscore' || def.effect.stat !== 'defense') return sum;
+    if (def.effect.direction > 0) return sum;
+    return sum + def.tierValues[t.tier];
+  }, 0);
+}
+
+// Team chemistry badges, summed across a roster. Signed: Natural Leader and
+// Franchise Cornerstone raise it, Locker Room Cancer lowers it. Team-level by
+// nature, which is why it feeds computeTeamSynergy rather than any per-player
+// weight.
+function chemistryBonus(roster) {
+  return (roster || []).reduce(function (total, p) {
+    return total + getTraitBonus(p, 'chemistry', 'team');
+  }, 0);
+}
+
 function personalityAxis(base, spread, rng) {
   return Math.max(0, Math.min(100, Math.round(base + (rng() - 0.5) * spread)));
 }
@@ -358,6 +414,10 @@ if (typeof module !== 'undefined' && module.exports) {
     getTraitBonus: getTraitBonus,
     shotQualityBonus: shotQualityBonus,
     SHOT_ZONE_BY_AFFINITY: SHOT_ZONE_BY_AFFINITY,
+    defenseQualityBonus: defenseQualityBonus,
+    DEFENSE_ZONES_BY_AFFINITY: DEFENSE_ZONES_BY_AFFINITY,
+    foulProneness: foulProneness,
+    chemistryBonus: chemistryBonus,
     generateHiddenTraits: generateHiddenTraits,
     generatePersonality: generatePersonality,
     generateTendencies: generateTendencies,

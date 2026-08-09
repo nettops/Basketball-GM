@@ -564,4 +564,101 @@ function checkFreeAgencyTradeTraitIntegration() {
 
 checkFreeAgencyTradeTraitIntegration();
 
+// Defence mirrors shotQualityBonus: routed by the trait's own affinity so a
+// perimeter stopper does not suddenly protect the rim.
+function checkDefenseQualityBonusRoutesByZone() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const lockdown = { hiddenTraits: [{ key: 'lockdownDefender', tier: 'legendary' }] };   // perimeterDefense
+  const anchor = { hiddenTraits: [{ key: 'defensiveAnchor', tier: 'legendary' }] };      // interiorDefense
+
+  assert.ok(traitsModule.defenseQualityBonus(lockdown, 'three') > 0, 'a perimeter stopper must affect threes');
+  assert.ok(traitsModule.defenseQualityBonus(lockdown, 'mid') > 0, 'a perimeter stopper must affect mid-range');
+  assert.strictEqual(traitsModule.defenseQualityBonus(lockdown, 'inside'), 0,
+    'a PERIMETER defender must not protect the rim — that is what routing is for');
+
+  assert.ok(traitsModule.defenseQualityBonus(anchor, 'inside') > 0, 'an interior anchor must affect inside shots');
+  assert.strictEqual(traitsModule.defenseQualityBonus(anchor, 'three'), 0,
+    'an INTERIOR defender must not contest threes');
+  console.log('checkDefenseQualityBonusRoutesByZone: OK');
+}
+
+// Positives with no defensive-zone meaning are allocation-only, exactly as
+// unrouted scoring traits are volume-only. Charge Taker (basketballIQ) and
+// Two-Way Star (no affinity) earn more assignments; they do not improve the
+// contest itself.
+function checkUnroutedDefendersAreAllocationOnly() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  ['chargeTaker', 'twoWayStar'].forEach(function (key) {
+    const p = { hiddenTraits: [{ key: key, tier: 'legendary' }] };
+    ['three', 'mid', 'inside'].forEach(function (zone) {
+      assert.strictEqual(traitsModule.defenseQualityBonus(p, zone), 0,
+        key + ' has no defensive zone and must contribute nothing to shot quality');
+    });
+  });
+  console.log('checkUnroutedDefendersAreAllocationOnly: OK');
+}
+
+// Foul Prone is the ONE deliberate break from the scoring precedent. Under that
+// precedent a negative applies to every zone — which for a defence trait would
+// mean opponents SHOOT BETTER against you, a poor model of what fouling is. It
+// routes to the foul rate instead, so it must contribute nothing to shot quality.
+function checkFoulProneRoutesToFoulsNotShotQuality() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const p = { hiddenTraits: [{ key: 'foulProne', tier: 'legendary' }] };
+  ['three', 'mid', 'inside'].forEach(function (zone) {
+    assert.strictEqual(traitsModule.defenseQualityBonus(p, zone), 0,
+      'Foul Prone must not make opponents shoot better — it makes you foul');
+  });
+  assert.ok(traitsModule.foulProneness(p) > 0, 'Foul Prone must raise foul-drawing');
+  assert.strictEqual(traitsModule.foulProneness({ hiddenTraits: [{ key: 'lockdownDefender', tier: 'legendary' }] }), 0,
+    'a clean defender must not draw extra fouls');
+
+  // Foul Prone happens to carry NO affinity, so the affinity check alone would
+  // exclude it and the explicit negative guard would be unreachable — a mutant
+  // deleting that guard survived until this case existed. Inject a synthetic
+  // negative defence trait that DOES have an affinity, so the rule "negatives
+  // never improve the opponent's shot" is tested rather than merely implied by
+  // today's data. Without this, adding one real trait of that shape would
+  // silently make opponents shoot better against the player who has it.
+  const taxonomy = traitsModule.TRAIT_TAXONOMY_BY_KEY;
+  taxonomy.__syntheticNegativeDefender = {
+    key: '__syntheticNegativeDefender', name: 'Synthetic Gambler', category: 'negative',
+    affinity: 'perimeterDefense',
+    effect: { system: 'boxscore', stat: 'defense', direction: -1 },
+    tierValues: { bronze: 1, silver: 2, gold: 3, hof: 5, legendary: 8 }
+  };
+  try {
+    const gambler = { hiddenTraits: [{ key: '__syntheticNegativeDefender', tier: 'legendary' }] };
+    assert.strictEqual(traitsModule.defenseQualityBonus(gambler, 'three'), 0,
+      'a NEGATIVE defence trait must never contribute to shot quality, even with a routable affinity');
+    assert.ok(traitsModule.foulProneness(gambler) > 0,
+      'a negative defence trait belongs on the foul path');
+  } finally {
+    delete taxonomy.__syntheticNegativeDefender;
+  }
+  console.log('checkFoulProneRoutesToFoulsNotShotQuality: OK');
+}
+
+// Chemistry is a TEAM property, so it sums across the roster and both signs count.
+function checkChemistryBonusSumsAcrossTheRoster() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const leaderA = { hiddenTraits: [{ key: 'naturalLeader', tier: 'legendary' }] };
+  const leaderB = { hiddenTraits: [{ key: 'naturalLeader', tier: 'legendary' }] };
+  const cancer = { hiddenTraits: [{ key: 'lockerRoomCancer', tier: 'legendary' }] };
+  const plain = { hiddenTraits: [] };
+
+  assert.strictEqual(traitsModule.chemistryBonus([plain, plain]), 0);
+  const one = traitsModule.chemistryBonus([leaderA, plain]);
+  assert.ok(one > 0, 'a Natural Leader must raise team chemistry');
+  assert.ok(traitsModule.chemistryBonus([leaderA, leaderB]) > one, 'two leaders must beat one');
+  assert.ok(traitsModule.chemistryBonus([cancer, plain]) < 0, 'a Locker Room Cancer must lower it');
+  assert.strictEqual(traitsModule.chemistryBonus([leaderA, cancer]), 0, 'equal and opposite must cancel');
+  console.log('checkChemistryBonusSumsAcrossTheRoster: OK');
+}
+
+checkDefenseQualityBonusRoutesByZone();
+checkUnroutedDefendersAreAllocationOnly();
+checkFoulProneRoutesToFoulsNotShotQuality();
+checkChemistryBonusSumsAcrossTheRoster();
+
 console.log('All trait/scouting validations passed');
