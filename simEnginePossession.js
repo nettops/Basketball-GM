@@ -10,7 +10,8 @@ var _POSS_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js'), composite: require('./compositeRatings.js'), check: require('./skillCheck.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
-      traits: { getTraitBonus: getTraitBonus, shotQualityBonus: shotQualityBonus },
+      traits: { getTraitBonus: getTraitBonus, shotQualityBonus: shotQualityBonus,
+                defenseQualityBonus: defenseQualityBonus, foulProneness: foulProneness },
       check: { skillCheck: skillCheck, skillCheckProbability: skillCheckProbability },
       box: {
         distributeInt: distributeInt, scoringWeight: scoringWeight, reboundWeight: reboundWeight,
@@ -64,6 +65,10 @@ function weightedPick(players, weightFn, rng, power) {
 // 0.140 calibrated by measured rate against the NBA's ~22 attempts per
 // team-game: 0.11 measured 17.7, 0.125 measured 19.8, 0.140 measures 22.3.
 const SHOOTING_FOUL_RATE = 0.140;
+// Foul Prone routes HERE rather than into shot quality — see traits.js's
+// defenseQualityBonus for why. Divides by 400 like the other defensive badge
+// paths, so a legendary Foul Prone adds 8/400 = +2pp on a 14% base.
+const FOUL_TRAIT_DIV = 400;
 const FT_BASE = 0.78, FT_DIV = 500;
 
 // Turns trait points into shot probability. A legendary scoring trait is worth
@@ -197,18 +202,23 @@ function pickShotZone(shooter, rng, inTransition) {
 const TURNOVER_BASE = 0.11, TURNOVER_DIV = 400;
 const TURNOVER_MIN = 0.04, TURNOVER_MAX = 0.22;
 const TURNOVER_SYNERGY_WEIGHT = 0.3;
+// Steal badges divide by the same 400 the steal RATING uses, so a legendary
+// Pickpocket is worth exactly +8 rating points of steal. The badge is a
+// modifier on the skill, deliberately not a bigger lever than the skill itself.
+const STEAL_TRAIT_DIV = TURNOVER_DIV;
 
 // ATTACK is the DEFENDER: a turnover is the defence's check to pass. Both sides
 // divide by the same 400 because the original was a raw difference over one
 // divisor — (d - h)/400 is algebraically (d-50)/400 - (h-50)/400.
-function turnoverSpec(defenderSteal, handlerBallHandling, defSynergyDefense, offSynergyOffense) {
+function turnoverSpec(defenderSteal, handlerBallHandling, defSynergyDefense, offSynergyOffense, stealTraitBonus) {
   return {
     kind: 'turnover',
     base: TURNOVER_BASE,
     attack: { label: 'steal', value: defenderSteal, scale: TURNOVER_DIV, energy: 1 },
     defend: { label: 'ballHandling', value: handlerBallHandling, scale: TURNOVER_DIV, energy: 1 },
     modifiers: [
-      { label: 'team synergy', value: (defSynergyDefense - offSynergyOffense) * TURNOVER_SYNERGY_WEIGHT }
+      { label: 'team synergy', value: (defSynergyDefense - offSynergyOffense) * TURNOVER_SYNERGY_WEIGHT },
+      { label: 'steal badges', value: (stealTraitBonus || 0) / STEAL_TRAIT_DIV }
     ],
     min: TURNOVER_MIN, max: TURNOVER_MAX
   };
@@ -237,19 +247,27 @@ function turnoverSpec(defenderSteal, handlerBallHandling, defSynergyDefense, off
 const BLOCK_BASE = 0.020, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
 const BLOCK_THREE_CHANCE = 0.008;
 
+// Block badges divide by the same BLOCK_DIV the block rating uses, so a
+// legendary Rim Protector is worth +8 rating points of block.
+const BLOCK_TRAIT_DIV = BLOCK_DIV;
+
 // A three is not a contest — nobody meaningfully blocks a jump shot from 24
 // feet — so that branch is a flat constant with no attacking side. It still
 // goes through skillCheck so it draws its one rng value in the same order.
-function blockSpec(defenderBlock, zone) {
+//
+// The badge applies to BOTH branches. A rim protector being literally unable to
+// block a three would be a worse model than the flat rate it replaces.
+function blockSpec(defenderBlock, zone, blockTraitBonus) {
+  const badge = { label: 'block badges', value: (blockTraitBonus || 0) / BLOCK_TRAIT_DIV };
   if (zone === 'three') {
-    return { kind: 'block', base: BLOCK_THREE_CHANCE, attack: null, defend: null, modifiers: [], min: 0, max: 1 };
+    return { kind: 'block', base: BLOCK_THREE_CHANCE, attack: null, defend: null, modifiers: [badge], min: 0, max: 1 };
   }
   return {
     kind: 'block',
     base: BLOCK_BASE,
     attack: { label: 'block', value: defenderBlock, scale: BLOCK_DIV, energy: 1 },
     defend: null,
-    modifiers: [],
+    modifiers: [badge],
     min: BLOCK_MIN, max: BLOCK_MAX
   };
 }
@@ -258,7 +276,21 @@ const SHOT_BASE_BY_ZONE = { three: 0.330, mid: 0.42, inside: 0.56 };
 const SHOT_SKILL_DIV = 250, SHOT_DEF_DIV = 350;
 const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
 
-function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus) {
+// Symmetric with SHOT_TRAIT_DIV by default: a legendary defensive badge takes
+// off about what a legendary offensive one puts on (~2.7pp on its zone). Swept
+// against the locked league rates — see the sweep in this task's commit.
+const DEF_TRAIT_DIV = SHOT_TRAIT_DIV;
+
+// Named rather than inlined at the roll, so it can be asserted on directly.
+// The tripwire cannot cover this path: boxscore/defense's representative trait
+// is a POSITIVE one (Lockdown Defender), which reaches the sim through
+// shotSpec — so zeroing the foul term would leave the family looking perfectly
+// live while Foul Prone quietly did nothing.
+function shootingFoulRate(defender) {
+  return SHOOTING_FOUL_RATE + _POSS_DATA.traits.foulProneness(defender) / FOUL_TRAIT_DIV;
+}
+
+function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus) {
   return {
     kind: 'shot',
     base: SHOT_BASE_BY_ZONE[zone],
@@ -274,7 +306,11 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
     },
     modifiers: [
       { label: 'team synergy', value: (offenseSynergy || 1) - (defenseSynergy || 1) },
-      { label: 'badges', value: traitBonus / SHOT_TRAIT_DIV }
+      { label: 'badges', value: traitBonus / SHOT_TRAIT_DIV },
+      // NEGATIVE: this is the DEFENDER's contribution, so it comes off the
+      // shooter's chance. Routed by zone in traits.js's defenseQualityBonus, so
+      // a perimeter stopper does nothing to a shot at the rim.
+      { label: 'defensive badges', value: -(defTraitBonus || 0) / DEF_TRAIT_DIV }
     ],
     min: SHOT_MIN, max: SHOT_MAX
   };
@@ -308,7 +344,8 @@ function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy
     _POSS_DATA.composite.computeComposite(shooter, shootKey),
     _POSS_DATA.composite.computeComposite(defender, defKey),
     offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult,
-    _POSS_DATA.traits.shotQualityBonus(shooter, zone));
+    _POSS_DATA.traits.shotQualityBonus(shooter, zone),
+    _POSS_DATA.traits.defenseQualityBonus(defender, zone));
 }
 
 // Kept as a named export because scripts/validate-possession.js and the pixel
@@ -374,7 +411,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
 
   const turnoverCheck = _POSS_DATA.check.skillCheck(
-    turnoverSpec(onBallDefender.attributes.steal, handler.attributes.ballHandling, defSyn.defense, offSyn.offense), rng);
+    turnoverSpec(onBallDefender.attributes.steal, handler.attributes.ballHandling, defSyn.defense, offSyn.offense,
+      _POSS_DATA.traits.getTraitBonus(onBallDefender, 'boxscore', 'steal')), rng);
   if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
@@ -394,7 +432,9 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
 
   // Constants and their reasoning are hoisted to blockSpec at module scope.
-  const blockCheck = _POSS_DATA.check.skillCheck(blockSpec(shotDefender.attributes.block, zone), rng);
+  const blockCheck = _POSS_DATA.check.skillCheck(
+    blockSpec(shotDefender.attributes.block, zone,
+      _POSS_DATA.traits.getTraitBonus(shotDefender, 'boxscore', 'block')), rng);
   if (blockCheck.passed) {
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;
@@ -464,7 +504,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   // the rest of the game.
   // 0.125 calibrated by measured rate against the real NBA's ~22 free-throw
   // attempts per team-game; at 0.11 this engine produced 17.7.
-  if (rng() < SHOOTING_FOUL_RATE) {
+  if (rng() < shootingFoulRate(shotDefender)) {
     defenseBox[shotDefender.id].fouls += 1;
     const ftAttempts = 2;
     // Was `freeThrow / 105`, which centred a 78% free-throw shooter at a rating
@@ -503,6 +543,7 @@ if (typeof module !== 'undefined' && module.exports) {
     turnoverSpec: turnoverSpec,
     blockSpec: blockSpec,
     shotSpec: shotSpec,
+    shootingFoulRate: shootingFoulRate,
     weightedPick: weightedPick,
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,

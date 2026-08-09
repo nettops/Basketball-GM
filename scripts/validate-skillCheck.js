@@ -147,7 +147,10 @@ function checkTurnoverSpecMatchesTheOriginal() {
     for (let h = 0; h <= 100; h += 5) {
       for (let s = -0.1; s <= 0.1001; s += 0.05) {
         const expected = referenceTurnover(d, h, 1 + s, 1);
-        const got = skillCheckProbability(poss.turnoverSpec(d, h, 1 + s, 1)).probability;
+        // Zero badge bonus: these sweeps prove the refactor stays faithful to
+        // the ORIGINAL formulas, which had no badge terms. That invariant is
+        // still the right one — badges are additive on top of it.
+        const got = skillCheckProbability(poss.turnoverSpec(d, h, 1 + s, 1, 0)).probability;
         worst = Math.max(worst, Math.abs(got - expected));
       }
     }
@@ -164,11 +167,11 @@ function referenceBlock(blockAttr) {
 function checkBlockSpecMatchesTheOriginal() {
   let worst = 0;
   for (let b = 0; b <= 100; b += 1) {
-    worst = Math.max(worst, Math.abs(skillCheckProbability(poss.blockSpec(b, 'inside')).probability - referenceBlock(b)));
+    worst = Math.max(worst, Math.abs(skillCheckProbability(poss.blockSpec(b, 'inside', 0)).probability - referenceBlock(b)));
   }
   assert.ok(worst < 1e-12, 'block spec drifts from the original by ' + worst);
   // The three-point branch is a flat constant, not a contest.
-  assert.strictEqual(skillCheckProbability(poss.blockSpec(99, 'three')).probability, 0.008);
+  assert.strictEqual(skillCheckProbability(poss.blockSpec(99, 'three', 0)).probability, 0.008);
   console.log('checkBlockSpecMatchesTheOriginal: OK (max drift ' + worst.toExponential(2) + ')');
 }
 
@@ -189,7 +192,7 @@ function checkShotSpecMatchesTheOriginal() {
         for (let e = 0.85; e <= 1.001; e += 0.05) {
           for (let t = -8; t <= 8; t += 4) {
             const expected = referenceShot(z[1], s, d, 1.02, 0.98, e, 1, t);
-            const got = skillCheckProbability(poss.shotSpec(z[0], s, d, 1.02, 0.98, e, 1, t)).probability;
+            const got = skillCheckProbability(poss.shotSpec(z[0], s, d, 1.02, 0.98, e, 1, t, 0)).probability;
             worst = Math.max(worst, Math.abs(got - expected));
           }
         }
@@ -279,7 +282,62 @@ checkPlayByPlayCarriesChecks();
 checkQuarterHeadersStayPlainStrings();
 checkPlaysWithoutAContestStayPlainStrings();
 checkEventsCarryChecks();
+// Badges reach the CONTEST, not just who is in it. Each of these asserts the
+// spec's modifier list actually carries the badge term, and in the right
+// direction — a defensive badge must make the shot HARDER.
+function checkBadgeModifiersReachTheSpecs() {
+  const plainShot = skillCheckProbability(poss.shotSpec('three', 70, 60, 1, 1, 1, 1, 0, 0)).probability;
+  const defendedShot = skillCheckProbability(poss.shotSpec('three', 70, 60, 1, 1, 1, 1, 0, 8)).probability;
+  assert.ok(defendedShot < plainShot,
+    'a defensive badge must LOWER the shooter\'s chance (' + defendedShot + ' vs ' + plainShot + ')');
+
+  const plainSteal = skillCheckProbability(poss.turnoverSpec(60, 70, 1, 1, 0)).probability;
+  const badgeSteal = skillCheckProbability(poss.turnoverSpec(60, 70, 1, 1, 8)).probability;
+  assert.ok(badgeSteal > plainSteal, 'a steal badge must RAISE the turnover chance');
+
+  const plainBlock = skillCheckProbability(poss.blockSpec(60, 'inside', 0)).probability;
+  const badgeBlock = skillCheckProbability(poss.blockSpec(60, 'inside', 8)).probability;
+  assert.ok(badgeBlock > plainBlock, 'a block badge must RAISE the block chance');
+
+  // A rim protector must not be literally UNABLE to block a three — the flat
+  // branch still takes the badge, it just has no rating contest behind it.
+  const plainThree = skillCheckProbability(poss.blockSpec(60, 'three', 0)).probability;
+  const badgeThree = skillCheckProbability(poss.blockSpec(60, 'three', 8)).probability;
+  assert.ok(badgeThree > plainThree, 'a block badge must still help on threes');
+
+  // The badge term must be a NAMED modifier, not folded into base — the whole
+  // point of the modifiers array is that the UI can print "Lockdown Defender".
+  const spec = poss.shotSpec('three', 70, 60, 1, 1, 1, 1, 0, 8);
+  const labels = spec.modifiers.map(function (m) { return m.label; });
+  assert.ok(labels.indexOf('defensive badges') !== -1,
+    'the defensive term must be a named modifier, got: ' + labels.join(', '));
+  console.log('checkBadgeModifiersReachTheSpecs: OK');
+}
+
+// Foul Prone is the one badge that reaches the game through the FOUL rate, and
+// validate-traitsAreLive structurally cannot cover it: the representative trait
+// for boxscore/defense is a POSITIVE one (Lockdown Defender) which reaches the
+// sim through shotSpec, so zeroing this term would leave the whole family
+// looking live while Foul Prone quietly did nothing. Asserted directly.
+function checkFoulProneRaisesTheFoulRate() {
+  const clean = { hiddenTraits: [] };
+  const proneBronze = { hiddenTraits: [{ key: 'foulProne', tier: 'bronze' }] };
+  const proneLegendary = { hiddenTraits: [{ key: 'foulProne', tier: 'legendary' }] };
+  const lockdown = { hiddenTraits: [{ key: 'lockdownDefender', tier: 'legendary' }] };
+
+  const base = poss.shootingFoulRate(clean);
+  assert.ok(poss.shootingFoulRate(proneBronze) > base, 'a bronze Foul Prone must foul more than a clean defender');
+  assert.ok(poss.shootingFoulRate(proneLegendary) > poss.shootingFoulRate(proneBronze),
+    'the tier ladder must read through to the foul rate');
+  assert.strictEqual(poss.shootingFoulRate(lockdown), base,
+    'a POSITIVE defence badge must not change the foul rate — it is not a second hidden effect');
+  console.log('checkFoulProneRaisesTheFoulRate: OK (base ' + base.toFixed(3) +
+    ' -> legendary ' + poss.shootingFoulRate(proneLegendary).toFixed(3) + ')');
+}
+
 checkTurnoverSpecMatchesTheOriginal();
 checkBlockSpecMatchesTheOriginal();
 checkShotSpecMatchesTheOriginal();
+checkBadgeModifiersReachTheSpecs();
+checkFoulProneRaisesTheFoulRate();
 console.log('All skillCheck validations passed');
