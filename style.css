@@ -355,6 +355,13 @@ table { border-collapse: collapse; width: 100%; }
 .pill-gold { background: rgba(212, 169, 78, .16); color: var(--gold); }
 .pill-mute { background: transparent; color: var(--text-mute); border: 1px solid var(--line); }
 
+/* Impact-moment skill check under a commentary line. Dimmer and smaller than
+   the caption it hangs off — it is supporting evidence, not the headline. */
+.pixel-commentary-check {
+  font-size: 10px; color: var(--text-mute); opacity: 0.9;
+  margin-top: 2px; font-variant-numeric: tabular-nums;
+}
+
 /* ---------- Play-by-play skill-check breakdown ---------- */
 .pbp-line-expandable > summary { cursor: pointer; list-style: none; }
 .pbp-line-expandable > summary::-webkit-details-marker { display: none; }

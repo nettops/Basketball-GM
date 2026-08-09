@@ -308,6 +308,44 @@ const UI_SMOKE = (function () {
       body ? 'expanded height ' + body.getBoundingClientRect().height : 'no breakdown node'));
     document.body.removeChild(host);
 
+    // The LIVE-VIEW breakdown. This is the assertion the whole skill-check
+    // project exists for: a rich structure that nothing reads is the dead-path
+    // bug that let 15 traits sit unread through seven calibration tasks. If
+    // pixelPushCommentary ignores its `check` argument, the structure is
+    // decorative and these fail.
+    const feed = document.createElement('div');
+    document.body.insertBefore(feed, document.body.firstChild);
+
+    pixelPushCommentary(feed, 'Tatum posterizes Davis', {
+      kind: 'shot',
+      attack: { label: 'shootingInside', value: 88, scale: 250, energy: 1 },
+      defend: { label: 'defenseInterior', value: 55, scale: 350, energy: 1 },
+      modifiers: [{ label: 'Finisher (hof)', value: 0.017 }, { label: 'noise', value: 0.0001 }],
+      probability: 0.66, roll: 0.31, passed: true
+    });
+    const impactLine = feed.firstChild;
+    const impactDetail = impactLine && impactLine.querySelector('.pixel-commentary-check');
+    results.push(ok('hud:impact-shows-breakdown', !!impactDetail));
+    const dtext = impactDetail ? impactDetail.textContent : '';
+    results.push(ok('hud:names-attacking-rating', dtext.indexOf('shootingInside 88') !== -1, dtext));
+    results.push(ok('hud:names-defending-rating', dtext.indexOf('vs defenseInterior 55') !== -1));
+    results.push(ok('hud:itemises-modifiers', dtext.indexOf('Finisher (hof) +1.7%') !== -1));
+    results.push(ok('hud:drops-noise-modifiers', dtext.indexOf('noise') === -1));
+    results.push(ok('hud:shows-the-roll', dtext.indexOf('66% → 31%') !== -1));
+    results.push(ok('hud:breakdown-visible', !!impactDetail && isVisible(impactDetail)));
+    // The caption itself must survive alongside the breakdown.
+    results.push(ok('hud:caption-still-present',
+      !!impactLine && impactLine.textContent.indexOf('Tatum posterizes Davis') === 0));
+
+    // An ordinary possession passes null and must stay a bare caption — at ~91
+    // possessions a side, a breakdown on every line would stop being read.
+    pixelPushCommentary(feed, 'Brown brings it up', null);
+    const plainLine = feed.firstChild;
+    results.push(ok('hud:ordinary-play-has-no-breakdown',
+      !!plainLine && !plainLine.querySelector('.pixel-commentary-check')));
+
+    document.body.removeChild(feed);
+
     return results;
   }
 

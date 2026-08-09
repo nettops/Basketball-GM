@@ -82,10 +82,32 @@ function pixelShellHtml(homeTeam, awayTeam, stageW, stageH, speeds) {
     '</div>';
 }
 
-function pixelPushCommentary(feedEl, text) {
+// `check` is the skillCheck that produced this play, and it is present ONLY on
+// impact moments — posters, ankle breakers and blocks, which
+// validate-impactMoments gates to 2-7 a game. Ordinary possessions pass null on
+// purpose: at ~91 possessions a side, a breakdown on every line would stop being
+// read inside a quarter. The box score is where you audit every play
+// (ui/schedule.js's playByPlayHtml); this is where the game shouts.
+function pixelPushCommentary(feedEl, text, check) {
   const line = document.createElement('div');
   line.className = 'pixel-commentary-line';
   line.textContent = text;
+  if (check) {
+    const detail = document.createElement('div');
+    detail.className = 'pixel-commentary-check';
+    const parts = [];
+    if (check.attack) parts.push(check.attack.label + ' ' + Math.round(check.attack.value));
+    if (check.defend) parts.push('vs ' + check.defend.label + ' ' + Math.round(check.defend.value));
+    (check.modifiers || []).forEach(function (m) {
+      // Same 0.05pp floor the box-score breakdown uses: a +0.0001 synergy term
+      // printing as "+0.0%" reads as a bug rather than as a small number.
+      if (Math.abs(m.value) < 0.0005) return;
+      parts.push(m.label + ' ' + (m.value >= 0 ? '+' : '−') + (Math.abs(m.value) * 100).toFixed(1) + '%');
+    });
+    parts.push((check.probability * 100).toFixed(0) + '% → ' + (check.roll * 100).toFixed(0) + '%');
+    detail.textContent = parts.join('  ·  ');
+    line.appendChild(detail);
+  }
   feedEl.insertBefore(line, feedEl.firstChild);
   while (feedEl.children.length > 6) feedEl.removeChild(feedEl.lastChild);
 }

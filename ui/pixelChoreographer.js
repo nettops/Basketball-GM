@@ -870,7 +870,7 @@ function createChoreographer(session) {
         // swatted sideways, not through the net
         push(BEAT.resolve, shotPos, { x: sp[0] + (poss.team === 'home' ? -16 : 16), y: sp[1] - 4, holder: null }, period, quarter, clock, 'Blocked!',
           fillT(COMMENT.block, pi + ei, { d: ln(ev.defenderId), s: ln(ev.playerId) }), 'block',
-          { kind: 'block', at: { x: sp[0], y: sp[1] }, byId: ev.defenderId, onId: ev.playerId });
+          { kind: 'block', at: { x: sp[0], y: sp[1] }, byId: ev.defenderId, onId: ev.playerId, check: ev.check || null });
       } else if (ev.type === 'shot') {
         const sp = shotSpot(poss.team, ev.zone, pi + ei);
         const shotPos = cutPositions(pos, ev.playerId, pi + ei);
@@ -1141,8 +1141,12 @@ function createChoreographer(session) {
         const impactAt = impactKind === 'poster'
           ? { x: hoop.x, y: hoop.y }
           : { x: relSpot[0], y: relSpot[1] };
+        // `check` rides along so ui/pixelHud.js can show the contest that
+        // produced the highlight. Without it the panel renders a caption and
+        // nothing else, which is the feature silently degrading to what it
+        // replaced — see validate-pixel-choreographer's marker assertion.
         const impactMarker = impactKind
-          ? { kind: impactKind, at: impactAt, byId: ev.playerId, onId: ev.defenderId }
+          ? { kind: impactKind, at: impactAt, byId: ev.playerId, onId: ev.defenderId, check: ev.check || null }
           : null;
         if (ev.made && dunking && shooterOn) {
           // A dunk is not a release and a flight — the ball never leaves the

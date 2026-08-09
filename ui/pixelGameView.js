@@ -336,7 +336,11 @@ function renderPixelGame(container) {
   function pushCommentary(kf) {
     if (!kf.commentary || kf.t === lastCommentaryKfT) return;
     lastCommentaryKfT = kf.t;
-    pixelPushCommentary(document.getElementById('pixel-commentary'), kf.commentary);
+    // The keyframe's impact marker carries the skillCheck that produced the
+    // highlight (ui/pixelChoreographer.js). Ordinary keyframes have no marker,
+    // so they pass null and the feed line stays a plain caption.
+    pixelPushCommentary(document.getElementById('pixel-commentary'), kf.commentary,
+      kf.impact ? kf.impact.check : null);
   }
 
   // Motion-quality state: per-player facing persists so standing players

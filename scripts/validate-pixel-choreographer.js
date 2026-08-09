@@ -412,4 +412,32 @@ function checkThePasserFindsTheOpenMan() {
 }
 checkThePasserFindsTheOpenMan();
 
+// The impact panel is the ONLY place a skill check surfaces during live play,
+// so the marker has to carry it. A marker without a check renders a caption and
+// nothing else — the feature silently degrading back to what it replaced.
+//
+// Sweeps seeds because impact moments are rare by design (validate-impactMoments
+// gates them to 2-7 a game), so a single seed is not guaranteed to produce one.
+function checkImpactMarkerCarriesTheCheck() {
+  const markers = [];
+  for (let seed = 1; seed <= 12; seed++) {
+    const built = buildSession(seed);
+    const tl = choreo.buildTimeline(built.session);
+    tl.keyframes.forEach(function (kf) { if (kf.impact) markers.push(kf.impact); });
+  }
+  assert.ok(markers.length > 0, 'no impact markers produced across 12 seeds');
+  const withCheck = markers.filter(function (m) { return m.check && m.check.kind; });
+  assert.strictEqual(withCheck.length, markers.length,
+    'only ' + withCheck.length + ' of ' + markers.length + ' impact markers carry their check');
+  // Every marker kind must resolve to a contest the HUD can actually render.
+  withCheck.forEach(function (m) {
+    assert.ok(m.check.kind === 'shot' || m.check.kind === 'block',
+      'unexpected check kind on an impact marker: ' + m.check.kind);
+    assert.ok(typeof m.check.probability === 'number' && typeof m.check.roll === 'number',
+      'an impact check must carry the numbers the breakdown prints');
+  });
+  console.log('checkImpactMarkerCarriesTheCheck: OK (' + markers.length + ' markers across 12 seeds)');
+}
+checkImpactMarkerCarriesTheCheck();
+
 console.log('All pixel choreographer validations passed');
