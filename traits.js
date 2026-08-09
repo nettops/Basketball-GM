@@ -104,7 +104,7 @@ function weightedSampleWithoutReplacement(items, weightFn, count, rng) {
 
 function traitWeight(player, def) {
   if (def.category === 'superstar') {
-    return (player.overall >= 85 || player.potential >= 88) ? 1 : 0;
+    return (player.rawOverall >= 85 || player.potential >= 88) ? 1 : 0;
   }
   let w = 1;
   if (def.affinity) {
@@ -143,7 +143,7 @@ function traitWeight(player, def) {
 const TIER_SKILL_ANCHOR = 28.5;
 
 function pickPositiveTier(player, rng) {
-  const skill = (player.overall + player.potential) / 2;
+  const skill = (player.rawOverall + player.potential) / 2;
   const roll = rng() * 100 + (skill - TIER_SKILL_ANCHOR);
   if (roll < 30) return 'bronze';
   if (roll < 55) return 'silver';
@@ -184,7 +184,7 @@ const TRAIT_COUNT_STEP = 12;
 
 function generateHiddenTraits(player, rng) {
   const traitCount = Math.max(1, Math.min(6,
-    Math.round((player.overall - TRAIT_COUNT_FLOOR) / TRAIT_COUNT_STEP)));
+    Math.round((player.rawOverall - TRAIT_COUNT_FLOOR) / TRAIT_COUNT_STEP)));
   const candidates = TRAIT_TAXONOMY.filter(function (def) { return traitWeight(player, def) > 0; });
   const selected = weightedSampleWithoutReplacement(candidates, function (def) { return traitWeight(player, def); }, Math.min(traitCount, candidates.length), rng);
   return selected.map(function (def) {
@@ -297,7 +297,7 @@ function generatePersonality(player, rng) {
   return {
     loyalty: personalityAxis(50, 90, rng),
     ambition: personalityAxis(50, 90, rng),
-    ego: personalityAxis(30 + player.overall * 0.4, 50, rng),
+    ego: personalityAxis(30 + player.rawOverall * 0.4, 50, rng),
     coachability: personalityAxis((a.workEthic + a.basketballIQ) / 2, 60, rng),
     durabilityMindset: personalityAxis((a.strength + a.workEthic) / 2, 60, rng)
   };

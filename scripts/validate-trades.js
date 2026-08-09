@@ -36,8 +36,8 @@ function checkBasePlayerValue() {
   assert.strictEqual(evaluatorModule.contractBurden(1000000, 60), 0, 'a below-market salary should have no burden');
   assert.ok(evaluatorModule.contractBurden(50000000, 60) > 0, 'a max contract on a 60-overall should carry burden');
 
-  const star = { overall: 95, potential: 96, age: 25, contract: { salary: 30000000 } };
-  const bustContract = { overall: 60, potential: 61, age: 30, contract: { salary: 45000000 } };
+  const star = { overall: 95, rawOverall: 95, potential: 96, age: 25, contract: { salary: 30000000 } };
+  const bustContract = { overall: 60, rawOverall: 60, potential: 61, age: 30, contract: { salary: 45000000 } };
   assert.ok(evaluatorModule.basePlayerValue(star) > evaluatorModule.basePlayerValue(bustContract), 'a star should be worth clearly more than an overpaid low-overall player');
 
   console.log('checkBasePlayerValue: OK');
@@ -49,8 +49,8 @@ function checkAdjustedPlayerValue() {
   const evaluatorModule = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
   const rebuildingTeam = { id: 'BKN', timeline: 'rebuilding' };
 
-  const youngPlayer = { overall: 78, potential: 88, age: 22, position: 'SF', contract: { salary: 6000000 } };
-  const oldVeteran = { overall: 78, potential: 78, age: 33, position: 'SF', contract: { salary: 6000000 } };
+  const youngPlayer = { overall: 78, rawOverall: 78, potential: 88, age: 22, position: 'SF', contract: { salary: 6000000 } };
+  const oldVeteran = { overall: 78, rawOverall: 78, potential: 78, age: 33, position: 'SF', contract: { salary: 6000000 } };
 
   assert.ok(
     evaluatorModule.adjustedPlayerValue(youngPlayer, rebuildingTeam) > evaluatorModule.adjustedPlayerValue(oldVeteran, rebuildingTeam),

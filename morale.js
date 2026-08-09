@@ -38,7 +38,7 @@ function moraleFactors(player, team) {
   }
   if (player.seasonStats && player.seasonStats.gamesPlayed > 0) {
     const mpg = player.seasonStats.minutes / player.seasonStats.gamesPlayed;
-    if (mpg < 15 && player.overall >= 65) reasons.push('Limited role');
+    if (mpg < 15 && player.rawOverall >= 65) reasons.push('Limited role');
   }
   if (player.contract.yearsRemaining <= 1) reasons.push('Contract expiring');
   if (player.status.injury) reasons.push('Injured');

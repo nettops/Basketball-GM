@@ -36,7 +36,7 @@ checkGetTraitBonus();
 function makePlayer(overall, potential, attrOverrides) {
   const attrs = { threePoint: 60, midRange: 60, insideScoring: 60, postScoring: 50, passing: 55, ballHandling: 55, steal: 50, block: 45, offReb: 50, defReb: 50, basketballIQ: 60, workEthic: 60, leadership: 55, strength: 55, speed: 55, acceleration: 55, vertical: 55, freeThrow: 60, perimeterDefense: 50, interiorDefense: 50 };
   Object.assign(attrs, attrOverrides || {});
-  return { id: 'test-player', overall: overall, potential: potential, attributes: attrs };
+  return { id: 'test-player', overall: overall, rawOverall: overall, potential: potential, attributes: attrs };
 }
 
 function checkGenerateHiddenTraits() {
@@ -87,14 +87,14 @@ checkGeneratePersonalityAndTendencies();
 function checkEnsureHiddenPlayerData() {
   const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
   const players = [
-    { id: 'a-1', overall: 80, potential: 85, attributes: makePlayer(80, 85).attributes, hiddenTraits: [], hiddenPersonality: {}, hiddenTendencies: {} },
-    { id: 'a-2', overall: 60, potential: 60, attributes: makePlayer(60, 60).attributes, hiddenTraits: [{ key: 'sharpshooter', tier: 'bronze' }], hiddenPersonality: { loyalty: 50 }, hiddenTendencies: {} }
+    { id: 'a-1', overall: 80, rawOverall: 80, potential: 85, attributes: makePlayer(80, 85).attributes, hiddenTraits: [], hiddenPersonality: {}, hiddenTendencies: {} },
+    { id: 'a-2', overall: 60, rawOverall: 60, potential: 60, attributes: makePlayer(60, 60).attributes, hiddenTraits: [{ key: 'sharpshooter', tier: 'bronze' }], hiddenPersonality: { loyalty: 50 }, hiddenTendencies: {} }
   ];
   traitsModule.ensureHiddenPlayerData(players);
   assert.ok(players[0].hiddenTraits.length > 0, 'empty-stub player should be populated');
   assert.deepStrictEqual(players[1].hiddenTraits, [{ key: 'sharpshooter', tier: 'bronze' }], 'already-populated player should be left untouched');
 
-  const again = [{ id: 'a-1', overall: 80, potential: 85, attributes: makePlayer(80, 85).attributes, hiddenTraits: [], hiddenPersonality: {}, hiddenTendencies: {} }];
+  const again = [{ id: 'a-1', overall: 80, rawOverall: 80, potential: 85, attributes: makePlayer(80, 85).attributes, hiddenTraits: [], hiddenPersonality: {}, hiddenTendencies: {} }];
   traitsModule.ensureHiddenPlayerData(again);
   assert.deepStrictEqual(again[0].hiddenTraits, players[0].hiddenTraits, 'same id should deterministically regenerate identical trait data');
 

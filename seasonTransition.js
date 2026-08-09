@@ -20,7 +20,7 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
 // authored 62-98 scale, it was meant for fringe players and now catches 94%
 // of the league. scripts/validate-ratingBands.js asserts its share.
 function hasRetirementPenalty(player) {
-  return player.overall < 65;
+  return player.rawOverall < 65;
 }
 
 function rollRetirement(player, rng) {

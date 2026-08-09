@@ -11,7 +11,9 @@ class PlayerAwarenessModule {
     const player = getPlayerById(playerId);
     if (!player) return 0;
 
-    let value = player.overall;
+    // rawOverall: the age adjustments below are additive constants tuned
+    // against the raw scale, and the display scale would silently reweight them.
+    let value = player.rawOverall;
 
     if (player.age >= 24 && player.age <= 28) {
       value += 10;

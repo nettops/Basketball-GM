@@ -166,8 +166,8 @@ function checkOverallIsDerived() {
     'overall must react to an attribute change; it is still a stored field');
   p.attributes.threePoint = original;
   assert.strictEqual(p.overall, before, 'overall must return to its prior value');
-  assert.strictEqual(p.overall, ratings.computeOverall(p),
-    'p.overall and computeOverall must agree');
+  assert.strictEqual(p.rawOverall, ratings.computeOverall(p),
+    'p.rawOverall and computeOverall must agree');
 
   // Assignment has to FAIL LOUDLY. A getter with no setter is a silent no-op in
   // sloppy mode, which is worse than the bug being fixed — six call sites in
@@ -199,10 +199,14 @@ function checkOverallNeverDriftsFromAttributes() {
   }
   let worst = 0;
   players.forEach(function (p) {
-    worst = Math.max(worst, Math.abs(p.overall - ratings.computeOverall(p)));
-    assert.ok(p.potential >= p.overall,
-      'potential must stay >= overall through progression for ' + p.id +
-      ' (' + p.potential + ' vs ' + p.overall + ')');
+    worst = Math.max(worst, Math.abs(p.rawOverall - ratings.computeOverall(p)));
+    // Compared on the RAW scale, because `potential` is stored raw. Against
+    // display `overall` this reads as potential below overall for every player
+    // in the league — which is exactly the asymmetry potentialDisplay exists
+    // to prevent leaking into the UI.
+    assert.ok(p.potential >= p.rawOverall,
+      'potential must stay >= rawOverall through progression for ' + p.id +
+      ' (' + p.potential + ' vs ' + p.rawOverall + ')');
   });
   assert.strictEqual(worst, 0,
     'overall cannot drift from the attributes; worst divergence after 12 seasons was ' + worst);
@@ -217,17 +221,17 @@ function checkOverallNeverDriftsFromAttributes() {
 function checkYoungPlayersHaveHeadroom() {
   const young = PLAYERS_2026.filter(function (p) { return p.age <= 23; });
   assert.ok(young.length >= 20, 'expected a meaningful under-24 population, got ' + young.length);
-  const gaps = young.map(function (p) { return p.potential - p.overall; })
+  const gaps = young.map(function (p) { return p.potential - p.rawOverall; })
     .sort(function (a, b) { return a - b; });
   const median = gaps[Math.floor(gaps.length / 2)];
   assert.ok(median >= 5,
     'the median under-24 player needs real room to grow into, median headroom was ' + median);
-  const withRoom = PLAYERS_2026.filter(function (p) { return p.potential > p.overall; }).length;
+  const withRoom = PLAYERS_2026.filter(function (p) { return p.potential > p.rawOverall; }).length;
   assert.ok(withRoom >= PLAYERS_2026.length * 0.4,
     'a good share of the league should still be improvable, got ' + withRoom + '/' + PLAYERS_2026.length);
   PLAYERS_2026.forEach(function (p) {
-    assert.ok(p.potential >= p.overall,
-      'potential must never sit below overall for ' + p.id);
+    assert.ok(p.potential >= p.rawOverall,
+      'potential must never sit below rawOverall for ' + p.id);
   });
   console.log('checkYoungPlayersHaveHeadroom: OK (median under-24 headroom ' + median +
     ', ' + withRoom + '/' + PLAYERS_2026.length + ' improvable)');
@@ -329,7 +333,10 @@ const DOWNSTREAM_WEIGHTS = [
     base: function (p) { const a = p.attributes; return (a.passing + a.ballHandling) / 2; } },
   { name: 'stealWeight', stat: 'steal', base: function (p) { return p.attributes.steal; } },
   { name: 'blockWeight', stat: 'block', base: function (p) { return p.attributes.block; } },
-  { name: 'minutesWeight', stat: 'usage', base: function (p) { return p.overall; } }
+  // rawOverall, not overall. The display scale spans 1.58x where raw spans
+  // 2.69x, so pointing this at display is exactly the range collapse the whole
+  // check exists to catch — and it did catch it, on the commit that split them.
+  { name: 'minutesWeight', stat: 'usage', base: function (p) { return p.rawOverall; } }
 ];
 
 function checkDownstreamWeightsSurviveTheScale() {
@@ -627,8 +634,107 @@ function checkDisplayCurveRoundTrips() {
 checkDefensiveBadgesDrawAssignments();
 checkChemistryReachesSynergy();
 checkDefensiveFgIsRecorded();
+// One field cannot mean two things. `overall` was both the number a player
+// reads and a proportional weight the sim consumes; rescaling it for the first
+// silently corrupts the second.
+function checkRawAndDisplayAreBothPresent() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const p = PLAYERS_2026[0];
+  assert.ok(typeof p.rawOverall === 'number', 'rawOverall must exist');
+  assert.ok(typeof p.overall === 'number', 'overall must exist');
+  assert.strictEqual(p.overall, ratings.toDisplayRating(p.rawOverall),
+    'overall must be the display of rawOverall');
+  assert.ok(typeof p.potentialDisplay === 'number', 'potentialDisplay must exist');
+  assert.strictEqual(p.potentialDisplay, ratings.toDisplayRating(p.potential),
+    'potentialDisplay must be the display of the stored raw potential');
+  assert.notStrictEqual(p.overall, p.rawOverall,
+    'display and raw must actually differ, or the split is decorative');
+  console.log('checkRawAndDisplayAreBothPresent: OK (raw ' + p.rawOverall + ' -> ' + p.overall + ')');
+}
+
+// THE UPGRADE PATH. defineOverall's idempotence guard tests `rawOverall`, not
+// `overall`, and the difference only shows on a player carrying the OLD shape:
+// an `overall` getter and nothing else. Guarding on `overall` would see a getter
+// already present, return early, and leave that player without rawOverall
+// forever — every sim-facing read of it silently undefined.
+//
+// Nothing in the normal corpus builds such a player (a deserialised save has no
+// getters at all, so either guard works), which made reverting the guard a
+// surviving mutant. This constructs the old shape directly so the guard is live.
+function checkOldShapePlayersGainTheNewGetters() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const legacy = JSON.parse(JSON.stringify(PLAYERS_2026[3]));
+  Object.defineProperty(legacy, 'overall', {
+    get: function () { return ratings.computeOverall(this); },
+    enumerable: false, configurable: true
+  });
+  assert.strictEqual(legacy.rawOverall, undefined, 'the fixture must start in the OLD shape');
+  ratings.defineOverall(legacy);
+  assert.ok(typeof legacy.rawOverall === 'number',
+    'a player carrying the old single-getter shape must still gain rawOverall');
+  assert.strictEqual(legacy.overall, ratings.toDisplayRating(legacy.rawOverall),
+    'and its overall must be upgraded to the display value');
+  console.log('checkOldShapePlayersGainTheNewGetters: OK');
+}
+
+// Neither may serialise. A saved league carrying a frozen rating rebuilds the
+// stored-overall drift bug through the back door.
+function checkNeitherRatingSerialises() {
+  const json = JSON.stringify(PLAYERS_2026[0]);
+  assert.ok(json.indexOf('"overall"') === -1, 'overall must not serialise');
+  assert.ok(json.indexOf('"rawOverall"') === -1, 'rawOverall must not serialise');
+  assert.ok(json.indexOf('"potentialDisplay"') === -1, 'potentialDisplay must not serialise');
+  assert.ok(json.indexOf('"potential"') !== -1, 'the STORED raw potential must still serialise');
+  console.log('checkNeitherRatingSerialises: OK');
+}
+
+// The proportional spread minutesWeight depends on. If this narrows, stars are
+// taking fewer shots than they should and the sim has been quietly rebalanced.
+// 2.69x today; the display scale would give 1.58x.
+function checkUsageSpreadStaysWide() {
+  const weights = PLAYERS_2026.map(function (p) { return p.rawOverall; });
+  const spread = Math.max.apply(null, weights) / Math.min.apply(null, weights);
+  assert.ok(spread >= 2.4,
+    'usage spread collapsed to ' + spread.toFixed(2) + 'x — minutesWeight is reading the display field');
+  console.log('checkUsageSpreadStaysWide: OK (' + spread.toFixed(2) + 'x)');
+}
+
+// Coaches carry their OWN hand-authored overall on a 55-95 scale. It is not
+// derived from attributes and must never be routed through the player curve.
+function checkCoachOverallIsUntouched() {
+  const coachMod = require(path.join(__dirname, '..', 'coaches.js'));
+  const rng = makeRng(4242);
+  const all = [];
+  for (let i = 0; i < 60; i++) all.push(coachMod.generateCoach(rng));
+  assert.ok(all.length > 0, 'expected a coach pool to check');
+  all.forEach(function (c) {
+    assert.ok(c.overall >= 55 && c.overall <= 95,
+      'coach ' + c.name + ' overall ' + c.overall + ' left the authored 55-95 band');
+    assert.strictEqual(c.rawOverall, undefined, 'a coach must never gain rawOverall');
+  });
+  console.log('checkCoachOverallIsUntouched: OK (' + all.length + ' coaches)');
+}
+
+// "Make this player a 90" means 90 on the scale the user is looking at.
+function checkScaleAttributesHitsADisplayTarget() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  [65, 75, 85, 90, 95].forEach(function (target) {
+    const clone = ratings.defineOverall(JSON.parse(JSON.stringify(PLAYERS_2026[40])));
+    ratings.scaleAttributesToOverall(clone, target);
+    assert.strictEqual(clone.overall, target,
+      'scaleAttributesToOverall(p, ' + target + ') gave ' + clone.overall);
+  });
+  console.log('checkScaleAttributesHitsADisplayTarget: OK (65/75/85/90/95)');
+}
+
 checkDisplayCurveIsMonotoneAndBounded();
 checkDisplayCurveIsAbsolute();
 checkDisplayCurveRoundTrips();
+checkRawAndDisplayAreBothPresent();
+checkOldShapePlayersGainTheNewGetters();
+checkNeitherRatingSerialises();
+checkUsageSpreadStaysWide();
+checkCoachOverallIsUntouched();
+checkScaleAttributesHitsADisplayTarget();
 
 console.log('All ratings validations passed');

@@ -93,7 +93,7 @@ function checkProgressionRespectsCoachFit() {
   const team = teamsModule.getTeamById('BOS');
   const player = leagueModule.getTeamRoster('BOS')[0];
   player.age = 22; // young enough for the growth-curve branch, where coachability matters most
-  player.potential = Math.min(99, player.overall + 10);
+  player.potential = Math.min(99, player.rawOverall + 10);
   player.hiddenPersonality = Object.assign({}, player.hiddenPersonality, { coachability: 90 }); // strongly Coachable
 
   const rngA = makeRng(11);

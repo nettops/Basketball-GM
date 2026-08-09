@@ -97,7 +97,7 @@ function mkProspect(name, age, heightIn, weightLb, position, overall, potential,
   // gap re-expressed on the new scale, so `potential - overall` still drives
   // progression's development pull and potential >= overall holds.
   prospect.potential = Math.max(_PROSPECT_DATA.data.RATING_MIN, Math.min(_PROSPECT_DATA.data.RATING_MAX,
-    prospect.overall + Math.round(Math.max(0, potential - overall) * _PROSPECT_DATA.players.ANCHOR_SD_RATIO)));
+    prospect.rawOverall + Math.round(Math.max(0, potential - overall) * _PROSPECT_DATA.players.ANCHOR_SD_RATIO)));
   return prospect;
 }
 

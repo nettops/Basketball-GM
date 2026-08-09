@@ -30,6 +30,7 @@ global.SEASON_STAT_KEYS = leagueModule.SEASON_STAT_KEYS;
 global.PLAYERS_2026 = playersModule.PLAYERS_2026;
 global.makeAttributes = playersModule.makeAttributes;
 global.rescaleAnchor = playersModule.rescaleAnchor;
+global.defineOverall = require(path.join(__dirname, '..', 'ratings.js')).defineOverall;
 global.ensureCareerData = historyModule.ensureCareerData;
 global.getPlayerById = leagueModule.getPlayerById;
 global.archiveRetiree = historyModule.archiveRetiree;

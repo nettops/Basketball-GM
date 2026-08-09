@@ -159,9 +159,15 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
   //
   // Scaling the gap by SCALE_SD / OLD_SD keeps a 10-point authored ceiling
   // worth the same fraction of a standard deviation as the author intended,
-  // and potential >= overall then holds by construction.
+  // and potential >= rawOverall then holds by construction.
+  //
+  // rawOverall, NOT overall. `potential` is STORED RAW — progression pulls
+  // players by `potential - rawOverall`, and every save already holds the raw
+  // value. Building it from the display value inflates every player's ceiling
+  // by ~19 points, which then feeds trait generation through pickPositiveTier's
+  // skill term and the superstar gate.
   player.potential = Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX,
-    player.overall + Math.round(Math.max(0, potential - overall) * ANCHOR_SD_RATIO)));
+    player.rawOverall + Math.round(Math.max(0, potential - overall) * ANCHOR_SD_RATIO)));
   return player;
 }
 

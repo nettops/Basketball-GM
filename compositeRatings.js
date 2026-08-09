@@ -103,7 +103,7 @@ function chemistryTerm(roster, team) {
 // `team` is optional: omitting it behaves as chemistry 70 (neutral), so any
 // caller that has not been updated is unaffected rather than silently penalised.
 function computeTeamSynergy(roster, team) {
-  const rotation = roster.slice().sort(function (a, b) { return b.overall - a.overall; }).slice(0, 8);
+  const rotation = roster.slice().sort(function (a, b) { return b.rawOverall - a.rawOverall; }).slice(0, 8);
   if (rotation.length === 0) return { offense: 1, defense: 1, rebound: 1 };
 
   const shooters = rotation.filter(function (p) {

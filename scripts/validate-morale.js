@@ -2,11 +2,15 @@ const assert = require('assert');
 const path = require('path');
 
 function makePlayer(overrides) {
-  return Object.assign({
+  const p = Object.assign({
     id: 'test-player', name: 'Test Player', teamId: 'BOS', overall: 70,
     contract: { salary: 5000000, yearsRemaining: 3, playerOption: false, teamOption: false },
     status: { morale: 70, fatigue: 0, injury: null }
   }, overrides || {});
+  // Consumers read rawOverall; these fixtures are plain objects with no getter,
+  // so the two are kept in lockstep here.
+  if (p.rawOverall === undefined) p.rawOverall = p.overall;
+  return p;
 }
 
 function checkTickMoraleForTeamGame() {

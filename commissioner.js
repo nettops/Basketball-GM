@@ -120,8 +120,16 @@ function fairSalaryForOverall(overall) {
 // empty stubs — this project's recurring "truthy empty object" bug pattern
 // starts with exactly that kind of stub.
 function createPlayer(details) {
-  const overall = commissionerClampRating(details.overall);
-  const potential = Math.max(overall, commissionerClampRating(details.potential));
+  // details.overall and details.potential arrive from the commissioner UI on
+  // the DISPLAY scale — the user asks for a 90. Both mkProspect (which derives
+  // attributes from them) and fairSalaryForOverall consume the RAW scale, so
+  // the conversion happens once, here at the boundary, rather than being
+  // rediscovered by each consumer.
+  const toRaw = function (v) {
+    return Math.round(_COMMISSIONER_DATA.ratings.toRawRating(commissionerClampRating(v)));
+  };
+  const overall = toRaw(details.overall);
+  const potential = Math.max(overall, toRaw(details.potential));
   const player = _COMMISSIONER_DATA.prospects.mkProspect(
     details.name, details.age, 78, 210, details.position, overall, potential, details.archetype, 0, 'Commissioner-created'
   );
@@ -250,7 +258,7 @@ function createExpansionTeam(details, rng) {
       if (_COMMISSIONER_DATA.league.getTeamRoster(id).length >= EXPANSION_ROSTER_TARGET) return;
       const donorRoster = _COMMISSIONER_DATA.league.getTeamRoster(donorId);
       if (donorRoster.length <= EXPANSION_DONOR_FLOOR) return;
-      const byOverall = donorRoster.slice().sort(function (a, b) { return b.overall - a.overall; });
+      const byOverall = donorRoster.slice().sort(function (a, b) { return b.rawOverall - a.rawOverall; });
       const protectedIds = {};
       byOverall.slice(0, EXPANSION_PROTECTED_COUNT).forEach(function (p) { protectedIds[p.id] = true; });
       const available = byOverall.filter(function (p) { return !protectedIds[p.id]; });
@@ -315,7 +323,7 @@ function fillRosterToTarget(team, target, rng) {
     const player = available.length > 0 ? available.shift() : generateFringePlayer(team, rng);
     player.teamId = team.id;
     player.jerseyNumber = nextAvailableJersey(team.id, player.id);
-    player.contract = { salary: fairSalaryForOverall(player.overall), yearsRemaining: 2, playerOption: false, teamOption: false };
+    player.contract = { salary: fairSalaryForOverall(player.rawOverall), yearsRemaining: 2, playerOption: false, teamOption: false };
     signed.push(player.id);
   }
   return signed;

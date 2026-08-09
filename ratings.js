@@ -114,29 +114,57 @@ function computeOverall(player) {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
-// Installs `overall` as a non-enumerable getter, so the ~27 files that read
-// player.overall keep working unchanged while nothing can assign to it.
-// Non-enumerable is load-bearing: JSON.stringify must NOT serialise it into a
-// save, or a loaded league would carry a frozen value that never updates again
-// — which is the stored-overall bug rebuilt through the back door.
+// TWO GETTERS, TWO MEANINGS.
+//
+//   rawOverall  - the fitted value, ~29-78. What the SIM consumes, as a
+//                 proportional weight.
+//   overall     - the display value, 60-95. What the PLAYER reads.
+//
+// One field cannot do both. `overall` used to, and rescaling it for the reader
+// would have flattened star usage by 40%: minutesWeight divides by it, raw
+// spans 2.69x and display spans 1.58x, so stars would have taken proportionally
+// FEWER shots. simEngineBoxScore.js:89-103 records this exact failure happening
+// once already, when a hard `overall - 40` offset collapsed 158 players onto an
+// identical rotation weight.
+//
+// Non-enumerable is load-bearing on all three: JSON.stringify must NOT
+// serialise them into a save, or a loaded league carries a frozen value that
+// never updates again — the stored-overall bug rebuilt through the back door.
+//
+// THE IDEMPOTENCE GUARD TESTS `rawOverall`, NOT `overall`. A player carrying the
+// older single-getter shape — anything deserialised from a save written before
+// this change — still has an `overall` getter, so guarding on that name would
+// return early and it would never gain the other two.
 function defineOverall(player) {
-  const existing = Object.getOwnPropertyDescriptor(player, 'overall');
+  const existing = Object.getOwnPropertyDescriptor(player, 'rawOverall');
   if (existing && existing.get) return player;
   delete player.overall;
-  Object.defineProperty(player, 'overall', {
-    get: function () { return computeOverall(this); },
-    // A getter with no setter makes `p.overall = x` a SILENT no-op in sloppy
-    // mode, which is a worse bug than the one being fixed — six call sites
-    // across the codebase were assigning to it. Throwing turns every one of
-    // them into a stack trace instead of a value that quietly never changes.
-    set: function () {
-      throw new Error(
-        'overall is derived from the attributes (ratings.js) and cannot be assigned. ' +
-        'Change the attributes instead — see scaleAttributesToOverall.');
-    },
-    enumerable: false,
-    configurable: true
-  });
+  delete player.rawOverall;
+  delete player.potentialDisplay;
+  function derived(name, get) {
+    Object.defineProperty(player, name, {
+      get: get,
+      // A getter with no setter makes `p.overall = x` a SILENT no-op in sloppy
+      // mode, which is a worse bug than the one being fixed — six call sites
+      // across the codebase were assigning to it. Throwing turns every one of
+      // them into a stack trace instead of a value that quietly never changes.
+      set: function () {
+        throw new Error(
+          name + ' is derived from the attributes (ratings.js) and cannot be assigned. ' +
+          'Change the attributes instead — see scaleAttributesToOverall.');
+      },
+      enumerable: false,
+      configurable: true
+    });
+  }
+  derived('rawOverall', function () { return computeOverall(this); });
+  derived('overall', function () { return toDisplayRating(computeOverall(this)); });
+  // `potential` stays STORED and RAW, because progression pulls players by
+  // `potential - rawOverall` and every existing save already holds the raw
+  // value. That asymmetry is a trap — raw potential rendered beside display
+  // overall reads as potential BELOW overall for every player in the league —
+  // so the UI must read this instead, and a validator enforces it.
+  derived('potentialDisplay', function () { return toDisplayRating(this.potential); });
   return player;
 }
 
@@ -147,6 +175,11 @@ function defineOverall(player) {
 // is linear in the attributes — a uniform +d moves overall by d * sum(coef).
 // Clamping at the scale bounds can leave it short of an extreme target, so it
 // iterates a few times and settles for the closest reachable value.
+//
+// TARGET IS A DISPLAY VALUE. Every caller means "make this player a 90" on the
+// scale the user is looking at. Convergence is therefore checked in display
+// space, where targets are integers and a hit is exact; the SHIFT is computed
+// in raw space, where the model is linear and the arithmetic works.
 function scaleAttributesToOverall(player, target) {
   const keys = _RATINGS_DATA.data.ATTRIBUTE_KEYS;
   let totalCoef = 0;
@@ -154,15 +187,15 @@ function scaleAttributesToOverall(player, target) {
     if (OVERALL_COEFFICIENTS[k]) totalCoef += OVERALL_COEFFICIENTS[k].coef;
   });
   if (!totalCoef) return player;
+  const rawTarget = toRawRating(target);
   // Iterates rather than solving once, because clamping at the scale bounds
   // shrinks the effective slope: as attributes pin at 100 a further uniform
   // shift moves only the ones still free, so one pass undershoots an extreme
   // target. Runs until it stops making progress — six passes was not enough to
   // drive a mid-league player to 100.
   for (let pass = 0; pass < 40; pass++) {
-    const gap = target - computeOverall(player);
-    if (gap === 0) break;
-    const shift = gap / totalCoef;
+    if (toDisplayRating(computeOverall(player)) === target) break;
+    const shift = (rawTarget - computeOverall(player)) / totalCoef;
     let moved = false;
     keys.forEach(function (k) {
       const next = Math.max(0, Math.min(100, Math.round(player.attributes[k] + shift)));

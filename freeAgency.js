@@ -16,9 +16,9 @@ function playingTimeScore(player, team) {
   const roster = _FA_DATA.league.getTeamRoster(team.id).filter(function (p) { return p.id !== player.id; });
   const samePosition = roster.filter(function (p) { return p.position === player.position; });
   if (samePosition.length === 0) return 1.0;
-  const avgAtPosition = samePosition.reduce(function (s, p) { return s + p.overall; }, 0) / samePosition.length;
-  if (player.overall > avgAtPosition + 5) return 0.9;
-  if (player.overall < avgAtPosition - 10) return 0.2;
+  const avgAtPosition = samePosition.reduce(function (s, p) { return s + p.rawOverall; }, 0) / samePosition.length;
+  if (player.rawOverall > avgAtPosition + 5) return 0.9;
+  if (player.rawOverall < avgAtPosition - 10) return 0.2;
   return 0.5;
 }
 
@@ -103,7 +103,7 @@ function scoreOffer(player, team, offer) {
 // about their market rather than holding out forever (see
 // runFreeAgencySilently's multi-round loop).
 function estimateFairSalary(player, roundsUnsigned) {
-  const base = Math.max(1200000, (player.overall - 45) * 900000);
+  const base = Math.max(1200000, (player.rawOverall - 45) * 900000);
   const morale = (player.status && player.status.morale !== undefined) ? player.status.morale : 70;
   const moraleMultiplier = 0.85 + (morale / 100) * 0.3;
   const decayMultiplier = Math.max(0.6, 1 - (roundsUnsigned || 0) * 0.08);

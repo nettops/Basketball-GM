@@ -17,7 +17,7 @@ function checkEnsureCareerData() {
   historyModule.ensureCareerData([player]);
   assert.strictEqual(player.careerStats.gamesPlayed, 0, 'fresh careerStats should start at zero');
   assert.deepStrictEqual(player.awardsWon, [], 'fresh awardsWon should be empty');
-  assert.strictEqual(player.peakOverall, player.overall, 'fresh peakOverall should default to current overall');
+  assert.strictEqual(player.peakOverall, player.rawOverall, 'fresh peakOverall should default to current rawOverall');
   player.careerStats.points = 777;
   historyModule.ensureCareerData([player]);
   assert.strictEqual(player.careerStats.points, 777, 'ensureCareerData must not reset existing data');

@@ -118,7 +118,7 @@ function checkAutoEnforceRosterSize() {
   for (let i = 0; i < overflowCount; i++) {
     playersModule.PLAYERS_2026.push({
       id: 'validate-automation-overflow-' + i, name: 'Overflow Guy ' + i, teamId: team.id, position: 'SF', age: 30,
-      overall: 40, potential: 40, jerseyNumber: 90 + i,
+      overall: 40, rawOverall: 40, potential: 40, jerseyNumber: 90 + i,
       contract: { salary: 1500000, yearsRemaining: 1, playerOption: false, teamOption: false },
       status: { fatigue: 0, injury: null, morale: 50 },
       attributes: {}, hiddenTraits: [], hiddenPersonality: {}, hiddenTendencies: {}

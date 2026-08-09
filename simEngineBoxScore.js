@@ -4,9 +4,9 @@ var _ENGINE_DATA = (typeof require !== 'undefined')
 
 function computeTeamRating(teamId) {
   const roster = _ENGINE_DATA.league.getTeamRoster(teamId).filter(function (p) { return !p.status.injury; });
-  const rotation = roster.slice().sort(function (a, b) { return b.overall - a.overall; }).slice(0, 8);
+  const rotation = roster.slice().sort(function (a, b) { return b.rawOverall - a.rawOverall; }).slice(0, 8);
   if (rotation.length === 0) return 50; // fully depleted roster fallback, shouldn't happen with real data
-  const avgOverall = rotation.reduce(function (s, p) { return s + p.overall; }, 0) / rotation.length;
+  const avgOverall = rotation.reduce(function (s, p) { return s + p.rawOverall; }, 0) / rotation.length;
   const avgFatiguePenalty = (rotation.reduce(function (s, p) { return s + p.status.fatigue; }, 0) / rotation.length) * 0.1;
   const team = _ENGINE_DATA.teams.getTeamById(teamId);
   const chemistryBonus = (team.chemistry - 70) * 0.05;
@@ -107,8 +107,12 @@ function blockWeight(player) {
 //
 // Kept scale-free deliberately: any constant subtracted here is a bet on where
 // the rating scale sits, and that bet has now been wrong once.
+// Reads rawOverall, NOT the display value. The proportional spread is the whole
+// point of this weight: raw spans 29-78 (2.69x), display spans 60-95 (1.58x).
+// Pointing this at display would cut star usage by 40% while every test stayed
+// green except the golden master.
 function minutesWeight(player) {
-  return Math.max(1, player.overall + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
+  return Math.max(1, player.rawOverall + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
 }
 
 // Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by

@@ -59,7 +59,11 @@ class PlayerCareerController {
       // affine map — otherwise a created rookie outranks the whole league.
       // The attributes are anchored on the UNSCALED value, because
       // makeAttributes applies the map itself.
-      overall: rescaleAnchor(archetypeData.startingOverall),
+      //
+      // `overall` is NOT stored. It was, and that made a career-mode player the
+      // one player in the league whose overall could disagree with his own
+      // attributes — the exact bug ratings.js exists to prevent. defineOverall
+      // installs it (and rawOverall) as getters just below.
       potential: rescaleAnchor(archetypeData.startingPotential),
       attributes: makeAttributes(archetypeData.startingOverall, attrArchetype, playerId),
       traits: selectedTraits, // Array of trait strings
@@ -77,6 +81,12 @@ class PlayerCareerController {
       isCustomPlayer: true,
       careerPhase: "college"
     };
+    // Makes the created player a real player: `overall` and `rawOverall` become
+    // derived getters over the attributes above, exactly as every generated
+    // player gets them. Without this the player has no rawOverall at all, and
+    // every sim-facing read of it returns undefined — which surfaced as
+    // evaluatePlayerValue returning NaN.
+    defineOverall(player);
 
     // Populates player.careerStats/awardsWon/championshipsWon/peakOverall/etc.
     // using the same shape the rest of the league (history.js, awards.js,

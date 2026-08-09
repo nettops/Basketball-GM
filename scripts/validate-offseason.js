@@ -66,7 +66,7 @@ function checkProgression() {
   const p = synth({ age: 24, yearsPro: 3, potential: 90 }, 90);
   progressionModule.progressPlayer(p, rng);
   assert.strictEqual(p.yearsPro, 4, 'yearsPro must increment alongside age each offseason');
-  assert.ok(p.potential >= p.overall, 'potential must stay >= overall after progression');
+  assert.ok(p.potential >= p.rawOverall, 'potential must stay >= rawOverall after progression');
   assert.ok(p.overall >= dataModule.RATING_MIN && p.overall <= dataModule.RATING_MAX);
   dataModule.ATTRIBUTE_KEYS.forEach(function (k) {
     assert.ok(p.attributes[k] >= dataModule.RATING_MIN && p.attributes[k] <= dataModule.RATING_MAX, k + ' out of range after progression');
@@ -110,7 +110,7 @@ function checkProspectGeneration() {
 
   generatedClass.forEach(function (p) {
     assert.ok(p.overall >= dataModule.RATING_MIN && p.overall <= dataModule.RATING_MAX, 'generated prospect overall out of range');
-    assert.ok(p.potential >= p.overall, 'generated prospect potential must be >= overall');
+    assert.ok(p.potential >= p.rawOverall, 'generated prospect potential must be >= rawOverall');
     dataModule.ATTRIBUTE_KEYS.forEach(function (k) {
       assert.ok(p.attributes[k] >= dataModule.RATING_MIN && p.attributes[k] <= dataModule.RATING_MAX, 'generated prospect attribute ' + k + ' out of range');
     });
@@ -132,7 +132,7 @@ function checkReal2026Class() {
   assert.strictEqual(new Set(ids).size, 60, 'real prospect ids must be unique');
   prospectsModule.DRAFT_PROSPECTS_2026.forEach(function (p) {
     assert.ok(p.overall >= dataModule.RATING_MIN && p.overall <= dataModule.RATING_MAX);
-    assert.ok(p.potential >= p.overall);
+    assert.ok(p.potential >= p.rawOverall);
     assert.strictEqual(p.teamId, null);
   });
   const first15Avg = prospectsModule.DRAFT_PROSPECTS_2026.slice(0, 15).reduce(function (s, p) { return s + p.overall; }, 0) / 15;

@@ -66,10 +66,10 @@ function computeStatRating(player, leagueBaseline) {
 // rookie) or no leagueBaseline was supplied — existing callers that don't
 // pass one keep the exact old rating-only behavior.
 function basePlayerValue(player, leagueBaseline) {
-  const potentialGap = Math.max(0, player.potential - player.overall);
+  const potentialGap = Math.max(0, player.potential - player.rawOverall);
   const statRating = computeStatRating(player, leagueBaseline);
-  const effectiveOverall = statRating !== null ? 0.8 * player.overall + 0.2 * statRating : player.overall;
-  return effectiveOverall * 2 + potentialGap * youthFactor(player.age) - contractBurden(player.contract.salary, player.overall);
+  const effectiveOverall = statRating !== null ? 0.8 * player.rawOverall + 0.2 * statRating : player.rawOverall;
+  return effectiveOverall * 2 + potentialGap * youthFactor(player.age) - contractBurden(player.contract.salary, player.rawOverall);
 }
 
 function directionMultiplier(player, timeline) {
@@ -79,7 +79,7 @@ function directionMultiplier(player, timeline) {
     return 1.0;
   }
   if (timeline === 'win-now') {
-    if (player.overall >= 80) return 1.2;
+    if (player.rawOverall >= 80) return 1.2;
     if (player.age <= 22) return 0.85;
     return 1.0;
   }
@@ -95,14 +95,14 @@ const LEAGUE_AVG_OVERALL = 75;
 function currentLeagueAvgOverall() {
   const allPlayers = _EVAL_DATA.players.PLAYERS_2026;
   if (allPlayers.length === 0) return LEAGUE_AVG_OVERALL;
-  return allPlayers.reduce(function (s, p) { return s + p.overall; }, 0) / allPlayers.length;
+  return allPlayers.reduce(function (s, p) { return s + p.rawOverall; }, 0) / allPlayers.length;
 }
 
 function needMultiplier(position, team) {
   const roster = _EVAL_DATA.league.getTeamRoster(team.id);
   const samePosition = roster.filter(function (p) { return p.position === position; });
   if (samePosition.length === 0) return 1.3;
-  const avgAtPosition = samePosition.reduce(function (s, p) { return s + p.overall; }, 0) / samePosition.length;
+  const avgAtPosition = samePosition.reduce(function (s, p) { return s + p.rawOverall; }, 0) / samePosition.length;
   const leagueAvg = currentLeagueAvgOverall();
   if (avgAtPosition < leagueAvg - 10) return 1.15;
   if (avgAtPosition > leagueAvg + 10) return 0.9;

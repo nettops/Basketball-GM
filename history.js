@@ -55,7 +55,10 @@ function ensureCareerData(players) {
       _HISTORY_DATA.league.SEASON_STAT_KEYS.forEach(function (key) { p.careerStats[key] = 0; });
     }
     if (!p.awardsWon) p.awardsWon = [];
-    if (p.peakOverall === undefined) p.peakOverall = p.overall;
+    // Stored RAW, like every other persisted rating. The UI displays it through
+    // toDisplayRating; storing the display value would freeze it against a curve
+    // that can change, which is the stored-overall bug in a new coat.
+    if (p.peakOverall === undefined) p.peakOverall = p.rawOverall;
     if (p.championshipsWon === undefined) p.championshipsWon = 0;
     if (!p.teamsPlayedFor) p.teamsPlayedFor = p.teamId ? [p.teamId] : [];
     if (!p.bestSeasonTotals) p.bestSeasonTotals = { points: 0, rebounds: 0, assists: 0 };
@@ -84,7 +87,7 @@ function checkMilestones(player, beforeTotals, feedSink) {
 function rollSeasonIntoCareerStats(player, leagueYear, feedSink) {
   const sink = feedSink || function () {};
   ensureCareerData([player]);
-  player.peakOverall = Math.max(player.peakOverall, player.overall);
+  player.peakOverall = Math.max(player.peakOverall, player.rawOverall);
   if (player.teamId && player.teamsPlayedFor.indexOf(player.teamId) === -1) {
     player.teamsPlayedFor.push(player.teamId);
   }

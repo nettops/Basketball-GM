@@ -134,7 +134,8 @@ function progressPlayer(player, rng, teammates, options) {
   // that function's whole purpose is to DISCOVER what potential should be —
   // pulling toward it while estimating it would be circular.
   if (!options.suppressPotentialPull) {
-    var potentialGap = player.potential - player.overall;
+    // `potential` is stored RAW, so it can only be differenced against rawOverall.
+    var potentialGap = player.potential - player.rawOverall;
     if (player.age <= 25) {
       baseChange += potentialGap * 0.15;
     } else if (player.age <= 29) {
@@ -231,7 +232,7 @@ const MONTE_CARLO_TARGET_AGE = 29; // player.js:develop's own convention: aging 
 // and returns the 75th percentile across runs — same "high but not the
 // absolute ceiling of luck" percentile ZenGM's monteCarloPot uses.
 function estimatePotentialMonteCarlo(player, rng) {
-  if (player.age >= MONTE_CARLO_TARGET_AGE) return player.overall;
+  if (player.age >= MONTE_CARLO_TARGET_AGE) return player.rawOverall;
 
   const maxOveralls = [];
   for (let sim = 0; sim < MONTE_CARLO_SIMULATIONS; sim++) {
@@ -250,11 +251,11 @@ function estimatePotentialMonteCarlo(player, rng) {
     });
     // Unused while suppressPotentialPull is set, but keeps the
     // potential >= overall invariant valid for anything that reads the copy.
-    copy.potential = copy.overall;
-    let maxOverall = copy.overall;
+    copy.potential = copy.rawOverall;
+    let maxOverall = copy.rawOverall;
     while (copy.age < MONTE_CARLO_TARGET_AGE) {
       progressPlayer(copy, rng, [], { suppressPotentialPull: true });
-      if (copy.overall > maxOverall) maxOverall = copy.overall;
+      if (copy.rawOverall > maxOverall) maxOverall = copy.rawOverall;
     }
     maxOveralls.push(maxOverall);
   }

@@ -72,7 +72,7 @@ function checkPlayers() {
 
     assert.ok(p.overall >= data.RATING_MIN && p.overall <= data.RATING_MAX, 'overall out of range on ' + p.id);
     assert.ok(p.potential >= data.RATING_MIN && p.potential <= data.RATING_MAX, 'potential out of range on ' + p.id);
-    assert.ok(p.potential >= p.overall, 'potential must be >= overall on ' + p.id);
+    assert.ok(p.potential >= p.rawOverall, 'potential must be >= rawOverall on ' + p.id);
 
     data.ATTRIBUTE_KEYS.forEach(function (key) {
       const val = p.attributes[key];
