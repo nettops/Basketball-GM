@@ -1,6 +1,6 @@
 var _TRAITS_DATA = (typeof require !== 'undefined')
-  ? { rng: require('./rng.js') }
-  : { rng: { makeRng: makeRng } };
+  ? { rng: require('./rng.js'), ratings: require('./ratings.js') }
+  : { rng: { makeRng: makeRng }, ratings: { RATING_BANDS: RATING_BANDS } };
 
 const TRAIT_TIER_SCALE = { bronze: 1, silver: 2, gold: 3, hof: 5, legendary: 8 };
 const SUPERSTAR_TIER_SCALE = { bronze: 2, silver: 4, gold: 6, hof: 9, legendary: 14 };
@@ -63,7 +63,8 @@ const TRAIT_TAXONOMY = [
   { key: 'stubborn', name: 'Stubborn', category: 'negative', affinity: null, effect: { system: 'progression', stat: 'self', direction: -1 }, tierValues: TRAIT_TIER_SCALE },
   { key: 'chokeArtist', name: 'Choke Artist', category: 'negative', affinity: null, effect: { system: 'boxscore', stat: 'scoring', direction: -1 }, tierValues: TRAIT_TIER_SCALE },
 
-  // --- Superstar (rare; gated to overall>=85 or potential>=88 in generateHiddenTraits) ---
+  // --- Superstar (rare; gated by RATING_BANDS.superstar / .superstarPotential
+  //     in traitWeight, on the DISPLAY scale — 7 of 380 players qualify) ---
   { key: 'alphaDog', name: 'Alpha Dog', category: 'superstar', affinity: 'leadership', effect: { system: 'boxscore', stat: 'scoring', direction: 1 }, tierValues: SUPERSTAR_TIER_SCALE },
   { key: 'iceInVeins', name: 'Ice in Veins', category: 'superstar', affinity: 'basketballIQ', effect: { system: 'boxscore', stat: 'scoring', direction: 1 }, tierValues: SUPERSTAR_TIER_SCALE },
   { key: 'twoWayStar', name: 'Two-Way Star', category: 'superstar', affinity: null, effect: { system: 'boxscore', stat: 'defense', direction: 1 }, tierValues: SUPERSTAR_TIER_SCALE },
@@ -104,7 +105,8 @@ function weightedSampleWithoutReplacement(items, weightFn, count, rng) {
 
 function traitWeight(player, def) {
   if (def.category === 'superstar') {
-    return (player.rawOverall >= 85 || player.potential >= 88) ? 1 : 0;
+    return (player.overall >= _TRAITS_DATA.ratings.RATING_BANDS.superstar ||
+            player.potentialDisplay >= _TRAITS_DATA.ratings.RATING_BANDS.superstarPotential) ? 1 : 0;
   }
   let w = 1;
   if (def.affinity) {

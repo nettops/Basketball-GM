@@ -1,6 +1,6 @@
 var _MORALE_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js') }
-  : { league: { getTeamRoster: getTeamRoster } };
+  ? { league: require('./league.js'), ratings: require('./ratings.js') }
+  : { league: { getTeamRoster: getTeamRoster }, ratings: { RATING_BANDS: RATING_BANDS } };
 
 // Called once per team per game (mirrors fatigue.js's applyFatigueForGame).
 // Small, game-by-game nudges rather than one big end-of-season jump: winning
@@ -38,7 +38,7 @@ function moraleFactors(player, team) {
   }
   if (player.seasonStats && player.seasonStats.gamesPlayed > 0) {
     const mpg = player.seasonStats.minutes / player.seasonStats.gamesPlayed;
-    if (mpg < 15 && player.rawOverall >= 65) reasons.push('Limited role');
+    if (mpg < 15 && player.overall >= _MORALE_DATA.ratings.RATING_BANDS.rotation) reasons.push('Limited role');
   }
   if (player.contract.yearsRemaining <= 1) reasons.push('Contract expiring');
   if (player.status.injury) reasons.push('Injured');

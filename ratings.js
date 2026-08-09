@@ -97,7 +97,13 @@ function toRawRating(display) {
 // table rather than carrying its own private copy.
 const RATING_BANDS = {
   superstar: 90,           // the genuine elite — gates the 8 superstar traits
-  superstarPotential: 92,  // ...or the potential to become one
+  // ...or the potential to become one. Set to 89 by measurement, not taste: at
+  // 92 the arm admitted exactly ONE player, Anthony Edwards at 89 overall, who
+  // already all but qualified on overall alone — while Cooper Flagg (74 overall,
+  // 89 potential), the exact high-upside rookie the arm exists for, was shut
+  // out. An arm that only fires for players who nearly qualify anyway is not an
+  // arm. At 89 it admits 8, the lowest being Flagg at 74.
+  superstarPotential: 89,
   star: 85,                // stars: trade premium, worth pausing the sim for
   rotation: 78,            // good enough that a bench role is worth complaining about
   fringe: 68               // fringe: likelier to retire

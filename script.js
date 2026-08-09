@@ -167,9 +167,9 @@ function pushInjuriesToFeed(newInjuries, dayIndex) {
   newInjuries.forEach(function (inj) {
     const player = getPlayerById(inj.playerId);
     const isUserPlayer = inj.teamId === GameState.userTeamId;
-    if (GameState.playMode !== 'spectator' && !isUserPlayer && player.rawOverall < 80) return;
+    if (GameState.playMode !== 'spectator' && !isUserPlayer && player.overall < RATING_BANDS.star) return;
     pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity, dayIndex);
-    if (isUserPlayer && player.rawOverall >= 80 && GameState.settings.pauseOn.keyInjury) {
+    if (isUserPlayer && player.overall >= RATING_BANDS.star && GameState.settings.pauseOn.keyInjury) {
       GameState.pauseRequested = true;
       GameState.pauseReason = player.name + ' injured';
     }

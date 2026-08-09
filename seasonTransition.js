@@ -1,5 +1,5 @@
 var _TRANSITION_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js'), history: require('./history.js'), coaches: require('./coaches.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js'), history: require('./history.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
       teams: { TEAMS: TEAMS },
@@ -9,7 +9,8 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
       prospects: { DRAFT_PROSPECTS_2026: DRAFT_PROSPECTS_2026, generateProspectClass: generateProspectClass },
       schedule: { generateSeasonGames: generateSeasonGames },
       history: { archiveRetiree: archiveRetiree },
-      coaches: { ensureAllTeamsHaveCoaches: ensureAllTeamsHaveCoaches }
+      coaches: { ensureAllTeamsHaveCoaches: ensureAllTeamsHaveCoaches },
+      ratings: { RATING_BANDS: RATING_BANDS }
     };
 
 // Retirement chance rises sharply after 33, further penalized for players whose
@@ -20,7 +21,7 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
 // authored 62-98 scale, it was meant for fringe players and now catches 94%
 // of the league. scripts/validate-ratingBands.js asserts its share.
 function hasRetirementPenalty(player) {
-  return player.rawOverall < 65;
+  return player.overall < _TRANSITION_DATA.ratings.RATING_BANDS.fringe;
 }
 
 function rollRetirement(player, rng) {

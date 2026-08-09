@@ -15,8 +15,8 @@ function contractBurden(salary, overall) {
 }
 
 var _EVAL_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), players: require('./players-2026.js') }
-  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll }, teams: { getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap }, players: { PLAYERS_2026: PLAYERS_2026 } };
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), players: require('./players-2026.js'), ratings: require('./ratings.js') }
+  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll }, teams: { getTeamById: getTeamById }, data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap }, players: { PLAYERS_2026: PLAYERS_2026 }, ratings: { RATING_BANDS: RATING_BANDS, OVERALL_INTERCEPT: OVERALL_INTERCEPT } };
 
 // Raw per-game "production" for stat-blended valuation — deliberately NOT a
 // real PER formula with real-NBA constants. This engine's simulated box
@@ -79,14 +79,13 @@ function directionMultiplier(player, timeline) {
     return 1.0;
   }
   if (timeline === 'win-now') {
-    if (player.rawOverall >= 80) return 1.2;
+    if (player.overall >= _EVAL_DATA.ratings.RATING_BANDS.star) return 1.2;
     if (player.age <= 22) return 0.85;
     return 1.0;
   }
   return 1.0; // retooling: roughly neutral
 }
 
-const LEAGUE_AVG_OVERALL = 75;
 
 // Live league-wide average overall, replacing the old hardcoded 75 — recomputed
 // per call (cheap: one pass over ~450 players) so needMultiplier reacts to
@@ -94,7 +93,9 @@ const LEAGUE_AVG_OVERALL = 75;
 // baseline that could go stale as ratings shift over many simulated seasons.
 function currentLeagueAvgOverall() {
   const allPlayers = _EVAL_DATA.players.PLAYERS_2026;
-  if (allPlayers.length === 0) return LEAGUE_AVG_OVERALL;
+  // Scale-free: the fit centres the league on OVERALL_INTERCEPT by
+  // construction, so this fallback cannot drift the way a literal 75 did.
+  if (allPlayers.length === 0) return _EVAL_DATA.ratings.OVERALL_INTERCEPT;
   return allPlayers.reduce(function (s, p) { return s + p.rawOverall; }, 0) / allPlayers.length;
 }
 

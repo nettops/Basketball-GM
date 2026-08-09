@@ -24,6 +24,25 @@ const tradeEvaluator = require(path.join(__dirname, '..', 'tradeEvaluator.js'));
 PLAYERS_2026.forEach(function (p) { ratings.defineOverall(p); });
 const N = PLAYERS_2026.length;
 
+// The ranges are NARROW ON PURPOSE, and each one is set from two measurements:
+// the share the correct band catches, and the share the band it replaced
+// caught. Wide ranges made three mutants survive — reverting superstar to 85,
+// star to 80 or fringe to 65 all stayed inside the original bounds, so the
+// check could tell dead from alive but not correct from stale.
+//
+//   superstar  8/380 = 2.1%   (at the old 85: 17 = 4.5%)
+//   star      27/380 = 7.1%   (at the old 80: 70 = 18.4%)
+//   rotation 102/380 = 26.8%  (at the old 65: ~340 = 89%)
+//   fringe    88/380 = 23.2%  (at the old 65: 40 = 10.5%)
+//
+// If a legitimate change moves a share out of range, MOVE THE BAND, not the
+// range. Widening a bound to make a change pass is how these rotted the first time.
+//
+// Resolution is +/-1 on a band value: superstarPotential 90, 91 and 92 all fail,
+// 88 passes. That last one is a real alternative rather than a defect — 88 and
+// 89 both admit the upside archetype, 88 additionally admits players whose
+// potential merely equals their overall. Tightening further would buy brittleness,
+// not correctness.
 function assertShare(label, count, lo, hi) {
   const share = count / N;
   assert.ok(count > 0, label + ' catches NOBODY (' + count + '/' + N + ') — the gate is dead');
@@ -45,8 +64,32 @@ function checkSuperstarTraitsAreReachable() {
   PLAYERS_2026.forEach(function (p) {
     if ((p.hiddenTraits || []).some(function (h) { return superstarKeys[h.key]; })) holders += 1;
   });
-  assertShare('superstar traits', holders, 0.005, 0.10);
+  assertShare('superstar traits', holders, 0.005, 0.035);
   console.log('checkSuperstarTraitsAreReachable: OK (' + holders + '/' + N + ' hold one)');
+}
+
+// The gate is an OR, and the potential arm has to earn its place. Moving
+// superstarPotential 92 -> 88 was a SURVIVING mutant, because at 92 the arm
+// admitted one player who already nearly cleared the overall arm — so changing
+// it barely moved the holder count and nothing noticed.
+//
+// The arm exists for the high-upside young player: a 74-overall rookie with a
+// 89 ceiling should be able to roll Alpha Dog. This asserts the arm actually
+// reaches somebody the overall arm cannot, and reaches well below it.
+function checkTheSuperstarPotentialArmIsLoadBearing() {
+  const B = ratings.RATING_BANDS;
+  const armOnly = PLAYERS_2026.filter(function (p) {
+    return p.potentialDisplay >= B.superstarPotential && p.overall < B.superstar;
+  });
+  assert.ok(armOnly.length >= 3,
+    'the potential arm admits only ' + armOnly.length + ' players the overall arm misses — ' +
+    'it is a second way of saying "already a star", not an upside gate');
+  const lowest = Math.min.apply(null, armOnly.map(function (p) { return p.overall; }));
+  assert.ok(lowest <= B.superstar - 10,
+    'the potential arm should reach genuine upside cases; its lowest overall is ' +
+    lowest + ', only ' + (B.superstar - lowest) + ' below the overall band');
+  console.log('checkTheSuperstarPotentialArmIsLoadBearing: OK (' + armOnly.length +
+    ' upside-only, lowest overall ' + lowest + ')');
 }
 
 function checkStarTradePremiumFires() {
@@ -54,7 +97,7 @@ function checkStarTradePremiumFires() {
   PLAYERS_2026.forEach(function (p) {
     if (tradeEvaluator.directionMultiplier(p, 'win-now') === 1.2) premium += 1;
   });
-  assertShare('star trade premium', premium, 0.02, 0.20);
+  assertShare('star trade premium', premium, 0.03, 0.12);
   console.log('checkStarTradePremiumFires: OK (' + premium + '/' + N + ')');
 }
 
@@ -69,7 +112,7 @@ function checkLimitedRoleGripeFires() {
     if (reasons.indexOf('Limited role') !== -1) gripes += 1;
     p.seasonStats = saved;
   });
-  assertShare('Limited role gripe', gripes, 0.10, 0.50);
+  assertShare('Limited role gripe', gripes, 0.15, 0.40);
   console.log('checkLimitedRoleGripeFires: OK (' + gripes + '/' + N + ' at 10 mpg)');
 }
 
@@ -80,12 +123,13 @@ function checkRetirementPenaltyTargetsFringe() {
   PLAYERS_2026.forEach(function (p) {
     if (seasonTransition.hasRetirementPenalty(p)) penalised += 1;
   });
-  assertShare('retirement penalty', penalised, 0.10, 0.40);
+  assertShare('retirement penalty', penalised, 0.15, 0.35);
   console.log('checkRetirementPenaltyTargetsFringe: OK (' + penalised + '/' + N + ')');
 }
 
 const CHECKS = [
   checkSuperstarTraitsAreReachable,
+  checkTheSuperstarPotentialArmIsLoadBearing,
   checkStarTradePremiumFires,
   checkLimitedRoleGripeFires,
   checkRetirementPenaltyTargetsFringe
