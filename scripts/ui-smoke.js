@@ -247,6 +247,70 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // Skill-check breakdowns. Rendered against a HAND-BUILT log rather than a real
+  // game so the assertion pins exact content — a real game's checks vary by seed,
+  // and "some breakdown appeared" is the kind of weak assertion this file exists
+  // to avoid. The mixed shapes are the point: a bare-string header, a bare-string
+  // play with no contest, and a play carrying a check must all render correctly
+  // from the same array.
+  //
+  // Its OWN group, deliberately. These first lived at the end of
+  // checkScheduleBoxScore, which returns early when no games have been simmed —
+  // so in a fresh session they would have silently never run. playByPlayHtml is
+  // a pure function and needs no season, and a check that requires setup it does
+  // not actually need is a check that quietly does not execute.
+  function checkPlayByPlayBreakdown() {
+    const results = [];
+    const fakeGame = { playByPlay: [
+      '--- Q1 ---',
+      'Horford grabs the defensive rebound',
+      { text: 'Tatum drills a 3-pointer', check: {
+        kind: 'shot', base: 0.33,
+        attack: { label: 'shootingThree', value: 82, scale: 250, energy: 1 },
+        defend: { label: 'defensePerimeter', value: 61, scale: 350, energy: 1 },
+        modifiers: [{ label: 'Sharpshooter (gold)', value: 0.01 }, { label: 'noise', value: 0.0001 }],
+        probability: 0.41, roll: 0.22, passed: true
+      } }
+    ] };
+    const pbp = playByPlayHtml(fakeGame);
+    results.push(ok('pbp:names-attacking-rating', pbp.indexOf('shootingThree 82') !== -1));
+    results.push(ok('pbp:names-defending-rating', pbp.indexOf('defensePerimeter 61') !== -1));
+    results.push(ok('pbp:itemises-each-modifier', pbp.indexOf('Sharpshooter (gold) +1.0%') !== -1));
+    results.push(ok('pbp:drops-noise-modifiers', pbp.indexOf('noise') === -1,
+      'a +0.01% term must not print as "+0.0%"'));
+    results.push(ok('pbp:shows-the-roll', pbp.indexOf('41.0% needed, rolled 22.0%') !== -1));
+    results.push(ok('pbp:quarter-header-still-plain', pbp.indexOf('pbp-quarter') !== -1));
+    results.push(ok('pbp:contestless-play-not-expandable',
+      pbp.indexOf('<div class="pbp-line">Horford grabs the defensive rebound</div>') !== -1,
+      'a rebound has no check and must stay a plain line'));
+    results.push(ok('pbp:checked-play-is-expandable', pbp.indexOf('pbp-line-expandable') !== -1));
+
+    // Expanding must actually reveal the breakdown on screen, not merely put it
+    // in the DOM — the whole reason this file exists (see the header comment).
+    //
+    // PREPENDED, not appended. Appending put the host ~1750px down a page whose
+    // scrollHeight was 1712 — below the scrollable area entirely, so it could
+    // not even be scrolled to. isVisible then reported false for BOTH the
+    // collapsed and expanded cases, which made "hidden until expanded" pass for
+    // the wrong reason and hid a real CSS bug: `.pbp-check { display: flex }`
+    // overrode the UA rule that hides a closed <details>'s children, so the
+    // breakdown rendered while collapsed. Measuring inside the viewport is what
+    // exposed it. Off-screen is not the same as hidden.
+    const host = document.createElement('div');
+    host.innerHTML = pbp;
+    document.body.insertBefore(host, document.body.firstChild);
+    const det = host.querySelector('details.pbp-line-expandable');
+    const body = det && det.querySelector('.pbp-check');
+    results.push(ok('pbp:breakdown-hidden-until-expanded', !!body && !isVisible(body),
+      body ? 'collapsed height ' + body.getBoundingClientRect().height : 'no breakdown node'));
+    if (det) det.open = true;
+    results.push(ok('pbp:breakdown-visible-when-expanded', !!body && isVisible(body),
+      body ? 'expanded height ' + body.getBoundingClientRect().height : 'no breakdown node'));
+    document.body.removeChild(host);
+
+    return results;
+  }
+
   // The live coaching controls. These assert REACHABILITY, not just presence
   // or visibility: the substitution panel shipped once rendering correctly
   // below #view-content's scroll fold, and the control row shipped occluded
@@ -749,6 +813,7 @@ const UI_SMOKE = (function () {
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,
+    pbp: checkPlayByPlayBreakdown,
     align: checkTableAlignment,
     chrome: checkChromeLabels,
     impact: checkImpactMoments,

@@ -355,6 +355,26 @@ table { border-collapse: collapse; width: 100%; }
 .pill-gold { background: rgba(212, 169, 78, .16); color: var(--gold); }
 .pill-mute { background: transparent; color: var(--text-mute); border: 1px solid var(--line); }
 
+/* ---------- Play-by-play skill-check breakdown ---------- */
+.pbp-line-expandable > summary { cursor: pointer; list-style: none; }
+.pbp-line-expandable > summary::-webkit-details-marker { display: none; }
+.pbp-line-expandable > summary:hover { color: var(--text); }
+.pbp-check {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 4px 0 8px 12px; padding: 6px 8px;
+  border-left: 2px solid var(--line); font-size: 11px; color: var(--text-mute);
+}
+/* REQUIRED, not belt-and-braces. A closed <details> hides its non-summary
+   children through a UA rule on `display`, so any author rule setting display
+   on a child — `display: flex` directly above — overrides it and the breakdown
+   stays on screen while collapsed. Caught only because the smoke check measured
+   the node inside the viewport; parked below the fold it "passed" as hidden for
+   the wrong reason entirely. */
+.pbp-line-expandable:not([open]) > .pbp-check { display: none; }
+.pbp-check-side { font-weight: 600; }
+.pbp-check-mod { opacity: 0.85; }
+.pbp-check-roll { margin-left: auto; font-variant-numeric: tabular-nums; }
+
 /* ---------- Trait badges ---------- */
 .trait-badge-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .trait-badge {

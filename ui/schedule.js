@@ -181,11 +181,44 @@ function boxScoreDetailHtml(game) {
 // simEnginePossession.js's module comment) and only for the user's own games
 // (save.js prunes everyone else's, same as boxScore) — collapsed by default
 // behind <details> since a full game runs ~90+ lines.
+// Renders one skillCheck as a breakdown: both rated sides, each modifier named
+// individually, and the roll against the number it had to beat. Modifiers are
+// itemised rather than summed because "badges +1.0%" is the thing worth seeing —
+// a single combined figure would be exactly the opaque float this replaced.
+//
+// Sub-0.05pp modifiers are dropped. A synergy term of +0.0001 is noise, and
+// printing "+0.0%" next to a label reads as a bug rather than as a small number.
+function checkBreakdownHtml(check) {
+  const parts = [];
+  if (check.attack) {
+    parts.push('<span class="pbp-check-side">' + escapeHtml(check.attack.label) + ' ' + Math.round(check.attack.value) + '</span>');
+  }
+  if (check.defend) {
+    parts.push('<span class="pbp-check-side">vs ' + escapeHtml(check.defend.label) + ' ' + Math.round(check.defend.value) + '</span>');
+  }
+  (check.modifiers || []).forEach(function (m) {
+    if (Math.abs(m.value) < 0.0005) return;
+    const sign = m.value >= 0 ? '+' : '−';
+    parts.push('<span class="pbp-check-mod">' + escapeHtml(m.label) + ' ' + sign + (Math.abs(m.value) * 100).toFixed(1) + '%</span>');
+  });
+  parts.push('<span class="pbp-check-roll">' + (check.probability * 100).toFixed(1) + '% needed, rolled ' +
+    (check.roll * 100).toFixed(1) + '%</span>');
+  return '<div class="pbp-check">' + parts.join('') + '</div>';
+}
+
 function playByPlayHtml(game) {
   if (!game.playByPlay || game.playByPlay.length === 0) return '';
-  const lines = game.playByPlay.map(function (line) {
-    if (line.indexOf('--- Q') === 0) return '<div class="pbp-quarter">' + escapeHtml(line.replace(/---/g, '').trim()) + '</div>';
-    return '<div class="pbp-line">' + escapeHtml(line) + '</div>';
+  // An entry is a bare string (period headers, plays with no contest behind
+  // them like rebounds, and EVERY save written before skill checks existed) or
+  // { text, check }. Both shapes are permanent — this is not a migration — so
+  // the normalisation below stays.
+  const lines = game.playByPlay.map(function (entry) {
+    const text = typeof entry === 'string' ? entry : entry.text;
+    const check = typeof entry === 'string' ? null : entry.check;
+    if (text.indexOf('--- Q') === 0) return '<div class="pbp-quarter">' + escapeHtml(text.replace(/---/g, '').trim()) + '</div>';
+    if (!check) return '<div class="pbp-line">' + escapeHtml(text) + '</div>';
+    return '<details class="pbp-line pbp-line-expandable"><summary>' + escapeHtml(text) + '</summary>' +
+      checkBreakdownHtml(check) + '</details>';
   }).join('');
   return '<details class="box-score-pbp"><summary>Play-by-Play</summary><div class="pbp-log">' + lines + '</div></details>';
 }
@@ -196,5 +229,5 @@ function renderBoxScoreDetail(container, game) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderSchedule: renderSchedule, renderBoxScoreDetail: renderBoxScoreDetail, boxScoreDetailHtml: boxScoreDetailHtml, playByPlayHtml: playByPlayHtml };
+  module.exports = { renderSchedule: renderSchedule, renderBoxScoreDetail: renderBoxScoreDetail, boxScoreDetailHtml: boxScoreDetailHtml, playByPlayHtml: playByPlayHtml, checkBreakdownHtml: checkBreakdownHtml };
 }
