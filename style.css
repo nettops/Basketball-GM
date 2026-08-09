@@ -599,7 +599,13 @@ table { border-collapse: collapse; width: 100%; }
 .schedule-detail-row > td { padding: 0 !important; background: var(--surface-2); border-bottom: 2px solid var(--accent); }
 .box-score-detail { padding: 14px 16px 18px; }
 .box-score-line { font-size: 1rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.box-score-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+/* 400px, raised from 320px when DFG% became an eighth column. At 320 the grid
+   still fitted two tables side by side in a ~560px panel and simply clipped the
+   last column — .box-score-team's overflow-x meant it was technically reachable,
+   but only by horizontally scrolling a cramped pane to find a stat you did not
+   know was there. Above this width they sit side by side; below it they stack
+   full-width, which is the honest behaviour for a table that no longer fits. */
+.box-score-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 18px; }
 .box-score-team { min-width: 0; overflow-x: auto; }
 .box-score-team-name { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute);
   margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }

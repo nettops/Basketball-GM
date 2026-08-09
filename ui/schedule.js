@@ -104,6 +104,13 @@ function boxScoreLineHeaderHtml(game) {
 // One table per team, best performance first. The previous version dumped both
 // rosters into a single unlabelled table in whatever order the boxScore object
 // happened to enumerate, so you couldn't tell which team a player was on.
+// Field-goal percentage a player ALLOWED as the shot defender. The em-dash
+// fallback is load-bearing: every box score saved before oppFga existed has no
+// such field, and 0/0 would render NaN across a whole career of history.
+function defensiveFgText(s) {
+  return s.oppFga ? (100 * s.oppFgm / s.oppFga).toFixed(1) : '—';
+}
+
 function boxScoreTeamTableHtml(game, teamId) {
   const team = getTeamById(teamId);
   const lines = Object.keys(game.boxScore)
@@ -126,13 +133,14 @@ function boxScoreTeamTableHtml(game, teamId) {
   let html = '<div class="box-score-team"><div class="box-score-team-name">' +
     teamLogoImgHtml(teamId, 18) + ' ' + escapeHtml(team ? team.name : teamId) + '</div>' +
     '<table class="data-table"><thead><tr><th>Player</th><th class="num">MIN</th><th class="num">PTS</th>' +
-    '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th></tr></thead><tbody>';
+    '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th>' +
+    '<th class="num">DFG%</th></tr></thead><tbody>';
   lines.forEach(function (e) {
     const s = e.stats;
     // Retired or commissioner-deleted players still have a stat line worth showing.
     html += '<tr><td class="col-name">' + escapeHtml(e.player ? e.player.name : 'Former player') + '</td><td class="num">' + s.minutes + '</td><td class="num">' + s.points +
       '</td><td class="num">' + s.rebounds + '</td><td class="num">' + s.assists + '</td><td class="num">' + s.steals +
-      '</td><td class="num">' + s.blocks + '</td></tr>';
+      '</td><td class="num">' + s.blocks + '</td><td class="num">' + defensiveFgText(s) + '</td></tr>';
   });
   return { count: lines.length, html: html + '</tbody></table></div>' };
 }
@@ -162,13 +170,15 @@ function boxScoreDetailHtml(game) {
   if (awayTable.count + homeTable.count !== totalLines || awayTable.count === 0 || homeTable.count === 0) {
     let html = '<div class="box-score-detail">' + boxScoreLineHeaderHtml(game) +
       '<table class="data-table"><thead><tr><th>Player</th><th class="num">MIN</th><th class="num">PTS</th>' +
-      '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th></tr></thead><tbody>';
+      '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th>' +
+    '<th class="num">DFG%</th></tr></thead><tbody>';
     Object.keys(game.boxScore).forEach(function (playerId) {
       const p = getPlayerById(playerId);
       const s = game.boxScore[playerId];
       html += '<tr><td class="col-name">' + escapeHtml(p ? p.name : 'Former player') + '</td><td class="num">' + s.minutes +
         '</td><td class="num">' + s.points + '</td><td class="num">' + s.rebounds + '</td><td class="num">' + s.assists +
-        '</td><td class="num">' + s.steals + '</td><td class="num">' + s.blocks + '</td></tr>';
+        '</td><td class="num">' + s.steals + '</td><td class="num">' + s.blocks +
+        '</td><td class="num">' + defensiveFgText(s) + '</td></tr>';
     });
     return html + '</tbody></table>' + playByPlayHtml(game) + '</div>';
   }

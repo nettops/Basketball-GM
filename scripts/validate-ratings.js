@@ -538,7 +538,35 @@ function checkChemistryReachesSynergy() {
   console.log('checkChemistryReachesSynergy: OK');
 }
 
+// Without a surfaced stat the whole defensive path is invisible — a lockdown
+// defender's contribution would exist only in team results and plus/minus.
+function checkDefensiveFgIsRecorded() {
+  const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
+  const r = gameSim.simulateGame('BOS', 'LAL', makeRng(5));
+  const lines = Object.keys(r.boxScore).map(function (id) { return r.boxScore[id]; });
+
+  const totalOppFga = lines.reduce(function (s, l) { return s + l.oppFga; }, 0);
+  const totalFga = lines.reduce(function (s, l) { return s + l.fga; }, 0);
+  assert.strictEqual(totalOppFga, totalFga,
+    'every shot has exactly one defender, so defended attempts must equal attempts (' +
+    totalOppFga + ' vs ' + totalFga + ')');
+
+  const totalOppFgm = lines.reduce(function (s, l) { return s + l.oppFgm; }, 0);
+  const totalFgm = lines.reduce(function (s, l) { return s + l.fgm; }, 0);
+  assert.strictEqual(totalOppFgm, totalFgm, 'defended makes must equal makes');
+
+  lines.forEach(function (l) {
+    assert.ok(l.oppFgm <= l.oppFga, 'a defender cannot allow more makes than attempts');
+  });
+
+  const { SEASON_STAT_KEYS } = require(path.join(__dirname, '..', 'league.js'));
+  assert.ok(SEASON_STAT_KEYS.indexOf('oppFga') !== -1 && SEASON_STAT_KEYS.indexOf('oppFgm') !== -1,
+    'DFG% only means anything over a season — one game of five defended shots is noise');
+  console.log('checkDefensiveFgIsRecorded: OK (' + totalOppFga + ' defended attempts)');
+}
+
 checkDefensiveBadgesDrawAssignments();
 checkChemistryReachesSynergy();
+checkDefensiveFgIsRecorded();
 
 console.log('All ratings validations passed');

@@ -37,7 +37,9 @@ function getPlayerById(playerId) {
   return _LEAGUE_DATA.players.PLAYERS_2026.find(function (p) { return p.id === playerId; });
 }
 
-const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes'];
+// oppFga/oppFgm accumulate across the season because DFG% is meaningless per
+// game — five defended shots is noise. Season totals are what make it readable.
+const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm'];
 
 function recordGameResult(game) {
   const homeTeam = _LEAGUE_DATA.teams.getTeamById(game.homeTeamId);

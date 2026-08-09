@@ -130,7 +130,10 @@ function reboundCompositeWeight(player) {
 }
 
 function initBoxLine() {
-  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0 };
+  // oppFga/oppFgm are what a player allowed AS THE SHOT DEFENDER — the raw
+  // material for DFG%. Without them a defensive badge is invisible: steals and
+  // blocks land in the box score, "lowered the shooter's percentage" does not.
+  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0 };
 }
 
 // In-game stamina, separate from status.fatigue (fatigue.js's cross-game,
@@ -495,6 +498,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     blockSpecFor(shotDefender, zone), rng);
   if (blockCheck.passed) {
     defenseBox[shotDefender.id].blocks += 1;
+    // A blocked shot is a defended MISS, so it counts toward DFG% denominator.
+    defenseBox[shotDefender.id].oppFga += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
     logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name, blockCheck);
@@ -509,11 +514,13 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const made = shotCheck.passed;
   const shotValue = zone === 'three' ? 3 : 2;
   offenseBox[shooter.id].fga += 1;
+  defenseBox[shotDefender.id].oppFga += 1;
   if (zone === 'three') offenseBox[shooter.id].tpa += 1;
 
   let points = 0;
   if (made) {
     offenseBox[shooter.id].fgm += 1;
+    defenseBox[shotDefender.id].oppFgm += 1;
     if (zone === 'three') offenseBox[shooter.id].tpm += 1;
     offenseBox[shooter.id].points += shotValue;
     points += shotValue;
