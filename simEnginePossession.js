@@ -302,9 +302,23 @@ const SHOT_BASE_BY_ZONE = { three: 0.330, mid: 0.42, inside: 0.56 };
 const SHOT_SKILL_DIV = 250, SHOT_DEF_DIV = 350;
 const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
 
-// Symmetric with SHOT_TRAIT_DIV by default: a legendary defensive badge takes
-// off about what a legendary offensive one puts on (~2.7pp on its zone). Swept
-// against the locked league rates — see the sweep in this task's commit.
+// Symmetric with SHOT_TRAIT_DIV: a legendary defensive badge takes off 8/300 =
+// 2.67pp on its zone, which is what a legendary offensive one puts on. Chosen
+// by sweep against the locked league rates, NOT picked — grid over
+// DEF_TRAIT_DIV x CHEM_DIV, worst normalised miss against the four bounds:
+//
+//   DEF   CHEM    FG%     3P%   3PAsh    pts    miss
+//   300    600   46.57   36.35   30.4   102.4   0.62  PASS  <- chosen
+//   450    600   46.68   36.39   30.2   102.3   0.64  PASS
+//   450    900   46.49   36.22   30.6   102.3   0.96  PASS
+//   900    900   46.92   36.71   30.4   102.9   0.43  PASS
+//   (eight other cells missed at least one bound)
+//
+// 900/900 fits marginally better, and was NOT chosen. The gap (0.43 vs 0.62) is
+// well inside the noise of a single-seed 300-game measurement, and at 900 a
+// legendary defensive badge is worth 0.89pp — a third of its offensive
+// counterpart, which is not a badge, it is a rounding error. Fitting the
+// league slightly better by making the feature meaningless is a bad trade.
 const DEF_TRAIT_DIV = SHOT_TRAIT_DIV;
 
 // Named rather than inlined at the roll, so it can be asserted on directly.

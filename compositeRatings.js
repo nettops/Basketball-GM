@@ -71,17 +71,33 @@ const REBOUNDER_THRESHOLD = 60;
 // team in teams.js (55-78) but was read ONLY by the non-default engine, so in
 // normal play it was decorative. One term makes both it and the badges live.
 //
-// CHEM_DIV is deliberately large. This lands on a whole-team multiplier applied
-// to EVERY shot, so it moves league scoring far harder per point than a
-// per-defender term does. Swept against the locked rates — see the sweep table
-// in this task's commit.
+// TWO DIVISORS, because these are two different quantities and one divisor for
+// both was the mistake. The authored field is present on EVERY team and spans
+// 55-78, so it lands on every shot of every game; the badges are sparse — most
+// rotations carry none, a few carry one or two.
+//
+// Forcing them onto a shared divisor meant any value gentle enough for the
+// authored field made the badges meaningless, and any value strong enough for
+// the badges collapsed weak-chemistry teams. Measured: at a shared 600 the low
+// tail produced 48- and 49-point games (the NBA's modern low is 57) and
+// validate-possession's score-distribution check failed at 2.08% below 60
+// against a 2% budget. Splitting them fixes the tail without weakening what
+// this task exists to deliver.
+//
+//   authored / 1800  ->  the 55-78 range spans about +/-0.8pp per shot
+//   badges   /  600  ->  legendary Natural Leader +1.3pp,
+//                        Franchise Cornerstone (14) +2.3pp
+//
+// Both sit under the shooter synergy ramp's +/-6pp, which is the right
+// ordering: how a roster FITS should matter less than what it is made of.
 const CHEMISTRY_CENTRE = 70;
-const CHEM_DIV = 900;
+const CHEM_AUTHORED_DIV = 1800;
+const CHEM_BADGE_DIV = 600;
 
 function chemistryTerm(roster, team) {
   const authored = (team && typeof team.chemistry === 'number' ? team.chemistry : CHEMISTRY_CENTRE) - CHEMISTRY_CENTRE;
   const badges = _COMPOSITE_DATA.traits.chemistryBonus(roster);
-  return (authored + badges) / CHEM_DIV;
+  return authored / CHEM_AUTHORED_DIV + badges / CHEM_BADGE_DIV;
 }
 
 // `team` is optional: omitting it behaves as chemistry 70 (neutral), so any

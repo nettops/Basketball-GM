@@ -88,9 +88,28 @@ function synergyShares() {
   };
 }
 
-// Realized league rates and per-player spread over GAMES simulated games.
-function simulated() {
-  const rng = makeRng(SEED);
+// SEEDS, plural. A single 300-game run cannot resolve the changes this file is
+// used to judge. Measured directly: across five seeds at 300 games the same
+// unchanged league reads
+//
+//   FG%        46.12 - 46.70   (spread 0.58)
+//   3P%        35.73 - 36.76   (spread 1.03)
+//   3PA share  30.41 - 31.02   (spread 0.61)
+//   pts/team  101.73 - 103.35  (spread 1.62)
+//
+// The 3P% spread alone is WIDER than the +/-0.4 tolerance a calibration task
+// is asked to hold it inside. A live-badges divisor sweep ranked twelve
+// configurations on differences smaller than that, which was ranking noise —
+// caught only because the arithmetic predicted scoring should RISE and the
+// single-seed reading said it fell.
+//
+// Averaging five seeds cuts the spread to roughly a fifth. The cost is five
+// times the runtime, which is the correct trade for the one instrument every
+// balance decision in this project is read off.
+const SEEDS = [2026, 7, 91, 404, 5150];
+
+function simulatedOnce(seed) {
+  const rng = makeRng(seed);
   const byId = {};
   PLAYERS_2026.forEach(function (p) { byId[p.id] = p; });
   let fgm = 0, fga = 0, tpm = 0, tpa = 0, pts = 0, g = 0;
@@ -125,6 +144,26 @@ function simulated() {
     volumeRatio: pct(vol, 0.95) / Math.max(0.01, pct(vol, 0.05)),
     assistRatio: pct(ast, 0.95) / Math.max(0.01, pct(ast, 0.05))
   };
+}
+
+// Mean of every numeric field across SEEDS, plus the observed spread on the four
+// headline rates so a reader can see how much of any movement is noise.
+function simulated() {
+  const runs = SEEDS.map(simulatedOnce);
+  const out = {};
+  Object.keys(runs[0]).forEach(function (k) {
+    out[k] = runs.reduce(function (s, r) { return s + r[k]; }, 0) / runs.length;
+  });
+  // Counts stay integers — a mean of "206.4 players" reads like a bug.
+  out.games = Math.round(out.games);
+  out.n = Math.round(out.n);
+  out.seeds = SEEDS.length;
+  out.spread = {};
+  ['fgPct', 'tpPct', 'tpaShare', 'ptsPerTeam'].forEach(function (k) {
+    const v = runs.map(function (r) { return r[k]; });
+    out.spread[k] = Math.max.apply(null, v) - Math.min.apply(null, v);
+  });
+  return out;
 }
 
 function buildReport() {
