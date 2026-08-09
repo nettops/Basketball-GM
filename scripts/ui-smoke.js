@@ -846,6 +846,50 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The badge reference renders 48 cards straight from the taxonomy. The two
+  // things worth asserting are that it renders ALL of them (a filter bug drops
+  // a category silently) and that the five-tier ladder never wraps — five tiers
+  // only read as a ladder on one line, and at a 280px card LEGENDARY dropped to
+  // its own row while every DOM-shape assertion still passed.
+  function checkBadgeReference() {
+    requireSeason();
+    const results = [];
+    renderView('badges');
+    const cards = document.querySelectorAll('.badge-ref-card');
+    results.push(ok('badges:renders-every-badge', cards.length === TRAIT_TAXONOMY.length,
+      cards.length + ' of ' + TRAIT_TAXONOMY.length));
+    results.push(ok('badges:all-six-categories',
+      document.querySelectorAll('.badge-ref-cat-title').length === 6));
+    results.push(ok('badges:visible', cards.length > 0 && isVisible(cards[0])));
+
+    const ladders = Array.from(document.querySelectorAll('.badge-ref-ladder'));
+    results.push(ok('badges:five-tiers-each',
+      ladders.every(function (l) { return l.children.length === 5; })));
+    const wrapped = ladders.filter(function (l) {
+      const tops = Array.from(l.children).map(function (c) { return c.offsetTop; });
+      return new Set(tops).size > 1;
+    });
+    results.push(ok('badges:ladder-never-wraps', wrapped.length === 0, wrapped.length + ' wrapped'));
+    const clipped = Array.from(document.querySelectorAll('.badge-ref-tier-name'))
+      .filter(function (e) { return e.scrollWidth > e.clientWidth + 1; });
+    results.push(ok('badges:tier-labels-not-clipped', clipped.length === 0, clipped.length + ' clipped'));
+
+    // Every card must carry a real sentence, not an empty <p>.
+    const blank = Array.from(cards).filter(function (c) {
+      const d = c.querySelector('.badge-ref-desc');
+      return !d || d.textContent.trim().length < 25;
+    });
+    results.push(ok('badges:every-card-describes-itself', blank.length === 0, blank.length + ' blank'));
+
+    // A flaw must read as a reduction, never as a bonus.
+    const streaky = Array.from(cards).find(function (c) {
+      return c.querySelector('.badge-ref-name').textContent === 'Streaky';
+    });
+    const streakyText = streaky ? streaky.querySelector('.badge-ref-effect').textContent : '';
+    results.push(ok('badges:flaws-read-as-reductions', streakyText.indexOf('Reduces') === 0, streakyText));
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     injection: checkNoInjection,
@@ -860,6 +904,7 @@ const UI_SMOKE = (function () {
     scroll: checkScrollOnNavigate,
     nav: checkNav,
     dock: checkDock,
+    badges: checkBadgeReference,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
     // pixel view. From anywhere else it reports a single skip rather than
     // asserting on controls that are not on screen.

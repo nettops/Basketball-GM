@@ -750,6 +750,42 @@ function checkTheDeadBadgeArrayIsGone() {
 }
 
 checkBadgesAreVisibleForRosteredPlayers();
+// The badge reference (ui/badges.js) renders straight from the taxonomy, so a
+// badge added without a description would render a blank card and a renamed
+// key would leave its old text stranded. Both directions are checked, because
+// only checking one lets the other rot — the same asymmetry that left five
+// rating gates dead.
+function checkEveryBadgeIsDocumented() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  const missing = traitsModule.TRAIT_TAXONOMY
+    .filter(function (t) { return !traitsModule.TRAIT_DESCRIPTIONS[t.key]; })
+    .map(function (t) { return t.key; });
+  assert.strictEqual(missing.length, 0,
+    'these badges have no description and would render blank: ' + missing.join(', '));
+
+  const orphans = Object.keys(traitsModule.TRAIT_DESCRIPTIONS)
+    .filter(function (k) { return !traitsModule.TRAIT_TAXONOMY_BY_KEY[k]; });
+  assert.strictEqual(orphans.length, 0,
+    'these descriptions no longer match any badge: ' + orphans.join(', '));
+
+  // Every (system, stat) pair the taxonomy uses needs a human label, or the
+  // reference falls back to printing "boxscore/usage" at the player.
+  const unlabelled = traitsModule.TRAIT_TAXONOMY.filter(function (t) {
+    return !traitsModule.TRAIT_EFFECT_LABELS[t.effect.system + '/' + t.effect.stat];
+  }).map(function (t) { return t.effect.system + '/' + t.effect.stat; });
+  assert.strictEqual(unlabelled.length, 0,
+    'these effect pairs have no display label: ' + Array.from(new Set(unlabelled)).join(', '));
+
+  // A description that is shorter than a name is a placeholder, not a description.
+  const stubs = traitsModule.TRAIT_TAXONOMY.filter(function (t) {
+    return traitsModule.TRAIT_DESCRIPTIONS[t.key].length < 25;
+  }).map(function (t) { return t.key; });
+  assert.strictEqual(stubs.length, 0, 'these descriptions are stubs: ' + stubs.join(', '));
+
+  console.log('checkEveryBadgeIsDocumented: OK (' + traitsModule.TRAIT_TAXONOMY.length + ' badges)');
+}
+
+checkEveryBadgeIsDocumented();
 checkProspectBadgesStayFuzzy();
 checkTheDeadBadgeArrayIsGone();
 checkDefenseQualityBonusRoutesByZone();

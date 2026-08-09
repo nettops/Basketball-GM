@@ -78,6 +78,101 @@ const TRAIT_TAXONOMY = [
 const TRAIT_TAXONOMY_BY_KEY = {};
 TRAIT_TAXONOMY.forEach(function (t) { TRAIT_TAXONOMY_BY_KEY[t.key] = t; });
 
+// What each (system, stat) pair actually moves, in the player's words. The
+// badge reference reads these rather than restating the pairs, so a badge can
+// never be described as doing something the engine does not do.
+const TRAIT_EFFECT_LABELS = {
+  'boxscore/scoring': 'Scoring',
+  'boxscore/assist': 'Assists',
+  'boxscore/rebound': 'Rebounding',
+  'boxscore/steal': 'Steals',
+  'boxscore/block': 'Blocks',
+  'boxscore/defense': 'Defence',
+  'boxscore/usage': 'Shot volume',
+  'chemistry/team': 'Team chemistry',
+  'fatigue/accumulation': 'Fatigue',
+  'injury/chance': 'Injury risk',
+  'injury/recovery': 'Injury recovery',
+  'progression/self': 'Own development',
+  'progression/teammate': 'Teammate development'
+};
+
+// PLAIN ENGLISH, DESCRIBING THE MECHANIC RATHER THAN THE NAME. Several of these
+// names promise something the engine does not deliver, and the description has
+// to tell the truth instead of flattering the name:
+//
+//   Explosive Vertical  raises BLOCKS, not dunks
+//   High Motor Scorer   raises shot VOLUME, not efficiency
+//   Quick Twitch        raises STEALS, not speed
+//   Strength Advantage  raises REBOUNDS
+//   Free Throw Ace      feeds general scoring, not just the line
+//   Mentor              gives its bonus to TEAMMATES, never to the holder
+//   Poise               feeds ASSISTS, not scoring
+//
+// scripts/validate-traits.js asserts every trait has one and that no orphan
+// description survives a trait being renamed or removed.
+const TRAIT_DESCRIPTIONS = {
+  // --- Offensive ---
+  sharpshooter: 'Takes more of his shots from three, and makes more of them.',
+  postThreat: 'Scores more from the block, and draws the help that opens the floor.',
+  finisher: 'Converts more of what he gets at the rim.',
+  playmaker: 'Creates more shots for teammates. This one feeds assists, not his own scoring.',
+  pickRollMaestro: 'Turns ball screens into points more often.',
+  offBallMover: 'Scores more without the ball, on cuts and relocations.',
+  freeThrowAce: 'His touch at the line carries into his whole scoring game, not just free throws.',
+  highMotorScorer: 'Demands the ball more often. This raises his shot VOLUME, not his efficiency — he takes more shots, he does not make a higher share of them.',
+
+  // --- Defensive ---
+  lockdownDefender: 'Makes perimeter shots harder for whoever he is assigned.',
+  rimProtector: 'Blocks more shots at the rim.',
+  pickpocket: 'Takes the ball away more often.',
+  defensiveAnchor: 'Holds up the interior, so shots inside fall less often.',
+  chargeTaker: 'Reads drives early and makes them cost something.',
+  switchable: 'Guards across positions without giving up the matchup.',
+  glassCleaner: 'Ends possessions by finishing the defensive board.',
+  pointOfAttackMenace: 'Pressures the ball handler into coughing it up.',
+
+  // --- Athletic ---
+  eliteSpeed: 'Beats defenders down the floor and turns it into points.',
+  explosiveVertical: 'Plays above the rim. It shows up as BLOCKS rather than dunks.',
+  ironMan: 'Gets hurt less often than his minutes suggest he should.',
+  quickTwitch: 'First step into the passing lanes. This is a STEALS badge, not a speed one.',
+  strengthAdvantage: 'Wins position in traffic and takes the REBOUND.',
+  highMotor: 'Tires more slowly, so he holds his level deep into games.',
+  springyRebounder: 'Goes back up for second chances on the offensive glass.',
+  fastHealer: 'Comes back from injuries sooner than expected.',
+
+  // --- Mental ---
+  highIQ: 'Takes better shots because he reads the floor.',
+  clutchGene: 'Scores more in the moments that decide games.',
+  coachable: 'Improves faster from one season to the next.',
+  naturalLeader: 'Lifts the locker room, and the whole roster plays a little better for it.',
+  bigGameCompetitor: 'Raises his scoring when the game matters most.',
+  filmJunkie: 'Studies, and develops faster for it.',
+  poise: 'Stays composed under pressure and keeps finding the right pass. Feeds ASSISTS.',
+  mentor: 'Develops the young players around him. The bonus goes to his TEAMMATES — he gets nothing from it himself.',
+
+  // --- Flaws (tier is SEVERITY; legendary is the worst version) ---
+  injuryProne: 'Gets hurt more often. Legendary is the worst version of this, not the best.',
+  streaky: 'Scoring comes and goes. The floor is lower than the name suggests.',
+  turnoverProne: 'Gives the ball away, which eats into his playmaking.',
+  foulProne: 'Fouls too much, and it undoes his defence.',
+  poorConditioning: 'Tires quickly and fades late in games.',
+  lockerRoomCancer: 'Drags the room down. The whole team plays worse.',
+  stubborn: 'Resists coaching and develops more slowly.',
+  chokeArtist: 'Shrinks when the game is on the line.',
+
+  // --- Superstar (rarer, and roughly double a normal badge at every tier) ---
+  alphaDog: 'Takes games over. Superstar-scale scoring lift.',
+  iceInVeins: 'Does not flinch late. Superstar-scale scoring lift.',
+  twoWayStar: 'Elite at both ends, with a superstar-scale defensive bonus.',
+  floorGeneral: 'Runs the offence. Superstar-scale assist lift.',
+  unstoppableForce: 'Cannot be kept out of the paint.',
+  dpoyCaliber: 'Defensive Player of the Year level — the largest defensive bonus in the game.',
+  franchiseCornerstone: 'The room is built around him, and it plays better for it.',
+  humanHighlightReel: 'Finishes plays nobody else on the floor finishes.'
+};
+
 function getTraitBonus(player, system, stat) {
   return (player.hiddenTraits || []).reduce(function (sum, t) {
     const def = TRAIT_TAXONOMY_BY_KEY[t.key];
@@ -406,6 +501,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     TRAIT_TAXONOMY: TRAIT_TAXONOMY,
     TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY,
+    TRAIT_DESCRIPTIONS: TRAIT_DESCRIPTIONS,
+    TRAIT_EFFECT_LABELS: TRAIT_EFFECT_LABELS,
     TRAIT_TIERS: TRAIT_TIERS,
     // Exported so scripts/validate-traits.js can check the tier ladder where it
     // actually lands — the share of events a trait wins in weightedPick —

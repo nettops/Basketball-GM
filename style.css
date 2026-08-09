@@ -760,3 +760,73 @@ table { border-collapse: collapse; width: 100%; }
    countdown has to be visible while the player can still act on it. */
 .offer-expiry { font-size: 0.78rem; color: var(--text-mute); }
 .offer-expiry.is-urgent { color: #d8a13c; font-weight: 600; }
+
+/* ---------- Badge reference (ui/badges.js) ---------- */
+.badge-ref-cat-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.badge-ref-cat-title { margin: 0; font-size: 1rem; }
+.badge-ref-cat-count {
+  font-size: .72rem; color: var(--text-mute);
+  text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+}
+.badge-ref-cat-blurb { color: var(--text-dim); font-size: .84rem; margin: 6px 0 14px; }
+
+.badge-ref-grid {
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+.badge-ref-card {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 8px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.badge-ref-superstar { border-left-color: #FF8FC7; }
+.badge-ref-offensive { border-left-color: var(--gold); }
+.badge-ref-defensive { border-left-color: var(--info); }
+.badge-ref-athletic  { border-left-color: var(--win); }
+.badge-ref-mental    { border-left-color: #B98AE0; }
+.badge-ref-negative  { border-left-color: var(--loss); }
+
+.badge-ref-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.badge-ref-name { font-weight: 700; font-size: .92rem; color: var(--text); }
+.badge-ref-effect { font-size: .72rem; color: var(--text-mute); white-space: nowrap; }
+.badge-ref-effect strong { color: var(--text-dim); }
+.badge-ref-desc { margin: 0; font-size: .82rem; color: var(--text-dim); line-height: 1.45; }
+
+/* The five tiers share the row equally and never wrap. Sizing them by content
+   meant chasing pixels — at a 332px card the chips needed 304px against 300px
+   available, and LEGENDARY alone dropped to a second row. Five tiers only read
+   as one ladder if they sit on one line, at every width, so they flex instead
+   of being measured. */
+.badge-ref-ladder { display: flex; flex-wrap: nowrap; gap: 4px; }
+.badge-ref-tier {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  flex: 1 1 0; min-width: 0; overflow: hidden;
+  padding: 3px 4px; border-radius: 6px;
+  border: 1px solid transparent;
+}
+.badge-ref-tier-name {
+  font-size: .55rem; text-transform: uppercase; letter-spacing: .05em;
+  font-weight: 800; opacity: .8;
+}
+.badge-ref-tier-value { font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.badge-ref-tier.tier-bronze { background: rgba(184, 115, 51, .16); color: #CD8A5C; border-color: rgba(184, 115, 51, .35); }
+.badge-ref-tier.tier-silver { background: rgba(192, 197, 206, .14); color: #C7CDD6; border-color: rgba(192, 197, 206, .32); }
+.badge-ref-tier.tier-gold { background: rgba(212, 169, 78, .16); color: var(--gold); border-color: rgba(212, 169, 78, .4); }
+.badge-ref-tier.tier-hof { background: rgba(160, 108, 213, .16); color: #B98AE0; border-color: rgba(160, 108, 213, .4); }
+.badge-ref-tier.tier-legendary {
+  background: linear-gradient(135deg, rgba(255, 94, 168, .18), rgba(88, 166, 255, .18));
+  color: #FF8FC7; border-color: rgba(255, 94, 168, .45);
+}
+
+.badge-ref-foot {
+  margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.badge-ref-rarity { font-size: .72rem; color: var(--text-mute); }
+.badge-ref-rarity strong { color: var(--text-dim); }
+.badge-ref-rarity-none { color: var(--loss); font-weight: 600; }
+.badge-ref-examples { font-size: .68rem; color: var(--text-mute); opacity: .8; }
