@@ -744,7 +744,24 @@ function handleKeyboardShortcut(e) {
 }
 
 function init() {
-  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague, initPlayerCareerMode);
+  // Player Career is PARKED, not deleted — passing null here is the whole
+  // switch, because teamSelect.js only renders the button when it is handed a
+  // callback. Restoring the mode means putting initPlayerCareerMode back as the
+  // fifth argument; nothing else needs to change.
+  //
+  // Parked because a created player is mechanically broken in two ways that
+  // both trace to createCustomPlayer (playerCareerController.js:42-77):
+  //   - hiddenTraits stays [] forever. ensureHiddenPlayerData already ran at
+  //     league init (line 119 above) and is never called again, so the one
+  //     player you control is the only one in the league with none of the 48
+  //     traits the sim reads — while all 380 others average 3.27.
+  //   - overall is assigned as a plain literal instead of ratings.js's derived
+  //     getter, so it never recomputes. progression.js writes attributes only
+  //     (see its comment at :178), which means a career player trains for years
+  //     and their rating never moves. That is career mode's core loop.
+  // Fix both before un-parking; the badges array is display-only and can be
+  // folded into the trait roll at the same time.
+  renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague, null);
   document.addEventListener('keydown', handleKeyboardShortcut);
 }
 
