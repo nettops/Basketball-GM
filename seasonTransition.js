@@ -15,10 +15,18 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
 // Retirement chance rises sharply after 33, further penalized for players whose
 // production has fallen off. Full HOF/history tracking is Phase 8 — here a
 // retired player just leaves the active player pool entirely.
+// Split out of rollRetirement so it can be measured without rolling dice.
+// The population this catches is the thing that rotted: written for the old
+// authored 62-98 scale, it was meant for fringe players and now catches 94%
+// of the league. scripts/validate-ratingBands.js asserts its share.
+function hasRetirementPenalty(player) {
+  return player.overall < 65;
+}
+
 function rollRetirement(player, rng) {
   if (player.age < 34) return false;
   const baseChance = (player.age - 33) * 0.08;
-  const overallPenalty = player.overall < 65 ? 0.15 : 0;
+  const overallPenalty = hasRetirementPenalty(player) ? 0.15 : 0;
   return rng() < Math.min(0.9, baseChance + overallPenalty);
 }
 
@@ -132,5 +140,5 @@ function generateNewSeason(rng) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { rollRetirement: rollRetirement, decrementContracts: decrementContracts, runOffseasonPreDraft: runOffseasonPreDraft, runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason };
+  module.exports = { rollRetirement: rollRetirement, hasRetirementPenalty: hasRetirementPenalty, decrementContracts: decrementContracts, runOffseasonPreDraft: runOffseasonPreDraft, runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason };
 }
