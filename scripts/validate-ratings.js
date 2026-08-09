@@ -603,6 +603,56 @@ function checkDisplayCurveIsMonotoneAndBounded() {
   console.log('checkDisplayCurveIsMonotoneAndBounded: OK');
 }
 
+// THE KNOTS MUST TRACK THE LEAGUE'S ACTUAL RAW EXTREMES. Reverting them to
+// their pre-refit values was a SURVIVING mutant, because the knot assertions
+// above are self-referential — toDisplayRating(rawHi) === dispHi holds for any
+// pair of numbers. Stale knots do real damage: after the NNLS refit moved the
+// raw range from 29-78 to 23-79, the old knots put the league's worst player at
+// 56 instead of 60 and wasted the bottom of the scale.
+//
+// This does NOT make the curve league-relative — the function stays a pure
+// absolute map, and checkDisplayCurveIsAbsolute still proves it. This asserts
+// that its CALIBRATION is current, which is a different thing.
+function checkTheKnotsAreCalibratedToTheLeague() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const display = PLAYERS_2026.map(function (p) { return p.overall; });
+  const lo = Math.min.apply(null, display);
+  const hi = Math.max.apply(null, display);
+  assert.strictEqual(hi, ratings.DISPLAY_KNOT.dispHi,
+    'the best player in the league must land exactly on the top knot (' +
+    ratings.DISPLAY_KNOT.dispHi + '), got ' + hi + ' — re-derive DISPLAY_KNOT.rawHi');
+  assert.strictEqual(lo, ratings.DISPLAY_KNOT.dispLo,
+    'the worst player in the league must land exactly on the bottom knot (' +
+    ratings.DISPLAY_KNOT.dispLo + '), got ' + lo + ' — re-derive DISPLAY_KNOT.rawLo');
+  console.log('checkTheKnotsAreCalibratedToTheLeague: OK (' + lo + '-' + hi + ')');
+}
+
+// The NNLS solver itself, on a synthetic system whose unconstrained solution is
+// known to be negative. scripts/fit-overall.js is a one-shot generator, so the
+// validator never runs it — removing its clamp was a surviving mutant for that
+// reason alone. This exercises the same routine directly and cheaply.
+function checkNonNegativeSolverClampsNegatives() {
+  const fitPath = path.join(__dirname, 'fit-overall.js');
+  const src = require('fs').readFileSync(fitPath, 'utf8');
+  const m = src.match(/function solveNonNegative[\s\S]*?\n}/);
+  assert.ok(m, 'solveNonNegative must exist in fit-overall.js');
+  const solveNonNegative = new Function('return (' + m[0] + ')')();
+
+  // y = -3 * x0 (+ intercept). Unconstrained least squares wants a negative
+  // slope; the constraint must pull it to exactly 0, never below.
+  const A = [[10, 0], [0, 4]];
+  const b = [-30, 0];
+  const out = solveNonNegative(A, b, 2000);
+  assert.strictEqual(out[0], 0,
+    'a slope whose unconstrained optimum is negative must clamp to exactly 0, got ' + out[0]);
+
+  // And a genuinely positive slope must survive untouched.
+  const out2 = solveNonNegative([[10, 0], [0, 4]], [20, 0], 2000);
+  assert.ok(out2[0] > 1.9 && out2[0] < 2.1,
+    'a positive slope must be recovered, got ' + out2[0]);
+  console.log('checkNonNegativeSolverClampsNegatives: OK');
+}
+
 // Absoluteness, tested by changing the league around a fixed raw value. If the
 // curve ever consulted league state — a percentile, a max, a mean — this fails.
 function checkDisplayCurveIsAbsolute() {
@@ -623,12 +673,18 @@ function checkDisplayCurveIsAbsolute() {
 // reachable display value must round-trip back to itself.
 function checkDisplayCurveRoundTrips() {
   const ratings = require(path.join(__dirname, '..', 'ratings.js'));
-  for (let d = 40; d <= 100; d++) {
+  // The sweep starts at the curve's actual FLOOR, derived rather than hardcoded.
+  // A raw 0 maps to some display well above 0 (the bottom knot lifts it), so
+  // display values below that have no inverse and asserting on them tests
+  // nothing but the clamp. Hardcoding the floor also silently goes stale the
+  // moment the knots are re-derived — which is exactly how this first failed.
+  const floor = ratings.toDisplayRating(0);
+  for (let d = floor; d <= 100; d++) {
     const raw = ratings.toRawRating(d);
     assert.strictEqual(ratings.toDisplayRating(raw), d,
       'round trip failed at display ' + d + ' (raw ' + raw.toFixed(3) + ')');
   }
-  console.log('checkDisplayCurveRoundTrips: OK (display 40-100)');
+  console.log('checkDisplayCurveRoundTrips: OK (display ' + floor + '-100)');
 }
 
 checkDefensiveBadgesDrawAssignments();
@@ -677,6 +733,30 @@ function checkOldShapePlayersGainTheNewGetters() {
   console.log('checkOldShapePlayersGainTheNewGetters: OK');
 }
 
+// A rating where being BETTER at something makes you WORSE is broken as a
+// rating. Five coefficients were negative, insideScoring worst at -0.086, so
+// improving a big man's inside game LOWERED his overall.
+//
+// They were collinearity artifacts, not signal. Max |r| in the attribute matrix
+// is 0.910 (interiorDefense/block), and every negative had a strongly
+// correlated partner carrying a large positive: insideScoring/acceleration
+// r=.71, freeThrow/threePoint r=.81, passing/ballHandling r=.85. At that level
+// the individual coefficients are not identified — only sums along correlated
+// directions are.
+//
+// The proof they were noise: the ridge fit had FIVE negatives, and a re-fit on
+// different data had TWO, three having flipped sign purely from resampling. A
+// coefficient that changes sign under resampling is not measuring anything.
+function checkNoCoefficientPunishesSkill() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const negative = ATTRIBUTE_KEYS.filter(function (k) {
+    return ratings.OVERALL_COEFFICIENTS[k] && ratings.OVERALL_COEFFICIENTS[k].coef < 0;
+  });
+  assert.strictEqual(negative.length, 0,
+    'these attributes LOWER overall when improved: ' + negative.join(', '));
+  console.log('checkNoCoefficientPunishesSkill: OK (all ' + ATTRIBUTE_KEYS.length + ' >= 0)');
+}
+
 // Neither may serialise. A saved league carrying a frozen rating rebuilds the
 // stored-overall drift bug through the back door.
 function checkNeitherRatingSerialises() {
@@ -718,17 +798,25 @@ function checkCoachOverallIsUntouched() {
 // "Make this player a 90" means 90 on the scale the user is looking at.
 function checkScaleAttributesHitsADisplayTarget() {
   const ratings = require(path.join(__dirname, '..', 'ratings.js'));
-  [65, 75, 85, 90, 95].forEach(function (target) {
+  // Swept, not spot-checked. Five sample targets all passed while 65 did not —
+  // seven zero coefficients made the reachable set coarse enough to step over
+  // individual values, and only a full sweep finds which ones.
+  const missed = [];
+  for (let target = 50; target <= 99; target++) {
     const clone = ratings.defineOverall(JSON.parse(JSON.stringify(PLAYERS_2026[40])));
     ratings.scaleAttributesToOverall(clone, target);
-    assert.strictEqual(clone.overall, target,
-      'scaleAttributesToOverall(p, ' + target + ') gave ' + clone.overall);
-  });
-  console.log('checkScaleAttributesHitsADisplayTarget: OK (65/75/85/90/95)');
+    if (clone.overall !== target) missed.push(target + '->' + clone.overall);
+  }
+  assert.strictEqual(missed.length, 0,
+    'scaleAttributesToOverall must land exactly on every reachable display target; missed ' +
+    missed.join(', '));
+  console.log('checkScaleAttributesHitsADisplayTarget: OK (50-99, all exact)');
 }
 
 checkDisplayCurveIsMonotoneAndBounded();
 checkDisplayCurveIsAbsolute();
+checkTheKnotsAreCalibratedToTheLeague();
+checkNonNegativeSolverClampsNegatives();
 checkDisplayCurveRoundTrips();
 checkRawAndDisplayAreBothPresent();
 checkOldShapePlayersGainTheNewGetters();
@@ -736,5 +824,6 @@ checkNeitherRatingSerialises();
 checkUsageSpreadStaysWide();
 checkCoachOverallIsUntouched();
 checkScaleAttributesHitsADisplayTarget();
+checkNoCoefficientPunishesSkill();
 
 console.log('All ratings validations passed');

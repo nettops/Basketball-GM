@@ -62,6 +62,45 @@ function solve(A, b) {
   return M.map(function (row) { return row[n]; });
 }
 
+// NON-NEGATIVE LEAST SQUARES, by coordinate descent on the normal equations.
+// Each pass sets one coefficient to its optimum given the others and clamps it
+// at zero; the intercept stays unconstrained. Converges reliably here because
+// the ridge penalty makes the Gram matrix strictly diagonally dominant.
+//
+// Why constrain the sign at all: a rating where being BETTER at something makes
+// you WORSE is broken as a rating, and the plain ridge fit produced five such
+// coefficients — insideScoring worst at -0.086, so improving a big man's inside
+// game lowered his overall.
+//
+// Why constraining it discards nothing real: max |r| in the attribute matrix is
+// 0.910 (interiorDefense/block), and every negative had a strongly correlated
+// partner carrying a large positive (insideScoring/acceleration r=.71,
+// freeThrow/threePoint r=.81, passing/ballHandling r=.85). At that level the
+// individual coefficients are not identified — only sums along correlated
+// directions are, and ridge splits the shared signal arbitrarily. The proof is
+// that the sign pattern itself is unstable: five negatives on 1800 games became
+// a different two on 900 games of the same league.
+//
+// `solve` is kept below as the A/B control. Do not delete it — the commit that
+// changes this fit has to report both arms at the same game count.
+function solveNonNegative(A, b, iters) {
+  const n = b.length;
+  const x = new Array(n).fill(0);
+  for (let it = 0; it < iters; it++) {
+    let maxDelta = 0;
+    for (let j = 0; j < n; j++) {
+      let s = 0;
+      for (let k = 0; k < n; k++) if (k !== j) s += A[j][k] * x[k];
+      const v = (b[j] - s) / A[j][j];
+      const next = (j === n - 1) ? v : Math.max(0, v);   // intercept unconstrained
+      if (Math.abs(next - x[j]) > maxDelta) maxDelta = Math.abs(next - x[j]);
+      x[j] = next;
+    }
+    if (maxDelta < 1e-12) break;
+  }
+  return x;
+}
+
 const rng = makeRng(1);
 const byId = {};
 PLAYERS_2026.forEach(function (p) { byId[p.id] = p; });
@@ -140,7 +179,12 @@ for (let i = 0; i <= K; i++) {
   for (let r = 0; r < X.length; r++) s2 += X[r][i] * y[r];
   b.push(s2);
 }
-const coef = solve(A, b);
+// FIT_SOLVER=ridge runs the unconstrained control for the A/B.
+const USE_RIDGE_CONTROL = process.env.FIT_SOLVER === 'ridge';
+const coef = USE_RIDGE_CONTROL ? solve(A, b) : solveNonNegative(A, b, 5000);
+console.error('solver: ' + (USE_RIDGE_CONTROL ? 'ridge (control)' : 'NNLS'));
+console.error('negative coefficients: ' +
+  ATTRIBUTE_KEYS.filter(function (k, i) { return coef[i] < 0; }).length);
 
 const pred = X.map(function (row) {
   let s = 0;
