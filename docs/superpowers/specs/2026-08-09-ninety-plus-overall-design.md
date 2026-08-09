@@ -42,6 +42,16 @@ regression with mean 48, none were re-anchored:
 Three are dead code. One is nearly dead. The retirement penalty has **inverted**
 — written for fringe players, it now taxes 94% of the league.
 
+Two more surfaced while planning, both in `tradeEvaluator.js`:
+
+- **`LEAGUE_AVG_OVERALL = 75`** (`tradeEvaluator.js:89`) — a sixth constant from
+  the old scale, against a real mean of 47.8. Only a fallback for an empty
+  league, so harmless today, but it is the same rot.
+- **`needMultiplier`'s `leagueAvg ± 10` band** (`tradeEvaluator.js:107-108`) —
+  scale-sensitive. Raw SD is 9.89, display SD is ~7.06, so a literal 10 widens
+  from 1.01 SD to 1.42 SD and the multiplier fires less often. A threshold is not
+  the only thing a rescale breaks; **any constant compared against a rating is.**
+
 The dead superstar gate means **eight authored traits have never once been
 held by any player**: Alpha Dog, Ice in Veins, Two-Way Star, Floor General,
 Unstoppable Force, DPOY Caliber, Franchise Cornerstone, Human Highlight Reel.
@@ -138,6 +148,19 @@ rebuilt through the back door.
 is monotone, so order is preserved and either field works — they move to
 `rawOverall` anyway, for one rule with no exceptions.
 
+**Coaches carry their own `overall` and must not be touched.** It is
+hand-authored on a 55–95 scale (`coaches.js:74`, `awards.js:118`,
+`simEngineBoxScore.js:19`, asserted 55–95 in `validate-coaches.js:18`) and is not
+derived from attributes. A blind `.overall` → `.rawOverall` rename corrupts it,
+so every rename is checked against its receiver and a validator asserts no coach
+ever gains a `rawOverall`.
+
+Worth noting for confidence in the chosen scale: that coach scale was authored by
+hand, from intuition about what a rating should look like, and it landed on
+55–95. The new player display scale is 60–95. Players and coaches end up
+comparable for the first time — today a 75 coach and a 75 player mean entirely
+different things.
+
 `simEngineBoxScore.js:111` is the dangerous one. Flattening usage from 2.69x to
 1.58x would make stars take proportionally fewer shots — the exact opposite of
 the requirement that stars perform like stars. The file already carries a scar
@@ -209,9 +232,24 @@ correction rather than a cosmetic one.
 changing the coefficients changes who shoots. It gets its own calibration
 against the target rates and its own golden regeneration.
 
-### Re-anchoring the five thresholds
+### Re-anchoring the gates
 
-Each threshold gets a stated *intent* and a target population share. The plan
+Every gate moves out of its magic number into one **`RATING_BANDS` table in
+`ratings.js`**, named by intent rather than by value:
+
+```js
+const RATING_BANDS = {
+  superstar: 90, superstarPotential: 92, star: 85, rotation: 78, fringe: 68
+};
+```
+
+Five scattered literals across five files is what allowed five separate gates to
+rot unnoticed. One table means the next rescale is one edit — and it is what
+makes the tripwire's mutation test meaningful: reverting a single call site to a
+literal must fail the validator, which proves the site reads the table rather
+than carrying its own copy. Without the table that property is unprovable.
+
+Each band gets a stated *intent* and a target population share. The plan
 **measures and solves** for the value; the numbers below are starting points, not
 picked values.
 
