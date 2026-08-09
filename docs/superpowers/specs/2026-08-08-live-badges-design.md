@@ -2,6 +2,15 @@
 
 **Date:** 2026-08-08
 **Status:** Approved for planning
+**Depends on:** `2026-08-08-skill-checks-design.md`, which ships first
+
+Because the skill-check primitive lands first, the wiring below changes shape: the
+five consumption sites become **modifier entries on `skillCheck` specs**, not terms
+bolted onto five hand-rolled formulas. Each badge contributes
+`{ label: 'Lockdown Defender (gold)', value: −3 }` to the relevant check's
+`modifiers[]`, which means it is calibrated in one place and displayed for free by
+the check breakdown. The attachment table and routing rules are unchanged; only the
+insertion mechanism is.
 
 ## Problem
 
