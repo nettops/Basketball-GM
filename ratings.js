@@ -51,6 +51,58 @@ const OVERALL_COEFFICIENTS = {
 };
 const OVERALL_INTERCEPT = 50.0000;
 
+// THE DISPLAY CURVE. The fit above targets mean 50 / SD 9, which puts a 90 at
+// +4.4 standard deviations — unreachable in a 380-player league, where the
+// measured maximum is 78. This maps the fitted value onto the scale players
+// actually read: worst player 60, median 73, best player 95.
+//
+// The knots are ABSOLUTE, never league-relative. A percentile mapping would
+// re-rate every player the moment a draft class arrived, and "I signed a 90"
+// would stop meaning anything from one season to the next.
+//
+// The slope above the top knot is deliberately flatter, reserving 96-100 for a
+// player genuinely better than anyone alive today. The cost is real and
+// accepted: only 5 display points remain above the current best player, so
+// progression at the very top compresses. This is how 2K behaves — the best
+// player is a 96-97 and nobody is a 99.
+const DISPLAY_KNOT = { rawLo: 29, dispLo: 60, rawHi: 78, dispHi: 95 };
+const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
+const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
+
+function toDisplayRating(raw) {
+  const v = raw <= DISPLAY_KNOT.rawHi
+    ? DISPLAY_KNOT.dispLo + (raw - DISPLAY_KNOT.rawLo) * DISPLAY_SLOPE_LO
+    : DISPLAY_KNOT.dispHi + (raw - DISPLAY_KNOT.rawHi) * DISPLAY_SLOPE_HI;
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+// Deliberately NOT rounded. scaleAttributesToOverall solves against this, and
+// rounding here would make the solver chase a target it can never land on.
+function toRawRating(display) {
+  const v = display <= DISPLAY_KNOT.dispHi
+    ? DISPLAY_KNOT.rawLo + (display - DISPLAY_KNOT.dispLo) / DISPLAY_SLOPE_LO
+    : DISPLAY_KNOT.rawHi + (display - DISPLAY_KNOT.dispHi) / DISPLAY_SLOPE_HI;
+  return Math.max(0, Math.min(100, v));
+}
+
+// Every gate that reads a rating lives here, named by INTENT rather than by
+// number. Five gates were scattered as magic numbers across five files, all
+// written for the old authored 62-98 scale, and all rotted silently when
+// `overall` became a regression — three ended up catching nobody at all, and
+// the retirement penalty inverted to catch 94% of the league.
+//
+// One table means the next rescale is one edit. It is also what makes the
+// mutation test in validate-ratingBands.js meaningful: reverting a single call
+// site to a literal must fail, which is the only way to prove a site reads the
+// table rather than carrying its own private copy.
+const RATING_BANDS = {
+  superstar: 90,           // the genuine elite — gates the 8 superstar traits
+  superstarPotential: 92,  // ...or the potential to become one
+  star: 85,                // stars: trade premium, worth pausing the sim for
+  rotation: 78,            // good enough that a bench role is worth complaining about
+  fringe: 68               // fringe: likelier to retire
+};
+
 function computeOverall(player) {
   const attrs = player && player.attributes;
   if (!attrs) return 0;
@@ -125,6 +177,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     OVERALL_COEFFICIENTS: OVERALL_COEFFICIENTS,
     OVERALL_INTERCEPT: OVERALL_INTERCEPT,
+    DISPLAY_KNOT: DISPLAY_KNOT,
+    RATING_BANDS: RATING_BANDS,
+    toDisplayRating: toDisplayRating,
+    toRawRating: toRawRating,
     computeOverall: computeOverall,
     defineOverall: defineOverall,
     scaleAttributesToOverall: scaleAttributesToOverall

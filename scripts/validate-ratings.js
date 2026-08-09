@@ -565,8 +565,70 @@ function checkDefensiveFgIsRecorded() {
   console.log('checkDefensiveFgIsRecorded: OK (' + totalOppFga + ' defended attempts)');
 }
 
+// The curve maps the fitted value onto the scale players actually read. Three
+// properties make it safe, and all three are load-bearing:
+//   monotone - a better player never reads worse
+//   bounded  - nothing escapes 0..100, including a hypothetical all-100 player
+//   ABSOLUTE - the same attributes give the same number regardless of who else
+//              is in the league. A percentile mapping would fail this and would
+//              silently re-rate everyone every time a draft class arrived.
+function checkDisplayCurveIsMonotoneAndBounded() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  // Swept well OUTSIDE 0..100 deliberately. Both clamps are unreachable from
+  // the real callers, because computeOverall already clamps its own output —
+  // so a sweep of only the reachable domain leaves them untested, and removing
+  // one is a mutation that survives. The function promises a bounded result for
+  // any numeric input; this tests that promise rather than today's callers.
+  let prev = -1;
+  for (let raw = -80; raw <= 120; raw += 0.25) {
+    const d = ratings.toDisplayRating(raw);
+    assert.ok(d >= 0 && d <= 100, 'display escaped 0..100 at raw ' + raw + ': ' + d);
+    assert.ok(d >= prev, 'display curve went DOWN at raw ' + raw + ': ' + prev + ' -> ' + d);
+    prev = d;
+  }
+  assert.strictEqual(ratings.toDisplayRating(1e9), 100, 'the upper clamp must hold');
+  assert.strictEqual(ratings.toDisplayRating(-1e9), 0, 'the lower clamp must hold');
+  assert.strictEqual(ratings.toDisplayRating(ratings.DISPLAY_KNOT.rawHi), ratings.DISPLAY_KNOT.dispHi,
+    'the top knot must land exactly on its display value');
+  assert.strictEqual(ratings.toDisplayRating(ratings.DISPLAY_KNOT.rawLo), ratings.DISPLAY_KNOT.dispLo,
+    'the bottom knot must land exactly on its display value');
+  assert.strictEqual(ratings.toDisplayRating(100), 100, 'a perfect player reads 100');
+  console.log('checkDisplayCurveIsMonotoneAndBounded: OK');
+}
+
+// Absoluteness, tested by changing the league around a fixed raw value. If the
+// curve ever consulted league state — a percentile, a max, a mean — this fails.
+function checkDisplayCurveIsAbsolute() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  const before = ratings.toDisplayRating(70);
+  const stash = PLAYERS_2026.splice(0, 100);
+  const during = ratings.toDisplayRating(70);
+  Array.prototype.unshift.apply(PLAYERS_2026, stash);
+  const after = ratings.toDisplayRating(70);
+  assert.strictEqual(before, during,
+    'display must not depend on the league around the player (removed 100 players and it moved)');
+  assert.strictEqual(before, after, 'display must be stable once the league is restored');
+  assert.strictEqual(PLAYERS_2026.length, 380, 'the league must be put back exactly as found');
+  console.log('checkDisplayCurveIsAbsolute: OK (raw 70 -> ' + before + ')');
+}
+
+// toRawRating is the inverse scaleAttributesToOverall solves against. Every
+// reachable display value must round-trip back to itself.
+function checkDisplayCurveRoundTrips() {
+  const ratings = require(path.join(__dirname, '..', 'ratings.js'));
+  for (let d = 40; d <= 100; d++) {
+    const raw = ratings.toRawRating(d);
+    assert.strictEqual(ratings.toDisplayRating(raw), d,
+      'round trip failed at display ' + d + ' (raw ' + raw.toFixed(3) + ')');
+  }
+  console.log('checkDisplayCurveRoundTrips: OK (display 40-100)');
+}
+
 checkDefensiveBadgesDrawAssignments();
 checkChemistryReachesSynergy();
 checkDefensiveFgIsRecorded();
+checkDisplayCurveIsMonotoneAndBounded();
+checkDisplayCurveIsAbsolute();
+checkDisplayCurveRoundTrips();
 
 console.log('All ratings validations passed');
