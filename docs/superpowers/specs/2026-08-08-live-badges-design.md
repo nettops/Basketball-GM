@@ -50,6 +50,7 @@ extra rung.
 | League rates | Rate-neutral. FG% 46.8 / 3P% 36.6 / 103.3 points hold. |
 | Block rate | Stays parked at `BLOCK_BASE 0.020`. Not resolved here. |
 | Badge visibility | No scouting gate for rostered players. Prospects show fuzzy tiers. |
+| Chemistry | Scoped in, not exempted. Badges feed `computeTeamSynergy` directly. |
 
 ## Architecture
 
@@ -120,6 +121,33 @@ ALLOCATION:
 Extracting the inline lambda is not gratuitous: leaving it anonymous is what made
 the shot-defender path easy to miss when auditing which weights read traits.
 
+## Chemistry
+
+`computeTeamSynergy(roster)` (`compositeRatings.js:63`) already computes per-game
+team multipliers from roster construction and already reaches the possession engine
+— `synergyAdj = offenseSynergy − defenseSynergy` sits in `shotMakeProbability`
+directly beside the trait term. Chemistry is a team-level property and synergy is
+the team-level channel, so that is where the chemistry badges go.
+
+Signature becomes `computeTeamSynergy(roster, team)`. A chemistry term is added to
+the `offense` and `defense` multipliers, built from two inputs:
+
+- the rotation's summed `chemistry/team` badge bonuses (Natural Leader +,
+  Locker Room Cancer −, Franchise Cornerstone at the 14-point superstar scale)
+- `team.chemistry` centred on 70, matching the constant `simEngineBoxScore`'s
+  `computeTeamRating` already uses
+
+Folding the authored field in is deliberate. `team.chemistry` is written per team in
+`teams.js` (55–78) but read only by the non-default engine, so today it is decorative
+in normal play. One term makes both the badges and the field live, and leaves
+`computeTeamRating`'s existing use untouched.
+
+**No new state.** Chemistry does not evolve, persist, or tick. It is computed from
+the roster each game the same way the shooter/defender/rebounder counts already are,
+so there is no save-format change and nothing to migrate. An evolving chemistry
+value that drifts with winning and roster churn is a real and more interesting
+design, but it is a separate project with its own persistence and calibration.
+
 ### One deliberate deviation
 
 Under the scoring precedent, negative traits apply to every zone — so Foul Prone
@@ -175,6 +203,13 @@ Rate-neutrality in two stages, because one is not enough:
 symmetry: a legendary Lockdown Defender worth roughly what a legendary Sharpshooter
 is (±2.7pp on its zone), putting DPOY Caliber at about −4.7pp on its 14-point scale.
 
+The chemistry term gets the same two-stage treatment, and needs it more: it lands on
+`synergyAdj`, which is a whole-team multiplier applied to every shot, so an
+uncentred term would move league scoring far harder than a per-defender one. Centre
+on the league mean of (rotation badge sum + `team.chemistry` − 70), then measure.
+Its swept magnitude should stay below the defensive term — chemistry is a nudge to
+how a roster fits, not a bigger lever than guarding somebody.
+
 ## Testing
 
 The bug class is not "defense is unwired" — it is **"a trait family can be silently
@@ -187,12 +222,16 @@ line moves against a seed-matched control. Byte-identical means dead. This is th
 generalized form of the move `33a2161` made going from guarding `minutesWeight` to
 guarding all six weights.
 
-It carries **one exemption list, which may only shrink**: `chemistry/team`. Natural
-Leader, Locker Room Cancer and Franchise Cornerstone stay dead after this work
-because `team.chemistry` is only ever written by `godMode.js:41` setting it to 99.
-There is no system to wire them into and inventing one is a different project.
-Writing it as a named exemption rather than omitting the family keeps the gap
-visible in code.
+It carries **no exemptions**. All 13 `(system, stat)` families must move a player's
+line, chemistry included. The validator asserts the family list it iterates is the
+complete set drawn from `TRAIT_TAXONOMY`, so a family cannot be quietly dropped from
+coverage by deleting a row — a new family added to the taxonomy is covered the day
+it appears, and fails until it is wired.
+
+An earlier draft of this spec exempted `chemistry/team` on the grounds that there
+was no system to wire it into. That was wrong: `computeTeamSynergy` was already the
+right channel and already reached the engine. The exemption would have preserved
+exactly the bug class this validator exists to catch.
 
 Every new assertion is mutation-tested. Required mutants:
 
@@ -204,6 +243,8 @@ Every new assertion is mutation-tested. Required mutants:
 | Un-route Foul Prone from the foul rate | foul rate no longer responding |
 | Remove the steal term | the steal family going byte-identical again |
 | Remove the block term | the block family going byte-identical again |
+| Zero the chemistry term in synergy | Locker Room Cancer costing a team nothing |
+| Drop `team.chemistry` from the synergy term | the authored field going decorative again |
 
 A surviving mutant means the assertion is worthless or the code is dead, and the
 report must say which.
@@ -214,7 +255,12 @@ working tree; and a browser check that the DFG% column renders.
 
 ## Out of scope
 
-- Chemistry traits (no system to wire into — named exemption above).
+- **Evolving** chemistry — a `team.chemistry` that drifts with winning, minutes and
+  roster churn. The badges are wired here; making the value itself dynamic needs
+  persisted state, a season tick and its own calibration.
+- Morale reaching the sim. `player.status.morale` ticks every game
+  (`morale.js:11`) and no engine reads it. Same bug class as the 15 dead traits,
+  found while designing this, and worth its own pass.
 - `BLOCK_BASE` / block-rate rebalance (parked, sweep already measured).
 - Un-parking career mode.
 - Renaming `hiddenTraits` in the data model.
