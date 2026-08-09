@@ -7,10 +7,11 @@
 // than the box-score engine by design — that's the point of offering it as
 // an alternative, not a bug.
 var _POSS_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js'), composite: require('./compositeRatings.js') }
+  ? { league: require('./league.js'), traits: require('./traits.js'), box: require('./simEngineBoxScore.js'), composite: require('./compositeRatings.js'), check: require('./skillCheck.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
       traits: { getTraitBonus: getTraitBonus, shotQualityBonus: shotQualityBonus },
+      check: { skillCheck: skillCheck, skillCheckProbability: skillCheckProbability },
       box: {
         distributeInt: distributeInt, scoringWeight: scoringWeight, reboundWeight: reboundWeight,
         assistWeight: assistWeight, stealWeight: stealWeight, blockWeight: blockWeight, minutesWeight: minutesWeight
@@ -184,6 +185,101 @@ function pickShotZone(shooter, rng, inTransition) {
   return 'inside';
 }
 
+// Spec builders for the three contests this engine resolves. Each takes plain
+// numbers rather than players so it can be swept against the original formula
+// in scripts/validate-skillCheck.js without constructing a league.
+//
+// The divisors below are deliberately NOT normalised onto a single scale. They
+// were calibrated independently and normalising them would change outcomes,
+// move both goldens and need a full recalibration sweep — a balance change has
+// no business riding along inside a refactor. That is its own later pass.
+
+const TURNOVER_BASE = 0.11, TURNOVER_DIV = 400;
+const TURNOVER_MIN = 0.04, TURNOVER_MAX = 0.22;
+const TURNOVER_SYNERGY_WEIGHT = 0.3;
+
+// ATTACK is the DEFENDER: a turnover is the defence's check to pass. Both sides
+// divide by the same 400 because the original was a raw difference over one
+// divisor — (d - h)/400 is algebraically (d-50)/400 - (h-50)/400.
+function turnoverSpec(defenderSteal, handlerBallHandling, defSynergyDefense, offSynergyOffense) {
+  return {
+    kind: 'turnover',
+    base: TURNOVER_BASE,
+    attack: { label: 'steal', value: defenderSteal, scale: TURNOVER_DIV, energy: 1 },
+    defend: { label: 'ballHandling', value: handlerBallHandling, scale: TURNOVER_DIV, energy: 1 },
+    modifiers: [
+      { label: 'team synergy', value: (defSynergyDefense - offSynergyOffense) * TURNOVER_SYNERGY_WEIGHT }
+    ],
+    min: TURNOVER_MIN, max: TURNOVER_MAX
+  };
+}
+
+// This was `max(0, (block - 50) / 900)`, which assumed 50 was the BOTTOM of
+// the rating scale rather than its middle — on the old 48-99 attributes
+// nobody was ever clipped, but on a true 0-100 scale it zeroed half the
+// league and blocks fell from 1.86 to 0.87 per team-game. Reshaped to a base
+// plus a deviation so a below-average shot-blocker is merely unlikely to
+// block rather than literally unable to.
+//
+// BLOCK_BASE calibrated to RESTORE the pre-rescale rate (1.86 blocks per
+// team-game; 0.020 measures 1.78), deliberately NOT to the real NBA's ~4.9.
+//
+// This rescale's job is to not break anything, and the block rate was
+// already 2.6x under the real league before it. Fixing that is a balance
+// change, and it is not free: validate-impactMoments.js gates the block
+// comic-panel population at 2-7 per game, so an NBA-realistic block rate
+// (BLOCK_BASE 0.085 measures 4.73/team, 9.5/game) would roughly triple the
+// tier-2 impact effects. How many comic panels a game should carry is a
+// feel decision, not an arithmetic one. Left for the recalibration task with
+// the sweep already measured:
+//   0.020 -> 1.78/team   0.030 -> 2.20   0.055 -> 3.28
+//   0.070 -> 4.38        0.085 -> 4.73 (NBA-realistic)
+const BLOCK_BASE = 0.020, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
+const BLOCK_THREE_CHANCE = 0.008;
+
+// A three is not a contest — nobody meaningfully blocks a jump shot from 24
+// feet — so that branch is a flat constant with no attacking side. It still
+// goes through skillCheck so it draws its one rng value in the same order.
+function blockSpec(defenderBlock, zone) {
+  if (zone === 'three') {
+    return { kind: 'block', base: BLOCK_THREE_CHANCE, attack: null, defend: null, modifiers: [], min: 0, max: 1 };
+  }
+  return {
+    kind: 'block',
+    base: BLOCK_BASE,
+    attack: { label: 'block', value: defenderBlock, scale: BLOCK_DIV, energy: 1 },
+    defend: null,
+    modifiers: [],
+    min: BLOCK_MIN, max: BLOCK_MAX
+  };
+}
+
+const SHOT_BASE_BY_ZONE = { three: 0.330, mid: 0.42, inside: 0.56 };
+const SHOT_SKILL_DIV = 250, SHOT_DEF_DIV = 350;
+const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
+
+function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus) {
+  return {
+    kind: 'shot',
+    base: SHOT_BASE_BY_ZONE[zone],
+    attack: {
+      label: zone === 'three' ? 'shootingThree' : (zone === 'mid' ? 'shootingMid' : 'shootingInside'),
+      value: shootComposite, scale: SHOT_SKILL_DIV,
+      energy: shooterEnergyMult === undefined ? 1 : shooterEnergyMult
+    },
+    defend: {
+      label: zone === 'inside' ? 'defenseInterior' : 'defensePerimeter',
+      value: defComposite, scale: SHOT_DEF_DIV,
+      energy: defenderEnergyMult === undefined ? 1 : defenderEnergyMult
+    },
+    modifiers: [
+      { label: 'team synergy', value: (offenseSynergy || 1) - (defenseSynergy || 1) },
+      { label: 'badges', value: traitBonus / SHOT_TRAIT_DIV }
+    ],
+    min: SHOT_MIN, max: SHOT_MAX
+  };
+}
+
 // offenseSynergy/defenseSynergy are the shooting team's and defending team's
 // per-game synergy multipliers (computeTeamSynergy, computed once per game —
 // see simulatePossessionGame) rather than anything derived from this one
@@ -194,21 +290,32 @@ function pickShotZone(shooter, rng, inTransition) {
 // scale down how much each side's skill edge actually shows up on this
 // possession — a tired shooter's touch suffers, a tired defender's
 // contest is a beat late — without erasing the underlying rating gap.
+// Resolves composites and the badge bonus, then hands PLAIN NUMBERS to shotSpec.
+// The split matters: shotSpec can be swept against the original formula in
+// scripts/validate-skillCheck.js without constructing a league, because it never
+// touches a player object.
+//
+// Scoring traits reach the SHOT, not just the shot count. Until this, a
+// legendary Sharpshooter did not shoot threes any better — traits only fed
+// scoringWeight, so the trait bought volume and the name promised accuracy.
+// Routed by zone in traits.js (shotQualityBonus), so this only fires for the
+// shot the trait is actually about, and it arrives as a NAMED modifier so the
+// UI can show "badges +1.0%" rather than folding it invisibly into one float.
+function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
+  const shootKey = zone === 'three' ? 'shootingThree' : (zone === 'mid' ? 'shootingMid' : 'shootingInside');
+  const defKey = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
+  return shotSpec(zone,
+    _POSS_DATA.composite.computeComposite(shooter, shootKey),
+    _POSS_DATA.composite.computeComposite(defender, defKey),
+    offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult,
+    _POSS_DATA.traits.shotQualityBonus(shooter, zone));
+}
+
+// Kept as a named export because scripts/validate-possession.js and the pixel
+// choreographer's classifier both read a bare probability without rolling.
 function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
-  let base, shootComposite, defComposite;
-  if (zone === 'three') { base = 0.330; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingThree'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
-  else if (zone === 'mid') { base = 0.42; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingMid'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defensePerimeter'); }
-  else { base = 0.56; shootComposite = _POSS_DATA.composite.computeComposite(shooter, 'shootingInside'); defComposite = _POSS_DATA.composite.computeComposite(defender, 'defenseInterior'); }
-  const skillAdj = (shootComposite - 50) / 250 * (shooterEnergyMult !== undefined ? shooterEnergyMult : 1);
-  const defAdj = (defComposite - 50) / 350 * (defenderEnergyMult !== undefined ? defenderEnergyMult : 1);
-  const synergyAdj = (offenseSynergy || 1) - (defenseSynergy || 1);
-  // Scoring traits reach the SHOT, not just the shot count. Until this, a
-  // legendary Sharpshooter did not shoot threes any better — traits only fed
-  // scoringWeight, so the trait bought volume and the name promised accuracy.
-  // Routed by zone in traits.js (shotQualityBonus), so this only fires for the
-  // shot the trait is actually about.
-  const traitAdj = _POSS_DATA.traits.shotQualityBonus(shooter, zone) / SHOT_TRAIT_DIV;
-  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synergyAdj + traitAdj));
+  return _POSS_DATA.check.skillCheckProbability(shotMakeSpecFor(
+    shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult)).probability;
 }
 
 // Appends a play-by-play line if `log` was supplied (simulatePossessionGame
@@ -260,9 +367,9 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   drainEnergy(defenseBox[onBallDefender.id], onBallDefender);
   pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
 
-  const turnoverChance = Math.max(0.04, Math.min(0.22,
-    0.11 + (onBallDefender.attributes.steal - handler.attributes.ballHandling) / 400 + (defSyn.defense - offSyn.offense) * 0.3));
-  if (rng() < turnoverChance) {
+  const turnoverCheck = _POSS_DATA.check.skillCheck(
+    turnoverSpec(onBallDefender.attributes.steal, handler.attributes.ballHandling, defSyn.defense, offSyn.offense), rng);
+  if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
     logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''));
@@ -280,31 +387,9 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   drainEnergy(defenseBox[shotDefender.id], shotDefender);
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
 
-  // This was `max(0, (block - 50) / 900)`, which assumed 50 was the BOTTOM of
-  // the rating scale rather than its middle — on the old 48-99 attributes
-  // nobody was ever clipped, but on a true 0-100 scale it zeroed half the
-  // league and blocks fell from 1.86 to 0.87 per team-game. Reshaped to a base
-  // plus a deviation so a below-average shot-blocker is merely unlikely to
-  // block rather than literally unable to.
-  //
-  // BLOCK_BASE calibrated to RESTORE the pre-rescale rate (1.86 blocks per
-  // team-game; 0.020 measures 1.78), deliberately NOT to the real NBA's ~4.9.
-  //
-  // This rescale's job is to not break anything, and the block rate was
-  // already 2.6x under the real league before it. Fixing that is a balance
-  // change, and it is not free: validate-impactMoments.js gates the block
-  // comic-panel population at 2-7 per game, so an NBA-realistic block rate
-  // (BLOCK_BASE 0.085 measures 4.73/team, 9.5/game) would roughly triple the
-  // tier-2 impact effects. How many comic panels a game should carry is a
-  // feel decision, not an arithmetic one. Left for the recalibration task with
-  // the sweep already measured:
-  //   0.020 -> 1.78/team   0.030 -> 2.20   0.055 -> 3.28
-  //   0.070 -> 4.38        0.085 -> 4.73 (NBA-realistic)
-  const BLOCK_BASE = 0.020, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
-  const blockChance = zone === 'three'
-    ? 0.008
-    : Math.max(BLOCK_MIN, Math.min(BLOCK_MAX, BLOCK_BASE + (shotDefender.attributes.block - 50) / BLOCK_DIV));
-  if (rng() < blockChance) {
+  // Constants and their reasoning are hoisted to blockSpec at module scope.
+  const blockCheck = _POSS_DATA.check.skillCheck(blockSpec(shotDefender.attributes.block, zone), rng);
+  if (blockCheck.passed) {
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
@@ -313,9 +398,11 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
-  const makeProb = shotMakeProbability(shooter, shotDefender, zone, offSyn.offense, defSyn.defense,
-    energyMultiplier(offenseBox[shooter.id].energy), energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls));
-  const made = rng() < makeProb;
+  const shotCheck = _POSS_DATA.check.skillCheck(shotMakeSpecFor(shooter, shotDefender, zone,
+    offSyn.offense, defSyn.defense,
+    energyMultiplier(offenseBox[shooter.id].energy),
+    energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls)), rng);
+  const made = shotCheck.passed;
   const shotValue = zone === 'three' ? 3 : 2;
   offenseBox[shooter.id].fga += 1;
   if (zone === 'three') offenseBox[shooter.id].tpa += 1;
@@ -407,6 +494,9 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,
+    turnoverSpec: turnoverSpec,
+    blockSpec: blockSpec,
+    shotSpec: shotSpec,
     weightedPick: weightedPick,
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,

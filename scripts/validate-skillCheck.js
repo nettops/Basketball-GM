@@ -113,6 +113,93 @@ function checkResultCarriesEveryInput() {
   console.log('checkResultCarriesEveryInput: OK');
 }
 
+// EQUIVALENCE. The original expressions are retained here verbatim as reference
+// implementations and swept across the input range. This is what catches an
+// algebra slip in the turnover rewrite — the only non-obvious transformation in
+// the refactor, because the original is a RAW DIFFERENCE over one divisor while
+// every other site uses two terms each centred on 50.
+//
+// simEnginePossession.js reads league/traits/composite as browser globals under
+// its dual-module pattern, so Node needs the same bootstrap every other
+// validator does (copied from scripts/validate-possession.js:4-16). Requiring it
+// without this throws on load.
+require(path.join(__dirname, '..', 'data.js'));
+require(path.join(__dirname, '..', 'rng.js'));
+require(path.join(__dirname, '..', 'teams.js'));
+require(path.join(__dirname, '..', 'traits.js'));
+require(path.join(__dirname, '..', 'scouting.js'));
+const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
+require(path.join(__dirname, '..', 'traits.js')).ensureHiddenPlayerData(PLAYERS_2026);
+require(path.join(__dirname, '..', 'simEngine.js'));
+require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
+const poss = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+
+// Original: 0.11 + (defenderSteal - handlerBallHandling) / 400 + (defSyn - offSyn) * 0.3,
+// clamped to [0.04, 0.22].
+function referenceTurnover(defenderSteal, handlerBallHandling, defSyn, offSyn) {
+  return Math.max(0.04, Math.min(0.22,
+    0.11 + (defenderSteal - handlerBallHandling) / 400 + (defSyn - offSyn) * 0.3));
+}
+
+function checkTurnoverSpecMatchesTheOriginal() {
+  let worst = 0;
+  for (let d = 0; d <= 100; d += 5) {
+    for (let h = 0; h <= 100; h += 5) {
+      for (let s = -0.1; s <= 0.1001; s += 0.05) {
+        const expected = referenceTurnover(d, h, 1 + s, 1);
+        const got = skillCheckProbability(poss.turnoverSpec(d, h, 1 + s, 1)).probability;
+        worst = Math.max(worst, Math.abs(got - expected));
+      }
+    }
+  }
+  assert.ok(worst < 1e-12, 'turnover spec drifts from the original by ' + worst);
+  console.log('checkTurnoverSpecMatchesTheOriginal: OK (max drift ' + worst.toExponential(2) + ')');
+}
+
+// Original: BLOCK_BASE + (block - 50) / BLOCK_DIV, clamped to [BLOCK_MIN, BLOCK_MAX].
+function referenceBlock(blockAttr) {
+  return Math.max(0.004, Math.min(0.20, 0.020 + (blockAttr - 50) / 420));
+}
+
+function checkBlockSpecMatchesTheOriginal() {
+  let worst = 0;
+  for (let b = 0; b <= 100; b += 1) {
+    worst = Math.max(worst, Math.abs(skillCheckProbability(poss.blockSpec(b, 'inside')).probability - referenceBlock(b)));
+  }
+  assert.ok(worst < 1e-12, 'block spec drifts from the original by ' + worst);
+  // The three-point branch is a flat constant, not a contest.
+  assert.strictEqual(skillCheckProbability(poss.blockSpec(99, 'three')).probability, 0.008);
+  console.log('checkBlockSpecMatchesTheOriginal: OK (max drift ' + worst.toExponential(2) + ')');
+}
+
+// Original: base + (shoot - 50)/250*shooterEnergy - (def - 50)/350*defenderEnergy
+//           + (offSyn - defSyn) + shotQualityBonus/300, clamped to [0.18, 0.72].
+function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defenderEnergy, traitBonus) {
+  const skillAdj = (shoot - 50) / 250 * shooterEnergy;
+  const defAdj = (def - 50) / 350 * defenderEnergy;
+  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + (offSyn - defSyn) + traitBonus / 300));
+}
+
+function checkShotSpecMatchesTheOriginal() {
+  const zones = [['three', 0.330], ['mid', 0.42], ['inside', 0.56]];
+  let worst = 0;
+  zones.forEach(function (z) {
+    for (let s = 0; s <= 100; s += 10) {
+      for (let d = 0; d <= 100; d += 10) {
+        for (let e = 0.85; e <= 1.001; e += 0.05) {
+          for (let t = -8; t <= 8; t += 4) {
+            const expected = referenceShot(z[1], s, d, 1.02, 0.98, e, 1, t);
+            const got = skillCheckProbability(poss.shotSpec(z[0], s, d, 1.02, 0.98, e, 1, t)).probability;
+            worst = Math.max(worst, Math.abs(got - expected));
+          }
+        }
+      }
+    }
+  });
+  assert.ok(worst < 1e-12, 'shot spec drifts from the original by ' + worst);
+  console.log('checkShotSpecMatchesTheOriginal: OK (max drift ' + worst.toExponential(2) + ')');
+}
+
 checkBareBaseIsTheProbability();
 checkSidesAreCentredOnFifty();
 checkEnergyScalesOnlyTheSkillTerm();
@@ -121,4 +208,7 @@ checkClampBinds();
 checkExactlyOneRngDraw();
 checkPassedMatchesTheOriginalIdiom();
 checkResultCarriesEveryInput();
+checkTurnoverSpecMatchesTheOriginal();
+checkBlockSpecMatchesTheOriginal();
+checkShotSpecMatchesTheOriginal();
 console.log('All skillCheck validations passed');
