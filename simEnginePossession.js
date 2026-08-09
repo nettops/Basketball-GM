@@ -97,7 +97,33 @@ function ballHandlingWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
 }
 
-function perimDefenseWeight(player) { return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'defensePerimeter')); }
+// On-ball assignment. Steal badges buy assignments here as well as raising the
+// turnover chance in turnoverSpec — a pickpocket both guards the ball more and
+// is better at it, which is what the badge name promises.
+function perimDefenseWeight(player) {
+  return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'defensePerimeter') +
+    _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'steal'));
+}
+
+// Shot-defender assignment, zone-aware. Extracted from an anonymous inline
+// lambda at the pick site: leaving it anonymous is exactly what made this path
+// easy to miss when auditing which weights read traits, and it was one of the
+// places the badges had to reach.
+//
+// `routed` is the zone-matched part — a perimeter stopper draws more perimeter
+// assignments. `unrouted` is what defenseQualityBonus deliberately ignores:
+// Charge Taker (basketballIQ) and Two-Way Star (no affinity) contribute nothing
+// to shot quality, so allocation is the ONLY place they can earn their keep. If
+// they did not appear here they would be decorative badges.
+function shotDefenseWeight(player, zone) {
+  const composite = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
+  const routed = _POSS_DATA.traits.defenseQualityBonus(player, zone);
+  const zonedTotal = _POSS_DATA.traits.defenseQualityBonus(player, 'three') +
+    _POSS_DATA.traits.defenseQualityBonus(player, 'inside');
+  const unrouted = Math.max(0,
+    _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'defense') - zonedTotal);
+  return Math.max(1, _POSS_DATA.composite.computeComposite(player, composite) + routed + unrouted);
+}
 
 function reboundCompositeWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'rebounding') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
@@ -425,8 +451,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
 
   const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng, PICK_POWER.shooter);
   const zone = pickShotZone(shooter, rng, inTransition);
-  const defComposite = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
-  const shotDefender = weightedPick(defense, energyAware(function (p) { return _POSS_DATA.composite.computeComposite(p, defComposite); }, defenseBox, true), rng, PICK_POWER.shotDefender);
+  const shotDefender = weightedPick(defense, energyAware(function (p) { return shotDefenseWeight(p, zone); }, defenseBox, true), rng, PICK_POWER.shotDefender);
   drainEnergy(offenseBox[shooter.id], shooter);
   drainEnergy(defenseBox[shotDefender.id], shotDefender);
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
@@ -544,6 +569,8 @@ if (typeof module !== 'undefined' && module.exports) {
     blockSpec: blockSpec,
     shotSpec: shotSpec,
     shootingFoulRate: shootingFoulRate,
+    perimDefenseWeight: perimDefenseWeight,
+    shotDefenseWeight: shotDefenseWeight,
     weightedPick: weightedPick,
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,

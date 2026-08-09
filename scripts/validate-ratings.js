@@ -462,4 +462,40 @@ checkRatingsUseTheWholeScale();
 checkGenerationIsDeterministic();
 checkSynergyThresholdsAreSelective();
 
+// Defensive badges buy ASSIGNMENTS as well as quality: a lockdown defender
+// should draw the tough matchup more often, not merely be better when he
+// happens to draw it. Without this the badges only ever act on shots the
+// defender was already picked for, which is half a mechanic.
+function checkDefensiveBadgesDrawAssignments() {
+  const poss = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+  function makeDefender(hiddenTraits) {
+    const p = { hiddenTraits: hiddenTraits, attributes: {} };
+    ATTRIBUTE_KEYS.forEach(function (k) { p.attributes[k] = 60; });
+    return p;
+  }
+  const base = makeDefender([]);
+  const lockdown = makeDefender([{ key: 'lockdownDefender', tier: 'legendary' }]);
+
+  assert.ok(poss.shotDefenseWeight(lockdown, 'three') > poss.shotDefenseWeight(base, 'three'),
+    'a perimeter badge must raise the shot-defender pick weight on threes');
+  assert.strictEqual(poss.shotDefenseWeight(lockdown, 'inside'), poss.shotDefenseWeight(base, 'inside'),
+    'a PERIMETER badge must not raise the pick weight for inside shots');
+
+  const stealer = makeDefender([{ key: 'pickpocket', tier: 'legendary' }]);
+  assert.ok(poss.perimDefenseWeight(stealer) > poss.perimDefenseWeight(base),
+    'a steal badge must raise the on-ball defender pick weight');
+
+  // Charge Taker and Two-Way Star contribute NOTHING to shot quality (no
+  // defensive zone), so allocation is the only place they can earn their keep.
+  // If this ever reads equal, those two badges are decorative.
+  ['chargeTaker', 'twoWayStar'].forEach(function (key) {
+    const p = makeDefender([{ key: key, tier: 'legendary' }]);
+    assert.ok(poss.shotDefenseWeight(p, 'inside') > poss.shotDefenseWeight(base, 'inside'),
+      key + ' has no shot-quality effect, so it MUST show up in assignments or it does nothing at all');
+  });
+  console.log('checkDefensiveBadgesDrawAssignments: OK');
+}
+
+checkDefensiveBadgesDrawAssignments();
+
 console.log('All ratings validations passed');
