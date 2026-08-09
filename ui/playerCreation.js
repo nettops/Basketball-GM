@@ -2,11 +2,8 @@ function renderPlayerCreation(container, onPlayerCreated) {
   const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
   const colleges = ['Duke', 'California', 'Kansas', 'UCLA', 'North Carolina', 'Kentucky', 'Arizona', 'Other'];
 
-  // Available badges (sample - extend based on existing badge system)
-  const availableBadges = ['scorer', '3pt_threat', 'defender', 'playmaker', 'rebounder', 'ball_handler', 'leader'];
   const availableTraits = ['clutch', 'leader', 'volume_scorer', 'streaky', 'hard_worker', 'confident'];
 
-  let selectedBadges = [];
   let selectedTraits = [];
 
   const html = `
@@ -50,20 +47,6 @@ function renderPlayerCreation(container, onPlayerCreated) {
           </div>
         </div>
 
-        <!-- Badges -->
-        <div class="form-group">
-          <label>Select up to 5 badges:</label>
-          <div id="badgeSelect">
-            ${availableBadges.map(badge => `
-              <label style="display: inline-block; margin-right: 12px;">
-                <input type="checkbox" class="badgeCheckbox" value="${badge}">
-                ${badge.replace(/_/g, ' ')}
-              </label>
-            `).join('')}
-          </div>
-          <small>Selected: <span id="badgeCount">0</span>/5</small>
-        </div>
-
         <!-- Traits -->
         <div class="form-group">
           <label>Select up to 3 traits:</label>
@@ -84,21 +67,6 @@ function renderPlayerCreation(container, onPlayerCreated) {
   `;
 
   container.innerHTML = html;
-
-  // Badge selection logic
-  const badgeCheckboxes = container.querySelectorAll('.badgeCheckbox');
-  badgeCheckboxes.forEach(cb => {
-    cb.addEventListener('change', () => {
-      const checked = Array.from(badgeCheckboxes).filter(c => c.checked);
-      if (checked.length > 5) {
-        cb.checked = false;
-        alert('Maximum 5 badges allowed');
-      } else {
-        selectedBadges = checked.map(c => c.value);
-        container.querySelector('#badgeCount').textContent = selectedBadges.length;
-      }
-    });
-  });
 
   // Trait selection logic
   const traitCheckboxes = container.querySelectorAll('.traitCheckbox');
@@ -129,10 +97,6 @@ function renderPlayerCreation(container, onPlayerCreated) {
       alert('Enter a name');
       return;
     }
-    if (!selectedBadges.length) {
-      alert('Select at least 1 badge');
-      return;
-    }
     if (!selectedTraits.length) {
       alert('Select at least 1 trait');
       return;
@@ -144,7 +108,7 @@ function renderPlayerCreation(container, onPlayerCreated) {
     // to an object nothing else ever read.
     const controller = GameState.playerCareerController || new PlayerCareerController(GameState);
     GameState.playerCareerController = controller;
-    const player = controller.createCustomPlayer(name, position, college, archetype, selectedBadges, selectedTraits);
+    const player = controller.createCustomPlayer(name, position, college, archetype, selectedTraits);
 
     onPlayerCreated(player);
   });

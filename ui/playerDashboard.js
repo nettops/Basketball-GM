@@ -57,9 +57,6 @@ function renderPlayerDashboard(container, playerId) {
 
     <div class="panel">
       <div class="panel-header">Badges & Traits</div>
-      <div>
-        <strong>Badges:</strong> ${escapeHtml((player.badges || []).join(', ')) || 'None'}
-      </div>
       <div style="margin-top: 10px;">
         <strong>Traits:</strong> ${escapeHtml((player.traits || []).join(', ')) || 'None'}
       </div>

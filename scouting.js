@@ -76,19 +76,47 @@ function fuzzyTraitLabel(traitInfo) {
   return { key: traitInfo.key, name: def ? def.name : traitInfo.key, rangeLabel: lo + '-' + hi };
 }
 
-function getRevealedView(player, confidence) {
+// BADGES ARE NOT GATED for players on an NBA roster. They were, and it meant
+// most players never saw most badges — you had to spend scout points to learn
+// what your own signings were, which is a tax rather than a decision. Scouting
+// keeps its job: personality and tendencies still unlock at 30% and 70%, and
+// those are the things worth scouting because they are not visible from play.
+//
+// PROSPECTS ARE THE EXCEPTION. Seeing a draft pick's exact tier would remove
+// most of draft night's risk, so they get the fuzzy path — WHICH badges, and a
+// tier range, but never the exact tier.
+//
+// `level` means ONE thing: how far scouting has revealed PERSONALITY and
+// TENDENCIES — hidden / fuzzy / exact, at the same 30% and 70% thresholds as
+// before. Badge visibility is a SEPARATE axis with its own field.
+//
+// An earlier version of this change folded both into `level`: a rostered player
+// got a new level 'badges', and a prospect got 'fuzzy' whatever the confidence.
+// Every consumer branching on `level` to decide whether personality existed
+// then broke — 'badges' fell through to the exact branch, and 'fuzzy' promised
+// a personality object that was null, so ui/playerProfile.js threw
+// Object.keys(null) on any unscouted player. Two meanings in one field caused
+// that, so there are two fields.
+function getRevealedView(player, confidence, isProspect) {
+  const base = {
+    traits: isProspect ? (player.hiddenTraits || []).map(fuzzyTraitLabel) : (player.hiddenTraits || []),
+    traitsAreFuzzy: !!isProspect
+  };
   if (confidence < 30) {
-    return { level: 'hidden', traits: null, personality: null, tendencies: null };
+    return Object.assign(base, { level: 'hidden', personality: null, tendencies: null });
   }
   if (confidence < 70) {
-    return {
+    return Object.assign(base, {
       level: 'fuzzy',
-      traits: (player.hiddenTraits || []).map(fuzzyTraitLabel),
       personality: fuzzyPersonality(player.hiddenPersonality || {}),
       tendencies: null
-    };
+    });
   }
-  return { level: 'exact', traits: player.hiddenTraits, personality: player.hiddenPersonality, tendencies: player.hiddenTendencies };
+  return Object.assign(base, {
+    level: 'exact',
+    personality: player.hiddenPersonality,
+    tendencies: player.hiddenTendencies
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {

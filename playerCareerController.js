@@ -19,7 +19,10 @@ class PlayerCareerController {
     this.randomEventHistory = [];
   }
 
-  createCustomPlayer(name, position, college, archetype, selectedBadges, selectedTraits) {
+  // `selectedBadges` is gone: badges now MEAN hiddenTraits, and a second inert
+  // array called "badges" was a trap. When career mode is un-parked, badge
+  // selection should seed the trait roll instead of living beside it.
+  createCustomPlayer(name, position, college, archetype, selectedTraits) {
     const archetypeData = PLAYER_ARCHETYPES[archetype];
     if (!archetypeData) {
       throw new Error(`Invalid archetype: ${archetype}`);
@@ -59,7 +62,6 @@ class PlayerCareerController {
       overall: rescaleAnchor(archetypeData.startingOverall),
       potential: rescaleAnchor(archetypeData.startingPotential),
       attributes: makeAttributes(archetypeData.startingOverall, attrArchetype, playerId),
-      badges: selectedBadges, // Array of badge strings
       traits: selectedTraits, // Array of trait strings
       hiddenTraits: [],
       hiddenPersonality: {},

@@ -160,7 +160,10 @@ function renderInjuryTimelineTab(player) {
 
 const PLAYER_PROFILE_TABS = [
   { id: 'attributes', label: 'Attributes' },
-  { id: 'traits', label: 'Traits & Badges' },
+  // "Badges", not "Traits & Badges": they were always one thing. The internal
+  // name `hiddenTraits` stays — renaming the data model would touch 48 traits,
+  // the save format and every validator for zero player-visible gain.
+  { id: 'traits', label: 'Badges' },
   { id: 'overview', label: 'Career Stats' },
   { id: 'seasons', label: 'Season Breakdown' },
   { id: 'teams', label: 'Team History' },
@@ -202,20 +205,27 @@ function traitBadgeHtml(key, tier, category, rangeLabel) {
 function renderTraitsTab(player) {
   const target = GameState.scouting ? GameState.scouting.targets[player.id] : null;
   const confidence = target ? target.confidence : 0;
-  const view = getRevealedView(player, confidence);
+  // A prospect is anyone not on an NBA roster. They keep the fuzz so draft
+  // night stays a gamble; everyone signed shows their badges outright.
+  const view = getRevealedView(player, confidence, !player.teamId);
 
+  // The raw level is an internal token; "0% hidden" is not a sentence. The pill
+  // describes what the SCOUTING has bought, which is what this panel is about —
+  // badges no longer cost anything for a rostered player.
+  const LEVEL_LABEL = { hidden: 'unscouted', fuzzy: 'partial', exact: 'full' };
   let html = '<div class="panel"><div class="panel-header">Scouting Confidence</div><div class="panel-body">' +
-    '<div class="kpi-value">' + Math.round(confidence) + '% <span class="pill pill-mute">' + view.level + '</span></div>' +
+    '<div class="kpi-value">' + Math.round(confidence) + '% <span class="pill pill-mute">' +
+    (LEVEL_LABEL[view.level] || view.level) + '</span></div>' +
     '<div class="meter" style="margin:8px 0 0;"><div class="meter-fill" style="width:' + Math.round(confidence) + '%"></div></div>' +
     '</div></div>';
 
-  html += '<div class="panel"><div class="panel-header">Traits</div><div class="panel-body">';
-  if (view.level === 'hidden') {
-    html += '<p class="trait-lock-note">Not scouted enough yet — traits are hidden until confidence reaches 30%. Spend scout points from the Scouting tab to reveal them.</p>';
-  } else if (view.traits.length === 0) {
-    html += '<p class="trait-lock-note">No notable traits detected.</p>';
-  } else if (view.level === 'fuzzy') {
-    html += '<p class="trait-lock-note">Partially scouted — exact tiers unlock at 70% confidence.</p>';
+  html += '<div class="panel"><div class="panel-header">Badges</div><div class="panel-body">';
+  // Branches on traitsAreFuzzy, NOT on level: level is about personality and
+  // says nothing about badges. Conflating them is what broke this once already.
+  if (view.traits.length === 0) {
+    html += '<p class="trait-lock-note">No notable badges.</p>';
+  } else if (view.traitsAreFuzzy) {
+    html += '<p class="trait-lock-note">Draft prospect — exact badge tiers are never shown before the pick.</p>';
     html += '<div class="trait-badge-grid">' + view.traits.map(function (t) {
       const def = TRAIT_TAXONOMY_BY_KEY[t.key];
       return traitBadgeHtml(t.key, null, def ? def.category : 'mental', t.rangeLabel + '?');

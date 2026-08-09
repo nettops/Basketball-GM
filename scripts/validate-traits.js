@@ -149,13 +149,20 @@ function checkRevealThresholds() {
     hiddenTendencies: { threeTendency: 40 }
   };
 
-  const hidden = scoutingModule.getRevealedView(player, 10);
-  assert.strictEqual(hidden.level, 'hidden');
-  assert.strictEqual(hidden.traits, null);
+  // The 30%/70% thresholds still govern PERSONALITY and TENDENCIES — that is
+  // what scouting buys now. Badges left the gate for rostered players, so the
+  // badge expectations below changed while the threshold behaviour did not.
+  const unscouted = scoutingModule.getRevealedView(player, 10);
+  assert.strictEqual(unscouted.level, 'hidden', 'level describes PERSONALITY reveal, not badges');
+  assert.strictEqual(unscouted.traitsAreFuzzy, false, 'a rostered player\'s badges are never fuzzed');
+  assert.deepStrictEqual(unscouted.traits, player.hiddenTraits,
+    'a rostered player shows badges at any confidence');
+  assert.strictEqual(unscouted.personality, null, 'personality stays gated below 30%');
+  assert.strictEqual(unscouted.tendencies, null);
 
   const fuzzy = scoutingModule.getRevealedView(player, 50);
   assert.strictEqual(fuzzy.level, 'fuzzy');
-  assert.strictEqual(fuzzy.traits[0].rangeLabel, 'silver-hof', 'gold should fuzz to the tier band one below and one above');
+  assert.deepStrictEqual(fuzzy.traits, player.hiddenTraits, 'badges stay exact for a rostered player');
   assert.strictEqual(fuzzy.personality.loyalty, 'High');
   assert.strictEqual(fuzzy.personality.ambition, 'Low');
   assert.strictEqual(fuzzy.tendencies, null, 'tendencies stay hidden until exact-reveal confidence');
@@ -164,6 +171,28 @@ function checkRevealThresholds() {
   assert.strictEqual(exact.level, 'exact');
   assert.deepStrictEqual(exact.traits, player.hiddenTraits);
   assert.deepStrictEqual(exact.tendencies, player.hiddenTendencies);
+
+  // The tier-band fuzzing this check used to cover for everyone now lives on
+  // the PROSPECT path, so it is asserted there rather than dropped.
+  const prospect = scoutingModule.getRevealedView(player, 50, true);
+  assert.strictEqual(prospect.traits[0].rangeLabel, 'silver-hof',
+    'gold should fuzz to the tier band one below and one above');
+
+  // EVERY combination must be internally consistent: whenever level claims
+  // personality is available, it must actually be there. This is the invariant
+  // the two-field split exists to protect, checked across the whole matrix
+  // rather than at the one confidence a test happened to pick.
+  [0, 10, 29, 30, 50, 69, 70, 100].forEach(function (c) {
+    [false, true].forEach(function (isProspect) {
+      const v = scoutingModule.getRevealedView(player, c, isProspect);
+      if (v.level === 'hidden') assert.strictEqual(v.personality, null, 'hidden must carry no personality at ' + c);
+      else assert.ok(v.personality, 'level ' + v.level + ' promises personality at ' + c + ' and must carry one');
+      if (v.level === 'exact') assert.ok(v.tendencies, 'exact must carry tendencies at ' + c);
+      else assert.strictEqual(v.tendencies, null, 'only exact reveals tendencies (' + c + ')');
+      assert.ok(Array.isArray(v.traits), 'badges are never null now, at any confidence');
+      assert.strictEqual(v.traitsAreFuzzy, isProspect, 'badge fuzziness tracks prospect status, not confidence');
+    });
+  });
 
   console.log('checkRevealThresholds: OK');
 }
@@ -656,6 +685,73 @@ function checkChemistryBonusSumsAcrossTheRoster() {
   console.log('checkChemistryBonusSumsAcrossTheRoster: OK');
 }
 
+// Badges leave the scouting gate for rostered players. Personality and
+// tendencies stay behind it, so scouting keeps a job — it just stops taxing you
+// to learn what your own players are.
+function checkBadgesAreVisibleForRosteredPlayers() {
+  const scouting = require(path.join(__dirname, '..', 'scouting.js'));
+  const p = { hiddenTraits: [{ key: 'sharpshooter', tier: 'gold' }],
+    hiddenPersonality: { loyalty: 80 }, hiddenTendencies: { threeRate: 0.4 } };
+
+  const unscouted = scouting.getRevealedView(p, 0, false);
+  assert.deepStrictEqual(unscouted.traits, p.hiddenTraits,
+    'a rostered player\'s badges must be exact at 0% confidence');
+  assert.strictEqual(unscouted.traitsAreFuzzy, false);
+  // `level` must keep meaning PERSONALITY reveal only. Overloading it to also
+  // carry badge state is what made ui/playerProfile.js throw Object.keys(null)
+  // on every unscouted player, because its branches read level to decide
+  // whether personality existed.
+  assert.strictEqual(unscouted.level, 'hidden',
+    'level must describe personality reveal, never badge visibility');
+  assert.strictEqual(unscouted.personality, null,
+    'personality must STAY gated — only badges come out from behind it');
+  assert.strictEqual(unscouted.tendencies, null, 'tendencies must stay gated');
+
+  const scouted = scouting.getRevealedView(p, 100, false);
+  assert.ok(scouted.personality, 'personality must still unlock with confidence');
+  console.log('checkBadgesAreVisibleForRosteredPlayers: OK');
+}
+
+// Prospects keep the fuzz: seeing a draft pick's exact tier would remove most
+// of draft night's risk. Reuses the fuzzy path that already exists.
+function checkProspectBadgesStayFuzzy() {
+  const scouting = require(path.join(__dirname, '..', 'scouting.js'));
+  const p = { hiddenTraits: [{ key: 'sharpshooter', tier: 'gold' }],
+    hiddenPersonality: {}, hiddenTendencies: {} };
+  const view = scouting.getRevealedView(p, 0, true);
+  assert.ok(view.traits && view.traits.length === 1, 'a prospect must still show WHICH badges');
+  assert.ok(!view.traits[0].tier, 'a prospect must NOT show the exact tier');
+  assert.strictEqual(view.traitsAreFuzzy, true);
+  // A prospect at 0% must report personality as HIDDEN, not fuzzy. The first
+  // version returned level 'fuzzy' with personality null, and every consumer
+  // that trusted 'fuzzy' to mean "personality is present" crashed on it.
+  assert.strictEqual(view.level, 'hidden');
+  assert.strictEqual(view.personality, null,
+    'a level that promises personality must actually carry one');
+  assert.ok(view.traits[0].rangeLabel && view.traits[0].rangeLabel.indexOf('-') !== -1,
+    'a prospect badge must carry a tier RANGE, got ' + JSON.stringify(view.traits[0]));
+
+  // Even fully scouted, a prospect's tier stays a range — scouting a prospect
+  // buys personality and tendencies, not certainty about their ceiling.
+  const scouted = scouting.getRevealedView(p, 100, true);
+  assert.ok(!scouted.traits[0].tier, 'a fully scouted prospect still must not show the exact tier');
+  console.log('checkProspectBadgesStayFuzzy: OK');
+}
+
+// The dead `badges` array and badge_affinity are gone. Once badges MEAN traits,
+// a second inert thing called "badges" is a trap for whoever reads this next.
+function checkTheDeadBadgeArrayIsGone() {
+  const dataModule = require(path.join(__dirname, '..', 'data.js'));
+  Object.keys(dataModule.PLAYER_ARCHETYPES).forEach(function (k) {
+    assert.strictEqual(dataModule.PLAYER_ARCHETYPES[k].badge_affinity, undefined,
+      k + ' still declares badge_affinity, which nothing reads');
+  });
+  console.log('checkTheDeadBadgeArrayIsGone: OK');
+}
+
+checkBadgesAreVisibleForRosteredPlayers();
+checkProspectBadgesStayFuzzy();
+checkTheDeadBadgeArrayIsGone();
 checkDefenseQualityBonusRoutesByZone();
 checkUnroutedDefendersAreAllocationOnly();
 checkFoulProneRoutesToFoulsNotShotQuality();
