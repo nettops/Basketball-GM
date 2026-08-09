@@ -207,7 +207,78 @@ checkModifiersAreSummedAndItemised();
 checkClampBinds();
 checkExactlyOneRngDraw();
 checkPassedMatchesTheOriginalIdiom();
+// The check has to REACH a consumer. A structured result nothing reads is the
+// dead-path bug this project has already paid for once — 15 traits sat unread
+// through seven calibration tasks. Assert the engine actually attaches it.
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
+const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
+
+function checkPlayByPlayCarriesChecks() {
+  const r = gameSim.simulateGame('BOS', 'LAL', makeRng(1));
+  const withCheck = r.playByPlay.filter(function (e) { return e && e.check; });
+  assert.ok(withCheck.length > 50,
+    'expected most plays to carry a check, got ' + withCheck.length + ' of ' + r.playByPlay.length);
+
+  const anyShot = withCheck.find(function (e) { return e.check.kind === 'shot'; });
+  assert.ok(anyShot, 'no shot check reached the play-by-play');
+  assert.ok(typeof anyShot.text === 'string' && anyShot.text.length > 0, 'entry must still carry its text');
+  assert.ok(anyShot.check.attack && anyShot.check.defend, 'a shot check must name both sides');
+  assert.ok(anyShot.check.modifiers.length > 0, 'a shot check must itemise its modifiers');
+  console.log('checkPlayByPlayCarriesChecks: OK (' + withCheck.length + '/' + r.playByPlay.length + ' entries)');
+}
+
+// Quarter headers are pushed as bare strings by gameSim.js and must stay that
+// way — the renderer keys off them, and old saves contain nothing else.
+function checkQuarterHeadersStayPlainStrings() {
+  const r = gameSim.simulateGame('BOS', 'LAL', makeRng(1));
+  const headers = r.playByPlay.filter(function (e) { return typeof e === 'string' && e.indexOf('--- Q') === 0; });
+  assert.ok(headers.length >= 4, 'expected at least four quarter headers, got ' + headers.length);
+  console.log('checkQuarterHeadersStayPlainStrings: OK (' + headers.length + ' headers)');
+}
+
+// Plays with no contest behind them stay BARE STRINGS. Rebounds are the case:
+// offReboundChance is a synergy ratio, not an opposed attribute check, so there
+// is no skillCheck to attach and wrapping them would bloat every save with
+// { text, check: null } for nothing.
+//
+// This exists because a mutant that wrapped EVERY entry survived the header
+// assertion above — headers come from gameSim directly and never reach logPlay,
+// so they proved nothing about logPlay's own branch.
+function checkPlaysWithoutAContestStayPlainStrings() {
+  const r = gameSim.simulateGame('BOS', 'LAL', makeRng(1));
+  const rebounds = r.playByPlay.filter(function (e) {
+    const text = typeof e === 'string' ? e : e.text;
+    return text.indexOf(' the offensive rebound') !== -1 || text.indexOf(' the defensive rebound') !== -1;
+  });
+  assert.ok(rebounds.length > 20, 'expected plenty of rebound lines, got ' + rebounds.length);
+  rebounds.forEach(function (e) {
+    assert.strictEqual(typeof e, 'string',
+      'a rebound has no opposed check and must stay a bare string, got ' + JSON.stringify(e));
+  });
+  console.log('checkPlaysWithoutAContestStayPlainStrings: OK (' + rebounds.length + ' rebounds, all bare)');
+}
+
+// The EVENT stream is a separate consumer from the play-by-play, and it is the
+// one ui/pixelChoreographer.js reads. Asserting only on playByPlay let a mutant
+// that stripped the check off pushEvent survive untouched.
+function checkEventsCarryChecks() {
+  const events = [];
+  gameSim.simulateGame('BOS', 'LAL', makeRng(1), { events: events });
+  ['shot', 'block', 'turnover'].forEach(function (type) {
+    const ofType = events.filter(function (ev) { return ev.type === type; });
+    assert.ok(ofType.length > 0, 'no ' + type + ' events produced at all');
+    const missing = ofType.filter(function (ev) { return !ev.check || !ev.check.kind; });
+    assert.strictEqual(missing.length, 0,
+      missing.length + ' of ' + ofType.length + ' ' + type + ' events lost their check');
+  });
+  console.log('checkEventsCarryChecks: OK (shot/block/turnover all carry checks)');
+}
+
 checkResultCarriesEveryInput();
+checkPlayByPlayCarriesChecks();
+checkQuarterHeadersStayPlainStrings();
+checkPlaysWithoutAContestStayPlainStrings();
+checkEventsCarryChecks();
 checkTurnoverSpecMatchesTheOriginal();
 checkBlockSpecMatchesTheOriginal();
 checkShotSpecMatchesTheOriginal();

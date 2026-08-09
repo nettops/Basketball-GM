@@ -240,7 +240,15 @@ function checkOvertimeIsPlayedWhenTied() {
     while (!sim.done) sim.step();
     const r = sim.result();
     assert.notStrictEqual(r.homeScore, r.awayScore, 'the overtime game still resolves');
-    const otLines = r.playByPlay.filter(function (l) { return l.indexOf('--- OT') === 0; });
+    // Period headers are pushed by gameSim.js as bare strings; plays produced by
+    // a skillCheck are { text, check } (see simEnginePossession.js's logPlay).
+    // Both shapes are permanent, so anything reading the log has to normalise —
+    // this line used to call .indexOf straight on the entry and threw the moment
+    // checks started riding along.
+    const otLines = r.playByPlay.filter(function (l) {
+      const text = typeof l === 'string' ? l : l.text;
+      return text.indexOf('--- OT') === 0;
+    });
     assert.ok(otLines.length >= 1, 'an overtime game must log an OT period header');
     let homeMin = 0;
     Object.keys(r.boxScore).forEach(function (id) {

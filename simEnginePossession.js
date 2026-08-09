@@ -321,8 +321,14 @@ function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSyn
 // Appends a play-by-play line if `log` was supplied (simulatePossessionGame
 // always supplies one — see the module comment there on why play-by-play is
 // always generated and pruned at save time instead of gated behind a flag).
-function logPlay(log, text) {
-  if (log) log.push(text);
+// An entry is a bare string when there is nothing to show, or { text, check }
+// when a skillCheck produced it. Both shapes coexist deliberately and
+// permanently: gameSim.js pushes quarter headers as plain strings, and every
+// save written before skill checks existed contains strings only — so
+// ui/schedule.js has to handle both forever, not just during a migration.
+function logPlay(log, text, check) {
+  if (!log) return;
+  log.push(check ? { text: text, check: check } : text);
 }
 
 // Structured-event twin of logPlay for the pixel game view (see
@@ -372,8 +378,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
-    logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''));
-    pushEvent(eventCtx, { type: 'turnover', playerId: handler.id, defenderId: stolen ? onBallDefender.id : null });
+    logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''), turnoverCheck);
+    pushEvent(eventCtx, { type: 'turnover', playerId: handler.id, defenderId: stolen ? onBallDefender.id : null, check: turnoverCheck });
     // only a STEAL is a live ball; a dead-ball turnover is inbounded
     if (outcome) outcome.liveBallToDefense = stolen;
     return 0;
@@ -393,8 +399,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
-    logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name);
-    pushEvent(eventCtx, { type: 'block', playerId: shooter.id, defenderId: shotDefender.id, zone: zone });
+    logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name, blockCheck);
+    pushEvent(eventCtx, { type: 'block', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, check: blockCheck });
     return 0;
   }
 
@@ -423,11 +429,11 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
         assistPlayerId = passer.id;
       }
     }
-    logPlay(log, shooter.name + ' makes ' + zoneLabel + assistLine);
-    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId });
+    logPlay(log, shooter.name + ' makes ' + zoneLabel + assistLine, shotCheck);
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId, check: shotCheck });
   } else {
-    logPlay(log, shooter.name + ' misses ' + zoneLabel);
-    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null });
+    logPlay(log, shooter.name + ' misses ' + zoneLabel, shotCheck);
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null, check: shotCheck });
     const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
       const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng, PICK_POWER.rebounder);
