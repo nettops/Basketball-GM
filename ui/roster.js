@@ -40,19 +40,15 @@ function moraleStatusHtml(player) {
     MORALE_EMOJI[tier] + ' ' + Math.round(morale) + '</span>';
 }
 
-// Thresholds converted by z-score when ratings moved to a true 0-100 scale, so
-// the colour bands still pick out the same slice of the league rather than the
-// same literal numbers. On the old 62-98 distribution (mean 74.7, sd 7.6) the
-// cuts sat at +2.02, +0.70 and -0.61 standard deviations; against the derived
-// overall (mean 47.8, sd 9.9) that is 68 / 55 / 42, which puts 3.2% of the
-// league in elite, 23.7% at high or better and 71.8% at mid or better.
-//
-// Left at 90/80/70 nothing would ever have been gold again — the highest
-// overall in the league is 78.
+// Reads the shared bands rather than carrying its own numbers. The old
+// 68/55/42 were written against the RAW scale, where the league averaged 48. On
+// the display scale nothing sits below 60, so every one of those thresholds
+// would have been cleared by nearly every player and the whole roster would
+// have rendered a single colour.
 function ratingTier(value) {
-  if (value >= 68) return 'tier-elite';
-  if (value >= 55) return 'tier-high';
-  if (value >= 42) return 'tier-mid';
+  if (value >= RATING_BANDS.star) return 'tier-elite';
+  if (value >= RATING_BANDS.rotation) return 'tier-high';
+  if (value >= RATING_BANDS.fringe) return 'tier-mid';
   return 'tier-low';
 }
 
@@ -122,7 +118,7 @@ function renderRoster(container, teamId) {
         '<td>' + injuryStatusHtml(p) + '</td>' +
         '<td>' + moraleStatusHtml(p) + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
-        '<td class="num"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></td>' +
+        '<td class="num"><span class="rating-chip ' + ratingTier(p.potentialDisplay) + '">' + p.potentialDisplay + '</span></td>' +
         '<td class="num">' + avg.ppg.toFixed(1) + '</td>' +
         '<td class="num">' + avg.rpg.toFixed(1) + '</td>' +
         '<td class="num">' + avg.apg.toFixed(1) + '</td>' +

@@ -58,7 +58,7 @@ function renderEditPlayerSection(state) {
     const player = getPlayerById(state.editPlayerId);
     html += '<table class="data-table"><tbody>';
     html += '<tr><td class="col-name">Overall</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="overall" value="' + player.overall + '" style="width:80px;"></td></tr>';
-    html += '<tr><td class="col-name">Potential</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="potential" value="' + player.potential + '" style="width:80px;"></td></tr>';
+    html += '<tr><td class="col-name">Potential</td><td class="num"><input type="number" min="' + RATING_MIN + '" max="' + RATING_MAX + '" data-edit-field="potential" value="' + player.potentialDisplay + '" style="width:80px;"></td></tr>';
     html += '<tr><td class="col-name">Salary</td><td class="num"><input type="number" min="0" step="100000" data-edit-contract="salary" value="' + player.contract.salary + '" style="width:140px;"></td></tr>';
     html += '<tr><td class="col-name">Years Remaining</td><td class="num"><input type="number" min="0" max="10" data-edit-contract="yearsRemaining" value="' + player.contract.yearsRemaining + '" style="width:80px;"></td></tr>';
     ATTRIBUTE_KEYS.forEach(function (key) {

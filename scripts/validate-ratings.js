@@ -653,6 +653,47 @@ function checkNonNegativeSolverClampsNegatives() {
   console.log('checkNonNegativeSolverClampsNegatives: OK');
 }
 
+// `potential` is stored RAW while `overall` is display, and that asymmetry is a
+// trap: raw potential rendered beside display overall reads as potential BELOW
+// overall for every player in the league. Four UI sites did exactly that.
+// The asymmetry is deliberate — progression pulls players by
+// `potential - rawOverall` and every save already holds the raw value — so the
+// rule is enforced here instead of being removed.
+function checkUiNeverReadsRawPotential() {
+  const fs = require('fs');
+  const dir = path.join(__dirname, '..', 'ui');
+  const offenders = [];
+  fs.readdirSync(dir).filter(function (f) { return /\.js$/.test(f); }).forEach(function (f) {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    src.split(/\r?\n/).forEach(function (line, i) {
+      // `.potentialDisplay` contains `.potential`, so the guard has to look for
+      // the property boundary rather than the substring.
+      if (/\.potential\b(?!Display)/.test(line)) {
+        offenders.push(f + ':' + (i + 1) + '  ' + line.trim().slice(0, 90));
+      }
+    });
+  });
+  assert.strictEqual(offenders.length, 0,
+    'UI must read potentialDisplay, not raw potential:\n  ' + offenders.join('\n  '));
+  console.log('checkUiNeverReadsRawPotential: OK');
+}
+
+// Colour bands must read the shared table. Left at their old raw-scale values
+// (68/55/42) every player on the display scale clears every threshold and the
+// whole roster renders one colour — a regression a screenshot catches and no
+// unit test would.
+function checkRatingTierUsesTheBands() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'ui', 'roster.js'), 'utf8');
+  const m = src.match(/function ratingTier\([\s\S]*?\n}/);
+  assert.ok(m, 'ratingTier must exist in ui/roster.js');
+  assert.ok(m[0].indexOf('RATING_BANDS') !== -1,
+    'ratingTier must read RATING_BANDS rather than carrying its own literals:\n' + m[0]);
+  assert.ok(!/>=\s*\d/.test(m[0]),
+    'ratingTier still contains a hardcoded numeric threshold:\n' + m[0]);
+  console.log('checkRatingTierUsesTheBands: OK');
+}
+
 // Absoluteness, tested by changing the league around a fixed raw value. If the
 // curve ever consulted league state — a percentile, a max, a mean — this fails.
 function checkDisplayCurveIsAbsolute() {
@@ -817,6 +858,8 @@ checkDisplayCurveIsMonotoneAndBounded();
 checkDisplayCurveIsAbsolute();
 checkTheKnotsAreCalibratedToTheLeague();
 checkNonNegativeSolverClampsNegatives();
+checkUiNeverReadsRawPotential();
+checkRatingTierUsesTheBands();
 checkDisplayCurveRoundTrips();
 checkRawAndDisplayAreBothPresent();
 checkOldShapePlayersGainTheNewGetters();

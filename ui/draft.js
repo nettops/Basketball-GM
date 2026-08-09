@@ -44,7 +44,7 @@ function renderDraftResults(container, draftResults) {
       '<td>' + (r.prospect.college || '—') + '</td>' +
       '<td><span class="pill pill-pos">' + r.prospect.position + '</span></td>' +
       '<td class="num"><span class="rating-chip ' + ratingTier(r.prospect.overall) + '">' + r.prospect.overall + '</span></td>' +
-      '<td class="num"><span class="rating-chip ' + ratingTier(r.prospect.potential) + '">' + r.prospect.potential + '</span></td></tr>';
+      '<td class="num"><span class="rating-chip ' + ratingTier(r.prospect.potentialDisplay) + '">' + r.prospect.potentialDisplay + '</span></td></tr>';
   });
   html += '</tbody></table></div>';
   container.innerHTML = html;

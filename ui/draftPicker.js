@@ -18,7 +18,7 @@ function prospectProfileHtml(p) {
     '<div><h3>' + escapeHtml(p.name) + '</h3><span class="view-sub">' + prospectBioLineHtml(p) + '</span></div></div>';
   html += '<div class="panel"><div class="panel-body kpi-grid">' +
     '<div class="kpi-tile"><div class="kpi-label">Overall</div><div class="kpi-value"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></div></div>' +
-    '<div class="kpi-tile"><div class="kpi-label">Potential</div><div class="kpi-value"><span class="rating-chip ' + ratingTier(p.potential) + '">' + p.potential + '</span></div></div>' +
+    '<div class="kpi-tile"><div class="kpi-label">Potential</div><div class="kpi-value"><span class="rating-chip ' + ratingTier(p.potentialDisplay) + '">' + p.potentialDisplay + '</span></div></div>' +
     (p.nbaComparison ? '<div class="kpi-tile"><div class="kpi-label">Draft Comparison</div><div class="kpi-value">' + escapeHtml(p.nbaComparison) + '</div></div>' : '') +
     '</div></div>';
   html += renderAttributesTab(p);

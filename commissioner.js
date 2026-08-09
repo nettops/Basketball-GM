@@ -47,7 +47,14 @@ function editPlayerRatings(playerId, changes) {
   if (changes.overall !== undefined) {
     _COMMISSIONER_DATA.ratings.scaleAttributesToOverall(player, commissionerClampRating(changes.overall));
   }
-  if (changes.potential !== undefined) player.potential = commissionerClampRating(changes.potential);
+  // `potential` is stored RAW while the commissioner UI shows and accepts the
+  // DISPLAY scale, so this converts at the boundary — exactly as createPlayer
+  // does. Writing the display number straight in would inflate the player's
+  // ceiling by roughly 20 points.
+  if (changes.potential !== undefined) {
+    player.potential = Math.round(_COMMISSIONER_DATA.ratings.toRawRating(
+      commissionerClampRating(changes.potential)));
+  }
   if (changes.attributes) {
     Object.keys(changes.attributes).forEach(function (key) {
       if (_COMMISSIONER_DATA.data.ATTRIBUTE_KEYS.indexOf(key) === -1) return;
