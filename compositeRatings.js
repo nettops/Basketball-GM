@@ -5,9 +5,10 @@
 // strong composites produce a synergy bonus/penalty beyond what any single
 // player's rating alone would predict (e.g. stacking shooters compounds
 // floor spacing). Consumed by simEnginePossession.js.
+// traits.js requires only rng.js, so depending on it here introduces no cycle.
 var _COMPOSITE_DATA = (typeof require !== 'undefined')
-  ? {}
-  : {};
+  ? { traits: require('./traits.js') }
+  : { traits: { chemistryBonus: chemistryBonus } };
 
 // Each composite is a weighted average of attributes (weights don't need to
 // sum to 1 — they're relative), scaled back onto a roughly 0-100 range so
@@ -60,7 +61,32 @@ const REBOUNDER_THRESHOLD = 60;
 // change possession-to-possession) from a team's active rotation. Returns
 // multipliers >1 for a well-constructed roster's strength, <1 for a
 // lopsided one, centered on 1.0 for an average team.
-function computeTeamSynergy(roster) {
+// Chemistry rides the synergy channel because both are team-level and synergy
+// already reaches shotMakeProbability. Two inputs feed one term: the rotation's
+// summed chemistry badges, and team.chemistry centred on 70 — the same constant
+// simEngineBoxScore's computeTeamRating already uses, so the two engines agree
+// on what an average locker room is.
+//
+// Folding in the authored field is deliberate. team.chemistry is written per
+// team in teams.js (55-78) but was read ONLY by the non-default engine, so in
+// normal play it was decorative. One term makes both it and the badges live.
+//
+// CHEM_DIV is deliberately large. This lands on a whole-team multiplier applied
+// to EVERY shot, so it moves league scoring far harder per point than a
+// per-defender term does. Swept against the locked rates — see the sweep table
+// in this task's commit.
+const CHEMISTRY_CENTRE = 70;
+const CHEM_DIV = 900;
+
+function chemistryTerm(roster, team) {
+  const authored = (team && typeof team.chemistry === 'number' ? team.chemistry : CHEMISTRY_CENTRE) - CHEMISTRY_CENTRE;
+  const badges = _COMPOSITE_DATA.traits.chemistryBonus(roster);
+  return (authored + badges) / CHEM_DIV;
+}
+
+// `team` is optional: omitting it behaves as chemistry 70 (neutral), so any
+// caller that has not been updated is unaffected rather than silently penalised.
+function computeTeamSynergy(roster, team) {
   const rotation = roster.slice().sort(function (a, b) { return b.overall - a.overall; }).slice(0, 8);
   if (rotation.length === 0) return { offense: 1, defense: 1, rebound: 1 };
 
@@ -72,9 +98,12 @@ function computeTeamSynergy(roster) {
   }).length;
   const reboundThreats = rotation.filter(function (p) { return computeComposite(p, 'rebounding') >= REBOUNDER_THRESHOLD; }).length;
 
+  // Chemistry moves offence and defence but NOT rebounding: it is about a group
+  // playing together, and rebounding is the least cooperative of the three.
+  const chem = chemistryTerm(rotation, team);
   return {
-    offense: synergyRamp(shooters, 3, 0.06),
-    defense: synergyRamp(defenders, 3, 0.06),
+    offense: synergyRamp(shooters, 3, 0.06) + chem,
+    defense: synergyRamp(defenders, 3, 0.06) + chem,
     rebound: synergyRamp(reboundThreats, 2, 0.05)
   };
 }

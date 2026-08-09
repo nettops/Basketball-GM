@@ -74,11 +74,24 @@ function familiesFromTaxonomy() {
   return byFamily;
 }
 
-// A mid-rotation player has room to move in both directions; the best player on
-// the roster already takes every shot and the worst never plays.
-function pickSubject() {
+// SEVERAL candidate subjects, not one. A single fixed subject makes this test
+// depend on that player happening to be able to exercise the badge, and it
+// silently cannot always.
+//
+// Concretely: the 5th-best Celtic is a guard with a block attribute of 34. A
+// legendary Rim Protector on him is swallowed whole by BLOCK_MIN —
+//   0.020 + (34-50)/420          = -0.018 -> clamped to 0.004
+//   0.020 + (34-50)/420 + 8/420  = +0.001 -> clamped to 0.004
+// so the badge genuinely changes nothing, and the family read as DEAD when it
+// is wired perfectly well for anyone who can actually block. That is sound game
+// design — badge generation is skill-anchored, so a guard would never roll Rim
+// Protector — but it is a terrible foundation for a liveness test.
+//
+// So: a family is dead only if NO candidate can make it move. Candidates are
+// the top of the rotation, which between them cover guard and big-man roles.
+function candidateSubjects() {
   return league.getTeamRoster(SUBJECT_TEAM)
-    .slice().sort(function (a, b) { return b.overall - a.overall; })[4];
+    .slice().sort(function (a, b) { return b.overall - a.overall; }).slice(0, 9);
 }
 
 function withTrait(subject, traitKey, fn) {
@@ -199,7 +212,7 @@ const PROBE_FN = {
 };
 
 function checkEveryFamilyIsLive() {
-  const subject = pickSubject();
+  const subjects = candidateSubjects();
   const families = familiesFromTaxonomy();
   const dead = [];
   const live = [];
@@ -211,18 +224,27 @@ function checkEveryFamilyIsLive() {
       '" — a new trait system needs a way to observe it, or this test cannot tell wired from dead');
     const probe = PROBE_FN[probeName];
 
-    const control = withTrait(subject, null, function () { return probe(subject); });
-    const treated = withTrait(subject, rep.key, function () { return probe(subject); });
-    const moved = Object.keys(control).some(function (k) {
-      return k !== 'games' && Math.abs(treated[k] - control[k]) > 1e-9;
-    });
-    if (moved) live.push(family); else dead.push(family + ' (' + rep.name + ', probe: ' + probeName + ')');
+    // Stops at the first subject who can exercise the badge. A family is dead
+    // only if NOBODY can move it.
+    let mover = null;
+    for (let i = 0; i < subjects.length && !mover; i++) {
+      const s = subjects[i];
+      const control = withTrait(s, null, function () { return probe(s); });
+      const treated = withTrait(s, rep.key, function () { return probe(s); });
+      const moved = Object.keys(control).some(function (k) {
+        return k !== 'games' && Math.abs(treated[k] - control[k]) > 1e-9;
+      });
+      if (moved) mover = s;
+    }
+    if (mover) live.push(family + ' (' + mover.name + ')');
+    else dead.push(family + ' (' + rep.name + ', probe: ' + probeName + ', tried ' + subjects.length + ' players)');
   });
 
   assert.strictEqual(dead.length, 0,
     dead.length + ' trait families are byte-identical to no-trait — the traits exist, ' +
     'the sim never reads them:\n  ' + dead.join('\n  '));
-  console.log('checkEveryFamilyIsLive: OK (' + live.length + ' families, subject ' + subject.name + ')');
+  console.log('checkEveryFamilyIsLive: OK (' + live.length + ' families)');
+  live.forEach(function (l) { console.log('    ' + l); });
 }
 
 checkEveryFamilyIsLive();

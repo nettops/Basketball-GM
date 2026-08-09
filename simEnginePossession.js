@@ -374,6 +374,27 @@ function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy
     _POSS_DATA.traits.defenseQualityBonus(defender, zone));
 }
 
+// Sibling wrappers to shotMakeSpecFor: they resolve the badge lookups and hand
+// plain numbers to the spec builders. Named and exported so the WIRING can be
+// asserted, not just the arithmetic.
+//
+// This exists because two mutants survived without it. Dropping the badge
+// lookup at these call sites left validate-traitsAreLive green — defense and
+// steal are ALSO wired through the allocation path, so the family still moved
+// and the tripwire, which only asks "is this family read at all", could not
+// see that the rate path had gone. A spec builder can be perfect while the
+// call site feeding it passes zero.
+function turnoverSpecFor(onBallDefender, handler, defSynergyDefense, offSynergyOffense) {
+  return turnoverSpec(onBallDefender.attributes.steal, handler.attributes.ballHandling,
+    defSynergyDefense, offSynergyOffense,
+    _POSS_DATA.traits.getTraitBonus(onBallDefender, 'boxscore', 'steal'));
+}
+
+function blockSpecFor(shotDefender, zone) {
+  return blockSpec(shotDefender.attributes.block, zone,
+    _POSS_DATA.traits.getTraitBonus(shotDefender, 'boxscore', 'block'));
+}
+
 // Kept as a named export because scripts/validate-possession.js and the pixel
 // choreographer's classifier both read a bare probability without rolling.
 function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
@@ -437,8 +458,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
 
   const turnoverCheck = _POSS_DATA.check.skillCheck(
-    turnoverSpec(onBallDefender.attributes.steal, handler.attributes.ballHandling, defSyn.defense, offSyn.offense,
-      _POSS_DATA.traits.getTraitBonus(onBallDefender, 'boxscore', 'steal')), rng);
+    turnoverSpecFor(onBallDefender, handler, defSyn.defense, offSyn.offense), rng);
   if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
@@ -458,8 +478,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
 
   // Constants and their reasoning are hoisted to blockSpec at module scope.
   const blockCheck = _POSS_DATA.check.skillCheck(
-    blockSpec(shotDefender.attributes.block, zone,
-      _POSS_DATA.traits.getTraitBonus(shotDefender, 'boxscore', 'block')), rng);
+    blockSpecFor(shotDefender, zone), rng);
   if (blockCheck.passed) {
     defenseBox[shotDefender.id].blocks += 1;
     offenseBox[shooter.id].fga += 1;
@@ -569,6 +588,9 @@ if (typeof module !== 'undefined' && module.exports) {
     blockSpec: blockSpec,
     shotSpec: shotSpec,
     shootingFoulRate: shootingFoulRate,
+    shotMakeSpecFor: shotMakeSpecFor,
+    turnoverSpecFor: turnoverSpecFor,
+    blockSpecFor: blockSpecFor,
     perimDefenseWeight: perimDefenseWeight,
     shotDefenseWeight: shotDefenseWeight,
     weightedPick: weightedPick,

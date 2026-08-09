@@ -496,6 +496,49 @@ function checkDefensiveBadgesDrawAssignments() {
   console.log('checkDefensiveBadgesDrawAssignments: OK');
 }
 
+// Chemistry badges are TEAM-level, so they ride the team-level channel that
+// already reaches shotMakeProbability. team.chemistry itself folds into the
+// same term: it is authored 55-78 per team in teams.js but was read only by the
+// non-default engine, so in normal play it was decorative.
+function checkChemistryReachesSynergy() {
+  const composite = require(path.join(__dirname, '..', 'compositeRatings.js'));
+  const roster = require(path.join(__dirname, '..', 'league.js')).getTeamRoster('BOS');
+  const saved = roster.map(function (p) { return p.hiddenTraits; });
+
+  roster.forEach(function (p) { p.hiddenTraits = []; });
+  const neutral = composite.computeTeamSynergy(roster, { chemistry: 70 });
+
+  roster.forEach(function (p) { p.hiddenTraits = [{ key: 'naturalLeader', tier: 'legendary' }]; });
+  const led = composite.computeTeamSynergy(roster, { chemistry: 70 });
+
+  roster.forEach(function (p) { p.hiddenTraits = [{ key: 'lockerRoomCancer', tier: 'legendary' }]; });
+  const toxic = composite.computeTeamSynergy(roster, { chemistry: 70 });
+
+  assert.ok(led.offense > neutral.offense, 'Natural Leaders must raise offensive synergy');
+  assert.ok(toxic.offense < neutral.offense, 'a toxic room must lower it');
+  assert.ok(led.defense > neutral.defense && toxic.defense < neutral.defense,
+    'chemistry must move BOTH sides of the ball, not just offence');
+  assert.strictEqual(led.rebound, neutral.rebound,
+    'chemistry is about playing together; rebounding is the least cooperative of the three');
+
+  // The authored field must be live too, independently of badges.
+  roster.forEach(function (p) { p.hiddenTraits = []; });
+  const goodRoom = composite.computeTeamSynergy(roster, { chemistry: 78 });
+  const badRoom = composite.computeTeamSynergy(roster, { chemistry: 55 });
+  assert.ok(goodRoom.offense > badRoom.offense,
+    'team.chemistry must stop being decorative in the default engine');
+
+  // Omitting `team` must be neutral, so every existing caller is unaffected.
+  const noTeam = composite.computeTeamSynergy(roster);
+  const explicit70 = composite.computeTeamSynergy(roster, { chemistry: 70 });
+  assert.ok(Math.abs(noTeam.offense - explicit70.offense) < 1e-9,
+    'omitting team must behave as chemistry 70');
+
+  roster.forEach(function (p, i) { p.hiddenTraits = saved[i]; });
+  console.log('checkChemistryReachesSynergy: OK');
+}
+
 checkDefensiveBadgesDrawAssignments();
+checkChemistryReachesSynergy();
 
 console.log('All ratings validations passed');

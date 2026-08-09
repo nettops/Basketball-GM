@@ -5,7 +5,7 @@
 // behaviour-identical, so it had room to grow without turning
 // simEnginePossession.js into a grab bag.
 var _GAMESIM_DATA = (typeof require !== 'undefined')
-  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./gameCoach.js') }
+  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./gameCoach.js'), teams: require('./teams.js') }
   : {
       poss: {
         POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,
@@ -15,6 +15,7 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       },
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
+      teams: { getTeamById: getTeamById },
       box: { minutesWeight: minutesWeight },
       coach: { decideSubstitutions: decideSubstitutions, decideTimeout: decideTimeout }
     };
@@ -76,8 +77,8 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
 
   // Synergy depends only on roster composition, not anything that changes
   // possession-to-possession, so it's computed once per game.
-  const homeSynergy = _GAMESIM_DATA.composite.computeTeamSynergy(homeRoster);
-  const awaySynergy = _GAMESIM_DATA.composite.computeTeamSynergy(awayRoster);
+  const homeSynergy = _GAMESIM_DATA.composite.computeTeamSynergy(homeRoster, _GAMESIM_DATA.teams.getTeamById(homeTeamId));
+  const awaySynergy = _GAMESIM_DATA.composite.computeTeamSynergy(awayRoster, _GAMESIM_DATA.teams.getTeamById(awayTeamId));
 
   const playByPlay = [];
   // Structured events for the pixel game view — only collected when the

@@ -338,6 +338,41 @@ function checkFoulProneRaisesTheFoulRate() {
 checkTurnoverSpecMatchesTheOriginal();
 checkBlockSpecMatchesTheOriginal();
 checkShotSpecMatchesTheOriginal();
+// THE CALL SITES, not just the spec builders. A spec builder can be perfect
+// while the code feeding it passes zero — and validate-traitsAreLive cannot
+// catch that for defence or steal, because both are ALSO wired through the
+// allocation path, so the family stays "live" while the rate path is gone.
+// Two mutants survived on exactly that before these existed.
+function checkTheCallSitesActuallyLookUpTheBadges() {
+  const { ATTRIBUTE_KEYS } = require(path.join(__dirname, '..', 'data.js'));
+  function defender(hiddenTraits, attrs) {
+    const p = { hiddenTraits: hiddenTraits, attributes: {} };
+    ATTRIBUTE_KEYS.forEach(function (k) { p.attributes[k] = 60; });
+    Object.assign(p.attributes, attrs || {});
+    return p;
+  }
+  const shooter = defender([]);
+  const plainD = defender([]);
+  const lockdown = defender([{ key: 'lockdownDefender', tier: 'legendary' }]);
+  const thief = defender([{ key: 'pickpocket', tier: 'legendary' }]);
+  const rim = defender([{ key: 'rimProtector', tier: 'legendary' }], { block: 70 });
+  const plainBig = defender([], { block: 70 });
+
+  assert.ok(poss.shotMakeProbability(shooter, lockdown, 'three', 1, 1, 1, 1) <
+            poss.shotMakeProbability(shooter, plainD, 'three', 1, 1, 1, 1),
+    'shotMakeSpecFor must LOOK UP the defender\'s badge, not just accept one');
+
+  assert.ok(skillCheckProbability(poss.turnoverSpecFor(thief, shooter, 1, 1)).probability >
+            skillCheckProbability(poss.turnoverSpecFor(plainD, shooter, 1, 1)).probability,
+    'turnoverSpecFor must look up the on-ball defender\'s steal badge');
+
+  assert.ok(skillCheckProbability(poss.blockSpecFor(rim, 'inside')).probability >
+            skillCheckProbability(poss.blockSpecFor(plainBig, 'inside')).probability,
+    'blockSpecFor must look up the shot defender\'s block badge');
+  console.log('checkTheCallSitesActuallyLookUpTheBadges: OK');
+}
+
 checkBadgeModifiersReachTheSpecs();
 checkFoulProneRaisesTheFoulRate();
+checkTheCallSitesActuallyLookUpTheBadges();
 console.log('All skillCheck validations passed');
