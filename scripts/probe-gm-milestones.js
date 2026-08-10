@@ -141,3 +141,16 @@ gmMilestones.MILESTONES.forEach(function (m) {
     '      ' + String(med === null ? '-' : med).padStart(6) + '        ' + verdict);
 });
 console.log('\n  total career-seasons simulated: ' + totalSeasons);
+
+// A milestone can read 0% because it is too hard OR because this harness never
+// produces the thing it measures. archiveTrade is called ONLY from script.js —
+// the trade-offer acceptance path and the weekly AI-to-AI generator — and
+// neither runs headlessly, so LEAGUE_HISTORY.trades stays empty here however
+// long the run is. Without this line, traded_for_a_star reads as UNREACHABLE
+// and someone lowers a threshold that was never tested.
+if (history.LEAGUE_HISTORY.trades.length === 0) {
+  console.log('\n  NOTE: zero trades were archived. archiveTrade only fires from script.js');
+  console.log('  (UI trade acceptance + weekly AI-to-AI generation), neither of which runs');
+  console.log('  headlessly. Any trade-dependent milestone above is UNCALIBRATED, not broken —');
+  console.log('  its query is covered by validate-gmCareer against a hand-built archive.');
+}
