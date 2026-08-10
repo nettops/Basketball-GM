@@ -203,9 +203,18 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // here rather than read back off the event log because a plain season sim
     // passes no event context at all.
     const outcome = {};
+    // The scoreboard, from the SHOOTING team's point of view, so the engine can
+    // react to it — a trailing team tightens up, a leading team eases off. See
+    // URGENCY_TUNING in simEnginePossession.js. Without this every possession in
+    // a 40-point blowout was played exactly like a tie game.
+    const gameCtx = {
+      scoreDiff: team === 'home' ? (sim.homeScore - sim.awayScore) : (sim.awayScore - sim.homeScore),
+      period: sim.period
+    };
+
     const points = _GAMESIM_DATA.poss.simulatePossession(
       lineup(team), offBox, lineup(other), defBox, rng,
-      { offense: offSyn, defense: defSyn }, playByPlay, ctx, sim.inTransition, outcome);
+      { offense: offSyn, defense: defSyn }, playByPlay, ctx, sim.inTransition, outcome, gameCtx);
     sim.inTransition = !!outcome.liveBallToDefense;
 
     if (team === 'home') sim.homeScore += points; else sim.awayScore += points;

@@ -516,7 +516,65 @@ function shootingFoulRate(defender) {
   return SHOOTING_FOUL_RATE + _POSS_DATA.traits.foulProneness(defender) / FOUL_TRAIT_DIV;
 }
 
-function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus) {
+// URGENCY — the game reacting to its own scoreboard.
+//
+// Before this, every possession in a 40-point blowout was played exactly like a
+// tie game. That is why mean |margin| bottomed out at 15.8 however the shot
+// divisors were tuned: the engine's randomness is exactly what independent
+// shooting implies (per-team scoring variance 128 against a predicted 126), and
+// real basketball sits BELOW that floor at 91 because real games self-correct.
+// A trailing team tightens up; a leading team eases off; benches empty.
+//
+// Modelled as a small, ZERO-SUM shot adjustment: the trailing side gets
+// +perPoint per point of deficit, the leading side the same amount off. Because
+// it is symmetric it cannot move league-average shooting — one team's gain is
+// the other's loss in every single possession.
+//
+// fromPeriod exists because rubber-banding a first quarter would be nonsense:
+// nobody plays with urgency four minutes in. It engages in the second half,
+// which is when real teams start reacting to the scoreboard.
+//
+// perPoint/cap are CALIBRATED by scripts/probe-comebacks.js against four
+// numbers, one of which is a guard rather than a target: 20-point fourth
+// quarter leads must keep holding up ~95% of the time. A mechanic that hands
+// those back is not drama, it is noise.
+// Swept over 600 games, same seed throughout (scripts/probe-comebacks.js):
+//
+//   perPt/cap      |margin|  close%  blow%  hold20  comeback15   FG%    3P%
+//   0      (off)     16.12    22.2    23.8    98.7      5.9      47.9   36.9
+//   0.0010/0.020     15.43    20.3    21.2   100.0      7.2      48.0   36.7
+//   0.0018/0.030     14.21    24.5    16.7    98.6      8.1      47.9   36.9
+//   0.0025/0.040     14.18    26.0    17.3    99.2      7.0      48.0   36.8
+//   0.0035/0.055     11.41    31.5     9.2   100.0      9.9      48.1   37.0  <- shipped
+//   0.0050/0.070     10.05    36.5     7.0    98.6     14.8      48.0   36.7
+//   0.0070/0.090      9.34    38.3     5.3   100.0     14.0      47.8   36.6
+//   real NBA           ~11     ~33     ~8      ~95      5-8       ~47    ~36
+//
+// 0.0035/0.055 lands on real basketball for all four at once. Looser than that
+// and comebacks from 15 down roughly double the real rate, which stops being
+// drama and starts being noise — the guard the whole probe exists to protect.
+//
+// Note FG%, 3P% and points are FLAT down the entire column. That is the
+// zero-sum construction doing its job: one team's urgency bonus is the other's
+// penalty on every possession, so nothing here can move league scoring, and the
+// shot bases did not need re-solving.
+var URGENCY_TUNING = {
+  perPoint: 0.0035,
+  cap: 0.055,
+  fromPeriod: 3
+};
+
+// scoreDiff is the SHOOTING team's lead (negative when trailing).
+function urgencyBonus(scoreDiff, period) {
+  if (typeof scoreDiff !== 'number' || !period || period < URGENCY_TUNING.fromPeriod) return 0;
+  // `+ 0` normalises negative zero. -scoreDiff * perPoint yields -0 in a tie
+  // game, and -0 serialises into the golden fixtures as `-0`, which reads as a
+  // real diff on every future regeneration.
+  const raw = -scoreDiff * URGENCY_TUNING.perPoint + 0;
+  return Math.max(-URGENCY_TUNING.cap, Math.min(URGENCY_TUNING.cap, raw));
+}
+
+function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus, scoreDiff, period) {
   return {
     kind: 'shot',
     base: SHOT_TUNING.base[zone],
@@ -536,7 +594,8 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
       // NEGATIVE: this is the DEFENDER's contribution, so it comes off the
       // shooter's chance. Routed by zone in traits.js's defenseQualityBonus, so
       // a perimeter stopper does nothing to a shot at the rim.
-      { label: 'defensive badges', value: -(defTraitBonus || 0) / DEF_TRAIT_DIV }
+      { label: 'defensive badges', value: -(defTraitBonus || 0) / DEF_TRAIT_DIV },
+      { label: 'urgency', value: urgencyBonus(scoreDiff, period) }
     ],
     min: SHOT_MIN, max: SHOT_MAX
   };
@@ -563,7 +622,7 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
 // Routed by zone in traits.js (shotQualityBonus), so this only fires for the
 // shot the trait is actually about, and it arrives as a NAMED modifier so the
 // UI can show "badges +1.0%" rather than folding it invisibly into one float.
-function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
+function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, scoreDiff, period) {
   const shootKey = zone === 'three' ? 'shootingThree' : (zone === 'mid' ? 'shootingMid' : 'shootingInside');
   const defKey = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
   return shotSpec(zone,
@@ -571,7 +630,8 @@ function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy
     _POSS_DATA.composite.computeComposite(defender, defKey),
     offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult,
     _POSS_DATA.traits.shotQualityBonus(shooter, zone),
-    _POSS_DATA.traits.defenseQualityBonus(defender, zone));
+    _POSS_DATA.traits.defenseQualityBonus(defender, zone),
+    scoreDiff, period);
 }
 
 // Sibling wrappers to shotMakeSpecFor: they resolve the badge lookups and hand
@@ -646,7 +706,13 @@ function pushEvent(eventCtx, ev) {
 // supplied, is filled in with how THIS possession ended so the caller can set
 // inTransition for the next one; the events context is null in a plain season
 // sim, so the handoff cannot be read back off the event log.
-function simulatePossession(offense, offenseBox, defense, defenseBox, rng, synergy, log, eventCtx, inTransition, outcome) {
+function simulatePossession(offense, offenseBox, defense, defenseBox, rng, synergy, log, eventCtx, inTransition, outcome, gameCtx) {
+  // gameCtx is { scoreDiff, period } from the SHOOTING team's point of view.
+  // Optional: omitted (or absent, as in every pre-urgency caller) it leaves the
+  // urgency modifier at exactly zero, so a caller that does not pass it gets
+  // byte-identical behaviour.
+  const scoreDiff = gameCtx ? gameCtx.scoreDiff : undefined;
+  const gamePeriod = gameCtx ? gameCtx.period : undefined;
   const offSyn = synergy ? synergy.offense : { offense: 1, defense: 1, rebound: 1 };
   const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
   if (outcome) outcome.liveBallToDefense = false;
@@ -693,7 +759,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const shotCheck = _POSS_DATA.check.skillCheck(shotMakeSpecFor(shooter, shotDefender, zone,
     offSyn.offense, defSyn.defense,
     energyMultiplier(offenseBox[shooter.id].energy),
-    energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls)), rng);
+    energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls),
+    scoreDiff, gamePeriod), rng);
   const made = shotCheck.passed;
   const shotValue = zone === 'three' ? 3 : 2;
   offenseBox[shooter.id].fga += 1;
@@ -792,6 +859,8 @@ if (typeof module !== 'undefined' && module.exports) {
     blockSpec: blockSpec,
     shotSpec: shotSpec,
     SHOT_TUNING: SHOT_TUNING,
+    URGENCY_TUNING: URGENCY_TUNING,
+    urgencyBonus: urgencyBonus,
     PICK_CEILING: PICK_CEILING,
     shootingFoulRate: shootingFoulRate,
     shotMakeSpecFor: shotMakeSpecFor,
