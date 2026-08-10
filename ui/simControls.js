@@ -114,6 +114,10 @@ function stepOnce(out) {
       // manual drafter is handed their draft instead of having it resolved
       // for them. The old fast-forward loop auto-drafted regardless, which is
       // the behaviour the design deliberately drops.
+      // Captured BEFORE runOffseasonRollover, which clears playoffBracket.
+      const championId = GameState.playoffBracket.finals[0].winner;
+      const championYear = GameState.leagueYear || 2026;
+
       const rollover = runOffseasonRollover(GameState, {
         stopAfterDraft: !autoDraftEffective(),
         // The same interactive draft script.js hands out. Without it Continue
@@ -126,6 +130,16 @@ function stepOnce(out) {
           : null
       });
       if (rollover.careerSceneShown) out.sceneShown = true;
+
+      // The career-mode scene wins if both want the screen — only one thing can
+      // live in view-content, and that is the one the user was mid-conversation
+      // with. out.sceneShown then stops the run, which the loop already treats
+      // as "something asked to be read", so no new stop machinery is needed.
+      if (!out.sceneShown && maybeShowChampionshipScene(championId, championYear, function () {
+        renderView(GameState.currentView);
+      })) {
+        out.sceneShown = true;
+      }
       return true;
     }
     return simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng) !== null;

@@ -34,6 +34,42 @@ function recentHeadlines(feed, n) {
     .reverse();
 }
 
+
+// The "what do I do next" answer, on the screen you already land on. Three
+// clicks away and it stops answering the question.
+//
+// gmNearestMilestone excludes hidden and binary milestones — the first would
+// spoil a surprise, the second has no honest halfway point — and also anything
+// already satisfied. When nothing qualifies it returns null and this renders
+// the remaining COUNT rather than an empty panel.
+function careerHintHtml() {
+  const career = ensureGmCareer(GameState);
+  const totals = gmCareerTotals(career);
+  const ctx = gmBuildMilestoneContext(career, LEAGUE_HISTORY, PLAYERS_2026,
+    LEAGUE_HISTORY.retiredPlayers, toDisplayRating);
+  const near = gmNearestMilestone(career, ctx);
+
+  const summary = '<div class="kpi-sub">' + totals.seasons + ' season' + (totals.seasons === 1 ? '' : 's') +
+    ' &middot; ' + totals.wins + '-' + totals.losses +
+    ' &middot; ' + totals.titles + (totals.titles === 1 ? ' title' : ' titles') + '</div>';
+
+  if (!near) {
+    const remaining = GM_MILESTONES.filter(function (m) {
+      return !m.hidden && !gmMilestoneIsUnlocked(career, m.id);
+    }).length;
+    return summary + '<div class="kpi-value" style="font-size:1.05rem;">' +
+      (remaining > 0 ? remaining + ' milestones left to chase' : 'Every milestone earned.') + '</div>';
+  }
+
+  const pct = Math.min(100, Math.round((near.current / near.target) * 100));
+  return summary +
+    '<div class="kpi-label" style="margin-top:10px;">Closest milestone</div>' +
+    '<div class="kpi-value" style="font-size:1.05rem;">' + escapeHtml(near.milestone.label) + '</div>' +
+    '<div class="kpi-sub">' + escapeHtml(near.milestone.description) + '</div>' +
+    '<div class="meter" style="margin:8px 0 6px;"><div class="meter-fill" style="width:' + pct + '%"></div></div>' +
+    '<div class="kpi-sub">' + near.current + ' of ' + near.target + '</div>';
+}
+
 function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
@@ -97,6 +133,10 @@ function renderDashboard(container, teamId) {
 
     '<div class="panel"><div class="panel-header">Next Up</div><div class="panel-body">' +
       '<div class="kpi-value" style="font-size:1.05rem;">' + nextGameLabel + '</div>' +
+    '</div></div>' +
+
+    '<div class="panel"><div class="panel-header">Your Career</div><div class="panel-body">' +
+      careerHintHtml() +
     '</div></div>' +
 
     '<div class="panel"><div class="panel-header">Key Injuries' +

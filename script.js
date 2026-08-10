@@ -371,6 +371,9 @@ function handleAdvanceToOffseason(showSummary) {
   // (if shown) should display.
   const finishedLeagueYear = GameState.leagueYear || 2026;
   const autoDraftEffective = GameState.playMode === 'spectator' || GameState.automation.autoDraft;
+  // Captured before runOffseasonRollover clears the bracket.
+  const championId = GameState.playoffBracket && GameState.playoffBracket.finals[0]
+    ? GameState.playoffBracket.finals[0].winner : null;
 
   // ONE implementation, shared with the fast-forward path (seasonRollover.js):
   // the snapshot, clearing pending offers, finalizeSeasonHistory and the year
@@ -385,12 +388,17 @@ function handleAdvanceToOffseason(showSummary) {
     onDraft: autoDraftEffective ? null : runInteractiveDraft
   });
 
-  if (showSummary === true) {
-    GameState.summarySeasonYear = finishedLeagueYear;
-    renderView('seasonSummary');
-  } else {
-    renderView('draft');
+  // The banner takes the screen ahead of the season summary or the draft; both
+  // are still one click away behind the button.
+  function afterBanner() {
+    if (showSummary === true) {
+      GameState.summarySeasonYear = finishedLeagueYear;
+      renderView('seasonSummary');
+    } else {
+      renderView('draft');
+    }
   }
+  if (!maybeShowChampionshipScene(championId, finishedLeagueYear, afterBanner)) afterBanner();
   autosave(GameState);
 
   if (GameState.gameMode === 'playerCareer') {
