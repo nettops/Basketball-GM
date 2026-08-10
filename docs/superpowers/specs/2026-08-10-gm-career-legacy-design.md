@@ -315,11 +315,12 @@ Recorded so they are not lost, and not built here:
   support this later. Shipping with one tenure; adding job changes needs its own
   design (who hires you, do you choose, what happens to the team you left).
 - **The owner speaking to you.** `team.ownerHappiness` is *already alive* — it
-  sets your spending posture (`finances.js:58`) and moves with your luxury-tax
-  outcome (`finances.js:126`). There is a functioning owner in the game who has
-  never once been shown to the player. Surfacing that mood is a cheap future
-  win, but the user explicitly rejected owner-set goals, so nothing here reads
-  or writes it.
+  sets your spending posture (`finances.js:58`), moves with your luxury-tax
+  outcome (`finances.js:126`), and is already displayed as a Dashboard KPI tile
+  (`ui/dashboard.js`). So the owner is visible; what it lacks is a *voice* — the
+  number never explains why it moved or reacts in words. Giving it one is a
+  cheap future win, but the user explicitly rejected owner-set goals, so nothing
+  here reads or writes it.
 - **Storylines and rivalries** (approach B) and a broader ceremony system
   (the rest of approach C). Both become cheap once the chronicle exists, since
   the chronicle is where a storyline would be recorded.
