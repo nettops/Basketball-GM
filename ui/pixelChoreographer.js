@@ -125,6 +125,50 @@ function cutJitter(seed, spread) {
   return (((seed * 31) % (2 * spread + 1)) - spread);
 }
 
+// A roll in [0,1) from an integer seed.
+function roll01(seed) {
+  let x = ((seed | 0) * 1103515245 + 12345) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  x = (Math.imul(x, 2246822519) ^ (x >>> 13)) >>> 0;
+  return (x >>> 8) / 16777216;
+}
+
+// How long a man holds the ball, which is what a viewer actually reads, rather
+// than which named move he reaches for. 88a0ee3 gated three moves behind
+// ball-handling thresholds and 83% of them came out as the same crossover
+// default — two new moves accounting for one possession in six. Rolling the
+// COUNT and letting the move follow from it cannot produce that failure,
+// because the shares are the thing being picked.
+const DRIBBLE_TABLE = [
+  { share: 0.50, counts: [0] },
+  { share: 0.25, counts: [2] },
+  { share: 0.15, counts: [4, 5, 6] },
+  { share: 0.10, counts: [7, 8] }
+];
+// Skill shifts the roll toward the longer buckets. Deliberately gentle: at
+// 0.12 a 95-rated handler moves the roll +0.108 and a 40-rated one -0.024, so
+// the elite guard works long about twice as often as the poor one without EVER
+// being locked out of a simple catch and shoot. The cliff is what went wrong
+// last time — ballHandling 79 got a crossover and 80 got a double move.
+const DRIBBLE_SKILL_SHIFT = 0.12;
+
+function dribbleCount(seed, handleSkill) {
+  const h = typeof handleSkill === 'number' ? handleSkill : 50;
+  const r = roll01(seed) + ((h - 50) / 50) * DRIBBLE_SKILL_SHIFT;
+  const clamped = r < 0 ? 0 : (r >= 1 ? 0.999999 : r);
+  let acc = 0;
+  for (let i = 0; i < DRIBBLE_TABLE.length; i++) {
+    acc += DRIBBLE_TABLE[i].share;
+    if (clamped < acc) {
+      const counts = DRIBBLE_TABLE[i].counts;
+      // a second, independent roll picks WITHIN the bucket, so 4/5/6 are not
+      // decided by how close the first roll happened to sit to the bucket edge
+      return counts[Math.floor(roll01(seed * 31 + 7) * counts.length)];
+    }
+  }
+  return DRIBBLE_TABLE[DRIBBLE_TABLE.length - 1].counts[0];
+}
+
 // Pass character. Every pass in the game used to be the same 340ms beat with
 // the same distance-scaled arc, so a 30px dish and a 343px cross-court skip
 // took identical time and the skip lobbed at the 32px arc ceiling. Real passes
@@ -1360,6 +1404,9 @@ if (typeof module !== 'undefined' && module.exports) {
     groupPossessions: groupPossessions,
     assignSlots: assignSlots,
     IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
+    roll01: roll01,
+    dribbleCount: dribbleCount,
+    DRIBBLE_TABLE: DRIBBLE_TABLE,
     posterEdge: posterEdge,
     handleEdge: handleEdge,
     classifyImpact: classifyImpact

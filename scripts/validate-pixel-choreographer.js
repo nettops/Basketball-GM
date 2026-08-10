@@ -440,4 +440,69 @@ function checkImpactMarkerCarriesTheCheck() {
 }
 checkImpactMarkerCarriesTheCheck();
 
+function checkDribbleRoll() {
+  // roll01 must be equidistributed. Everything else in the choreographer picks
+  // with modular arithmetic -- `(pi * 7 + ei) % 5` -- which is fine for a coin
+  // flip but cannot express 50/25/15/10, and a modulus that happens to land on
+  // the right shares for one seed sequence silently correlates with every other
+  // modulus in the file.
+  const decile = new Array(10).fill(0);
+  for (let s = 0; s < 20000; s++) {
+    const r = choreo.roll01(s);
+    assert.ok(r >= 0 && r < 1, 'roll01 stays in [0,1)');
+    decile[Math.floor(r * 10)] += 1;
+  }
+  decile.forEach(function (n, i) {
+    assert.ok(n > 1700 && n < 2300, 'decile ' + i + ' near even, got ' + n);
+  });
+  // Even deciles are NOT enough, which mutation testing proved: replacing the
+  // hash with `((seed * 7) % 100) / 100` is perfectly equidistributed and the
+  // decile check above passes it. The real hazard with modular arithmetic is
+  // LOCKSTEP -- consecutive seeds move by a fixed step, so consecutive
+  // possessions get related rolls and a player's dribble counts march in a
+  // pattern instead of varying. The real seed is `pi * 101 + ei`, so adjacent
+  // possessions are exactly the adjacent seeds this measures.
+  const deltas = {};
+  for (let s = 0; s < 2000; s++) {
+    deltas[(choreo.roll01(s + 1) - choreo.roll01(s)).toFixed(4)] = true;
+  }
+  const distinct = Object.keys(deltas).length;
+  assert.ok(distinct > 1500, 'consecutive rolls must not move in lockstep, got ' +
+    distinct + ' distinct steps in 2000');
+
+  // League-wide shape at the mean skill.
+  const seen = { '0': 0, '2': 0, '4-6': 0, '7+': 0 };
+  for (let s = 0; s < 20000; s++) {
+    const n = choreo.dribbleCount(s, 50);
+    assert.ok(n >= 0 && n <= 8 && n !== 1 && n !== 3, 'count is 0, 2, 4-6 or 7-8, got ' + n);
+    seen[n === 0 ? '0' : n === 2 ? '2' : n <= 6 ? '4-6' : '7+'] += 1;
+  }
+  const pct = function (k) { return (seen[k] / 20000) * 100; };
+  assert.ok(Math.abs(pct('0') - 50) < 2, '0 dribbles near 50%, got ' + pct('0').toFixed(1));
+  assert.ok(Math.abs(pct('2') - 25) < 2, '2 dribbles near 25%, got ' + pct('2').toFixed(1));
+  assert.ok(Math.abs(pct('4-6') - 15) < 2, '4-6 near 15%, got ' + pct('4-6').toFixed(1));
+  assert.ok(Math.abs(pct('7+') - 10) < 2, '7+ near 10%, got ' + pct('7+').toFixed(1));
+
+  // Skill biases the DISTRIBUTION, not which moves are unlocked. The 88a0ee3
+  // failure was a cliff: ballHandling 79 got a crossover and 80 got a double
+  // move. A great handler should hold the ball longer MORE OFTEN, not hold it
+  // longer every single time.
+  let eliteLong = 0, poorLong = 0;
+  for (let s = 0; s < 20000; s++) {
+    if (choreo.dribbleCount(s, 95) >= 4) eliteLong += 1;
+    if (choreo.dribbleCount(s, 40) >= 4) poorLong += 1;
+  }
+  assert.ok(eliteLong > poorLong * 1.4, 'elite handlers work longer more often');
+  assert.ok(poorLong > 20000 * 0.05, 'a poor handler still sometimes works, got ' + poorLong);
+  // The upper bound is the one that catches the cliff, which the lower bound
+  // alone did not: mutation testing showed a shift of 0.9 leaves a 40-rated
+  // handler working long 7% of the time -- above the floor above -- while a
+  // 95-rated one does it on 94% of possessions. "Every elite possession is a
+  // size-up" is the same failure as 88a0ee3 wearing different clothes.
+  assert.ok(eliteLong < 20000 * 0.5,
+    'even an elite handler mostly catches and shoots, got ' + (eliteLong / 200).toFixed(1) + '%');
+  console.log('checkDribbleRoll: OK');
+}
+checkDribbleRoll();
+
 console.log('All pixel choreographer validations passed');
