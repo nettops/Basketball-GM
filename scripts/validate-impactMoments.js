@@ -136,11 +136,23 @@ function checkRateStaysInBand() {
     }
   }
 
+  // PER-KIND bands. This was a single 0.5-4 range covering both, which was the
+  // right shape when both were meant to be equally rare. They no longer are:
+  // crossovers were deliberately roughly doubled (threshold 34 -> 26) because
+  // they should feel common, while posters stay rare. One range for both now
+  // encodes a stale intent, and at 3.65/game the shared ceiling of 4 left so
+  // little headroom that ordinary drift would fail the build for no defect.
+  //
+  // NOT widened to make a change pass — the change already passed at 3.65. The
+  // bound is being re-aimed because the design intent behind it changed.
+  const RATE_BANDS = { poster: [0.5, 3], ankle: [1.5, 6] };
   ['poster', 'ankle'].forEach(function (kind) {
     const rate = count[kind] / games;
-    assert.ok(rate >= 0.5 && rate <= 4,
+    const band = RATE_BANDS[kind];
+    assert.ok(rate >= band[0] && rate <= band[1],
       kind + ' fires ' + rate.toFixed(2) + '/game over ' + games +
-      ' games, outside the 0.5-4 band — recalibrate IMPACT_THRESHOLDS in ui/pixelChoreographer.js');
+      ' games, outside its ' + band[0] + '-' + band[1] +
+      ' band — recalibrate IMPACT_THRESHOLDS in ui/pixelChoreographer.js');
   });
 
   // Blocks are a real event, not a derived judgement: no threshold shrinks

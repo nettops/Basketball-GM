@@ -290,7 +290,21 @@ function isDunker(player) {
 //   1.0/game -> poster 51.3, ankle 37.8
 //   2.0/game -> poster 46.7, ankle 33.5
 //   2.5/game -> poster 44.3, ankle 32.0
-const IMPACT_THRESHOLDS = { poster: 47, ankle: 34 };
+// ankle 34 -> 26, roughly doubling crossovers. Measured over 60 games on the
+// 1974 outside makes with a resolvable matchup (32.9/game):
+//
+//   threshold  crossovers/game
+//      34          1.72   <- was
+//      30          2.70
+//      26          3.77   <- now, ~11% of outside makes
+//      22          4.92
+//      18          6.87   <- a fifth of all jumpers; stops being special
+//
+// Chosen for how often it should feel like a moment, not to match any real
+// league. Knock-on: crossovers freeze the game at 1x-4x, so highlights per
+// game at 4x rise from ~3.7 to ~5.8. Still comfortable; at 8x the bar excludes
+// ankle breakers entirely so nothing changes there.
+const IMPACT_THRESHOLDS = { poster: 47, ankle: 26 };
 
 // How badly the finisher beat the man protecting the rim.
 function posterEdge(shooter, defender) {

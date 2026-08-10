@@ -147,9 +147,13 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     ctx.fillRect(left + 1, top + 18, 2, 4);  // trail leg, bent back
     ctx.fillRect(left + 6, top + 17, 2, 3);  // lead knee driven up
   } else if (opts.stumbling) {
-    // legs splayed wide and short — weight going somewhere the body isn't
-    ctx.fillRect(left - 1, top + 20, 3, 4);
-    ctx.fillRect(left + 8, top + 20, 3, 4);
+    // Legs splayed WIDE and buckling. The old pose was symmetric — both legs
+    // the same length at the same height — which reads as a wide defensive
+    // stance rather than as losing your feet. Now the trail leg skids out from
+    // under him while the front leg collapses shorter and lower, so the two
+    // sides disagree about where his weight is going.
+    ctx.fillRect(left - 3, top + 21, 4, 3);   // trail leg skidding out
+    ctx.fillRect(left + 8, top + 22, 4, 2);   // front leg collapsed under him
   } else {
     // idle shifts the weight onto one leg: that hip drops a pixel and the
     // other leg shortens, which is the smallest change that reads as alive
@@ -173,10 +177,12 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     ctx.fillRect(left + (ballSide ? 8 : 0), top - 6, 2, 14);
     ctx.fillRect(left + (ballSide ? 0 : 8), top + 3, 2, 7);
   } else if (opts.stumbling) {
-    // both arms flung out low, hunting for balance — the opposite silhouette
-    // to the shooter's tidy vertical arms
-    ctx.fillRect(left - 2, top + 11, 3, 2);
-    ctx.fillRect(left + 9, top + 11, 3, 2);
+    // Arms flung out ASYMMETRICALLY and further than before — lead arm thrown
+    // up and out, trail arm dropped behind. Both arms at the same height reads
+    // as a shrug; the mismatch is what reads as falling. Total reach widens
+    // from 14px to 17px, which is what makes the silhouette carry at speed.
+    ctx.fillRect(left - 4, top + 6, 4, 2);    // lead arm flung up and out
+    ctx.fillRect(left + 9, top + 13, 4, 2);   // trail arm dropped behind
   } else if (opts.following) {
     // Follow-through: shooting hand still up and snapped over, guide hand
     // dropped away. Held while the ball is in the air — this is the pose that
