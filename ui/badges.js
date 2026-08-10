@@ -62,6 +62,23 @@ function badgeRarityHtml(entry) {
     (names ? '<span class="badge-ref-examples">e.g. ' + names + '</span>' : '');
 }
 
+// The secret form, shown on every badge that has one. Deliberately NOT hidden
+// behind having seen one: knowing Sharpshooter can become Deadeye is what makes
+// a legendary Sharpshooter on your roster interesting. What stays secret is
+// WHETHER it happens, which is the part that is actually a surprise.
+function badgeSecretHtml(def, secret) {
+  const value = def.tierValues[SECRET_TIER];
+  const signed = (def.effect.direction < 0 ? '−' : '+') + value;
+  return '<div class="badge-ref-secret">' +
+    '<div class="badge-ref-secret-head">' +
+      '<span class="badge-ref-secret-label">Secret form</span>' +
+      '<span class="badge-ref-secret-name">' + escapeHtml(secret.name) + '</span>' +
+      '<span class="badge-ref-secret-value">' + signed + '</span>' +
+    '</div>' +
+    '<p class="badge-ref-secret-desc">' + escapeHtml(secret.description) + '</p>' +
+  '</div>';
+}
+
 function badgeCardHtml(def, held) {
   const effectKey = def.effect.system + '/' + def.effect.stat;
   const label = TRAIT_EFFECT_LABELS[effectKey] || effectKey;
@@ -69,13 +86,16 @@ function badgeCardHtml(def, held) {
   // lowers injury risk, High Motor lowers fatigue. Saying "reduces" rather than
   // showing a bare minus is the difference between readable and misleading.
   const verb = def.effect.direction < 0 ? 'Reduces' : 'Raises';
-  return '<div class="badge-ref-card badge-ref-' + def.category + '">' +
+  const secret = SECRET_FORMS[def.key];
+  return '<div class="badge-ref-card badge-ref-' + def.category +
+      (secret ? ' badge-ref-has-secret' : '') + '">' +
     '<div class="badge-ref-head">' +
       '<span class="badge-ref-name">' + escapeHtml(def.name) + '</span>' +
       '<span class="badge-ref-effect">' + verb + ' <strong>' + escapeHtml(label) + '</strong></span>' +
     '</div>' +
     '<p class="badge-ref-desc">' + escapeHtml(TRAIT_DESCRIPTIONS[def.key] || '') + '</p>' +
     '<div class="badge-ref-ladder">' + badgeTierLadderHtml(def) + '</div>' +
+    (secret ? badgeSecretHtml(def, secret) : '') +
     '<div class="badge-ref-foot">' + badgeRarityHtml(held[def.key]) + '</div>' +
   '</div>';
 }
@@ -90,6 +110,11 @@ function renderBadges(container) {
     '<p class="kpi-sub">Each player carries a handful of badges, drawn when he enters the league and ' +
     'weighted by his attributes. Tier sets the size of the effect &mdash; and on a flaw, its severity. ' +
     'Badges are visible on every player on an NBA roster; draft prospects show a fuzzy tier range instead.</p>' +
+    '<p class="kpi-sub"><strong style="color:#FFD36E">Secret forms.</strong> A badge already held at ' +
+    '<em>legendary</em> can evolve over the summer into the form shown on its card &mdash; once per player, ' +
+    'ever. The chance is small and rises with work ethic, with Coachable or Film Junkie, and with having ' +
+    'development years left; Stubborn cuts it. Roughly one happens every three seasons league-wide. ' +
+    'You will see it in the feed when it does.</p>' +
     '</div></div>';
 
   TRAIT_CATEGORY_ORDER.forEach(function (cat) {

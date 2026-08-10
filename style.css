@@ -830,3 +830,32 @@ table { border-collapse: collapse; width: 100%; }
 .badge-ref-rarity strong { color: var(--text-dim); }
 .badge-ref-rarity-none { color: var(--loss); font-weight: 600; }
 .badge-ref-examples { font-size: .68rem; color: var(--text-mute); opacity: .8; }
+
+/* ---------- Secret badges ---------- */
+/* Deliberately louder than every other tier. These are meant to be roughly one
+   per seven teams league-wide, and the first time one appears on a roster the
+   player should not have to read the tier label to notice it. */
+.trait-badge.tier-secret,
+.badge-ref-tier.tier-secret {
+  background: linear-gradient(120deg, rgba(212, 169, 78, .30), rgba(255, 94, 168, .26), rgba(88, 166, 255, .28));
+  color: #FFE9A8;
+  border-color: rgba(255, 214, 120, .75);
+  box-shadow: 0 0 0 1px rgba(255, 214, 120, .22), 0 0 14px rgba(255, 190, 90, .30);
+  font-weight: 800;
+}
+.badge-ref-card.badge-ref-has-secret { border-left-color: #FFD36E; }
+.badge-ref-secret {
+  margin-top: 2px; padding-top: 6px; border-top: 1px dashed var(--line-strong);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.badge-ref-secret-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.badge-ref-secret-label {
+  font-size: .58rem; text-transform: uppercase; letter-spacing: .09em;
+  font-weight: 800; color: #FFD36E;
+}
+.badge-ref-secret-name { font-weight: 800; font-size: .84rem; color: #FFE9A8; }
+.badge-ref-secret-value {
+  margin-left: auto; font-size: .72rem; font-weight: 700; color: #FFD36E;
+  font-variant-numeric: tabular-nums;
+}
+.badge-ref-secret-desc { font-size: .76rem; color: var(--text-dim); line-height: 1.4; margin: 0; }

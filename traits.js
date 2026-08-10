@@ -2,9 +2,27 @@ var _TRAITS_DATA = (typeof require !== 'undefined')
   ? { rng: require('./rng.js'), ratings: require('./ratings.js') }
   : { rng: { makeRng: makeRng }, ratings: { RATING_BANDS: RATING_BANDS } };
 
-const TRAIT_TIER_SCALE = { bronze: 1, silver: 2, gold: 3, hof: 5, legendary: 8 };
-const SUPERSTAR_TIER_SCALE = { bronze: 2, silver: 4, gold: 6, hof: 9, legendary: 14 };
+// The secret values are calibrated, not picked. Swept against the ppg a
+// legendary Sharpshooter's holder actually gains, 300 games per arm on one seed:
+//
+//   secret value   subject ppg   delta
+//        26           23.95      +5.80
+//        40           28.05      +9.90   <- shipped
+//        55           33.90     +15.75
+//        70           37.00     +18.85
+//
+// 40 lands on the "league-breaking, +8-10 ppg" target. League pts/team moved
+// between 101.9 and 102.8 across the WHOLE sweep, so even at +25 ppg a single
+// holder does not move league aggregate — the effect is concentrated by design.
+// The superstar scale keeps its existing 1.75x ratio to the normal one.
+const TRAIT_TIER_SCALE = { bronze: 1, silver: 2, gold: 3, hof: 5, legendary: 8, secret: 40 };
+const SUPERSTAR_TIER_SCALE = { bronze: 2, silver: 4, gold: 6, hof: 9, legendary: 14, secret: 70 };
+// `secret` is deliberately NOT in TRAIT_TIERS. That array is the set of tiers
+// GENERATION can roll, and pickPositiveTier walks it — adding secret there
+// would let a player be born with one, which is the one thing it must never be.
+// It is reachable only by evolving a legendary badge in the offseason.
 const TRAIT_TIERS = ['bronze', 'silver', 'gold', 'hof', 'legendary'];
+const SECRET_TIER = 'secret';
 
 // 48 traits, 8 per category. `affinity` is the attribute key (from data.js's
 // ATTRIBUTE_KEYS) that makes a player more likely to roll this trait; null for
@@ -171,6 +189,67 @@ const TRAIT_DESCRIPTIONS = {
   dpoyCaliber: 'Defensive Player of the Year level — the largest defensive bonus in the game.',
   franchiseCornerstone: 'The room is built around him, and it plays better for it.',
   humanHighlightReel: 'Finishes plays nobody else on the floor finishes.'
+};
+
+// SECRET FORMS. A badge already held at LEGENDARY can evolve, once, in the
+// offseason. The badge keeps its key — so its affinity, its effect pair and
+// every routing decision downstream are untouched — and only its tier and its
+// displayed name change. That is what makes this safe to add to a system with
+// 13 live effect families: nothing new has to be wired anywhere.
+//
+// FLAWS HAVE NO SECRET FORM. A legendary flaw metastasising into something
+// worse is a good idea and a different feature; this one was asked for as a
+// boost, and 40 positive badges is the whole set that can evolve.
+const SECRET_FORMS = {
+  // --- Offensive ---
+  sharpshooter: { name: 'Deadeye', description: 'The shot stopped being a question. He is a threat the moment he crosses half-court.' },
+  postThreat: { name: 'Dream Shake', description: 'Nobody guards him on the block one-on-one any more, and everybody knows it.' },
+  finisher: { name: 'Rim Wrecker', description: 'Contact stopped mattering. If he gets a step, it is two points.' },
+  playmaker: { name: 'Puppet Master', description: 'He decides where the defence goes, then punishes it for going there.' },
+  pickRollMaestro: { name: 'Two-Man Game', description: 'The screen has become unguardable regardless of who is setting it.' },
+  offBallMover: { name: 'Ghost', description: 'He is never where the defence left him, and he is always open.' },
+  freeThrowAce: { name: 'Automatic', description: 'His touch turned into an every-possession weapon, not just a free-throw one.' },
+  highMotorScorer: { name: 'Bottomless Tank', description: 'The offence runs through him now, possession after possession, and he never asks out.' },
+
+  // --- Defensive ---
+  lockdownDefender: { name: 'Straitjacket', description: 'His assignment stops existing. Teams game-plan to keep the ball away from him.' },
+  rimProtector: { name: 'The Wall', description: 'The paint closed. Drivers pull up rather than test him.' },
+  pickpocket: { name: 'Sticky Fingers', description: 'Handling the ball near him is a mistake, and he makes them pay every time.' },
+  defensiveAnchor: { name: 'Keystone', description: 'The whole defence holds because he does.' },
+  chargeTaker: { name: 'Concrete', description: 'He arrives before the drive does, and the drive ends.' },
+  switchable: { name: 'Shapeshifter', description: 'One through five, the matchup never favours the offence.' },
+  glassCleaner: { name: 'Vacuum', description: 'Defensive possessions end when the shot goes up, not when it comes down.' },
+  pointOfAttackMenace: { name: 'Full-Court Pest', description: 'The offence cannot get into its set. It never gets started.' },
+
+  // --- Athletic ---
+  eliteSpeed: { name: 'Blur', description: 'In transition he is simply gone, and the game bends around that.' },
+  explosiveVertical: { name: 'Skywalker', description: 'Everything at the rim is his. It shows up as blocks, and as fear.' },
+  ironMan: { name: 'Titanium', description: 'He does not miss games. The schedule stopped applying to him.' },
+  quickTwitch: { name: 'Live Wire', description: 'Every pass near him is a coin flip, and the coin is weighted.' },
+  strengthAdvantage: { name: 'Freight Train', description: 'Boxing him out stopped working. The board is his by default.' },
+  highMotor: { name: 'Perpetual Motion', description: 'The fourth quarter looks like the first. He does not slow down.' },
+  springyRebounder: { name: 'Second Jump', description: 'He is back up before anyone else has landed.' },
+  fastHealer: { name: 'Overnight Recovery', description: 'Injuries that should cost him months cost him weeks.' },
+
+  // --- Mental ---
+  highIQ: { name: 'Chess Master', description: 'He is two possessions ahead of everyone on the floor, including his own coach.' },
+  clutchGene: { name: 'Cold Blooded', description: 'The last five minutes belong to him, and the numbers agree.' },
+  coachable: { name: 'Sponge', description: 'He adds a new part of his game every single summer.' },
+  naturalLeader: { name: 'Magnetic', description: 'Players want to be on his team. The whole roster is better for it.' },
+  bigGameCompetitor: { name: 'Big Stage', description: 'The bigger the game, the further above his own average he plays.' },
+  filmJunkie: { name: 'Photographic', description: 'He has seen your set before, and he knows the counter.' },
+  poise: { name: 'Unshakeable', description: 'Pressure does not reach him. The right pass still gets made.' },
+  mentor: { name: 'Kingmaker', description: 'Young players around him develop at a rate nobody can explain. Still nothing for him.' },
+
+  // --- Superstar ---
+  alphaDog: { name: 'Killer Instinct', description: 'He smells a beaten opponent and ends it. The game stops being competitive.' },
+  iceInVeins: { name: 'Absolute Zero', description: 'There is no moment big enough to make him blink.' },
+  twoWayStar: { name: 'Two-Way Terror', description: 'He is the best player on the floor at both ends, in the same game.' },
+  floorGeneral: { name: 'Field Marshal', description: 'The offence is an extension of him. Everyone else is executing his read.' },
+  unstoppableForce: { name: 'Juggernaut', description: 'There is no defensive scheme for this. There is only fouling him.' },
+  dpoyCaliber: { name: 'Eraser', description: 'Whatever the offence wanted, he takes it away. The best defensive badge in the game.' },
+  franchiseCornerstone: { name: 'Dynasty', description: 'The organisation is built around him and it shows in every locker room.' },
+  humanHighlightReel: { name: 'Poster Child', description: 'He plays above the game itself, and the building knows it.' }
 };
 
 function getTraitBonus(player, system, stat) {
@@ -487,6 +566,108 @@ function hashId(id) {
   return h >>> 0;
 }
 
+// THE EVOLUTION ROLL. Called once per player per offseason, from
+// progression.js's progressPlayer.
+//
+// ONE PER PLAYER, EVER. These do not expire, so without a cap every offseason
+// adds holders and only retirement removes them — over twenty seasons the
+// league fills up with them and "secret" stops meaning anything. A player who
+// already has one is out of the running for good.
+//
+// Eligibility is the gate that does most of the work: he must already hold a
+// POSITIVE badge at legendary. That means the badge he can evolve is decided by
+// what he already is, and a player with no legendary badge can never roll at
+// all — no separate rarity gate needed on top.
+// Calibrated by sweep, not picked. 190 of 380 players are eligible — legendary
+// is the MOST common tier, so "holds a legendary" is not itself rare and the
+// chance has to do all the gating. Multipliers across the eligible pool sum to
+// 353x base, so:
+//
+//   base      per offseason   best player      steady state (~12yr careers)
+//   0.0100         3.53          6.26%             ~42 holders
+//   0.0020         0.71          1.25%             ~8.5
+//   0.0010         0.35          0.63%             ~4.2      <- shipped
+//   0.0005         0.18          0.31%             ~2.1
+//
+// 0.0010 gives roughly one evolution every three seasons and about four holders
+// league-wide at any time — one per seven teams. Rare enough that it is an
+// event, common enough that it happens to YOUR player eventually.
+const SECRET_BASE_CHANCE = 0.0010;
+
+function secretEvolutionChance(player) {
+  // Work ethic is the spine of it: 0.5x at 0, 1.0x at 50, 2.0x at 100.
+  const workEthic = (player.attributes && player.attributes.workEthic) || 50;
+  const effort = 0.5 + workEthic / 66.7;
+
+  // Coachable and Film Junkie raise it, Stubborn lowers it — and all three sit
+  // on the same progression/self axis, so ONE term covers every one of them and
+  // any future trait on that axis comes along for free.
+  const coaching = 1 + getTraitBonus(player, 'progression', 'self') / 8;
+
+  // Development years. Past 29 this becomes a long shot rather than a path.
+  const age = player.age || 27;
+  const youth = age <= 25 ? 2.0 : (age <= 29 ? 1.0 : 0.3);
+
+  return SECRET_BASE_CHANCE * effort * Math.max(0.25, coaching) * youth;
+}
+
+function eligibleSecretBadges(player) {
+  if (!player.hiddenTraits) return [];
+  // Already holds one: done, for the rest of his career.
+  if (player.hiddenTraits.some(function (t) { return t.tier === SECRET_TIER; })) return [];
+  return player.hiddenTraits.filter(function (t) {
+    const def = TRAIT_TAXONOMY_BY_KEY[t.key];
+    return t.tier === 'legendary' && def && def.category !== 'negative' && SECRET_FORMS[t.key];
+  });
+}
+
+// Returns the evolved trait ({key, tier, secretName}) or null. Mutates the
+// player's hiddenTraits in place when it fires, so the caller only has to
+// report it.
+//
+// DRAWS FROM ITS OWN STREAM, not the offseason's. Taking even one number from
+// the shared rng shifts it for every player processed after, which moved the
+// rollover golden — verified by stubbing this to null and watching the golden
+// go straight back to passing.
+//
+// Seeding on the player's id plus his age gives a draw that is stable for a
+// given player in a given season, different every season as he ages, and
+// completely independent of how many players were processed before him. So
+// this feature is provably additive: the rest of the offseason is bit-for-bit
+// what it was, and the golden proves it rather than being regenerated to hide it.
+function rollSecretBadgeEvolution(player) {
+  const candidates = eligibleSecretBadges(player);
+  if (!candidates.length) return null;
+  // Coerced, because hand-built test fixtures do not always carry an id and a
+  // crash inside a rarity roll is a poor way to find that out.
+  const rng = _TRAITS_DATA.rng.makeRng(
+    hashId(String(player.id || player.name || '')) + (player.age || 0) * 7919);
+  const roll = rng();
+  // ONE roll per player, NOT one per legendary badge. Scaling by the number of
+  // candidates gave a player holding three legendaries three times the chance,
+  // which pushed the best player in the league to 18.8% a summer and the league
+  // to 5.7 evolutions a year. Holding more legendary badges decides WHICH badge
+  // can evolve, not how likely it is that one does.
+  const chance = secretEvolutionChance(player);
+  if (roll >= chance) return null;
+  // Which one evolves is decided off the same draw rather than a second one.
+  const pick = candidates[Math.min(candidates.length - 1,
+    Math.floor((roll / chance) * candidates.length))];
+  pick.tier = SECRET_TIER;
+  return { key: pick.key, tier: SECRET_TIER, name: SECRET_FORMS[pick.key].name };
+}
+
+// One formatter, used by both offseason routes, so the manual-draft path and
+// the fast-forward path cannot drift into announcing these differently.
+function announceSecretBadges(secretBadges, onFeed) {
+  if (!secretBadges || !secretBadges.length || !onFeed) return;
+  secretBadges.forEach(function (s) {
+    const def = TRAIT_TAXONOMY_BY_KEY[s.key];
+    onFeed('SECRET BADGE — ' + s.playerName + ' turned ' +
+      (def ? def.name : s.key) + ' into ' + s.name + ' over the summer.');
+  });
+}
+
 function ensureHiddenPlayerData(players) {
   players.forEach(function (p) {
     if (p.hiddenTraits && p.hiddenTraits.length > 0) return;
@@ -502,6 +683,13 @@ if (typeof module !== 'undefined' && module.exports) {
     TRAIT_TAXONOMY: TRAIT_TAXONOMY,
     TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY,
     TRAIT_DESCRIPTIONS: TRAIT_DESCRIPTIONS,
+    SECRET_FORMS: SECRET_FORMS,
+    SECRET_TIER: SECRET_TIER,
+    SECRET_BASE_CHANCE: SECRET_BASE_CHANCE,
+    secretEvolutionChance: secretEvolutionChance,
+    eligibleSecretBadges: eligibleSecretBadges,
+    rollSecretBadgeEvolution: rollSecretBadgeEvolution,
+    announceSecretBadges: announceSecretBadges,
     TRAIT_EFFECT_LABELS: TRAIT_EFFECT_LABELS,
     TRAIT_TIERS: TRAIT_TIERS,
     // Exported so scripts/validate-traits.js can check the tier ladder where it

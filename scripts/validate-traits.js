@@ -785,7 +785,132 @@ function checkEveryBadgeIsDocumented() {
   console.log('checkEveryBadgeIsDocumented: OK (' + traitsModule.TRAIT_TAXONOMY.length + ' badges)');
 }
 
+// Secret badges are the rarest thing in the game and the easiest to break
+// silently: they are unreachable by generation, reachable only by evolution,
+// and capped at one per player. Each of those is asserted, because none of them
+// is visible from reading a roster.
+function checkSecretBadgesAreUnreachableByGeneration() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+  assert.strictEqual(traitsModule.TRAIT_TIERS.indexOf(traitsModule.SECRET_TIER), -1,
+    'secret must NOT be in TRAIT_TIERS, or generation can roll it and players are born with one');
+
+  // Generate a whole league's worth of traits and confirm none came out secret.
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  traitsModule.ensureHiddenPlayerData(playersMod.PLAYERS_2026);
+  const born = [];
+  playersMod.PLAYERS_2026.forEach(function (p) {
+    (p.hiddenTraits || []).forEach(function (t) {
+      if (t.tier === traitsModule.SECRET_TIER) born.push(p.name);
+    });
+  });
+  assert.strictEqual(born.length, 0,
+    'no player may be GENERATED with a secret badge, found: ' + born.join(', '));
+
+  // Every positive badge has a form to evolve into; no flaw does.
+  const positives = traitsModule.TRAIT_TAXONOMY.filter(function (t) { return t.category !== 'negative'; });
+  const missing = positives.filter(function (t) { return !traitsModule.SECRET_FORMS[t.key]; });
+  assert.strictEqual(missing.length, 0,
+    'these positive badges have no secret form: ' + missing.map(function (t) { return t.key; }).join(', '));
+  const onFlaws = Object.keys(traitsModule.SECRET_FORMS).filter(function (k) {
+    const d = traitsModule.TRAIT_TAXONOMY_BY_KEY[k];
+    return d && d.category === 'negative';
+  });
+  assert.strictEqual(onFlaws.length, 0, 'flaws must not have secret forms: ' + onFlaws.join(', '));
+
+  // Names must be distinct from each other AND from the base badge names, or
+  // the feed line "turned X into Y" reads as nonsense.
+  const seen = {};
+  Object.keys(traitsModule.SECRET_FORMS).forEach(function (k) {
+    const n = traitsModule.SECRET_FORMS[k].name;
+    assert.ok(!seen[n], 'duplicate secret badge name: ' + n);
+    seen[n] = true;
+    assert.notStrictEqual(n, traitsModule.TRAIT_TAXONOMY_BY_KEY[k].name,
+      'secret form must differ from the base badge name for ' + k);
+  });
+  console.log('checkSecretBadgesAreUnreachableByGeneration: OK (' +
+    Object.keys(traitsModule.SECRET_FORMS).length + ' forms)');
+}
+
+function checkSecretBadgeEvolutionIsCappedAndRare() {
+  const traitsModule = require(path.join(__dirname, '..', 'traits.js'));
+
+  // A player already holding one is permanently out of the running. Without
+  // this a star could stack several league-breaking badges over a career.
+  const holder = {
+    id: 'cap-test', name: 'Cap Test', age: 22,
+    attributes: { workEthic: 99 },
+    hiddenTraits: [
+      { key: 'sharpshooter', tier: traitsModule.SECRET_TIER },
+      { key: 'finisher', tier: 'legendary' }
+    ]
+  };
+  assert.strictEqual(traitsModule.eligibleSecretBadges(holder).length, 0,
+    'a player who already holds a secret badge must never be eligible for another');
+
+  // Only LEGENDARY positives are candidates.
+  const mixed = {
+    id: 'mix-test', name: 'Mix Test', age: 22,
+    attributes: { workEthic: 50 },
+    hiddenTraits: [
+      { key: 'sharpshooter', tier: 'hof' },
+      { key: 'finisher', tier: 'legendary' },
+      { key: 'streaky', tier: 'legendary' }
+    ]
+  };
+  const cands = traitsModule.eligibleSecretBadges(mixed).map(function (t) { return t.key; });
+  assert.deepStrictEqual(cands, ['finisher'],
+    'only positive LEGENDARY badges are candidates, got ' + cands.join(','));
+
+  // The category guard on its own terms. Without this, dropping
+  // `category !== 'negative'` from eligibleSecretBadges was a SURVIVING mutant:
+  // no flaw has a secret form, so the second half of the condition already
+  // excluded every flaw and the category check never decided anything. Giving a
+  // flaw a form for the length of this assertion is the only way to find out
+  // whether the guard actually works, rather than whether the data happens to
+  // make it unnecessary.
+  const restore = traitsModule.SECRET_FORMS.streaky;
+  traitsModule.SECRET_FORMS.streaky = { name: 'Test Form', description: 'Injected for this assertion only.' };
+  try {
+    const withFlawForm = traitsModule.eligibleSecretBadges(mixed).map(function (t) { return t.key; });
+    assert.deepStrictEqual(withFlawForm, ['finisher'],
+      'a FLAW must stay ineligible even if it somehow has a secret form, got ' + withFlawForm.join(','));
+  } finally {
+    if (restore === undefined) delete traitsModule.SECRET_FORMS.streaky;
+    else traitsModule.SECRET_FORMS.streaky = restore;
+  }
+
+  // The chance must respond to what it claims to respond to.
+  function chanceFor(over) {
+    return traitsModule.secretEvolutionChance(Object.assign({
+      age: 22, attributes: { workEthic: 50 }, hiddenTraits: []
+    }, over));
+  }
+  const baseline = chanceFor({});
+  assert.ok(chanceFor({ attributes: { workEthic: 99 } }) > baseline * 1.4,
+    'work ethic must raise the chance materially');
+  assert.ok(chanceFor({ age: 34 }) < baseline * 0.5, 'age must lower it');
+  assert.ok(chanceFor({ hiddenTraits: [{ key: 'coachable', tier: 'legendary' }] }) > baseline * 1.4,
+    'Coachable must raise it');
+  assert.ok(chanceFor({ hiddenTraits: [{ key: 'stubborn', tier: 'legendary' }] }) < baseline,
+    'Stubborn must lower it');
+
+  // And it must stay RARE. Summed across the whole eligible league this is the
+  // expected number of evolutions per offseason; measured at 0.32 over 25
+  // seasons of real offseasons. A change that pushes this past 1.5 has turned
+  // the rarest thing in the game into a routine one.
+  let expected = 0;
+  const leagueMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  leagueMod.PLAYERS_2026.forEach(function (p) {
+    if (traitsModule.eligibleSecretBadges(p).length) expected += traitsModule.secretEvolutionChance(p);
+  });
+  assert.ok(expected > 0.05 && expected < 1.5,
+    'expected evolutions per offseason should stay rare, got ' + expected.toFixed(2));
+  console.log('checkSecretBadgeEvolutionIsCappedAndRare: OK (' + expected.toFixed(2) + '/offseason)');
+}
+
 checkEveryBadgeIsDocumented();
+checkSecretBadgesAreUnreachableByGeneration();
+checkSecretBadgeEvolutionIsCappedAndRare();
 checkProspectBadgesStayFuzzy();
 checkTheDeadBadgeArrayIsGone();
 checkDefenseQualityBonusRoutesByZone();

@@ -2,7 +2,7 @@ var _PROGRESSION_DATA = (typeof require !== 'undefined')
   ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX },
-      traits: { getTraitBonus: getTraitBonus },
+      traits: { getTraitBonus: getTraitBonus, rollSecretBadgeEvolution: rollSecretBadgeEvolution },
       teams: { getTeamById: getTeamById },
       coaches: { coachFitMultiplier: coachFitMultiplier },
       ratings: { computeOverall: computeOverall }
@@ -187,6 +187,21 @@ function progressPlayer(player, rng, teammates, options) {
   player.potential = Math.max(player.potential, _PROGRESSION_DATA.ratings.computeOverall(player));
 
   applyCareerModeTraining(player);
+
+  // The one place a badge can CHANGE after a player enters the league. Runs
+  // last, so it sees this offseason's finished attributes — a player whose work
+  // ethic just grew is judged on the new number, not the old one.
+  //
+  // Suppressed during estimatePotentialMonteCarlo's internal runs, exactly like
+  // the potential pull above: that function simulates many futures to discover
+  // a ceiling, and letting it hand out real badges along the way would both
+  // corrupt the estimate and give a player a secret badge for a season that
+  // never happened.
+  if (!options.suppressPotentialPull) {
+    const evolved = _PROGRESSION_DATA.traits.rollSecretBadgeEvolution(player);
+    if (evolved) return evolved;
+  }
+  return null;
 }
 
 // Player-career-mode-only: applies the most recent unconsumed "training"

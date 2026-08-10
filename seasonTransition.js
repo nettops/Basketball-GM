@@ -57,11 +57,21 @@ function runOffseasonPreDraft(rng, leagueYear) {
   // Mentor bonus stays a roster-only effect.
   const allPlayers = _TRANSITION_DATA.players.PLAYERS_2026.slice();
   const rosterPlayers = allPlayers.filter(function (p) { return p.teamId; });
+  // Secret badge evolutions are collected as they happen so the offseason can
+  // report them. They are the rarest thing in the game — if one fires and
+  // nothing tells the player, it may as well not have.
+  const secretBadges = [];
   allPlayers.forEach(function (p) {
     const teammates = p.teamId
       ? rosterPlayers.filter(function (tp) { return tp.teamId === p.teamId && tp.id !== p.id; })
       : [];
-    _TRANSITION_DATA.progression.progressPlayer(p, rng, teammates);
+    const evolved = _TRANSITION_DATA.progression.progressPlayer(p, rng, teammates);
+    if (evolved) {
+      secretBadges.push({
+        playerId: p.id, playerName: p.name, teamId: p.teamId,
+        key: evolved.key, name: evolved.name
+      });
+    }
   });
 
   const retirees = allPlayers.filter(function (p) { return rollRetirement(p, rng); });
@@ -78,7 +88,14 @@ function runOffseasonPreDraft(rng, leagueYear) {
     p.status.injury = null;
   });
 
-  return { retireeCount: retirees.length };
+  // A player who evolved a badge and then retired in the same offseason is
+  // dropped: reporting a discovery for someone who has already left is noise.
+  const stillActive = {};
+  _TRANSITION_DATA.players.PLAYERS_2026.forEach(function (p) { stillActive[p.id] = true; });
+  return {
+    retireeCount: retirees.length,
+    secretBadges: secretBadges.filter(function (s) { return stillActive[s.playerId]; })
+  };
 }
 
 function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass, leagueYear, lotteryFormat) {
@@ -92,7 +109,7 @@ function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass, leagueYear, 
   const draftResults = _TRANSITION_DATA.draft.runDraft(draftOrder, upcomingDraftClass);
   draftResults.forEach(function (r) { _TRANSITION_DATA.players.PLAYERS_2026.push(r.prospect); });
 
-  return { retireeCount: pre.retireeCount, draftResults: draftResults };
+  return { retireeCount: pre.retireeCount, secretBadges: pre.secretBadges, draftResults: draftResults };
 }
 
 function generateNewSeason(rng) {

@@ -183,7 +183,13 @@ const PERSONALITY_LABELS = {
 
 function traitBadgeHtml(key, tier, category, rangeLabel) {
   const def = TRAIT_TAXONOMY_BY_KEY[key];
-  const name = def ? def.name : key;
+  // An evolved badge shows its SECRET NAME. The key never changes — every
+  // routing and effect decision downstream still sees `sharpshooter` — so this
+  // is the one place the evolution is visible, and it has to be, or the rarest
+  // thing in the game looks like an ordinary badge with an odd tier on it.
+  const name = (tier === SECRET_TIER && SECRET_FORMS[key])
+    ? SECRET_FORMS[key].name
+    : (def ? def.name : key);
   // tier is null for a fuzzy (partially-scouted) reveal — rangeLabel carries
   // the "silver-gold?" range text instead of a single confirmed tier, so
   // there's no real tier to color by yet.

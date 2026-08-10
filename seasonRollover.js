@@ -18,7 +18,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       seasonTransition: require('./seasonTransition.js'),
       freeAgency: require('./freeAgency.js'),
       autoGM: require('./autoGM.js'),
-      teams: require('./teams.js')
+      teams: require('./teams.js'),
+      traits: require('./traits.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -29,7 +30,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       seasonTransition: { runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason },
       freeAgency: { runFreeAgencySilently: runFreeAgencySilently },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
-      teams: { getTeamById: getTeamById }
+      teams: { getTeamById: getTeamById },
+      traits: { announceSecretBadges: announceSecretBadges }
     };
 
 // Rolls a completed season into the next one: archives history, runs the
@@ -76,6 +78,11 @@ function runOffseasonRollover(gameState, deps) {
     const draftResult = _ROLLOVER_DATA.seasonTransition.runOffseasonThroughDraft(
       gameState.playoffBracket, gameState.rng, gameState.upcomingDraftClass,
       gameState.leagueYear, gameState.settings.lotteryFormat);
+    // Both offseason routes announce these. The manual-draft path calls
+    // runOffseasonPreDraft itself (script.js) and reports there; this is the
+    // fast-forward path, the one that runs unattended, where a silent
+    // evolution would simply never be noticed.
+    _ROLLOVER_DATA.traits.announceSecretBadges(draftResult.secretBadges, onFeed);
     gameState.lastDraftResults = draftResult.draftResults;
     // A session left over from an abandoned manual draft would otherwise
     // still point at prospects that have just been drafted for real.

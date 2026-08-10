@@ -333,7 +333,8 @@ function isRegularSeasonAndPlayoffsComplete() {
 // Season Recap route does. When only one of them passed it, Continue silently
 // auto-drafted for every manual drafter.
 function runInteractiveDraft(gs) {
-  runOffseasonPreDraft(gs.rng, gs.leagueYear);
+  const preDraft = runOffseasonPreDraft(gs.rng, gs.leagueYear);
+  announceSecretBadges(preDraft.secretBadges, function (text) { pushToFeed(text); });
   const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
   gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
   advanceDraftUntilUserTurn(gs.draftSession, gs.userTeamId, false);
