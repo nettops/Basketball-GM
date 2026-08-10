@@ -34,6 +34,11 @@ const GameState = {
   playMode: 'gm', // 'gm' | 'commissioner' | 'spectator'
   automation: defaultAutomation(),
   feed: [],
+  // The GM's permanent career record — tenures, per-season rows, milestone
+  // unlocks and the chronicle. See gmCareer.js for why almost nothing here is
+  // stored. Created lazily by ensureGmCareer so a save from before it existed
+  // repairs itself on load rather than crashing.
+  gmCareer: null,
   draftSession: null,
   tradeOffers: [],
   pauseRequested: false,

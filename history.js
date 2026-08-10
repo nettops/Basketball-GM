@@ -6,7 +6,8 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       awards: require('./awards.js'),
       careerHistory: require('./careerHistory.js'),
       finances: require('./finances.js'),
-      coaches: require('./coaches.js')
+      coaches: require('./coaches.js'),
+      gmCareer: require('./gmCareer.js')
     }
   : {
       league: {
@@ -21,7 +22,15 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       awards: { computeSeasonAwards: computeSeasonAwards, AWARD_KEYS: AWARD_KEYS },
       careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory },
       finances: { applySeasonEndFinances: applySeasonEndFinances },
-      coaches: { tickCoachTenure: tickCoachTenure }
+      coaches: { tickCoachTenure: tickCoachTenure },
+      // gmCareer.js's <script> tag loads immediately before this file's, so
+      // these are safe to reference eagerly — unlike commissioner.js below.
+      gmCareer: {
+        ensureGmCareer: ensureGmCareer,
+        recordSeason: recordSeason,
+        SEASON_RESULT: SEASON_RESULT,
+        SEASON_RESULT_LABEL: SEASON_RESULT_LABEL
+      }
     };
 
 // Lazily resolved (mirrors league.js's _historyDeps()/_simDeps() pattern) —
@@ -406,6 +415,26 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   });
 
   archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, sink);
+
+  // The GM's own season row. Recorded here rather than at the two call sites
+  // because this function is already the single shared season-end write point
+  // for both the manual advance and the fast-forward; recording at the call
+  // sites would give the two paths two chances to disagree.
+  //
+  // The record comes off the SCHEDULE, not off team.record — see
+  // regularSeasonRecord for why (team.record silently includes the playoffs).
+  // Guarded on GameState because history.js also runs standalone under Node in
+  // scripts/validate-*.js.
+  if (typeof GameState !== 'undefined' && GameState && GameState.userTeamId) {
+    const career = _HISTORY_DATA.gmCareer.ensureGmCareer(GameState);
+    const userTeam = _HISTORY_DATA.teams.getTeamById(GameState.userTeamId);
+    if (userTeam) {
+      const rs = _HISTORY_DATA.gmCareer.regularSeasonRecord(
+        GameState.season ? GameState.season.games : [], userTeam.id);
+      _HISTORY_DATA.gmCareer.recordSeason(career, leagueYear, userTeam.id,
+        rs.wins, rs.losses, playoffBracket);
+    }
+  }
 
   _HISTORY_DATA.players.PLAYERS_2026.forEach(function (p) {
     rollSeasonIntoCareerStats(p, leagueYear, sink);
