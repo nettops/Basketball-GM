@@ -138,4 +138,111 @@ function checkEnsureRepairsAPartialCareer() {
 }
 checkEnsureRepairsAPartialCareer();
 
+// A career with a known, hand-checkable shape: 6 seasons, 2 titles (back to
+// back), 1 Finals loss, 4 playoff appearances.
+function sixSeasonCareer() {
+  const R = gmCareer.SEASON_RESULT;
+  const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
+  c.seasons = [
+    { leagueYear: 2026, teamId: 'BOS', wins: 41, losses: 41, result: R.MISSED },
+    { leagueYear: 2027, teamId: 'BOS', wins: 50, losses: 32, result: R.FIRST_ROUND },
+    { leagueYear: 2028, teamId: 'BOS', wins: 62, losses: 20, result: R.CHAMPION },
+    { leagueYear: 2029, teamId: 'BOS', wins: 58, losses: 24, result: R.CHAMPION },
+    { leagueYear: 2030, teamId: 'BOS', wins: 55, losses: 27, result: R.FINALS_LOSS },
+    { leagueYear: 2031, teamId: 'BOS', wins: 30, losses: 52, result: R.MISSED }
+  ];
+  return c;
+}
+
+function checkCareerTotalsAreDerivedFromSeasonRows() {
+  const t = gmCareer.careerTotals(sixSeasonCareer());
+  assert.strictEqual(t.seasons, 6);
+  assert.strictEqual(t.wins, 296);
+  assert.strictEqual(t.losses, 196);
+  assert.strictEqual(t.titles, 2);
+  assert.strictEqual(t.finalsAppearances, 3, 'two titles plus one Finals loss');
+  assert.strictEqual(t.playoffAppearances, 4);
+  assert.strictEqual(Math.round(t.winPct * 1000) / 1000, 0.602);
+  console.log('checkCareerTotalsAreDerivedFromSeasonRows: OK');
+}
+checkCareerTotalsAreDerivedFromSeasonRows();
+
+function checkStreaksCountConsecutiveSeasonsOnly() {
+  const c = sixSeasonCareer();
+  assert.deepStrictEqual(gmCareer.titleYears(c), [2028, 2029]);
+  assert.strictEqual(gmCareer.longestTitleRun(c), 2, 'back-to-back is a run of 2');
+  assert.strictEqual(gmCareer.longestPlayoffStreak(c), 4, '2027-2030 is four straight');
+
+  // A gap must BREAK the run, not be skipped over.
+  const R = gmCareer.SEASON_RESULT;
+  c.seasons[3].result = R.MISSED;
+  assert.strictEqual(gmCareer.longestTitleRun(c), 1, 'a missed year between titles breaks the run');
+  assert.strictEqual(gmCareer.longestPlayoffStreak(c), 2, 'and breaks the playoff streak');
+  console.log('checkStreaksCountConsecutiveSeasonsOnly: OK');
+}
+checkStreaksCountConsecutiveSeasonsOnly();
+
+function checkArchiveQueriesRespectTheTenureWindow() {
+  const c = sixSeasonCareer();
+  const leagueHistory = {
+    champions: [],
+    draftClasses: [
+      { leagueYear: 2027, picks: [{ round: 1, pickNumber: 3, teamId: 'BOS', playerId: 'p1', playerName: 'Real Pick' }] },
+      { leagueYear: 2027, picks: [{ round: 1, pickNumber: 4, teamId: 'LAL', playerId: 'p2', playerName: 'Not Yours' }] },
+      { leagueYear: 2020, picks: [{ round: 1, pickNumber: 1, teamId: 'BOS', playerId: 'p3', playerName: 'Before You' }] }
+    ],
+    trades: [
+      { leagueYear: 2028, participants: ['BOS', 'LAL'],
+        players: [{ playerId: 'p4', playerName: 'Arrived', fromTeamId: 'LAL', toTeamId: 'BOS' },
+                  { playerId: 'p5', playerName: 'Departed', fromTeamId: 'BOS', toTeamId: 'LAL' }], picks: [] },
+      { leagueYear: 2028, participants: ['NYK', 'MIA'],
+        players: [{ playerId: 'p6', playerName: 'Elsewhere', fromTeamId: 'NYK', toTeamId: 'MIA' }], picks: [] }
+    ]
+  };
+
+  const picks = gmCareer.userDraftPicks(c, leagueHistory);
+  assert.strictEqual(picks.length, 1, 'only picks made by your team, during your years');
+  assert.strictEqual(picks[0].playerName, 'Real Pick');
+
+  assert.strictEqual(gmCareer.userTrades(c, leagueHistory).length, 1,
+    'only trades your team took part in');
+
+  const arrivals = gmCareer.playersAcquiredByTrade(c, leagueHistory);
+  assert.deepStrictEqual(arrivals.map(function (a) { return a.playerName; }), ['Arrived'],
+    'a player LEAVING your team is not an acquisition');
+  console.log('checkArchiveQueriesRespectTheTenureWindow: OK');
+}
+checkArchiveQueriesRespectTheTenureWindow();
+
+// THE ANTI-DRIFT ASSERTION.
+//
+// Comparing the career page's title count against the trophy room's banner
+// count would be VACUOUS: both read careerTotals, so the test passes no matter
+// how wrong careerTotals is. It has to be checked against an INDEPENDENT
+// re-implementation — the same idiom validate-skillCheck.js's referenceShot
+// uses. That means a future change to careerTotals must be mirrored here by
+// hand. That is the point, not an inconvenience.
+function checkTitlesAgreeWithAnIndependentWalkOfTheArchive() {
+  const c = sixSeasonCareer();
+  const leagueHistory = {
+    champions: [
+      { leagueYear: 2028, teamId: 'BOS' },
+      { leagueYear: 2029, teamId: 'BOS' },
+      { leagueYear: 2030, teamId: 'LAL' },
+      { leagueYear: 2024, teamId: 'BOS' }   // before the tenure: not yours
+    ],
+    draftClasses: [], trades: []
+  };
+
+  let referenceTitles = 0;
+  leagueHistory.champions.forEach(function (ch) {
+    if (gmCareer.tenureCovers(c, ch.teamId, ch.leagueYear)) referenceTitles += 1;
+  });
+
+  assert.strictEqual(gmCareer.careerTotals(c).titles, referenceTitles,
+    'the season rows and the champions archive must tell the same story');
+  console.log('checkTitlesAgreeWithAnIndependentWalkOfTheArchive: OK (' + referenceTitles + ' titles)');
+}
+checkTitlesAgreeWithAnIndependentWalkOfTheArchive();
+
 console.log('All gmCareer validations passed');

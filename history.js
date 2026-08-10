@@ -28,6 +28,16 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       gmCareer: {
         ensureGmCareer: ensureGmCareer,
         recordSeason: recordSeason,
+        regularSeasonRecord: regularSeasonRecord,
+        careerTotals: careerTotals,
+        seasonsAscending: seasonsAscending,
+        titleYears: titleYears,
+        longestTitleRun: longestTitleRun,
+        longestPlayoffStreak: longestPlayoffStreak,
+        userDraftPicks: userDraftPicks,
+        userTrades: userTrades,
+        playersAcquiredByTrade: playersAcquiredByTrade,
+        tenureCovers: tenureCovers,
         SEASON_RESULT: SEASON_RESULT,
         SEASON_RESULT_LABEL: SEASON_RESULT_LABEL
       }

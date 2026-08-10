@@ -135,9 +135,110 @@ function recordSeason(career, leagueYear, teamId, wins, losses, bracket) {
   return row;
 }
 
+function careerTotals(career) {
+  const seasons = (career && career.seasons) || [];
+  let wins = 0, losses = 0, playoffAppearances = 0, finalsAppearances = 0, titles = 0;
+  seasons.forEach(function (s) {
+    wins += s.wins;
+    losses += s.losses;
+    if (s.result >= SEASON_RESULT.FIRST_ROUND) playoffAppearances += 1;
+    if (s.result >= SEASON_RESULT.FINALS_LOSS) finalsAppearances += 1;
+    if (s.result === SEASON_RESULT.CHAMPION) titles += 1;
+  });
+  return {
+    seasons: seasons.length,
+    wins: wins,
+    losses: losses,
+    winPct: (wins + losses) > 0 ? wins / (wins + losses) : 0,
+    playoffAppearances: playoffAppearances,
+    finalsAppearances: finalsAppearances,
+    titles: titles
+  };
+}
+
+function seasonsAscending(career) {
+  return ((career && career.seasons) || []).slice()
+    .sort(function (a, b) { return a.leagueYear - b.leagueYear; });
+}
+
+function titleYears(career) {
+  return seasonsAscending(career)
+    .filter(function (s) { return s.result === SEASON_RESULT.CHAMPION; })
+    .map(function (s) { return s.leagueYear; });
+}
+
+// Consecutive by YEAR, not by array position — a career with a gap in its
+// season rows (possible after a commissioner rewind) must not count across it.
+function longestRunWhere(career, predicate) {
+  let best = 0, run = 0, prevYear = null;
+  seasonsAscending(career).forEach(function (s) {
+    const consecutive = prevYear !== null && s.leagueYear === prevYear + 1;
+    if (predicate(s)) {
+      run = consecutive ? run + 1 : 1;
+      if (run > best) best = run;
+    } else {
+      run = 0;
+    }
+    prevYear = s.leagueYear;
+  });
+  return best;
+}
+
+function longestTitleRun(career) {
+  return longestRunWhere(career, function (s) { return s.result === SEASON_RESULT.CHAMPION; });
+}
+
+function longestPlayoffStreak(career) {
+  return longestRunWhere(career, function (s) { return s.result >= SEASON_RESULT.FIRST_ROUND; });
+}
+
+// leagueHistory is passed IN, never imported: history.js already requires this
+// file, so importing it back would be a cycle — and passing it makes every
+// query testable against a hand-built archive.
+function userDraftPicks(career, leagueHistory) {
+  const out = [];
+  ((leagueHistory && leagueHistory.draftClasses) || []).forEach(function (cls) {
+    (cls.picks || []).forEach(function (p) {
+      if (!tenureCovers(career, p.teamId, cls.leagueYear)) return;
+      out.push({ leagueYear: cls.leagueYear, round: p.round, pickNumber: p.pickNumber,
+                 playerId: p.playerId, playerName: p.playerName });
+    });
+  });
+  return out;
+}
+
+function userTrades(career, leagueHistory) {
+  return ((leagueHistory && leagueHistory.trades) || []).filter(function (t) {
+    return (t.participants || []).some(function (teamId) {
+      return tenureCovers(career, teamId, t.leagueYear);
+    });
+  });
+}
+
+// Only ARRIVALS. A player leaving your team is part of the same trade record,
+// and counting him would make every deal look like an acquisition.
+function playersAcquiredByTrade(career, leagueHistory) {
+  const out = [];
+  userTrades(career, leagueHistory).forEach(function (t) {
+    (t.players || []).forEach(function (p) {
+      if (!tenureCovers(career, p.toTeamId, t.leagueYear)) return;
+      out.push({ leagueYear: t.leagueYear, playerId: p.playerId, playerName: p.playerName });
+    });
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SEASON_RESULT: SEASON_RESULT,
+    careerTotals: careerTotals,
+    seasonsAscending: seasonsAscending,
+    titleYears: titleYears,
+    longestTitleRun: longestTitleRun,
+    longestPlayoffStreak: longestPlayoffStreak,
+    userDraftPicks: userDraftPicks,
+    userTrades: userTrades,
+    playersAcquiredByTrade: playersAcquiredByTrade,
     SEASON_RESULT_LABEL: SEASON_RESULT_LABEL,
     createGmCareer: createGmCareer,
     ensureGmCareer: ensureGmCareer,
