@@ -1005,7 +1005,13 @@ function createChoreographer(session) {
             period, quarter, clock, '',
             (pi % 3 === 0) ? fillT(COMMENT.bringUp, pi + ei, { h: ln(me), team: teamNames[poss.team] }) : '');
 
-          function probe(offLat, offRim, seed) {
+          // ballLat offsets the BALL laterally from the handler. It is what makes
+          // a behind-the-back look different from a crossover at this size: in a
+          // crossover the body and the ball go the same way, so only the body
+          // reads; behind the back, the ball swings wide of a handler whose
+          // shoulders stay square. Without a separate ball path the two moves
+          // are the same three rectangles moving sideways.
+          function probe(offLat, offRim, seed, ballLat) {
             const spot = clampToCourt(sp[0] + lx * dir * offLat + (toRimX / rl) * offRim,
               sp[1] + ly * dir * offLat + (toRimY / rl) * offRim);
             const p = Object.assign({}, clear);
@@ -1015,11 +1021,42 @@ function createChoreographer(session) {
               p[him][1] + ly * dir * offLat * 0.6);
             // the four men who cleared out do not stand and watch him work
             const flowed = flowPositions(p, [me, him], pi * 37 + seed, defenderIds);
-            push(BEAT.isoSize, flowed, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
+            const bl = ballLat || 0;
+            const ball = bl
+              ? clampToCourt(spot[0] + lx * dir * bl, spot[1] + ly * dir * bl)
+              : spot;
+            push(BEAT.isoSize, flowed, { x: ball[0], y: ball[1], holder: me }, period, quarter, clock, '');
             return flowed;
           }
-          probe(11, 6, 1);
-          const back = probe(-9, 2, 2);
+
+          // WHICH move he reaches for. Keyed to ball-handling so a guard visibly
+          // has more in the bag than a big — the whole point of adding a
+          // vocabulary rather than making everyone do the same shimmy. The
+          // possession index breaks ties so the same player does not repeat one
+          // move all night.
+          const handleSkill = (playerById[me] && playerById[me].attributes)
+            ? playerById[me].attributes.ballHandling : 50;
+          const moveRoll = (pi + ei) % 3;
+          const moveKind = (handleSkill >= 80 && moveRoll === 0) ? 'double'
+            : (handleSkill >= 65 && moveRoll === 1) ? 'behind'
+            : 'cross';
+
+          let back;
+          if (moveKind === 'double') {
+            // Jab, cross back, cross AGAIN. Six beats where a crossover is four,
+            // so it is gated to elite handlers — on everyone else it would just
+            // read as dithering.
+            probe(11, 6, 1);
+            probe(-9, 2, 2);
+            back = probe(7, 4, 3);
+          } else if (moveKind === 'behind') {
+            // Body barely moves; the BALL takes the long way round behind him.
+            probe(6, 5, 1, -12);
+            back = probe(-7, 2, 2, 11);
+          } else {
+            probe(11, 6, 1);
+            back = probe(-9, 2, 2);
+          }
           // and back to the spot the sim says he shot from
           const attack = Object.assign({}, back);
           attack[me] = sp;
