@@ -225,13 +225,45 @@ function checkEffectTiming() {
   assert.ok(impact.impactFreezeMs(poster, full) > impact.impactFreezeMs(block, full),
     'a poster should hold longer than a block');
 
-  // speed policy: full at 1x and 2x, halved at 4x, nothing at 8x
-  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 2 }),
-    impact.impactFreezeMs(poster, full), '2x keeps the full freeze');
-  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 4 }),
-    Math.round(impact.impactFreezeMs(poster, full) / 2), '4x halves the freeze');
-  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 8 }), 0,
-    '8x suppresses the freeze entirely');
+  // SPEED POLICY, DELIBERATELY INVERTED. The three assertions that used to live
+  // here encoded the opposite rule — full freeze at 2x, halved at 4x, nothing at
+  // 8x. That switched the emphasis off at exactly the speed where a highlight
+  // blurs past, which is the defect this change exists to fix. They are replaced
+  // rather than deleted so the reversal is visible in history.
+  //
+  // Two separate rules, asserted separately because they can break separately:
+  //   (a) WHICH kinds still qualify — the bar rises with speed
+  //   (b) HOW LONG a qualifying freeze holds — emphasis grows with speed
+  const ankle = { kind: 'ankle', at: { x: 100, y: 100 }, byId: 'a', onId: 'b' };
+
+  // (a) the bar
+  assert.strictEqual(impact.impactQualifies('poster', 1), true, 'a poster always qualifies');
+  assert.strictEqual(impact.impactQualifies('poster', 8), true, 'including at 8x — this is the whole point');
+  assert.strictEqual(impact.impactQualifies('block', 2), true, 'a block qualifies at 2x');
+  assert.strictEqual(impact.impactQualifies('block', 4), false,
+    'blocks are ~4.5/game and stop qualifying above 2x, or 8x stutters');
+  assert.strictEqual(impact.impactQualifies('ankle', 4), true, 'an ankle breaker survives 4x');
+  assert.strictEqual(impact.impactQualifies('ankle', 8), false, 'but not 8x — only posters do');
+
+  assert.strictEqual(impact.impactFreezeMs(block, { reduceMotion: false, speed: 8 }), 0,
+    'a non-qualifying kind freezes for exactly zero');
+  assert.ok(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) > 0,
+    '8x MUST still stop for a poster — the old behaviour returned 0 here');
+
+  // (b) the duration
+  assert.strictEqual(impact.impactFreezeMs(poster, full), impact.IMPACT_TIER1_FREEZE_MS,
+    '1x is unchanged from before this feature');
+  assert.ok(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 2 }) >
+            impact.impactFreezeMs(poster, full),
+    'emphasis GROWS with speed rather than fading');
+  assert.ok(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) <= impact.IMPACT_FREEZE_MAX_MS,
+    'and is capped, or a freeze reads as a hang rather than a moment');
+  assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: false, speed: 8 }),
+    impact.impactFreezeMs(poster, { reduceMotion: false, speed: 4 }),
+    'both land on the cap, so 8x is not longer than 4x');
+
+  assert.ok(impact.impactFreezeMs(ankle, { reduceMotion: false, speed: 4 }) > 0,
+    'an ankle breaker still holds at 4x');
 
   // reduced motion removes motion, not information
   assert.strictEqual(impact.impactFreezeMs(poster, { reduceMotion: true, speed: 1 }), 0,

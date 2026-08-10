@@ -35,14 +35,53 @@ const IMPACT_ZOOM_LEAD_MAX_MS = 900;
 // imageSmoothingEnabled = false lands sprite edges on fractional pixels every
 // frame, which shimmers. Snapping in, holding, and snapping back is truer to
 // pixel art and reads as a harder cut.
+// Which kinds still earn a freeze at a given speed. The bar RISES with speed,
+// which is the inverse of what this module used to do — it faded the emphasis
+// out above 4x and killed it entirely at 8x, switching the effect off at exactly
+// the speed where a highlight blurs past.
+//
+// Measured over 60 games: block 4.5/game, poster 2.0, ankle 1.7 — 8.3 total. At
+// 8x a whole game plays in well under a minute, so freezing on all of them is a
+// stutter every few seconds rather than emphasis. Blocks are simultaneously the
+// most common and the least spectacular (they were already excluded from the
+// camera push), so they drop out first. At 8x only a poster qualifies: ~2 a
+// game, which is the "rip through the possessions and stop dead on the dunk"
+// experience this exists to buy.
+const IMPACT_SPEED_BAR = [
+  { maxSpeed: 2, kinds: ['poster', 'ankle', 'block'] },
+  { maxSpeed: 4, kinds: ['poster', 'ankle'] },
+  { maxSpeed: Infinity, kinds: ['poster'] }
+];
+
+function impactQualifies(kind, speed) {
+  const s = typeof speed === 'number' ? speed : 1;
+  for (let i = 0; i < IMPACT_SPEED_BAR.length; i++) {
+    if (s <= IMPACT_SPEED_BAR[i].maxSpeed) {
+      return IMPACT_SPEED_BAR[i].kinds.indexOf(kind) !== -1;
+    }
+  }
+  return false;
+}
+
+// A freeze is real milliseconds, but at 8x each real second consumes eight times
+// the game, so the same freeze buys proportionally less emphasis. It therefore
+// scales UP with speed — and is capped, because past roughly a second a frozen
+// game stops reading as a moment and starts reading as a hang.
+//
+// The cap is on the RESULT, not on the multiplier. The design doc proposed
+// capping the multiplier at 4, which for a 320ms base allows 1280ms — past the
+// very line the cap exists to stay behind. Capping the duration directly is what
+// that reasoning actually calls for.
+const IMPACT_FREEZE_MAX_MS = 900;
+
 function impactFreezeMs(marker, opts) {
   if (!marker) return 0;
   const o = opts || {};
   if (o.reduceMotion) return 0;
-  if (o.speed >= 8) return 0;
+  const speed = typeof o.speed === 'number' ? o.speed : 1;
+  if (!impactQualifies(marker.kind, speed)) return 0;
   const base = marker.kind === 'block' ? IMPACT_TIER2_FREEZE_MS : IMPACT_TIER1_FREEZE_MS;
-  if (o.speed >= 4) return Math.round(base / 2);
-  return base;
+  return Math.min(Math.round(base * speed), IMPACT_FREEZE_MAX_MS);
 }
 
 // Lead-in: push the camera in on the TAKEOFF rather than the landing. Armed
@@ -52,7 +91,11 @@ function impactFreezeMs(marker, opts) {
 function armImpactZoom(marker, nowMs, opts) {
   const o = opts || {};
   if (!marker) return;
-  if (o.reduceMotion || o.speed >= 8) return;
+  // The 8x bail-out is gone deliberately. The camera push is what distinguishes
+  // "this is a moment" from "the game froze", so it matters MORE at high speed,
+  // not less. It now follows the same qualifying bar as the freeze.
+  if (o.reduceMotion) return;
+  if (!impactQualifies(marker.kind, typeof o.speed === 'number' ? o.speed : 1)) return;
   if (marker.kind === 'block') return;   // blocks never zoom
   _impact = {
     kind: marker.kind,
@@ -175,6 +218,8 @@ if (typeof module !== 'undefined' && module.exports) {
     armImpactZoom: armImpactZoom,
     resetImpact: resetImpact,
     impactFreezeMs: impactFreezeMs,
+    impactQualifies: impactQualifies,
+    IMPACT_FREEZE_MAX_MS: IMPACT_FREEZE_MAX_MS,
     impactZoom: impactZoom,
     drawImpactLines: drawImpactLines,
     drawImpactFlash: drawImpactFlash
