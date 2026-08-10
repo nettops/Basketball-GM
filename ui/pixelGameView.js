@@ -205,6 +205,10 @@ function renderPixelGame(container) {
   // lifted, over resumed play, around a rim the players had already left.
   let impactRealMs = 0;
   let speed = 1;
+  // Recent ball positions, newest last. Fixed length: the trail is a legibility
+  // aid at speed, not a motion-blur effect, so it must not grow with frame rate.
+  const ballTrail = [];
+  const BALL_TRAIL_MAX = 10;
   let paused = false;
   let lastFrameTs = null;
   let kfIndex = 0;
@@ -882,6 +886,43 @@ function renderPixelGame(container) {
       by = groundY - Math.sin(fr.f * Math.PI) * arcHeight;
       ballSpin += (Math.abs(fr.b.ball.x - fr.a.ball.x) > 2 ? 0.6 : 0.25) * (fr.b.ball.x >= fr.a.ball.x ? 1 : -1);
     }
+    // Legibility at speed. At 1x you can follow the ball unaided; at 8x it is a
+    // smear, so the trail and the handler ring fade IN as speed rises rather
+    // than being always-on clutter. Both are drawn BEFORE the ball and its
+    // shadow, so they can never obscure the thing they exist to point at.
+    //
+    // Suppressed entirely under reduced motion, alongside the freezes and zooms
+    // — a trail is exactly the kind of moving decoration that setting is for.
+    if (!reduceMotion && speed > 1) {
+      // 0 at 1x, 1 at 8x. Everything below scales off this one number so the
+      // effect has a single intensity knob rather than three.
+      const trailStrength = Math.min(1, (speed - 1) / 7);
+
+      ballTrail.push({ x: bx, y: by });
+      while (ballTrail.length > BALL_TRAIL_MAX) ballTrail.shift();
+
+      for (let i = 0; i < ballTrail.length - 1; i++) {
+        const age = (i + 1) / ballTrail.length;       // 0 oldest, 1 newest
+        ctx.fillStyle = 'rgba(255,190,90,' + (0.45 * age * trailStrength).toFixed(3) + ')';
+        const r = age < 0.6 ? 1 : 2;
+        ctx.fillRect(Math.round(ballTrail[i].x) - (r >> 1), Math.round(ballTrail[i].y) - (r >> 1), r, r);
+      }
+
+      // A ring under whoever is holding it. Drawn on the FLOOR (groundY) rather
+      // than at the ball, so it reads as "this player" and not as a second ball.
+      if (holder) {
+        ctx.strokeStyle = 'rgba(255,210,120,' + (0.75 * trailStrength).toFixed(3) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(Math.round(bx), Math.round(groundY) + 1, 6, 2.5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    } else if (ballTrail.length) {
+      // Dropping back to 1x (or into reduced motion) must clear the tail rather
+      // than leave a frozen streak on the floor.
+      ballTrail.length = 0;
+    }
+
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
     drawBall(ctx, bx, by, holder ? undefined : ballSpin);
