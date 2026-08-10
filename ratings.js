@@ -71,7 +71,7 @@ const OVERALL_INTERCEPT = 50.0000;
 // re-measured whenever the attributes or the fit change — leaving them stale
 // silently compresses or clips the ends of the display scale, and
 // checkTheKnotsAreCalibratedToTheLeague fails loudly when they are.
-const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 85, dispHi: 95 };
+const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 84, dispHi: 95 };
 const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
 const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
 
@@ -107,14 +107,86 @@ const RATING_BANDS = {
   // arm admitted exactly ONE player, who already all but qualified on overall
   // alone, while the high-upside rookies it exists for were shut out. An arm
   // that only fires for players who nearly qualify anyway is not an arm.
-  // Re-derived to 86 when signature attributes flattened the display curve;
-  // it reaches 18 players the overall arm misses, the lowest at 76.
-  superstarPotential: 86,
+  // Re-derived to 88 under position weighting: it is the only value where the
+  // holder share stays inside 1-4% AND the arm still reaches genuine upside
+  // cases (8 players the overall arm misses, the lowest at 77).
+  superstarPotential: 88,
   star: 87,                // stars: trade premium, worth pausing the sim for
   rotation: 79,            // good enough that a bench role is worth complaining about
   fringe: 70               // fringe: likelier to retire
 };
 
+// POSITION WEIGHTING, in the 2K sense: a point guard is not judged on boxing
+// out, and a centre is not judged on his handle.
+//
+// THIS IS A DESIGN DECISION, NOT A MEASUREMENT, and the distinction matters.
+// The obvious way to derive it — fit the regression separately per position —
+// was tried (scripts/probe-position-fit.js) and cannot answer the question.
+// Split into groups of 69-144 against 20 predictors, the within-group
+// collinearity is WORSE than league-wide (block/interiorDefense correlate 0.905
+// inside the bigs against 0.807 inside the guards), so NNLS hands the shared
+// signal to one attribute and clamps its partners to zero. That fit reports
+// rebounding as worth exactly 0% to a centre, which is not a finding, it is the
+// same non-identification that forced NNLS in the first place.
+//
+// So these are chosen, not measured. Discounts rather than zeroes: a guard who
+// genuinely rebounds still gets some credit for it, because Westbrook exists.
+//
+// Steal and perimeterDefense are deliberately NOT discounted for guards. They
+// are guard defence, and flattening them would make a lockdown point guard
+// indistinguishable from a turnstile — which is a worse lie than the one being
+// fixed.
+const POSITION_WEIGHTS = {
+  PG: { defReb: 0.15, offReb: 0.15, block: 0.15, interiorDefense: 0.20 },
+  SG: { defReb: 0.15, offReb: 0.15, block: 0.15, interiorDefense: 0.20 },
+  SF: {},
+  PF: { ballHandling: 0.20, threePoint: 0.35 },
+  C:  { ballHandling: 0.20, threePoint: 0.35 }
+};
+
+// Each position's weights are RENORMALISED back to the global coefficient sum.
+// Without this, discounting four attributes would simply make every guard worse
+// than every big, which is not position weighting, it is a penalty. Normalised,
+// the weight taken off a guard's rebounding is redistributed onto the things a
+// guard IS judged on, and the positions stay comparable to each other.
+//
+// It also keeps sum(coef) identical for every position, which is what
+// scaleAttributesToOverall solves against — so "make this player a 90" behaves
+// the same regardless of where he plays.
+const POSITION_COEFFICIENTS = (function () {
+  const keys = _RATINGS_DATA.data.ATTRIBUTE_KEYS;
+  let globalTotal = 0;
+  keys.forEach(function (k) {
+    if (OVERALL_COEFFICIENTS[k]) globalTotal += OVERALL_COEFFICIENTS[k].coef;
+  });
+  const out = {};
+  Object.keys(POSITION_WEIGHTS).forEach(function (pos) {
+    const w = POSITION_WEIGHTS[pos];
+    const scaled = {};
+    let total = 0;
+    keys.forEach(function (k) {
+      const base = OVERALL_COEFFICIENTS[k] ? OVERALL_COEFFICIENTS[k].coef : 0;
+      scaled[k] = base * (w[k] === undefined ? 1 : w[k]);
+      total += scaled[k];
+    });
+    const norm = total > 0 ? globalTotal / total : 1;
+    keys.forEach(function (k) { scaled[k] *= norm; });
+    out[pos] = scaled;
+  });
+  return out;
+})();
+
+// Precomputed at load rather than per call: computeOverall runs behind a getter
+// that the UI and the sim hit constantly, and rebuilding a 20-key table on every
+// read is the kind of thing that only shows up as a mysterious frame drop.
+function coefficientsFor(position) {
+  return POSITION_COEFFICIENTS[position] || null;
+}
+
+// The GLOBAL fit — unweighted, position-blind. This is what the SIM consumes
+// through rawOverall: minutesWeight is asking "how much does this player help",
+// and that question has nothing to do with positional fairness. Leaving it
+// alone is what lets position weighting cost the sim exactly nothing.
 function computeOverall(player) {
   const attrs = player && player.attributes;
   if (!attrs) return 0;
@@ -122,6 +194,33 @@ function computeOverall(player) {
   _RATINGS_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     const c = OVERALL_COEFFICIENTS[key];
     if (c) v += c.coef * ((attrs[key] || 0) - c.mean);
+  });
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+// The POSITION-WEIGHTED fit, which feeds the number the player reads.
+//
+// Applying position weights to the value the sim consumes was the first
+// attempt, and it pushed shot-volume spread to 3.55x against a 3.4 ceiling —
+// because rawOverall drives minutesWeight, so reweighting it reallocated who
+// takes shots. Turning the effect down until the bound passed left it at 25%
+// strength, which is barely a feature.
+//
+// Splitting it instead gives the full effect for free: the sim keeps the
+// position-blind answer, the user reads the positional one, and the golden
+// masters do not move at all.
+//
+// Players with no position — hand-built test fixtures — fall back to the global
+// fit rather than throwing.
+function computePositionalOverall(player) {
+  const attrs = player && player.attributes;
+  if (!attrs) return 0;
+  const posCoef = coefficientsFor(player.position);
+  if (!posCoef) return computeOverall(player);
+  let v = OVERALL_INTERCEPT;
+  _RATINGS_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
+    const c = OVERALL_COEFFICIENTS[key];
+    if (c) v += posCoef[key] * ((attrs[key] || 0) - c.mean);
   });
   return Math.max(0, Math.min(100, Math.round(v)));
 }
@@ -169,8 +268,12 @@ function defineOverall(player) {
       configurable: true
     });
   }
+  // rawOverall is POSITION-BLIND and feeds the sim; overall is POSITION-WEIGHTED
+  // and feeds the reader. A guard's rebounding still counts toward how much he
+  // actually helps the team — it just stops counting toward whether he is good
+  // at being a guard.
   derived('rawOverall', function () { return computeOverall(this); });
-  derived('overall', function () { return toDisplayRating(computeOverall(this)); });
+  derived('overall', function () { return toDisplayRating(computePositionalOverall(this)); });
   // `potential` stays STORED and RAW, because progression pulls players by
   // `potential - rawOverall` and every existing save already holds the raw
   // value. That asymmetry is a trap — raw potential rendered beside display
@@ -200,14 +303,20 @@ function scaleAttributesToOverall(player, target) {
   });
   if (!totalCoef) return player;
   const rawTarget = toRawRating(target);
+  // Solved against the POSITION-WEIGHTED value, because that is what `overall`
+  // is. Converging on the global fit instead overshot every target by exactly
+  // one: the solver was landing on a different quantity from the one the caller
+  // reads. Renormalisation means totalCoef is identical for every position, so
+  // the shift arithmetic above needs no per-position variant.
+  const positional = function () { return computePositionalOverall(player); };
   // Iterates rather than solving once, because clamping at the scale bounds
   // shrinks the effective slope: as attributes pin at 100 a further uniform
   // shift moves only the ones still free, so one pass undershoots an extreme
   // target. Runs until it stops making progress — six passes was not enough to
   // drive a mid-league player to 100.
   for (let pass = 0; pass < 40; pass++) {
-    if (toDisplayRating(computeOverall(player)) === target) break;
-    const shift = (rawTarget - computeOverall(player)) / totalCoef;
+    if (toDisplayRating(positional()) === target) break;
+    const shift = (rawTarget - positional()) / totalCoef;
     let moved = false;
     keys.forEach(function (k) {
       const next = Math.max(0, Math.min(100, Math.round(player.attributes[k] + shift)));
@@ -223,13 +332,16 @@ function scaleAttributesToOverall(player, target) {
   // This walks one attribute at a time to close the last point. It works down
   // from the highest-leverage attribute so it converges quickly, and skips to
   // the next when one pins at a bound, so an extreme target still lands.
-  const levers = keys.filter(function (k) {
-    return OVERALL_COEFFICIENTS[k] && OVERALL_COEFFICIENTS[k].coef > 0;
-  }).sort(function (a, b) {
-    return OVERALL_COEFFICIENTS[b].coef - OVERALL_COEFFICIENTS[a].coef;
-  });
+  // Ranked by the coefficient for THIS position, so the lever chosen is the
+  // one with the most leverage on the number actually being solved for.
+  const posCoef = coefficientsFor(player.position);
+  const weightOf = function (k) {
+    return posCoef ? posCoef[k] : (OVERALL_COEFFICIENTS[k] ? OVERALL_COEFFICIENTS[k].coef : 0);
+  };
+  const levers = keys.filter(function (k) { return weightOf(k) > 0; })
+    .sort(function (a, b) { return weightOf(b) - weightOf(a); });
   for (let step = 0; step < 400; step++) {
-    const current = toDisplayRating(computeOverall(player));
+    const current = toDisplayRating(positional());
     if (current === target) break;
     const dir = current < target ? 1 : -1;
     let moved = false;
@@ -249,9 +361,12 @@ if (typeof module !== 'undefined' && module.exports) {
     OVERALL_INTERCEPT: OVERALL_INTERCEPT,
     DISPLAY_KNOT: DISPLAY_KNOT,
     RATING_BANDS: RATING_BANDS,
+    POSITION_WEIGHTS: POSITION_WEIGHTS,
+    POSITION_COEFFICIENTS: POSITION_COEFFICIENTS,
     toDisplayRating: toDisplayRating,
     toRawRating: toRawRating,
     computeOverall: computeOverall,
+    computePositionalOverall: computePositionalOverall,
     defineOverall: defineOverall,
     scaleAttributesToOverall: scaleAttributesToOverall
   };

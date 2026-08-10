@@ -159,13 +159,18 @@ function checkSynergyThresholdsAreSelective() {
 function checkOverallIsDerived() {
   const ratings = require(path.join(__dirname, '..', 'ratings.js'));
   const p = PLAYERS_2026[0];
-  const before = p.overall;
+  // Asserted on rawOverall, NOT the display value. `overall` is rawOverall put
+  // through a rounding curve, and at the current slope one raw point is 0.57
+  // display points — so a real attribute change can legitimately round to the
+  // same displayed number, which made this fail for the wrong reason. The
+  // property under test is DERIVATION, and rawOverall is the derived quantity.
+  const before = p.rawOverall;
   const original = p.attributes.threePoint;
   p.attributes.threePoint = Math.min(100, original + 25);
-  assert.notStrictEqual(p.overall, before,
-    'overall must react to an attribute change; it is still a stored field');
+  assert.notStrictEqual(p.rawOverall, before,
+    'rawOverall must react to an attribute change; it is still a stored field');
   p.attributes.threePoint = original;
-  assert.strictEqual(p.overall, before, 'overall must return to its prior value');
+  assert.strictEqual(p.rawOverall, before, 'rawOverall must return to its prior value');
   assert.strictEqual(p.rawOverall, ratings.computeOverall(p),
     'p.rawOverall and computeOverall must agree');
 
@@ -739,8 +744,11 @@ function checkRawAndDisplayAreBothPresent() {
   const p = PLAYERS_2026[0];
   assert.ok(typeof p.rawOverall === 'number', 'rawOverall must exist');
   assert.ok(typeof p.overall === 'number', 'overall must exist');
-  assert.strictEqual(p.overall, ratings.toDisplayRating(p.rawOverall),
-    'overall must be the display of rawOverall');
+  // overall is the display of the POSITION-WEIGHTED value, not of rawOverall.
+  // rawOverall stays position-blind because the sim consumes it; the two agree
+  // only for players at a position with no discounts.
+  assert.strictEqual(p.overall, ratings.toDisplayRating(ratings.computePositionalOverall(p)),
+    'overall must be the display of the position-weighted value');
   assert.ok(typeof p.potentialDisplay === 'number', 'potentialDisplay must exist');
   assert.strictEqual(p.potentialDisplay, ratings.toDisplayRating(p.potential),
     'potentialDisplay must be the display of the stored raw potential');
@@ -769,8 +777,8 @@ function checkOldShapePlayersGainTheNewGetters() {
   ratings.defineOverall(legacy);
   assert.ok(typeof legacy.rawOverall === 'number',
     'a player carrying the old single-getter shape must still gain rawOverall');
-  assert.strictEqual(legacy.overall, ratings.toDisplayRating(legacy.rawOverall),
-    'and its overall must be upgraded to the display value');
+  assert.strictEqual(legacy.overall, ratings.toDisplayRating(ratings.computePositionalOverall(legacy)),
+    'and its overall must be upgraded to the position-weighted display value');
   console.log('checkOldShapePlayersGainTheNewGetters: OK');
 }
 

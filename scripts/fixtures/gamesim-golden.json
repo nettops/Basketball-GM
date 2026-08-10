@@ -3,10 +3,10 @@
     "seed": 1,
     "home": "BOS",
     "away": "LAL",
-    "homeScore": 146,
-    "awayScore": 123,
-    "boxChecksum": 117198,
-    "playByPlayLength": 281
+    "homeScore": 147,
+    "awayScore": 122,
+    "boxChecksum": 117643,
+    "playByPlayLength": 284
   },
   {
     "seed": 2,
@@ -41,7 +41,7 @@
     "away": "DAL",
     "homeScore": 111,
     "awayScore": 135,
-    "boxChecksum": 106719,
+    "boxChecksum": 106820,
     "playByPlayLength": 291
   },
   {
@@ -57,10 +57,10 @@
     "seed": 7,
     "home": "SAS",
     "away": "HOU",
-    "homeScore": 119,
-    "awayScore": 80,
-    "boxChecksum": 103739,
-    "playByPlayLength": 299
+    "homeScore": 100,
+    "awayScore": 93,
+    "boxChecksum": 101380,
+    "playByPlayLength": 303
   },
   {
     "seed": 8,
