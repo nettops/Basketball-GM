@@ -409,7 +409,49 @@ function blockSpec(defenderBlock, zone, blockTraitBonus) {
 var SHOT_TUNING = {
   base: { three: 0.3453, mid: 0.4353, inside: 0.5753 },
   skillDiv: 292,
-  defDiv: 292
+  defDiv: 292,
+  // Team synergy is a MULTIPLIER (synergyRamp returns 1 +/- 0.06, plus a
+  // chemistry term) that was being differenced against the opponent's and added
+  // RAW to a probability — the only modifier in shotSpec without a divisor.
+  // That gave it up to ~12-15 percentage points of swing on every shot: roughly
+  // three times the entire skill term and five times a legendary badge, from a
+  // term nobody had calibrated because it did not look like a rating.
+  //
+  // What it did to the league, measured over 3 seasons x 3 seeds:
+  //
+  //   synDiv  bestW  worstW  60+  |margin|  close%   FG%    3P%    pts
+  //     1      80.7    8.0   6.3    26.5     12.8   47.6   37.1  104.6  <- was
+  //     4      74.0   11.0   5.3    19.3     18.0   47.1   36.3  103.3
+  //     6      71.7    8.3   3.3    18.6     18.6   46.8   36.2  102.5
+  //     8      70.0   11.3   3.7    18.7     17.9   46.9   36.1  102.5  <- now
+  //    10      70.7   11.3   3.7    18.6     17.5   46.9   36.2  102.7
+  //    14      72.7   12.3   3.7    18.4     18.4   46.7   36.0  102.2
+  //   (real NBA: best ~64, worst ~18, one 60-win team, |margin| ~11, close ~33%)
+  //
+  // A one-season read said 81 wins for the best team; three seeds say 80.7, so
+  // the headline number was not a fluke of one schedule.
+  //
+  // 8 sits in the middle of the plateau — 6 through 14 are within noise of each
+  // other — and is chosen on a principle rather than a number: at 8 the synergy
+  // swing is +/-1.5pp, proportionate to the 2.67pp a legendary badge is worth.
+  // Above ~14 roster construction stops mattering at all, which is not balance,
+  // it is deleting a feature.
+  //
+  // League rates move slightly and deliberately are NOT re-solved: 3P% 37.1 ->
+  // 36.1 sits inside the 35-38% band the real league runs and the one the
+  // project owner accepted. Re-solving the bases to claw back 1pp would mean
+  // re-tuning four constants to hide a change that is within tolerance.
+  //
+  // NOT the whole story, and left explicitly unfinished: this fixes the
+  // STANDINGS (best team 80.7 -> 70.0 wins, six 60-win teams -> under four) but
+  // individual games are still too swingy — |margin| 18.7 against a real ~11,
+  // and 17.9% of games inside 5 points against a real ~33%. Raising skillDiv to
+  // 900 does close that gap (best team 64.3, |margin| 16.3) and was REJECTED:
+  // at 900 an elite shooter beats a poor one by 3.3pp instead of 10.3pp, so
+  // Curry shoots like a centre. Buying league balance by deleting player
+  // differentiation is the wrong trade. The residual amplifier is somewhere
+  // else and has not been found yet.
+  synergyDiv: 8
 };
 const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
 
@@ -456,7 +498,7 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
       energy: defenderEnergyMult === undefined ? 1 : defenderEnergyMult
     },
     modifiers: [
-      { label: 'team synergy', value: (offenseSynergy || 1) - (defenseSynergy || 1) },
+      { label: 'team synergy', value: ((offenseSynergy || 1) - (defenseSynergy || 1)) / SHOT_TUNING.synergyDiv },
       { label: 'badges', value: traitBonus / SHOT_TRAIT_DIV },
       // NEGATIVE: this is the DEFENDER's contribution, so it comes off the
       // shooter's chance. Routed by zone in traits.js's defenseQualityBonus, so

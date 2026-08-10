@@ -188,10 +188,19 @@ function checkBlockSpecMatchesTheOriginal() {
 // leak into scoring. Both are now 292 — equal, so a league-wide lift cancels,
 // and chosen so a one-point swing moves a shot exactly as much as it always did
 // (2/292 = 0.00685 against the old 1/250 + 1/350 = 0.00686).
+// The synergy divisor is mirrored here BY HAND, deliberately. Team synergy used
+// to be added raw — a multiplier dropped straight onto a probability, worth up
+// to ~12-15pp when every other modifier in the spec was worth 1-3. It is now
+// divided by 8. This reference is an independent re-implementation, so a
+// balance change has to be repeated here or this test fails; that is the point
+// of it, and it is what caught this change rather than letting it through.
+const REFERENCE_SYNERGY_DIV = 8;
+
 function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defenderEnergy, traitBonus) {
   const skillAdj = (shoot - 50) / 292 * shooterEnergy;
   const defAdj = (def - 50) / 292 * defenderEnergy;
-  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + (offSyn - defSyn) + traitBonus / 300));
+  const synAdj = (offSyn - defSyn) / REFERENCE_SYNERGY_DIV;
+  return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synAdj + traitBonus / 300));
 }
 
 function checkShotSpecMatchesTheOriginal() {
