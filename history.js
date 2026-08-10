@@ -7,7 +7,9 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       careerHistory: require('./careerHistory.js'),
       finances: require('./finances.js'),
       coaches: require('./coaches.js'),
-      gmCareer: require('./gmCareer.js')
+      ratings: require('./ratings.js'),
+      gmCareer: require('./gmCareer.js'),
+      gmMilestones: require('./gmMilestones.js')
     }
   : {
       league: {
@@ -23,6 +25,12 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       careerHistory: { ensureCareerHistory: ensureCareerHistory, recordTradeInHistory: recordTradeInHistory, recordSeasonInHistory: recordSeasonInHistory },
       finances: { applySeasonEndFinances: applySeasonEndFinances },
       coaches: { tickCoachTenure: tickCoachTenure },
+      ratings: { toDisplayRating: toDisplayRating },
+      gmMilestones: {
+        buildContext: buildContext, evaluate: evaluate,
+        nearestMilestone: nearestMilestone, isUnlocked: isUnlocked,
+        MILESTONES: MILESTONES
+      },
       // gmCareer.js's <script> tag loads immediately before this file's, so
       // these are safe to reference eagerly — unlike commissioner.js below.
       gmCareer: {
@@ -447,6 +455,16 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
       const row = _HISTORY_DATA.gmCareer.recordSeason(career, leagueYear, userTeam.id,
         rs.wins, rs.losses, playoffBracket);
       _HISTORY_DATA.gmCareer.recordSeasonChronicle(career, row, userTeam.name);
+
+      // Milestones are evaluated AFTER the season row exists, because most of
+      // them read it. Unlocks go to the feed as a LINE — never a modal. The
+      // standing constraint is that nothing here adds a decision to make.
+      const ctx = _HISTORY_DATA.gmMilestones.buildContext(career, LEAGUE_HISTORY,
+        _HISTORY_DATA.players.PLAYERS_2026, LEAGUE_HISTORY.retiredPlayers,
+        _HISTORY_DATA.ratings.toDisplayRating);
+      _HISTORY_DATA.gmMilestones.evaluate(career, ctx).forEach(function (m) {
+        sink('Career milestone: ' + m.label + ' — ' + m.description + '.');
+      });
     }
   }
 
