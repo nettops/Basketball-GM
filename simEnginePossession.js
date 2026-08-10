@@ -43,13 +43,39 @@ function eligibleRoster(teamId) {
 // Draws exactly one rng value, as before, so the rng stream stays aligned.
 const PICK_FLOOR = 0.05;
 
-function weightedPick(players, weightFn, rng, power) {
+function weightedPick(players, weightFn, rng, power, ceiling) {
   const p = (power === undefined) ? 1 : power;
   let weights = players.map(function (pl) { return Math.pow(Math.max(0, weightFn(pl)), p); });
   const raw = weights.reduce(function (a, b) { return a + b; }, 0);
   if (raw <= 0) return players[Math.floor(rng() * players.length)];
   const floor = PICK_FLOOR * raw;
   weights = weights.map(function (w) { return Math.max(w, floor); });
+
+  // The counterpart to PICK_FLOOR. Without it, a player far better than his
+  // four team-mates takes an unbounded share of the shots — which produced
+  // 45-points-per-game seasons once the league started generating players who
+  // outclassed their rosters that badly. The best real usage rates top out
+  // around 35-40% of a team's attempts; nobody takes half.
+  //
+  // Applied on the normalised shares, capping and redistributing the excess
+  // proportionally, so the capped player lands at exactly `ceiling` rather than
+  // approximately. Draws no extra rng values, so the seeded stream is unmoved.
+  if (ceiling !== undefined && ceiling < 1) {
+    let sum0 = weights.reduce(function (a, b) { return a + b; }, 0);
+    let probs = weights.map(function (w) { return w / sum0; });
+    for (let pass = 0; pass < 4; pass++) {
+      let excess = 0, underSum = 0;
+      probs.forEach(function (q) {
+        if (q > ceiling) excess += q - ceiling; else underSum += q;
+      });
+      if (excess < 1e-12 || underSum <= 0) break;
+      probs = probs.map(function (q) {
+        return q > ceiling ? ceiling : q + excess * (q / underSum);
+      });
+    }
+    weights = probs;
+  }
+
   const total = weights.reduce(function (a, b) { return a + b; }, 0);
   let r = rng() * total;
   for (let i = 0; i < players.length; i++) {
@@ -92,6 +118,36 @@ const PICK_POWER = {
   shotDefender: 2,
   rebounder: 3
 };
+
+// The most of a possession's shot-weight one player may hold, among the five on
+// the floor. Only the shooter is capped — it is the only pick that produced an
+// absurd result without one (six seasons with a 40+ point scorer in a 50-season
+// run, topping out at 45.5, where the 2026 league never exceeds ~35).
+//
+// NOTE this is a per-POSSESSION share among five players, not a season-long
+// share of team attempts. Those are very different numbers: the 2026 league's
+// busiest scorer takes 28% of his team's shots across a season but sits far
+// above a fifth of the weight in the possessions he is on the floor for. A cap
+// near 0.30 throttles ordinary stars badly; 0.40 does not touch them.
+//
+// 0.45 chosen against TWO targets that pull in opposite directions, measured
+// over the same 35-season window:
+//
+//   setting   highest season   typical leader   40pt seasons   60pt games
+//   no cap         45.5             35.1              6         4/season
+//   0.45           38.6             34.4              0         3/season
+//   0.40           36.7             33.0              0         NONE
+//
+// A tighter cap holds season averages down but flattens the single-game tail
+// with them — at 0.40 the best night in a full season falls from 68 points to
+// 57 and sixty-point games stop happening altogether. Those are different
+// things: a 60-point game is one hot night, a 45-point AVERAGE is eighty-two of
+// them. 0.45 is the setting that separates them.
+//
+// Single-game profile at 0.45, over one full season of the 2026 league: 218
+// forty-point games, 25 fifty-point, 3 sixty-point, best 68. The real NBA runs
+// roughly 100-130 / 10-20 / 0-3.
+const PICK_CEILING = { shooter: 0.45 };
 
 function ballHandlingWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
@@ -301,8 +357,49 @@ function blockSpec(defenderBlock, zone, blockTraitBonus) {
   };
 }
 
-const SHOT_BASE_BY_ZONE = { three: 0.330, mid: 0.42, inside: 0.56 };
-const SHOT_SKILL_DIV = 250, SHOT_DEF_DIV = 350;
+// Shot quality: base + shooter/SKILL_DIV - defender/DEF_DIV, clamped.
+//
+// SKILL_DIV and DEF_DIV used to be 250 and 350, meaning a point of shooting was
+// worth 1.4x a point of defence. That made league scoring depend on the ABSOLUTE
+// level of the league rather than on shooter-versus-defender, so as players got
+// better the whole league shot better and nothing pushed back. Measured by
+// moving every attribute on every player together, which a difference-based
+// model should ignore entirely:
+//
+//   shift   medOVR    3P%
+//     -10      68    34.8
+//       0      75    37.2
+//      +5      78    37.6
+//
+// Equal divisors make that line flat: raise everyone and offence and defence
+// cancel exactly, which is what "defence keeps up with offence" means
+// mechanically. The bases are then re-solved so the 2026 league still produces
+// the same FG%, 3P% and points it always did — see scripts/sweep-shot-balance.js.
+// Bases solved by scripts/sweep-shot-balance.js against the locked 2026 rates,
+// so the starting league is unchanged by this: FG% 47.45 -> 47.54, 3P% 37.00 ->
+// 37.07, points 104.2 -> 104.7, all inside the noise of a 500-game measurement.
+//
+// The scale test improved but did NOT go fully flat — the slope across a 15-point
+// uniform shift roughly halved (2.4pp of 3P% down to 1.5pp). The remainder is the
+// 0.18/0.72 clamps plus the other rating-driven paths (blocks, turnovers, fouls,
+// rebounds) that are not part of this balance. Worth knowing before anyone reads
+// this as a complete fix.
+// Equalised at 292, not at 250. Both choices make defence count the same as
+// offence; the difference is how much a rating swing moves a single shot.
+//
+// Old sensitivity to a one-point swing in the shooter-versus-defender gap was
+// 1/250 + 1/350 = 0.00686. Equalising at 250 gives 2/250 = 0.00800 — 17% more,
+// which widened the spread of game outcomes enough to produce 57- and 59-point
+// games and trip validate-possession's floor. Equalising at 292 gives
+// 2/292 = 0.00685, matching what the engine always had. So defence gains parity
+// without the league getting swingier.
+//
+// Bases re-solved against the locked 2026 rates by scripts/sweep-shot-balance.js.
+var SHOT_TUNING = {
+  base: { three: 0.3453, mid: 0.4353, inside: 0.5753 },
+  skillDiv: 292,
+  defDiv: 292
+};
 const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
 
 // Symmetric with SHOT_TRAIT_DIV: a legendary defensive badge takes off 8/300 =
@@ -336,15 +433,15 @@ function shootingFoulRate(defender) {
 function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus) {
   return {
     kind: 'shot',
-    base: SHOT_BASE_BY_ZONE[zone],
+    base: SHOT_TUNING.base[zone],
     attack: {
       label: zone === 'three' ? 'shootingThree' : (zone === 'mid' ? 'shootingMid' : 'shootingInside'),
-      value: shootComposite, scale: SHOT_SKILL_DIV,
+      value: shootComposite, scale: SHOT_TUNING.skillDiv,
       energy: shooterEnergyMult === undefined ? 1 : shooterEnergyMult
     },
     defend: {
       label: zone === 'inside' ? 'defenseInterior' : 'defensePerimeter',
-      value: defComposite, scale: SHOT_DEF_DIV,
+      value: defComposite, scale: SHOT_TUNING.defDiv,
       energy: defenderEnergyMult === undefined ? 1 : defenderEnergyMult
     },
     modifiers: [
@@ -486,7 +583,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
-  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng, PICK_POWER.shooter);
+  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng, PICK_POWER.shooter, PICK_CEILING.shooter);
   const zone = pickShotZone(shooter, rng, inTransition);
   const shotDefender = weightedPick(defense, energyAware(function (p) { return shotDefenseWeight(p, zone); }, defenseBox, true), rng, PICK_POWER.shotDefender);
   drainEnergy(offenseBox[shooter.id], shooter);
@@ -608,6 +705,8 @@ if (typeof module !== 'undefined' && module.exports) {
     turnoverSpec: turnoverSpec,
     blockSpec: blockSpec,
     shotSpec: shotSpec,
+    SHOT_TUNING: SHOT_TUNING,
+    PICK_CEILING: PICK_CEILING,
     shootingFoulRate: shootingFoulRate,
     shotMakeSpecFor: shotMakeSpecFor,
     turnoverSpecFor: turnoverSpecFor,

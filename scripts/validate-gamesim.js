@@ -479,8 +479,14 @@ function checkUserTeamKeepsItsTimeoutDecision() {
   // boundary the run becomes qualifying — before any view could render a
   // frame — and clears sim.run, so the human is never actually offered the
   // decision the whole nudge system exists to offer.
+  // Seed 72, not 77. This test needs a PRECONDITION to hold — an 8-point run
+  // against the home team while it still has timeouts — and seed 77 stopped
+  // producing one when the shot balance changed. Nothing about timeout handling
+  // regressed; the fixture simply stopped setting up the situation it asserts
+  // on. Re-picked by searching seeds for one where every assertion below has
+  // something real to test, rather than by loosening an assertion.
   function runOut(userTeam) {
-    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(77));
+    const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(72));
     sim.userTeam = userTeam;
     let sawQualifyingRunAgainstHome = false;
     while (!sim.done) {

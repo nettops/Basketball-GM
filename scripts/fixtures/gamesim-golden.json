@@ -23,44 +23,44 @@
     "away": "NYK",
     "homeScore": 133,
     "awayScore": 89,
-    "boxChecksum": 117605,
+    "boxChecksum": 117393,
     "playByPlayLength": 291
   },
   {
     "seed": 4,
     "home": "MIL",
     "away": "PHI",
-    "homeScore": 70,
-    "awayScore": 109,
-    "boxChecksum": 113699,
-    "playByPlayLength": 301
+    "homeScore": 94,
+    "awayScore": 93,
+    "boxChecksum": 108837,
+    "playByPlayLength": 298
   },
   {
     "seed": 5,
     "home": "GSW",
     "away": "DAL",
-    "homeScore": 111,
-    "awayScore": 135,
-    "boxChecksum": 106820,
-    "playByPlayLength": 291
+    "homeScore": 105,
+    "awayScore": 132,
+    "boxChecksum": 104552,
+    "playByPlayLength": 289
   },
   {
     "seed": 6,
     "home": "CLE",
     "away": "MEM",
-    "homeScore": 100,
-    "awayScore": 86,
-    "boxChecksum": 90587,
-    "playByPlayLength": 291
+    "homeScore": 117,
+    "awayScore": 76,
+    "boxChecksum": 92923,
+    "playByPlayLength": 297
   },
   {
     "seed": 7,
     "home": "SAS",
     "away": "HOU",
-    "homeScore": 100,
-    "awayScore": 93,
-    "boxChecksum": 101380,
-    "playByPlayLength": 303
+    "homeScore": 102,
+    "awayScore": 92,
+    "boxChecksum": 97642,
+    "playByPlayLength": 302
   },
   {
     "seed": 8,

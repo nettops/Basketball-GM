@@ -24,11 +24,28 @@ function hasRetirementPenalty(player) {
   return player.overall < _TRANSITION_DATA.ratings.RATING_BANDS.fringe;
 }
 
+// The age curve below only ever fired at 34+, which meant 100% of players
+// survived to 33 — measured, not estimated. Nobody could leave the league for
+// being not good enough, only for being old. That is why the free-agent pool
+// grew without bound (496 unsigned against 370 rostered by season 12) and why
+// the league went 380 -> 916 players in fifteen seasons.
+//
+// Real careers do not end in retirement announcements; they end when the phone
+// stops ringing. `washoutSeasons` is that: go this many consecutive seasons
+// without anyone signing you and you are out, at any age. It is the drain the
+// league never had — the draft adds 60 a year and nothing removed more than a
+// handful.
+var RETIREMENT_TUNING = { minAge: 34, perYear: 0.08, fringePenalty: 0.15, cap: 0.9, washoutSeasons: 2 };
+
 function rollRetirement(player, rng) {
-  if (player.age < 34) return false;
-  const baseChance = (player.age - 33) * 0.08;
-  const overallPenalty = hasRetirementPenalty(player) ? 0.15 : 0;
-  return rng() < Math.min(0.9, baseChance + overallPenalty);
+  // Checked before the age gate, because washing out is not about age. Guarded
+  // on the field existing so callers that build bare player literals (several
+  // validate scripts do) keep their existing behaviour.
+  if ((player.seasonsUnsigned || 0) >= RETIREMENT_TUNING.washoutSeasons) return true;
+  if (player.age < RETIREMENT_TUNING.minAge) return false;
+  const baseChance = (player.age - (RETIREMENT_TUNING.minAge - 1)) * RETIREMENT_TUNING.perYear;
+  const overallPenalty = hasRetirementPenalty(player) ? RETIREMENT_TUNING.fringePenalty : 0;
+  return rng() < Math.min(RETIREMENT_TUNING.cap, baseChance + overallPenalty);
 }
 
 function decrementContracts() {
@@ -72,6 +89,13 @@ function runOffseasonPreDraft(rng, leagueYear) {
         key: evolved.key, name: evolved.name
       });
     }
+  });
+
+  // Counted BEFORE decrementContracts runs below, so `teamId` still reflects
+  // the season just played: a player who was on a roster all year has his
+  // counter cleared, and one who sat out free agency again has it advanced.
+  allPlayers.forEach(function (p) {
+    p.seasonsUnsigned = p.teamId ? 0 : (p.seasonsUnsigned || 0) + 1;
   });
 
   const retirees = allPlayers.filter(function (p) { return rollRetirement(p, rng); });
@@ -158,5 +182,5 @@ function generateNewSeason(rng) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { rollRetirement: rollRetirement, hasRetirementPenalty: hasRetirementPenalty, decrementContracts: decrementContracts, runOffseasonPreDraft: runOffseasonPreDraft, runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason };
+  module.exports = { rollRetirement: rollRetirement, hasRetirementPenalty: hasRetirementPenalty, decrementContracts: decrementContracts, runOffseasonPreDraft: runOffseasonPreDraft, runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason, RETIREMENT_TUNING: RETIREMENT_TUNING };
 }

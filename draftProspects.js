@@ -6,7 +6,7 @@ var _PROSPECT_DATA = (typeof require !== 'undefined')
       faces: { generateFace: generateFace },
       progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo },
       players: { makeAttributes: makeAttributes, ANCHOR_SD_RATIO: ANCHOR_SD_RATIO },
-      ratings: { defineOverall: defineOverall }
+      ratings: { defineOverall: defineOverall, toRawRating: toRawRating }
     };
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
@@ -197,10 +197,89 @@ function generateProspectClass(rng, count) {
     prospect.hiddenPersonality = _PROSPECT_DATA.traits.generatePersonality(prospect, rng);
     prospect.hiddenTendencies = _PROSPECT_DATA.traits.generateTendencies(prospect, rng);
     prospect.face = _PROSPECT_DATA.faces.generateFace(rng);
-    prospect.potential = Math.max(clampedOverall, Math.min(99, _PROSPECT_DATA.progression.estimatePotentialMonteCarlo(prospect, rng)));
+    // `potential` is stored RAW — progression.js:138 differences it against
+    // rawOverall. Both guards here used to be on the AUTHORED scale, which runs
+    // roughly thirty points higher, so both were nonsense in this field:
+    //
+    //   Math.max(clampedOverall, ...)  floored every prospect's ceiling at his
+    //     authored number (58-90). The league's median raw overall is 47 and its
+    //     best player is 85, so the WORST pick in every draft was handed a
+    //     ceiling above the median NBA player and the top pick a ceiling above
+    //     anyone alive. Measured: 0 of 64 prospects had a ceiling below the
+    //     league median, and the floor was overriding the Monte Carlo estimate
+    //     it was supposed to be a backstop for by +30.4 raw on average.
+    //   Math.min(99, ...)  capped at raw 99, which the display curve maps off
+    //     the top of the scale; it never bound anything.
+    //
+    // The floor is now the prospect's own rawOverall (potential >= overall, the
+    // invariant it was always meant to express) and the cap is display 99
+    // translated into raw, preserving the original intent on the right scale.
+    prospect.potential = Math.max(prospect.rawOverall,
+      Math.min(_PROSPECT_DATA.ratings.toRawRating(99),
+        _PROSPECT_DATA.progression.estimatePotentialMonteCarlo(prospect, rng)));
+    // Rolled here, right after the ceiling is set and before anyone can read
+    // it, so no part of the game ever sees the un-busted ceiling of a prospect
+    // who busts. See applyBustRoll for why this existed but never ran.
+    applyBustRoll(prospect, rng);
     prospects.push(prospect);
   }
   return prospects;
+}
+
+// `bustChance` was computed on every prospect (line 193, scaled by draft slot
+// from 0.15 at the top to 0.50 at the end of the second round), stored on the
+// object, surfaced nowhere, and read by NOTHING. Three writes, zero reads —
+// the counterweight the draft was designed around was never wired up, so every
+// prospect in every class developed as though he had hit.
+//
+// A bust is not a player who gets worse; he is a player who never reaches the
+// ceiling he was scouted at. So the roll collapses `potential` toward what he
+// actually is, keeping a fraction of the gap — some busts do develop a little.
+// Everything downstream then follows for free: progression.js's gap-pull has
+// almost nothing left to pull toward, and tradeEvaluator/scouting stop valuing
+// him as a future star.
+//
+// He is NOT told he is a bust, and neither is the user. `potential` is what
+// scouting fuzzes and displays, so a busted prospect simply stops improving —
+// which is what busting looks like from the outside.
+//
+// `retainedGap` is calibrated, not chosen: scripts/sweep-growth-tuning.js sweeps
+// it against superstars-per-draft-class. `chanceScale` multiplies the authored
+// bustChance so the RATE of busting can be calibrated separately from how hard
+// a bust lands. An object rather than two consts so the sweep can vary them
+// without reaching into module internals.
+// `developmentRate` is the part that actually bites. Collapsing `potential`
+// alone barely moved the superstar rate (20.2 -> 17.6 per class, measured)
+// because potential only feeds progression's gap-pull — the age curve grows a
+// player regardless of what his ceiling says. A bust who still gets the full
+// age curve still becomes a star, just later.
+//
+// So a bust also develops SLOWLY: the multiplier is applied to positive base
+// change only (progression.js), so busts stop climbing but still decline
+// normally with age. That is what busting actually looks like.
+//
+// Doing it per-player rather than by damping the global curve is deliberate.
+// Lowering everyone's growth would flatten the league and make the 2026
+// veterans wrong too; this leaves a prospect who HITS developing exactly as
+// fast as before, which is what keeps 2-4 stars a class feeling like stars.
+// Swept in scripts/sweep-growth-tuning.js alongside progression's GROWTH_TUNING;
+// config D. chanceScale multiplies the authored per-slot bustChance, so the
+// realised range is 0.375 at the top of the draft to 1.0 by the end of the
+// second round — late second-rounders essentially never pan out, which is both
+// what the sweep needed and what the NBA looks like.
+var BUST_TUNING = { retainedGap: 0.10, chanceScale: 2.5, developmentRate: 0.20 };
+
+function applyBustRoll(prospect, rng) {
+  if (!prospect || typeof prospect.bustChance !== 'number') return false;
+  // Clamped: chanceScale pushes the late-round values past 1.0, and a
+  // probability above 1 that reads as "1.25" invites someone to believe the
+  // extra 0.25 means something.
+  if (rng() >= Math.min(1, prospect.bustChance * BUST_TUNING.chanceScale)) return false;
+  prospect.developmentRate = BUST_TUNING.developmentRate;
+  const gap = prospect.potential - prospect.rawOverall;
+  if (gap <= 0) return true;
+  prospect.potential = Math.round(prospect.rawOverall + gap * BUST_TUNING.retainedGap);
+  return true;
 }
 
 const DRAFT_PROSPECTS_2026 = [];
@@ -277,6 +356,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     mkProspect: mkProspect,
     generateProspectClass: generateProspectClass,
+    applyBustRoll: applyBustRoll,
+    BUST_TUNING: BUST_TUNING,
     DRAFT_PROSPECTS_2026: DRAFT_PROSPECTS_2026
   };
 }

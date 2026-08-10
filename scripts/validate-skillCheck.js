@@ -177,14 +177,25 @@ function checkBlockSpecMatchesTheOriginal() {
 
 // Original: base + (shoot - 50)/250*shooterEnergy - (def - 50)/350*defenderEnergy
 //           + (offSyn - defSyn) + shotQualityBonus/300, clamped to [0.18, 0.72].
+// Deliberately an INDEPENDENT re-implementation with the constants written out
+// rather than read from SHOT_TUNING — reading them would make both sides move
+// together and the check would prove nothing. The cost is that a deliberate
+// balance change has to be mirrored here, which is the point: this fires when
+// the shot formula moves, so the move has to be intentional.
+//
+// Updated when defence was given parity with offence: the divisors were 250
+// (shooting) and 350 (defence), which let the league's absolute rating level
+// leak into scoring. Both are now 292 — equal, so a league-wide lift cancels,
+// and chosen so a one-point swing moves a shot exactly as much as it always did
+// (2/292 = 0.00685 against the old 1/250 + 1/350 = 0.00686).
 function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defenderEnergy, traitBonus) {
-  const skillAdj = (shoot - 50) / 250 * shooterEnergy;
-  const defAdj = (def - 50) / 350 * defenderEnergy;
+  const skillAdj = (shoot - 50) / 292 * shooterEnergy;
+  const defAdj = (def - 50) / 292 * defenderEnergy;
   return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + (offSyn - defSyn) + traitBonus / 300));
 }
 
 function checkShotSpecMatchesTheOriginal() {
-  const zones = [['three', 0.330], ['mid', 0.42], ['inside', 0.56]];
+  const zones = [['three', 0.3453], ['mid', 0.4353], ['inside', 0.5753]];
   let worst = 0;
   zones.forEach(function (z) {
     for (let s = 0; s <= 100; s += 10) {

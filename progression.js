@@ -99,22 +99,49 @@ var RATING_PROFILES = {
   workEthic:        { ageModifier: mentalAgeModifier,           changeLimits: [-4, 7] }
 };
 
+// How fast a young player grows, as one named table instead of eight magic
+// numbers inside calcBaseChange.
+//
+// These are CALIBRATED, not chosen: scripts/probe-superstar-rate.js measures
+// how many players in a 60-man draft class ever peak at display 90+, and these
+// values are swept to land that rate in the 2-4 band. Changing any of them
+// without re-running that probe will silently move how many superstars the
+// league produces per decade, which is the single number that decides whether
+// a save still feels like the NBA in 2046.
+//
+// `noise` is drawn from a gaussian scaled by `sd` and then clipped. The clip
+// used to be far wider above than below ([-4, 20] against an SD of 5: 0.8
+// sigma of downside against 4 sigma of upside). That did two things — it added
+// a positive mean to what reads like symmetric noise, and it left a long upside
+// tail that compounded over the six or seven growth years a teenager gets. Both
+// showed up as 100-OVR players by season 12.
+//
+// Swept in scripts/sweep-growth-tuning.js. Aimed at 3.23 in that harness rather
+// than at the middle of the 2-4 band, because the harness READS LOW: it ages a
+// class in isolation with no coach fit and no mentor bonus, both of which the
+// real league applies. A first pass calibrated to 3.90 here produced roughly 5
+// per class in a full 50-season run — about 25% high. So the harness number is
+// deliberately set below target to land inside it live. Re-check against
+// scripts/probe-superstar-rate-fullsim.js, not against the fast harness alone.
+//
+// Only the young brackets moved; the veteran decline curve is untouched, so the
+// hand-authored 2026 roster ages exactly as it did before any of this.
+var GROWTH_TUNING = {
+  // Deterministic part of the yearly change, by age bracket.
+  base: [[21, 0.75], [25, 0.25], [27, 0], [29, -1], [31, -2], [34, -3], [40, -4], [43, -5], [Infinity, -6]],
+  // Random part: [maxAge, sd, clipLow, clipHigh].
+  noise: [[23, 2.5, -5, 5], [25, 2.5, -5, 5], [Infinity, 3, -2, 4]]
+};
+
 function calcBaseChange(age, rng) {
-  var val;
-  if (age <= 21)      val = 2;
-  else if (age <= 25) val = 1;
-  else if (age <= 27) val = 0;
-  else if (age <= 29) val = -1;
-  else if (age <= 31) val = -2;
-  else if (age <= 34) val = -3;
-  else if (age <= 40) val = -4;
-  else if (age <= 43) val = -5;
-  else                val = -6;
-
-  if (age <= 23)      val += bound(gaussianRandom(rng) * 5, -4, 20);
-  else if (age <= 25) val += bound(gaussianRandom(rng) * 5, -4, 10);
-  else                val += bound(gaussianRandom(rng) * 3, -2, 4);
-
+  var val = 0;
+  for (var i = 0; i < GROWTH_TUNING.base.length; i++) {
+    if (age <= GROWTH_TUNING.base[i][0]) { val = GROWTH_TUNING.base[i][1]; break; }
+  }
+  for (var j = 0; j < GROWTH_TUNING.noise.length; j++) {
+    var n = GROWTH_TUNING.noise[j];
+    if (age <= n[0]) { val += bound(gaussianRandom(rng) * n[1], n[2], n[3]); break; }
+  }
   return val;
 }
 
@@ -161,6 +188,14 @@ function progressPlayer(player, rng, teammates, options) {
   }
 
   baseChange *= 1 + (baseChange > 0 ? 1 : -1) * (fit - 1) * 0.3;
+
+  // A busted prospect grows slowly (draftProspects.js's applyBustRoll). Applied
+  // to GROWTH only — a bust ages and declines on the normal curve, he just
+  // never climbs. Absent on every player who is not a busted draftee, so this
+  // is a no-op for the 2026 rosters and for prospects who hit.
+  if (baseChange > 0 && typeof player.developmentRate === 'number') {
+    baseChange *= player.developmentRate;
+  }
 
   _PROGRESSION_DATA.data.ATTRIBUTE_KEYS.forEach(function (key) {
     var profile = RATING_PROFILES[key];
@@ -280,5 +315,5 @@ function estimatePotentialMonteCarlo(player, rng) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating, estimatePotentialMonteCarlo: estimatePotentialMonteCarlo };
+  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating, estimatePotentialMonteCarlo: estimatePotentialMonteCarlo, GROWTH_TUNING: GROWTH_TUNING, calcBaseChange: calcBaseChange };
 }
