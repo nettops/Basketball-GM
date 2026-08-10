@@ -106,6 +106,96 @@ function pid(teamId, name) {
   return teamId.toLowerCase() + '-' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// SIGNATURE ATTRIBUTES. makeAttributes derives all 20 values from one overall
+// plus a generic archetype offset table plus jitter, which means two players
+// sharing an archetype come out nearly identical. That is fine for a bench
+// forward nobody has an opinion about; it is badly wrong for the players the
+// league is built around.
+//
+// What it produced before this table existed:
+//   Curry     threePoint 80, and a midRange of 85 ABOVE it
+//   Curry     defReb 70, the highest of any guard — 11.2 rebounds a game at 6'3"
+//   LeBron    postScoring 38
+//   Durant    threePoint 81, below his own midRange
+//   Sabonis   passing 46 and interiorDefense 90, both backwards
+//
+// Only the attributes that DEFINE a player are listed. Everything unnamed still
+// derives from archetype and overall, so this stays a patch on the generator
+// rather than a replacement for it, and a player who is simply a good starter
+// needs no entry at all.
+//
+// Keyed by ID, not name: two players can share a name across expansion drafts
+// and a name key would silently apply Curry's shooting to the wrong man.
+//
+// `overall` is DERIVED, so these move it. That is the system working — a Curry
+// who cannot shoot was never really an 87. The measured before/after is in the
+// commit message.
+const SIGNATURE_ATTRIBUTES = {
+  // --- The aging legends: skill holds, athleticism does not ---
+  'gsw-stephen-curry': { threePoint: 99, freeThrow: 97, ballHandling: 94, midRange: 88, basketballIQ: 92, defReb: 28, strength: 40, interiorDefense: 26, speed: 66 },
+  'lal-lebron-james': { passing: 96, basketballIQ: 98, leadership: 96, postScoring: 80, insideScoring: 84, strength: 88, threePoint: 74, vertical: 52, speed: 62 },
+  'hou-kevin-durant': { midRange: 97, threePoint: 87, freeThrow: 94, insideScoring: 86, block: 72, interiorDefense: 58, ballHandling: 76, strength: 62 },
+  'lac-james-harden': { passing: 95, ballHandling: 93, threePoint: 80, freeThrow: 88, basketballIQ: 90, defReb: 42, strength: 58, speed: 55 },
+  'lac-chris-paul': { passing: 94, basketballIQ: 98, midRange: 82, freeThrow: 92, threePoint: 74, defReb: 25, strength: 35, speed: 45, vertical: 25 },
+  'dal-kyrie-irving': { ballHandling: 99, insideScoring: 92, threePoint: 84, freeThrow: 90, defReb: 30, strength: 48 },
+  'dal-klay-thompson': { threePoint: 88, perimeterDefense: 68, ballHandling: 52, defReb: 35 },
+  'phi-paul-george': { threePoint: 80, perimeterDefense: 82, steal: 80, midRange: 80 },
+  'por-jrue-holiday': { perimeterDefense: 90, steal: 86, threePoint: 74, basketballIQ: 88 },
+  'gsw-jimmy-butler': { freeThrow: 92, perimeterDefense: 88, steal: 86, insideScoring: 88, strength: 88, threePoint: 48 },
+  'lac-kawhi-leonard': { insideScoring: 85, perimeterDefense: 94, steal: 90, midRange: 90, strength: 88, threePoint: 78 },
+
+  // --- Current MVP tier ---
+  'lal-luka-doncic': { threePoint: 88, ballHandling: 95, insideScoring: 80, defReb: 78, basketballIQ: 94, speed: 55, interiorDefense: 40 },
+  'den-nikola-jokic': { defReb: 94, offReb: 82, postScoring: 97, basketballIQ: 99, threePoint: 74, speed: 42, vertical: 38, block: 45 },
+  'okc-shai-gilgeous-alexander': { midRange: 97, insideScoring: 95, steal: 88, freeThrow: 92, ballHandling: 94, threePoint: 76, defReb: 40 },
+  'mil-giannis-antetokounmpo': { insideScoring: 99, strength: 96, vertical: 94, speed: 88, defReb: 88, interiorDefense: 78, threePoint: 32, freeThrow: 48 },
+  'bos-jayson-tatum': { threePoint: 84, insideScoring: 86, defReb: 78, passing: 76, midRange: 90 },
+
+  // --- Elite bigs ---
+  'sas-victor-wembanyama': { block: 99, interiorDefense: 98, defReb: 92, threePoint: 72, midRange: 70, passing: 68, vertical: 92 },
+  'cle-evan-mobley': { block: 92, interiorDefense: 93, passing: 72, midRange: 55, insideScoring: 78 },
+  'phi-joel-embiid': { postScoring: 96, interiorDefense: 88, block: 88, defReb: 88, freeThrow: 90, strength: 94, threePoint: 72 },
+  'nyk-karl-anthony-towns': { threePoint: 89, freeThrow: 92, defReb: 90, postScoring: 82, interiorDefense: 52, block: 55 },
+  'mia-bam-adebayo': { passing: 80, perimeterDefense: 88, midRange: 68, insideScoring: 78 },
+  'okc-chet-holmgren': { block: 96, threePoint: 74, midRange: 72, strength: 38 },
+  'dal-anthony-davis': { block: 95, interiorDefense: 94, midRange: 76, insideScoring: 88, postScoring: 82, strength: 86 },
+  'sac-domantas-sabonis': { passing: 88, defReb: 96, offReb: 88, postScoring: 82, basketballIQ: 88, interiorDefense: 55, block: 35 },
+  'min-rudy-gobert': { block: 94, interiorDefense: 96, defReb: 92, threePoint: 10, freeThrow: 42, midRange: 15, postScoring: 40 },
+  'det-jalen-duren': { offReb: 92, defReb: 96, strength: 88, vertical: 88, block: 78, threePoint: 20, freeThrow: 55 },
+  'atl-onyeka-okongwu': { block: 82, offReb: 78, midRange: 55 },
+
+  // --- Guards and wings ---
+  'nyk-jalen-brunson': { midRange: 93, insideScoring: 88, ballHandling: 92, defReb: 32, interiorDefense: 28, strength: 62 },
+  'min-anthony-edwards': { threePoint: 82, vertical: 96, strength: 84, speed: 88, defReb: 55 },
+  'bos-jaylen-brown': { threePoint: 74, strength: 88, vertical: 88, speed: 86, ballHandling: 68 },
+  'mem-ja-morant': { vertical: 98, speed: 94, acceleration: 96, insideScoring: 92, passing: 82, threePoint: 52, defReb: 38 },
+  'nyk-mikal-bridges': { threePoint: 78, perimeterDefense: 88, steal: 80, defReb: 55 },
+  'tor-scottie-barnes': { threePoint: 58, defReb: 78, passing: 82, perimeterDefense: 82, strength: 82 },
+  'okc-jalen-williams': { threePoint: 76, passing: 78, perimeterDefense: 82 },
+  'bos-derrick-white': { threePoint: 80, perimeterDefense: 86, block: 62, basketballIQ: 86 },
+  'nyk-og-anunoby': { perimeterDefense: 92, steal: 82, strength: 88, threePoint: 76 },
+  'phi-tyrese-maxey': { speed: 96, acceleration: 94, threePoint: 80, defReb: 32, strength: 48 },
+  'det-cade-cunningham': { threePoint: 72, defReb: 68, strength: 78, ballHandling: 88 },
+  'cha-lamelo-ball': { passing: 92, threePoint: 76, ballHandling: 92, perimeterDefense: 38, interiorDefense: 30 },
+  'sas-devin-vassell': { threePoint: 78, perimeterDefense: 78 },
+  'cle-donovan-mitchell': { threePoint: 81, vertical: 90, insideScoring: 86, defReb: 40 },
+  'phx-devin-booker': { midRange: 94, threePoint: 83, freeThrow: 92, passing: 78, defReb: 42 }
+};
+
+// Applied AFTER generation rather than folded into makeAttributes, so the
+// generated shape stays the base and a signature is visibly a patch on top of
+// it. Unknown ids and unknown attribute keys are asserted against in
+// validate-data.js — a typo'd id would otherwise be a silent no-op, which is
+// exactly how a table like this rots.
+function applySignatureAttributes(player) {
+  const sig = SIGNATURE_ATTRIBUTES[player.id];
+  if (!sig) return player;
+  Object.keys(sig).forEach(function (key) {
+    player.attributes[key] = Math.max(_DATA.RATING_MIN, Math.min(_DATA.RATING_MAX, sig[key]));
+  });
+  return player;
+}
+
 function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber, yearsPro, overall, potential, archetype, salary, yearsRemaining, opts) {
   opts = opts || {};
   // Auto-lookup college and dateOfBirth from mapping if not explicitly provided
@@ -148,6 +238,10 @@ function mkPlayer(teamId, name, age, heightIn, weightLb, position, jerseyNumber,
     college: opts.college || autoData.college || null,
     dateOfBirth: opts.dateOfBirth || autoData.dateOfBirth || null
   };
+  // BEFORE the potential calculation below, which reads rawOverall — a
+  // signature that lands after it would leave the player's ceiling computed
+  // from the generic profile he no longer has.
+  applySignatureAttributes(player);
   _DATA.defineOverall(player);
   // Potential is the authored HEADROOM re-expressed on the new scale, not the
   // authored level. Mapping the absolute value instead looked right and was
@@ -1030,6 +1124,7 @@ if (typeof module !== 'undefined' && module.exports) {
     makeAttributes: makeAttributes,
     ARCHETYPES: ARCHETYPES,
     rescaleAnchor: rescaleAnchor,
-    ANCHOR_SD_RATIO: ANCHOR_SD_RATIO
+    ANCHOR_SD_RATIO: ANCHOR_SD_RATIO,
+    SIGNATURE_ATTRIBUTES: SIGNATURE_ATTRIBUTES
   };
 }

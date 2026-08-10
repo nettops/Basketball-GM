@@ -107,7 +107,55 @@ function checkPlayers() {
   }
 }
 
+// A signature entry keyed on an id nobody has is a SILENT NO-OP — the player
+// keeps his generic profile and nothing anywhere says so. Eight of the original
+// 42 were wrong on the first pass, because I keyed them off real-world team
+// assignments while this league has 2026 rosters with trades already applied:
+// Durant was on HOU not PHO, Luka on LAL not DAL, Butler on GSW not MIA. Every
+// one of those would have quietly done nothing.
+function checkSignatureAttributesAllResolve() {
+  const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
+  const dataMod = require(path.join(__dirname, '..', 'data.js'));
+  const sig = playersMod.SIGNATURE_ATTRIBUTES;
+  assert.ok(sig && Object.keys(sig).length > 0, 'expected a signature table to check');
+
+  const byId = {};
+  playersMod.PLAYERS_2026.forEach(function (p) { byId[p.id] = p; });
+  const unknown = Object.keys(sig).filter(function (id) { return !byId[id]; });
+  assert.strictEqual(unknown.length, 0,
+    'these signature ids match no player and do nothing: ' + unknown.join(', '));
+
+  // A misspelled attribute key is the same silent no-op one level down.
+  const badKeys = [];
+  Object.keys(sig).forEach(function (id) {
+    Object.keys(sig[id]).forEach(function (k) {
+      if (dataMod.ATTRIBUTE_KEYS.indexOf(k) === -1) badKeys.push(id + '.' + k);
+      const v = sig[id][k];
+      if (typeof v !== 'number' || v < dataMod.RATING_MIN || v > dataMod.RATING_MAX) {
+        badKeys.push(id + '.' + k + ' = ' + v + ' (out of range)');
+      }
+    });
+  });
+  assert.strictEqual(badKeys.length, 0, 'bad signature attribute entries: ' + badKeys.join(', '));
+
+  // And the values must actually be ON the players — proof the table is wired
+  // in, not merely well-formed.
+  let applied = 0;
+  Object.keys(sig).forEach(function (id) {
+    const p = byId[id];
+    Object.keys(sig[id]).forEach(function (k) {
+      if (p.attributes[k] === sig[id][k]) applied += 1;
+    });
+  });
+  const total = Object.keys(sig).reduce(function (s, id) { return s + Object.keys(sig[id]).length; }, 0);
+  assert.strictEqual(applied, total,
+    'every signature value must reach the player; ' + applied + ' of ' + total + ' did');
+  console.log('checkSignatureAttributesAllResolve: OK (' + Object.keys(sig).length +
+    ' players, ' + total + ' values)');
+}
+
 checkDataConstants();
 checkTeams();
 checkPlayers();
+checkSignatureAttributesAllResolve();
 console.log('All validations passed');

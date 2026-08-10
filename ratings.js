@@ -53,8 +53,8 @@ const OVERALL_INTERCEPT = 50.0000;
 
 // THE DISPLAY CURVE. The fit above targets mean 50 / SD 9, which puts a 90 at
 // +4.4 standard deviations — unreachable in a 380-player league, where the
-// measured maximum is 79. This maps the fitted value onto the scale players
-// actually read: worst player 60, median 75, best player 95.
+// measured maximum is 85. This maps the fitted value onto the scale players
+// actually read: worst player 60, median 74, best player 95.
 //
 // The knots are ABSOLUTE, never league-relative. A percentile mapping would
 // re-rate every player the moment a draft class arrived, and "I signed a 90"
@@ -65,11 +65,13 @@ const OVERALL_INTERCEPT = 50.0000;
 // accepted: only 5 display points remain above the current best player, so
 // progression at the very top compresses. This is how 2K behaves — the best
 // player is a 96-97 and nobody is a 99.
-// Re-derived after the NNLS refit moved the raw distribution from 29-78 to
-// 23-79. The knots are anchored on the league's actual raw extremes, so they
-// have to be re-measured whenever the fit changes — leaving them stale would
-// silently compress or clip the ends of the display scale.
-const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 79, dispHi: 95 };
+// Re-derived twice now: the NNLS refit moved the raw distribution from 29-78 to
+// 23-79, and signature attributes for 42 stars moved the top to 85. The knots
+// are anchored on the league's actual raw extremes, so they have to be
+// re-measured whenever the attributes or the fit change — leaving them stale
+// silently compresses or clips the ends of the display scale, and
+// checkTheKnotsAreCalibratedToTheLeague fails loudly when they are.
+const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 85, dispHi: 95 };
 const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
 const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
 
@@ -105,8 +107,9 @@ const RATING_BANDS = {
   // arm admitted exactly ONE player, who already all but qualified on overall
   // alone, while the high-upside rookies it exists for were shut out. An arm
   // that only fires for players who nearly qualify anyway is not an arm.
-  // It now reaches 11 players the overall arm misses, the lowest at 78.
-  superstarPotential: 89,
+  // Re-derived to 86 when signature attributes flattened the display curve;
+  // it reaches 18 players the overall arm misses, the lowest at 76.
+  superstarPotential: 86,
   star: 87,                // stars: trade premium, worth pausing the sim for
   rotation: 79,            // good enough that a bench role is worth complaining about
   fringe: 70               // fringe: likelier to retire
@@ -125,7 +128,7 @@ function computeOverall(player) {
 
 // TWO GETTERS, TWO MEANINGS.
 //
-//   rawOverall  - the fitted value, ~23-79. What the SIM consumes, as a
+//   rawOverall  - the fitted value, ~23-85. What the SIM consumes, as a
 //                 proportional weight.
 //   overall     - the display value, 60-95. What the PLAYER reads.
 //
