@@ -859,3 +859,19 @@ table { border-collapse: collapse; width: 100%; }
   font-variant-numeric: tabular-nums;
 }
 .badge-ref-secret-desc { font-size: .76rem; color: var(--text-dim); line-height: 1.4; margin: 0; }
+
+/* Trophy room, banner raising and the GM name field. Deliberately built from
+   the existing panel palette rather than a new visual system. */
+.trophy-room { display: flex; flex-wrap: wrap; gap: 10px; }
+.banner {
+  width: 84px; padding: 10px 6px 14px; text-align: center;
+  background: linear-gradient(180deg, #b8860b 0%, rgba(0,0,0,0.35) 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 86%, 50% 100%, 0 86%);
+}
+.banner-large { width: 150px; margin: 0 auto; }
+.banner-year { font-weight: 700; font-size: 1.1rem; }
+.banner-label { font-size: 0.62rem; letter-spacing: 0.14em; opacity: 0.85; }
+.banner-large .banner-year { font-size: 1.8rem; }
+.champ-scene { max-width: 520px; margin: 24px auto; }
+.select-name { margin: 10px 0 14px; display: flex; gap: 8px; align-items: center; justify-content: center; }
+.select-name input { padding: 6px 8px; }

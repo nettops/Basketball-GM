@@ -3,6 +3,8 @@ function renderTeamSelect(container, onSelect, onLoadGame, onSpectate, onPlayerC
     '<div class="select-screen">' +
     '<div class="select-title">Choose Your Franchise</div>' +
     '<div class="select-sub">Take control of any team in the league.</div>' +
+    '<div class="select-name"><label for="gm-name-input">Your name</label>' +
+    '<input id="gm-name-input" type="text" maxlength="28" placeholder="GM" autocomplete="off"></div>' +
     '<div class="segmented">' +
     '<label><input type="radio" name="play-mode" value="gm" checked> GM <span class="kpi-sub">manual control</span></label>' +
     '<label><input type="radio" name="play-mode" value="commissioner"> Commissioner <span class="kpi-sub">+ sandbox tools</span></label>' +

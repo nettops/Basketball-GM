@@ -287,3 +287,12 @@ if (typeof module !== 'undefined' && module.exports) {
     recordSeason: recordSeason
   };
 }
+
+// Browser-global aliases. The bare names (titleYears, careerTotals) are far too
+// generic to sit in the global namespace every script tag shares —
+// commissioner.js's clampRating already shadowed progression.js's once here.
+if (typeof module === 'undefined' || !module.exports) {
+  var gmCareerTitleYears = titleYears;
+  var gmCareerTotals = careerTotals;
+  var gmCareerSeasons = seasonsAscending;
+}

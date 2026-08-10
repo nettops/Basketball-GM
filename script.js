@@ -309,6 +309,7 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
+  gmCareer: renderGmCareer,
   seasonSummary: renderSeasonSummary,
   frivolities: renderFrivolities,
   playerProfile: renderPlayerProfile,
@@ -637,6 +638,15 @@ function selectTeam(teamId, playMode) {
   GameState.userTeamId = teamId;
   GameState.playMode = playMode || 'gm';
   initSeason();
+
+  // Read AFTER initSeason so leagueYear is settled — the tenure opens on the
+  // year the career actually starts. Blank is fine and never blocks: the field
+  // is a flourish, not a gate, and ensureGmCareer defaults the name to 'GM'.
+  const nameInput = document.getElementById('gm-name-input');
+  const typed = nameInput && nameInput.value ? nameInput.value.trim() : '';
+  const career = ensureGmCareer(GameState);
+  if (typed) career.name = typed;
+
   document.getElementById('team-select-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';
   renderView('dashboard');
