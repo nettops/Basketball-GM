@@ -983,11 +983,20 @@ function createChoreographer(session) {
         const handleSkill = (onBall && playerById[ev.playerId] && playerById[ev.playerId].attributes)
           ? playerById[ev.playerId].attributes.ballHandling : 50;
         let dribbles = onBall ? dribbleCount(pi * 101 + ei, handleSkill) : 0;
-        // The sim already said this shot came out of a breakdown. A man cannot
-        // break his defender down without dribbling, so an ankle-breaker
-        // FORCES the count up rather than the count silently contradicting it.
-        if (onBall && impactKind === 'ankle' && dribbles < 4) dribbles = 4;
-        const isoPlay = dribbles > 0;
+        // The sim already said this shot came out of a breakdown, and a man
+        // cannot break his defender down without dribbling — so an ankle-breaker
+        // counts as four rather than the count silently contradicting it.
+        //
+        // But it does NOT also get the size-up string below. The ankle-breaker
+        // block further down renders jab / cross / clear / recover, which is
+        // four beats and therefore exactly those four dribbles. Running both
+        // stacked two lateral-displacement systems on the same axis with the
+        // same `dir`, and they cancelled: separation measured 11.3px at the jab
+        // and 11.0px at the clear, i.e. the crossover closed the gap instead of
+        // opening it. Caught by validate-impactMoments.js.
+        const ankle = onBall && impactKind === 'ankle';
+        if (ankle) dribbles = 4;
+        const isoPlay = dribbles > 0 && !ankle;
 
         const chain = [poss.handlerId];
         // 0-3 rather than always 1-2, so possessions differ in how much the
@@ -1211,6 +1220,10 @@ function createChoreographer(session) {
           const jab = step(7, 13);
           push(BEAT.crossJab, jab, { x: jab[handler][0], y: jab[handler][1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'jab', by: handler, on: victim });
+          // This string is the possession's dribbles — see the `ankle` branch
+          // at the roll. Marked here so the probe counts it once, in the same
+          // place it counts every other string.
+          tagHandle({ n: dribbles, move: 'ankle' });
           // cut back hard; he keeps going the wrong way
           const cut = step(-8, 17);
           push(BEAT.crossCut, cut, { x: cut[handler][0], y: cut[handler][1], holder: handler },
