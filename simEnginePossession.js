@@ -408,8 +408,23 @@ function blockSpec(defenderBlock, zone, blockTraitBonus) {
 // Bases re-solved against the locked 2026 rates by scripts/sweep-shot-balance.js.
 var SHOT_TUNING = {
   base: { three: 0.3453, mid: 0.4353, inside: 0.5753 },
-  skillDiv: 292,
-  defDiv: 292,
+  // skillDiv was 292 and defDiv 292. Both moved for reasons that are NOT the
+  // same, which is why they are no longer equal:
+  //
+  // skillDiv 292 -> 400 on PLAYER realism, independent of any balance concern.
+  // Measured 3P% of the top-decile three-point shooters against the bottom
+  // decile, both at 150+ attempts: 292 gave a 10.4pp spread, 400 gives 9.3pp,
+  // 500 gives 7.5pp. The real league runs about 9pp (roughly 40.5% against
+  // 31.5%). 292 was making shooters MORE differentiated than reality, not less.
+  //
+  // defDiv 292 -> 1000 on TEAM realism. The shooter's skill and the defender's
+  // skill shared one divisor, and team strength moves both at once: a good team
+  // shoots better AND defends better, so the two stack into the margin. Raising
+  // only the defensive side cuts that stacking while leaving shooter-vs-shooter
+  // differentiation completely untouched, because two players on the same team
+  // are separated by skillDiv alone.
+  skillDiv: 400,
+  defDiv: 1000,
   // Team synergy is a MULTIPLIER (synergyRamp returns 1 +/- 0.06, plus a
   // chemistry term) that was being differenced against the opponent's and added
   // RAW to a probability — the only modifier in shotSpec without a divisor.
@@ -442,16 +457,34 @@ var SHOT_TUNING = {
   // project owner accepted. Re-solving the bases to claw back 1pp would mean
   // re-tuning four constants to hide a change that is within tolerance.
   //
-  // NOT the whole story, and left explicitly unfinished: this fixes the
-  // STANDINGS (best team 80.7 -> 70.0 wins, six 60-win teams -> under four) but
-  // individual games are still too swingy — |margin| 18.7 against a real ~11,
-  // and 17.9% of games inside 5 points against a real ~33%. Raising skillDiv to
-  // 900 does close that gap (best team 64.3, |margin| 16.3) and was REJECTED:
-  // at 900 an elite shooter beats a poor one by 3.3pp instead of 10.3pp, so
-  // Curry shoots like a centre. Buying league balance by deleting player
-  // differentiation is the wrong trade. The residual amplifier is somewhere
-  // else and has not been found yet.
-  synergyDiv: 8
+  // Retuned to 14 alongside the divisor split above; 8 through 20 are within
+  // noise of each other on every column, and 14 is the middle of that plateau.
+  //
+  // WHY THE MARGIN STOPS HERE, and it is not for want of trying. Mean |margin|
+  // is 16.4 against a real ~11, and the rest is NOT reachable by tuning. Pushed
+  // to absurdity — synergyDiv 200, skillDiv 600, defDiv 4000, which deletes
+  // defence and roster construction outright and flattens the elite-vs-poor
+  // shooter spread to 5.4pp — |margin| still only reaches 15.8. It asymptotes,
+  // because what is left is the shooting itself:
+  //
+  //   per-team scoring variance, this engine   128
+  //   what independent shooting predicts       126   (2*FGM + TPM + FTM,
+  //                                                   counting the overlap
+  //                                                   between made threes and
+  //                                                   made field goals)
+  //   real NBA                                  91
+  //
+  // The engine is statistically CORRECT — its randomness is exactly what
+  // coin-flip shooting implies. Real basketball sits BELOW that floor, meaning
+  // real games are LESS random than independent shooting: teams that fall
+  // behind change shot selection, teams ahead slow the game down, blowouts
+  // reach garbage time. This engine has no game-state feedback at all, so it
+  // cannot go below the arithmetic.
+  //
+  // Closing the rest needs that feedback as a FEATURE, not a constant. Do not
+  // try to reach it by turning these divisors up: the ceiling is 15.8 and the
+  // price is every system that makes one roster feel different from another.
+  synergyDiv: 14
 };
 const SHOT_MIN = 0.18, SHOT_MAX = 0.72;
 

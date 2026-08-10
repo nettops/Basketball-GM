@@ -194,11 +194,11 @@ function checkBlockSpecMatchesTheOriginal() {
 // divided by 8. This reference is an independent re-implementation, so a
 // balance change has to be repeated here or this test fails; that is the point
 // of it, and it is what caught this change rather than letting it through.
-const REFERENCE_SYNERGY_DIV = 8;
+const REFERENCE_SYNERGY_DIV = 14;
 
 function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defenderEnergy, traitBonus) {
-  const skillAdj = (shoot - 50) / 292 * shooterEnergy;
-  const defAdj = (def - 50) / 292 * defenderEnergy;
+  const skillAdj = (shoot - 50) / 400 * shooterEnergy;
+  const defAdj = (def - 50) / 1000 * defenderEnergy;
   const synAdj = (offSyn - defSyn) / REFERENCE_SYNERGY_DIV;
   return Math.max(0.18, Math.min(0.72, base + skillAdj - defAdj + synAdj + traitBonus / 300));
 }
