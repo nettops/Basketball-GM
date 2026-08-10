@@ -20,7 +20,15 @@ const ratings = rq('ratings.js');
 traits.ensureHiddenPlayerData(PLAYERS_2026);
 traits.ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
 const { makeRng } = rq('rng.js');
-rq('simEngine.js'); rq('simEngineBoxScore.js'); rq('simEnginePossession.js');
+rq('simEngine.js'); rq('simEngineBoxScore.js');
+const poss = rq('simEnginePossession.js');
+// USAGE_CAP=n overrides PICK_CEILING.shooter for one run, so alternative
+// settings can be measured without editing committed source — the shipped
+// value stays whatever simEnginePossession.js says it is.
+if (process.env.USAGE_CAP) {
+  poss.PICK_CEILING.shooter = Number(process.env.USAGE_CAP);
+  process.stderr.write('USAGE_CAP override: ' + poss.PICK_CEILING.shooter + '\n');
+}
 rq('gameCoach.js'); rq('gameSim.js');
 const history = rq('history.js');
 const league = rq('league.js');

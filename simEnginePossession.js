@@ -130,24 +130,35 @@ const PICK_POWER = {
 // above a fifth of the weight in the possessions he is on the floor for. A cap
 // near 0.30 throttles ordinary stars badly; 0.40 does not touch them.
 //
-// 0.45 chosen against TWO targets that pull in opposite directions, measured
-// over the same 35-season window:
+// 0.50 chosen against TWO targets that pull in opposite directions. Season
+// leaders over a 35-season run, and single-game highs over one full season of
+// the 2026 league, same seeds throughout:
 //
-//   setting   highest season   typical leader   40pt seasons   60pt games
-//   no cap         45.5             35.1              6         4/season
-//   0.45           38.6             34.4              0         3/season
-//   0.40           36.7             33.0              0         NONE
+//   setting   worst season   avg leader   40pt seasons | 40+/50+/60+ games  best
+//   no cap        45.5          35.1           6       |  207 / 22 / 4      68
+//   0.70          45.5          35.1           6       |  207 / 22 / 4      68
+//   0.60          45.5          35.1           6       |  207 / 22 / 4      68
+//   0.50          38.2          33.9           0       |  207 / 22 / 4      68
+//   0.45          38.6          34.4           0       |  218 / 25 / 3      68
+//   0.40          36.7          33.0           0       |  177 / 19 / 0      57
 //
-// A tighter cap holds season averages down but flattens the single-game tail
-// with them — at 0.40 the best night in a full season falls from 68 points to
-// 57 and sixty-point games stop happening altogether. Those are different
-// things: a 60-point game is one hot night, a 45-point AVERAGE is eighty-two of
-// them. 0.45 is the setting that separates them.
+// Three things that table is here to record:
 //
-// Single-game profile at 0.45, over one full season of the 2026 league: 218
-// forty-point games, 25 fifty-point, 3 sixty-point, best 68. The real NBA runs
-// roughly 100-130 / 10-20 / 0-3.
-const PICK_CEILING = { shooter: 0.45 };
+// Anything at 0.60 or looser is a NO-OP — identical to no cap in every column,
+// down to the same three worst seasons. Do not read those as "gentler
+// settings"; they never trigger.
+//
+// 0.50 is the loosest value that does anything, and it is dormant in normal
+// play: its single-game profile is byte-identical to having no cap at all. It
+// only engages when a player outclasses his own team-mates by more than anyone
+// in the 2026 league does, which is exactly the case that went wrong. 0.45
+// works too but is slightly intrusive, shifting even the 2026 counts.
+//
+// Going tighter breaks the thing the cap is supposed to protect. At 0.40 the
+// best night in a season falls from 68 points to 57 and sixty-point games stop
+// entirely. A 60-point game is one hot night; a 45-point AVERAGE is eighty-two
+// of them. The cap must separate those, not flatten both.
+const PICK_CEILING = { shooter: 0.50 };
 
 function ballHandlingWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
