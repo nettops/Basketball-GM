@@ -422,4 +422,48 @@ function checkSeasonSnapshotsAreBounded() {
 
 checkSeasonSnapshotsAreBounded();
 
+
+function checkGmCareerRoundTrips() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gmCareer = require(path.join(__dirname, '..', 'gmCareer.js'));
+  const gs = makeFakeGameState();
+  const career = gmCareer.ensureGmCareer(gs);
+  career.name = 'Cory';
+  gmCareer.recordSeason(career, 2026, gs.userTeamId, 58, 24, null);
+  gmCareer.addChronicle(career, 2026, 'season', '58-24. Missed the playoffs.');
+  career.milestones.push({ id: 'five_seasons', leagueYear: 2026 });
+
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gs, 'Round Trip Career')));
+  assert.strictEqual(payload.version, 3, 'the career is a new field, so the format version moves');
+
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+  assert.strictEqual(restored.gmCareer.name, 'Cory');
+  assert.strictEqual(restored.gmCareer.seasons.length, 1);
+  assert.strictEqual(restored.gmCareer.seasons[0].wins, 58);
+  assert.strictEqual(restored.gmCareer.chronicle.length, 1);
+  assert.deepStrictEqual(restored.gmCareer.milestones, [{ id: 'five_seasons', leagueYear: 2026 }]);
+  console.log('checkGmCareerRoundTrips: OK');
+}
+checkGmCareerRoundTrips();
+
+function checkAVersionTwoSaveStillLoads() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gs = makeFakeGameState();
+  const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gs, 'Old Save')));
+  // Exactly what a save written before this feature looks like.
+  delete payload.gmCareer;
+  payload.version = 2;
+
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+  assert.ok(restored.gmCareer, 'a v2 save must come back with a career, not undefined');
+  assert.strictEqual(restored.gmCareer.seasons.length, 0,
+    'and with NO invented history — it does not know what happened before it existed');
+  assert.strictEqual(restored.gmCareer.tenures[0].startYear, restored.leagueYear,
+    'the tenure starts at the year the save is actually at, not 2026');
+  console.log('checkAVersionTwoSaveStillLoads: OK');
+}
+checkAVersionTwoSaveStillLoads();
+
 console.log('All save/load validations passed');

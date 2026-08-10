@@ -19,6 +19,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       league: require('./league.js'),
       rng: require('./rng.js'),
       history: require('./history.js'),
+      gmCareer: require('./gmCareer.js'),
       storage: _makeMemoryStorage()
     }
   : {
@@ -28,14 +29,17 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       league: { getPlayerById: getPlayerById },
       rng: { makeRng: makeRng },
       history: { LEAGUE_HISTORY: LEAGUE_HISTORY },
+      gmCareer: { ensureGmCareer: ensureGmCareer },
       storage: localStorage
     };
 
 const SAVE_SLOT_COUNT = 5;
 // v2 added the Phase 7-9 fields serializeGameState originally omitted (career
-// mode, trade inbox, All-Star Weekend, season snapshots). v1 payloads still
-// load — every v2-only field defaults in applySavedState below.
-const SAVE_FORMAT_VERSION = 2;
+// mode, trade inbox, All-Star Weekend, season snapshots). v3 adds the GM career
+// record. v1 and v2 payloads still load — every later field defaults in
+// applySavedState below, and a v2 save gets a career opened at its CURRENT
+// year rather than a fabricated history back to 2026.
+const SAVE_FORMAT_VERSION = 3;
 const SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
@@ -163,7 +167,12 @@ function serializeGameState(gameState, name, includeSnapshots) {
     careerController: serializeCareerController(gameState.playerCareerController),
     narrativeRelationships: gameState.narrativeSystem ? gameState.narrativeSystem.npcRelationships : null,
     seasonSnapshots: includeSnapshots ? (gameState.seasonSnapshots || []) : [],
-    godMode: gameState.godMode || { enabled: false, autoWinEnabled: false }
+    godMode: gameState.godMode || { enabled: false, autoWinEnabled: false },
+
+    // v3. The GM career record — tenures, season rows, milestone unlocks and
+    // the chronicle. Plain JSON. Everything else on the career page is DERIVED
+    // from leagueHistory above, so there is nothing else to save.
+    gmCareer: gameState.gmCareer || null
   };
 }
 
@@ -267,6 +276,14 @@ function applySavedState(payload, gameState) {
   // session falls back independently.
   if (!gameState.leagueYear) gameState.leagueYear = 2026;
   if (gameState.settings) gameState.settings.leagueYear = gameState.leagueYear;
+  // AFTER leagueYear and userTeamId above, never before: ensureGmCareer reads
+  // both, and running it earlier opens the tenure on `undefined`. A v2 save has
+  // no career at all — rather than fabricating one back to 2026, ensureGmCareer
+  // opens a tenure at the year the save is actually at, so the record is honest
+  // about not knowing what happened before it existed.
+  gameState.gmCareer = payload.gmCareer || null;
+  _SAVE_DATA.gmCareer.ensureGmCareer(gameState);
+
   gameState.playMode = payload.playMode || 'gm';
   // Deliberately all-off, and deliberately NOT script.js's defaultAutomation().
   // This branch only runs for a payload predating the automation field, i.e. a
