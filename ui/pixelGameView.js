@@ -790,6 +790,7 @@ function renderPixelGame(container) {
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
       const p = playerById[pid];
       drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
+        heightIn: p ? p.heightIn : null,
         frame: Math.floor((playbackMs + phase) / stride) % 2,
         // each player breathes on his own period, so ten sprites never pulse
         // in unison — the give-away that it is one global timer
@@ -825,6 +826,7 @@ function renderPixelGame(container) {
       ctx.fillRect(Math.round(L.x) - 4, Math.round(ly) - 1, 8, 2);
       const lp = playerById[L.pid];
       drawPlayerSprite(ctx, L.x, ly, colorsById[L.pid], lp ? lp.jerseyNumber : '', {
+        heightIn: lp ? lp.heightIn : null,
         frame: Math.floor(playbackMs / 110) % 2,
         moving: true,
         facing: 0

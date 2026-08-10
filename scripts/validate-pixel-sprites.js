@@ -100,4 +100,75 @@ function checkEveryPoseDraws() {
 }
 checkEveryPoseDraws();
 
+// Measures the drawn sprite rather than trusting the offsets: collects every
+// rect and reports the real silhouette. An assertion that re-derived the
+// geometry from the same constants the code uses would pass no matter what the
+// sprite looked like.
+function silhouette(opts) {
+  const rects = [];
+  const ctx = { fillStyle: '', fillRect: function (x, y, w, h) { rects.push([x, y, w, h]); } };
+  sprites.drawPlayerSprite(ctx, 100, 100, { skin: '#a', hair: '#b', jersey: '#c', trim: '#d' }, 7, opts);
+  let minY = Infinity, maxY = -Infinity;
+  rects.forEach(function (r) { minY = Math.min(minY, r[1]); maxY = Math.max(maxY, r[1] + r[3]); });
+  // the legs are the two skin rects that reach the floor
+  const legs = rects.filter(function (r) { return r[1] + r[3] === 100 && r[2] === 2; });
+  return { minY: minY, maxY: maxY, height: maxY - minY, legLen: legs.length ? Math.max.apply(null, legs.map(function (r) { return r[3]; })) : 0 };
+}
+
+function checkSpriteHeightVariation() {
+  // 72" to 91" is the real league range
+  const short = sprites.spriteTallness(72), tallest = sprites.spriteTallness(91);
+  assert.ok(tallest - short === 8, 'shortest to tallest spans 8px, got ' + (tallest - short));
+  assert.ok(short < 0 && tallest > 0, 'the median body sits between them');
+
+  // monotonic: an inch taller is never a shorter sprite
+  let prev = -Infinity;
+  for (let h = 60; h <= 100; h++) {
+    const t = sprites.spriteTallness(h);
+    assert.ok(t >= prev, 'height ' + h + '" must not shrink the sprite');
+    prev = t;
+  }
+  // missing data must not throw or distort — plenty of code paths draw a
+  // sprite with no player attached (the referee, a leaver mid-substitution)
+  assert.strictEqual(sprites.spriteTallness(undefined), 0);
+  assert.strictEqual(sprites.spriteTallness(null), 0);
+
+  // The cap does not bind anywhere in the real league: the tallest player is
+  // 91", which lands on 5.4 and rounds to the cap value anyway. It exists for
+  // the tuning knob above it and for a future outlier, and mutation testing
+  // showed that left it completely unexercised — removing it changed nothing
+  // any other assertion could see. Tested directly so it is live code.
+  assert.strictEqual(sprites.spriteTallness(120), 5, 'an absurd height is capped');
+  assert.strictEqual(sprites.spriteTallness(40), -5, 'and so is an absurdly short one');
+
+  // Feet on the floor. Every body grows UPWARD from y, so a seven-footer must
+  // not sink through the court and a guard must not hover above it.
+  [72, 79, 91].forEach(function (h) {
+    const s = silhouette({ heightIn: h });
+    assert.strictEqual(s.maxY, 100, h + '" stands on the floor, bottom at ' + s.maxY);
+  });
+  // and the drawn silhouette really is taller, not just the number
+  const sShort = silhouette({ heightIn: 72 }), sTall = silhouette({ heightIn: 91 });
+  assert.ok(sTall.height - sShort.height === 8,
+    'drawn silhouette differs by 8px, got ' + (sTall.height - sShort.height));
+
+  // THE STUBBY-GUARD GUARD. Legs are 6px on a standard body; taking the whole
+  // difference out of them left a 6'0" guard on 3px stumps, reading as stubby
+  // rather than as short. The split keeps every leg at 4px or more.
+  for (let h = 72; h <= 91; h++) {
+    const s = silhouette({ heightIn: h });
+    assert.ok(s.legLen >= 4, h + '" must not stand on stumps, legs ' + s.legLen + 'px');
+  }
+  // ...and the legs must actually carry their share. A floor alone was not
+  // enough: mutation testing showed that sending the WHOLE difference into the
+  // torso passed every other assertion here, and that sprite is a seven-footer
+  // with a guard's legs and an enormous chest.
+  assert.ok(sTall.legLen > sShort.legLen + 2,
+    'taller men have longer legs, got ' + sShort.legLen + 'px vs ' + sTall.legLen + 'px');
+  console.log('checkSpriteHeightVariation: OK (legs ' +
+    silhouette({ heightIn: 72 }).legLen + 'px at 6\'0" to ' +
+    silhouette({ heightIn: 91 }).legLen + 'px at 7\'7")');
+}
+checkSpriteHeightVariation();
+
 console.log('All pixel sprite validations passed');

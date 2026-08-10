@@ -118,11 +118,44 @@ function drawPixelText(ctx, x, y, text, color, scale) {
 // guide hand dropped — held while the ball is in the air),
 // highlight (ball-handler ring), facing (-1 left,
 // 0 camera, 1 right — leans the head into the run direction), moving
-// (enables the leg cycle and arm swing; still players stand planted).
+// (enables the leg cycle and arm swing; still players stand planted),
+// heightIn (real height in inches — drives how tall the sprite is drawn),
+// tall (an explicit pixel delta, overriding heightIn; for previews and tests).
+
+// How many pixels taller or shorter than the standard 24px body. Heights run
+// 72"-91" (6'0" to 7'7") and the league median body is about 79", so the
+// baseline is set there rather than at the midpoint of the range — otherwise
+// the whole league would read as short, since there are far more guards than
+// seven-footers.
+//
+// The spread is deliberately large — 8px between a 6'0" guard and a 7'7"
+// centre, on a 24px body. Big men are supposed to tower.
+const SPRITE_HEIGHT = { base: 79, perInch: 0.45, cap: 5 };
+
+function spriteTallness(heightIn) {
+  if (typeof heightIn !== 'number' || !heightIn) return 0;
+  const d = (heightIn - SPRITE_HEIGHT.base) * SPRITE_HEIGHT.perInch;
+  return Math.max(-SPRITE_HEIGHT.cap, Math.min(SPRITE_HEIGHT.cap, Math.round(d)));
+}
+
+// The difference is SPLIT between legs and torso rather than taken entirely
+// out of the legs. Legs are only 6px to begin with, so putting the whole delta
+// there left a 6'0" guard standing on 3px stumps — he read as stubby rather
+// than as short, which is a different and much worse thing. Sixty/forty keeps
+// the tall man leggy (which is true of tall people) without halving anybody.
+function spriteLegDelta(tall) { return Math.round(tall * 0.6); }
+
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   opts = opts || {};
   const left = Math.round(x) - 5;
   const top = Math.round(y) - 24;
+  // Feet stay on the floor at `y` and the extra height goes UPWARD, into the
+  // legs and then the whole upper body. Growing downward would sink a tall man
+  // through the court; growing from the middle would leave him hovering.
+  const tall = typeof opts.tall === 'number' ? opts.tall : spriteTallness(opts.heightIn);
+  const legT = spriteLegDelta(tall);      // added to leg length
+  const bodyT = tall - legT;              // added to torso length
+  const topU = top - tall;   // head and shoulders — everything above the torso
   const facing = opts.facing || 0;
 
   if (opts.highlight) {
@@ -144,29 +177,29 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   // One pixel of alternating weight is enough to read as breathing.
   const idle = (!opts.moving && !opts.dunking && !opts.stumbling && opts.idleFrame) ? 1 : 0;
   if (opts.dunking) {
-    ctx.fillRect(left + 1, top + 18, 2, 4);  // trail leg, bent back
-    ctx.fillRect(left + 6, top + 17, 2, 3);  // lead knee driven up
+    ctx.fillRect(left + 1, topU + 18, 2, 4);  // trail leg, bent back
+    ctx.fillRect(left + 6, topU + 17, 2, 3);  // lead knee driven up
   } else if (opts.stumbling) {
     // Legs splayed WIDE and buckling. The old pose was symmetric — both legs
     // the same length at the same height — which reads as a wide defensive
     // stance rather than as losing your feet. Now the trail leg skids out from
     // under him while the front leg collapses shorter and lower, so the two
     // sides disagree about where his weight is going.
-    ctx.fillRect(left - 3, top + 21, 4, 3);   // trail leg skidding out
-    ctx.fillRect(left + 8, top + 22, 4, 2);   // front leg collapsed under him
+    ctx.fillRect(left - 3, topU + 21, 4, 3);   // trail leg skidding out
+    ctx.fillRect(left + 8, topU + 22, 4, 2);   // front leg collapsed under him
   } else {
     // idle shifts the weight onto one leg: that hip drops a pixel and the
     // other leg shortens, which is the smallest change that reads as alive
-    ctx.fillRect(left + 2, top + 18 + bob + idle, 2, 6 - bob - idle);
-    ctx.fillRect(left + 6, top + 18 + bob2, 2, 6 - bob2 - idle);
+    ctx.fillRect(left + 2, top + 18 - legT + bob + idle, 2, 6 + legT - bob - idle);
+    ctx.fillRect(left + 6, top + 18 - legT + bob2, 2, 6 + legT - bob2 - idle);
   }
   // shorts
   ctx.fillStyle = colors.jersey;
-  ctx.fillRect(left + 1, top + 15, 8, 4);
+  ctx.fillRect(left + 1, topU + 15 + bodyT, 8, 4);
   // torso / jersey
-  ctx.fillRect(left + 1, top + 8, 8, 8);
+  ctx.fillRect(left + 1, topU + 8, 8, 8 + bodyT);
   ctx.fillStyle = colors.trim;
-  ctx.fillRect(left + 1, top + 8, 8, 1); // shoulder trim
+  ctx.fillRect(left + 1, topU + 8, 8, 1); // shoulder trim
   // arms: raised when shooting, swinging opposite the legs when running
   ctx.fillStyle = colors.skin;
   if (opts.dunking) {
@@ -174,43 +207,43 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // shooter's arms stop at the hairline, so the extended arm is what reads
     // as "going up at the rim" rather than "taking a jumper".
     const ballSide = (opts.facing || 0) >= 0;
-    ctx.fillRect(left + (ballSide ? 8 : 0), top - 6, 2, 14);
-    ctx.fillRect(left + (ballSide ? 0 : 8), top + 3, 2, 7);
+    ctx.fillRect(left + (ballSide ? 8 : 0), topU - 6, 2, 14);
+    ctx.fillRect(left + (ballSide ? 0 : 8), topU + 3, 2, 7);
   } else if (opts.stumbling) {
     // Arms flung out ASYMMETRICALLY and further than before — lead arm thrown
     // up and out, trail arm dropped behind. Both arms at the same height reads
     // as a shrug; the mismatch is what reads as falling. Total reach widens
     // from 14px to 17px, which is what makes the silhouette carry at speed.
-    ctx.fillRect(left - 4, top + 6, 4, 2);    // lead arm flung up and out
-    ctx.fillRect(left + 9, top + 13, 4, 2);   // trail arm dropped behind
+    ctx.fillRect(left - 4, topU + 6, 4, 2);    // lead arm flung up and out
+    ctx.fillRect(left + 9, topU + 13, 4, 2);   // trail arm dropped behind
   } else if (opts.following) {
     // Follow-through: shooting hand still up and snapped over, guide hand
     // dropped away. Held while the ball is in the air — this is the pose that
     // actually says "jump shot" rather than "player with both arms up".
     const hand = (opts.facing || 0) >= 0;
-    ctx.fillRect(left + (hand ? 8 : 0), top - 2, 2, 10);
-    ctx.fillRect(left + (hand ? 8 : 0) + (hand ? -1 : 1), top - 3, 2, 1);   // snapped wrist
-    ctx.fillRect(left + (hand ? 0 : 8), top + 10, 2, 5);
+    ctx.fillRect(left + (hand ? 8 : 0), topU - 2, 2, 10);
+    ctx.fillRect(left + (hand ? 8 : 0) + (hand ? -1 : 1), topU - 3, 2, 1);   // snapped wrist
+    ctx.fillRect(left + (hand ? 0 : 8), topU + 10, 2, 5);
   } else if (opts.shooting) {
-    ctx.fillRect(left, top + 2, 2, 7);
-    ctx.fillRect(left + 8, top + 2, 2, 7);
+    ctx.fillRect(left, topU + 2, 2, 7);
+    ctx.fillRect(left + 8, topU + 2, 2, 7);
   } else if (opts.moving) {
-    ctx.fillRect(left, top + 9 - bob2, 2, 6);
-    ctx.fillRect(left + 8, top + 9 - bob, 2, 6);
+    ctx.fillRect(left, topU + 9 - bob2, 2, 6 + bodyT);
+    ctx.fillRect(left + 8, topU + 9 - bob, 2, 6 + bodyT);
   } else {
     // the arms ride the weight shift too, opposite shoulders
-    ctx.fillRect(left, top + 9 + idle, 2, 6);
-    ctx.fillRect(left + 8, top + 9, 2, 6);
+    ctx.fillRect(left, topU + 9 + idle, 2, 6 + bodyT);
+    ctx.fillRect(left + 8, topU + 9, 2, 6 + bodyT);
   }
   // head + hair, leaning 1px into the direction of travel
-  ctx.fillRect(left + 3 + facing, top + 2, 4, 5);
+  ctx.fillRect(left + 3 + facing, topU + 2, 4, 5);
   ctx.fillStyle = colors.hair;
-  ctx.fillRect(left + 2 + facing, top, 6, 3);
+  ctx.fillRect(left + 2 + facing, topU, 6, 3);
   // jersey number (single digit centered, two digits offset)
   const numStr = String(number == null ? '' : number);
   if (numStr.length > 0) {
     const numX = left + (numStr.length === 1 ? 4 : 2);
-    drawPixelNumber(ctx, numX, top + 10, numStr, colors.trim);
+    drawPixelNumber(ctx, numX, topU + 10, numStr, colors.trim);
   }
 }
 
@@ -242,6 +275,9 @@ if (typeof module !== 'undefined' && module.exports) {
     drawPixelNumber: drawPixelNumber,
     drawPixelText: drawPixelText,
     pixelTextWidth: pixelTextWidth,
+    SPRITE_HEIGHT: SPRITE_HEIGHT,
+    spriteTallness: spriteTallness,
+    spriteLegDelta: spriteLegDelta,
     drawPlayerSprite: drawPlayerSprite,
     drawBall: drawBall
   };
