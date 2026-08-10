@@ -267,8 +267,61 @@ function drawBall(ctx, x, y, spin) {
   else { ctx.fillRect(bx - 1, by - 1, 1, 1); ctx.fillRect(bx, by, 1, 1); ctx.fillRect(bx + 1, by + 1, 1, 1); }
 }
 
+// A single standing sprite drawn to a data URL, for the HTML views. The point
+// is that a player's picture is LITERALLY the man you watch on the court — the
+// same function drawing the same pixels — rather than a second illustration
+// that can drift away from him. Height variation comes along for free: a
+// seven-footer's picture is visibly taller than a guard's.
+//
+// The box is deliberately taller than the body. Sprites are anchored at the
+// feet, so a short player sits lower in the frame and a tall one fills it,
+// which is the whole point and would be destroyed by cropping to fit.
+const SPRITE_CARD = { w: 14, h: 32, footY: 30 };
+
+// Free agents have no team to take colours from.
+const SPRITE_CARD_NO_TEAM = { colors: { primary: '#5b6673', secondary: '#c9d1d9' } };
+
+// Integer scaling only — a fractional scale gives some pixels two screen
+// pixels and their neighbours three, which at this size reads as a rendering
+// bug rather than as pixel art. Sized on HEIGHT because the sprite is a much
+// narrower shape than the face it replaces, and callers pass a face width.
+function spriteCardScale(sizePx) {
+  return Math.max(1, Math.floor(((sizePx || 80) * 1.5) / SPRITE_CARD.h));
+}
+
+function playerSpriteDataUrl(player, team, scale) {
+  if (typeof document === 'undefined' || !player) return '';
+  const s = Math.max(1, Math.round(scale || 1));
+  const c = document.createElement('canvas');
+  c.width = SPRITE_CARD.w * s;
+  c.height = SPRITE_CARD.h * s;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.scale(s, s);
+  drawPlayerSprite(ctx, SPRITE_CARD.w / 2, SPRITE_CARD.footY,
+    spriteColorsForPlayer(player, team || SPRITE_CARD_NO_TEAM, true),
+    player.jerseyNumber, { heightIn: player.heightIn, idleFrame: 0 });
+  return c.toDataURL('image/png');
+}
+
+// Drop-in shape-alike for faces.js's playerFaceHtml, so a caller swaps one
+// name for the other and nothing else.
+function playerSpriteHtml(player, team, sizePx) {
+  const s = spriteCardScale(sizePx);
+  const url = playerSpriteDataUrl(player, team, s);
+  if (!url) return '';
+  return '<span class="player-sprite" style="display:inline-block;width:' +
+    (SPRITE_CARD.w * s) + 'px;height:' + (SPRITE_CARD.h * s) + 'px;">' +
+    '<img src="' + url + '" alt="" style="width:100%;height:100%;' +
+    'image-rendering:pixelated;display:block;"></span>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    SPRITE_CARD: SPRITE_CARD,
+    spriteCardScale: spriteCardScale,
+    playerSpriteDataUrl: playerSpriteDataUrl,
+    playerSpriteHtml: playerSpriteHtml,
     DIGIT_FONT: DIGIT_FONT,
     LETTER_FONT: LETTER_FONT,
     spriteColorsForPlayer: spriteColorsForPlayer,

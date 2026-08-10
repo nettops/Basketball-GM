@@ -171,4 +171,45 @@ function checkSpriteHeightVariation() {
 }
 checkSpriteHeightVariation();
 
+function checkSpriteCard() {
+  // The box must fit the tallest body without clipping. A 7'7" sprite grows
+  // 5px above the standard 24, and the dunk pose reaches 6px above the head —
+  // not used by the card, but the box should not be sized to the exact limit
+  // of the one pose it happens to draw.
+  const highest = sprites.SPRITE_CARD.footY - 24 - 5;
+  assert.ok(highest >= 0, 'tallest body fits in the card, top at ' + highest);
+  assert.ok(sprites.SPRITE_CARD.footY <= sprites.SPRITE_CARD.h,
+    'feet are inside the card');
+
+  // Integer scales only. A fractional scale gives some pixels two screen
+  // pixels and their neighbours three, which at this size reads as a broken
+  // renderer rather than as pixel art.
+  [22, 24, 32, 90, 100].forEach(function (size) {
+    const s = sprites.spriteCardScale(size);
+    assert.ok(s === Math.floor(s) && s >= 1, 'scale for ' + size + ' is a whole number, got ' + s);
+    assert.ok(sprites.SPRITE_CARD.h * s <= size * 1.5,
+      'card at ' + size + ' is no taller than the face it replaces');
+  });
+  // bigger request, never a smaller picture
+  let prev = 0;
+  [22, 24, 32, 90, 100].forEach(function (size) {
+    const s = sprites.spriteCardScale(size);
+    assert.ok(s >= prev, 'scale must not shrink as the request grows');
+    prev = s;
+  });
+
+  // No canvas in Node. These run in the browser, and the assertion that
+  // matters here is that they DEGRADE rather than throw — this module is
+  // required by six validators that have no DOM.
+  assert.strictEqual(sprites.playerSpriteDataUrl({ id: 1 }, null, 4), '',
+    'no document means no data url, not a crash');
+  assert.strictEqual(sprites.playerSpriteHtml({ id: 1 }, null, 100), '',
+    'and no markup either, so a caller emits nothing rather than a broken img');
+  assert.strictEqual(sprites.playerSpriteDataUrl(null, null, 4), '', 'no player, no url');
+  console.log('checkSpriteCard: OK (100px request -> scale ' +
+    sprites.spriteCardScale(100) + ', ' + (sprites.SPRITE_CARD.w * sprites.spriteCardScale(100)) +
+    'x' + (sprites.SPRITE_CARD.h * sprites.spriteCardScale(100)) + 'px)');
+}
+checkSpriteCard();
+
 console.log('All pixel sprite validations passed');

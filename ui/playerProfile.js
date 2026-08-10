@@ -327,7 +327,7 @@ function renderPlayerProfile(container) {
   function draw() {
     const team = player.teamId ? getTeamById(player.teamId) : null;
     let html = '<div class="view-header" style="display:flex;align-items:center;gap:16px;">' +
-      playerFaceHtml(player, team, 100) +
+      playerSpriteHtml(player, team, 100) +
       '<div><h2>' + escapeHtml(player.name) + '</h2><span class="view-sub">' +
       player.position + ' · Age ' + player.age + (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') + '</span></div></div>';
     html += renderCurrentSeasonPanel(player);
