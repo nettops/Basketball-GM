@@ -30,9 +30,15 @@ function lotteryWeight(team) {
   return Math.pow(Math.max(1, LOTTERY_WIN_ANCHOR - team.record.wins), 2);
 }
 
-// Worse playoff finish -> earlier pick. Ties within the same elimination round
-// broken by regular-season wins ascending (worse record picks first).
-function getPlayoffFinishOrder(bracket) {
+// The elimination round each playoff team reached: 0 first round, 1 conference
+// semis, 2 conference finals, 3 lost the Finals, 4 champion. Teams that missed
+// the playoffs are absent from the map entirely.
+//
+// Extracted from getPlayoffFinishOrder so gmCareer.js can classify a season the
+// same way the lottery orders one. Two copies of this would be two definitions
+// of "how the season ended", and they would disagree the first time either
+// changed.
+function playoffResultByTeam(bracket) {
   const eliminatedInRound = {};
   bracket.first.forEach(function (s) { eliminatedInRound[s.winner === s.higherSeed ? s.lowerSeed : s.higherSeed] = 0; });
   bracket.semis.forEach(function (s) { eliminatedInRound[s.winner === s.higherSeed ? s.lowerSeed : s.higherSeed] = 1; });
@@ -40,7 +46,13 @@ function getPlayoffFinishOrder(bracket) {
   const finals = bracket.finals[0];
   eliminatedInRound[finals.winner === finals.higherSeed ? finals.lowerSeed : finals.higherSeed] = 3;
   eliminatedInRound[finals.winner] = 4;
+  return eliminatedInRound;
+}
 
+// Worse playoff finish -> earlier pick. Ties within the same elimination round
+// broken by regular-season wins ascending (worse record picks first).
+function getPlayoffFinishOrder(bracket) {
+  const eliminatedInRound = playoffResultByTeam(bracket);
   return Object.keys(eliminatedInRound).sort(function (a, b) {
     if (eliminatedInRound[a] !== eliminatedInRound[b]) return eliminatedInRound[a] - eliminatedInRound[b];
     return _DRAFT_DATA.teams.getTeamById(a).record.wins - _DRAFT_DATA.teams.getTeamById(b).record.wins;
@@ -218,6 +230,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     weightedDrawWithoutReplacement: weightedDrawWithoutReplacement,
     lotteryWeight: lotteryWeight,
+    playoffResultByTeam: playoffResultByTeam,
     getPlayoffFinishOrder: getPlayoffFinishOrder,
     buildDraftOrder: buildDraftOrder,
     remapForPickOwnership: remapForPickOwnership,
