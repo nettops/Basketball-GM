@@ -903,7 +903,12 @@ function renderPixelGame(container) {
 
       for (let i = 0; i < ballTrail.length - 1; i++) {
         const age = (i + 1) / ballTrail.length;       // 0 oldest, 1 newest
-        ctx.fillStyle = 'rgba(255,190,90,' + (0.45 * age * trailStrength).toFixed(3) + ')';
+        // WHITE, not the ball's own orange. Measured on the live canvas: the
+        // court floor is (189,138,66) and a warm 255,190,90 trail blends to
+        // (219,161,77) — thirty points of red from the floor it sits on, which
+        // is invisible. White against a brown court moves ~113 points in blue,
+        // and reads as a motion streak rather than as a second ball.
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * age * trailStrength).toFixed(3) + ')';
         const r = age < 0.6 ? 1 : 2;
         ctx.fillRect(Math.round(ballTrail[i].x) - (r >> 1), Math.round(ballTrail[i].y) - (r >> 1), r, r);
       }
@@ -911,7 +916,7 @@ function renderPixelGame(container) {
       // A ring under whoever is holding it. Drawn on the FLOOR (groundY) rather
       // than at the ball, so it reads as "this player" and not as a second ball.
       if (holder) {
-        ctx.strokeStyle = 'rgba(255,210,120,' + (0.75 * trailStrength).toFixed(3) + ')';
+        ctx.strokeStyle = 'rgba(255,255,255,' + (0.85 * trailStrength).toFixed(3) + ')';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.ellipse(Math.round(bx), Math.round(groundY) + 1, 6, 2.5, 0, 0, Math.PI * 2);
