@@ -14,7 +14,7 @@ function prospectBioLineHtml(p) {
 function prospectProfileHtml(p) {
   let html = '<div class="box-score-detail">';
   html += '<div class="view-header" style="display:flex;align-items:center;gap:16px;">' +
-    playerFaceHtml(p, null, 90) +
+    playerSpriteHtml(p, null, 90) +
     '<div><h3>' + escapeHtml(p.name) + '</h3><span class="view-sub">' + prospectBioLineHtml(p) + '</span></div></div>';
   html += '<div class="panel"><div class="panel-body kpi-grid">' +
     '<div class="kpi-tile"><div class="kpi-label">Overall</div><div class="kpi-value"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></div></div>' +
@@ -47,7 +47,7 @@ function renderDraftPicker(container, session, userTeamId, onPick) {
         : (revealed.level === 'fuzzy' ? '<span class="pill pill-gold">Partial</span>' : '<span class="pill pill-mute">Unscouted</span>');
       const isExpanded = p.id === expandedProspectId;
       html += '<tr class="is-clickable schedule-row' + (isExpanded ? ' is-expanded' : '') + '" data-prospect-row-id="' + p.id + '" title="Click to view profile">' +
-        '<td>' + playerFaceHtml(p, null, 32) + '</td>' +
+        '<td>' + playerSpriteHtml(p, null, 32) + '</td>' +
         '<td class="col-name">' + escapeHtml(p.name) + ' <span class="schedule-chevron">' + (isExpanded ? '▾' : '▸') + '</span></td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +

@@ -38,7 +38,7 @@ function renderDraftResults(container, draftResults) {
     '<th>Team</th><th>Player</th><th>College</th><th>Pos</th><th class="num">OVR</th><th class="num">POT</th></tr></thead><tbody>';
   draftResults.forEach(function (r) {
     const team = getTeamById(r.teamId);
-    html += '<tr><td>' + playerFaceHtml(r.prospect, team, 32) + '</td><td class="num">' + r.pickNumber + '</td><td class="num">' + r.round + '</td>' +
+    html += '<tr><td>' + playerSpriteHtml(r.prospect, team, 32) + '</td><td class="num">' + r.pickNumber + '</td><td class="num">' + r.round + '</td>' +
       '<td class="col-name">' + teamLogoImgHtml(team.id, 18) + ' ' + escapeHtml(team.name) + '</td>' +
       '<td class="col-name">' + escapeHtml(r.prospect.name) + '</td>' +
       '<td>' + (r.prospect.college || '—') + '</td>' +

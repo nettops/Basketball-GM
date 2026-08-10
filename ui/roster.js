@@ -110,7 +110,7 @@ function renderRoster(container, teamId) {
     roster.forEach(function (p) {
       const avg = getPlayerAverages(p);
       html += '<tr>' +
-        '<td>' + playerFaceHtml(p, rosterTeam, 32) + '</td>' +
+        '<td>' + playerSpriteHtml(p, rosterTeam, 32) + '</td>' +
         '<td class="col-name"><button class="player-link" data-profile-id="' + p.id + '">' + escapeHtml(p.name) + '</button></td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +

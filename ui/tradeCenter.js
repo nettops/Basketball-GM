@@ -13,7 +13,7 @@ function leagueTradingBlockHtml(userTeamId) {
     flagged.map(function (p) {
       const rowClass = p.teamId === userTeamId ? ' class="row-user"' : '';
       const pTeam = getTeamById(p.teamId);
-      return '<tr' + rowClass + '><td>' + playerFaceHtml(p, pTeam, 24) + '</td><td class="col-name">' + escapeHtml(p.name) + '</td><td>' + teamLogoImgHtml(p.teamId, 16) + ' ' + escapeHtml(pTeam.name) + '</td>' +
+      return '<tr' + rowClass + '><td>' + playerSpriteHtml(p, pTeam, 24) + '</td><td class="col-name">' + escapeHtml(p.name) + '</td><td>' + teamLogoImgHtml(p.teamId, 16) + ' ' + escapeHtml(pTeam.name) + '</td>' +
         '<td class="num">' + p.overall + '</td><td class="num">$' + p.contract.salary.toLocaleString() + '</td></tr>';
     }).join('') + '</tbody></table></div>';
 }
@@ -164,7 +164,7 @@ function renderTradeCenter(container, userTeamId) {
         '<th class="num">In</th><th>Send to</th></tr></thead><tbody>';
       roster.forEach(function (p) {
         const assignment = state.assignments.find(function (a) { return a.playerId === p.id; });
-        html += '<tr><td class="col-name">' + playerFaceHtml(p, team, 22) + ' ' + escapeHtml(p.name) + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span>' +
+        html += '<tr><td class="col-name">' + playerSpriteHtml(p, team, 22) + ' ' + escapeHtml(p.name) + ' <span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span>' +
           (p.onTradeBlock && teamId !== userTeamId ? ' <span class="pill pill-gold">On Block</span>' : '') + '</td>' +
           (teamId === userTeamId ? '<td class="num"><input type="checkbox" data-trade-block-id="' + p.id + '"' + (p.onTradeBlock ? ' checked' : '') + '></td>' : '') +
           '<td class="num"><input type="checkbox" data-player-id="' + p.id + '" data-from-team="' + teamId + '"' + (assignment ? ' checked' : '') + '></td>' +
