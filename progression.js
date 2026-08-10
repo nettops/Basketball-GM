@@ -5,7 +5,7 @@ var _PROGRESSION_DATA = (typeof require !== 'undefined')
       traits: { getTraitBonus: getTraitBonus, rollSecretBadgeEvolution: rollSecretBadgeEvolution },
       teams: { getTeamById: getTeamById },
       coaches: { coachFitMultiplier: coachFitMultiplier },
-      ratings: { computeOverall: computeOverall }
+      ratings: { computeOverall: computeOverall, defineOverall: defineOverall }
     };
 
 function clampRating(v) {

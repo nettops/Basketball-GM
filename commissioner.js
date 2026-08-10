@@ -21,7 +21,7 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       prospects: { mkProspect: mkProspect },
       traits: { ensureHiddenPlayerData: ensureHiddenPlayerData },
       faces: { ensurePlayerFace: ensurePlayerFace },
-      ratings: { scaleAttributesToOverall: scaleAttributesToOverall },
+      ratings: { scaleAttributesToOverall: scaleAttributesToOverall, toRawRating: toRawRating },
       coaches: { ensureTeamCoach: ensureTeamCoach },
       rosterMoves: { getFreeAgents: getFreeAgents },
       trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
