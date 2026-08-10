@@ -30,7 +30,12 @@ function renderLotteryOddsPanel(bracket) {
 function renderDraftResults(container, draftResults) {
   let html = '<div class="view-header"><h2>Draft Results</h2><span class="view-sub">' + draftResults.length + ' picks</span></div>';
   if (draftResults.length === 0) {
-    const oddsPanel = (GameState.playoffBracket && !GameState.draftSession) ? renderLotteryOddsPanel(GameState.playoffBracket) : '';
+    // A bracket that EXISTS is not a bracket that FINISHED. This read
+    // playoffBracket alone, so opening this screen mid-playoffs threw on
+    // finals[0].winner -- and since the advance loop re-renders the current
+    // view every step, that also killed Continue for the rest of the session.
+    const oddsPanel = (playoffBracketIsComplete(GameState.playoffBracket) && !GameState.draftSession)
+      ? renderLotteryOddsPanel(GameState.playoffBracket) : '';
     container.innerHTML = html + (oddsPanel || '<div class="empty-state">No draft has been completed yet.</div>');
     return;
   }

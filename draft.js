@@ -30,6 +30,20 @@ function lotteryWeight(team) {
   return Math.pow(Math.max(1, LOTTERY_WIN_ANCHOR - team.record.wins), 2);
 }
 
+// Whether the bracket has been played out to a champion. playoffResultByTeam
+// and everything built on it REQUIRE this — they read `bracket.finals[0]`
+// unconditionally, so a bracket that merely EXISTS is not enough.
+//
+// The distinction is not academic. ui/draft.js guarded its lottery-odds panel
+// on `GameState.playoffBracket && !GameState.draftSession`, which is true the
+// moment the first round is seeded. Opening the Draft screen during the
+// playoffs threw "Cannot read properties of undefined (reading 'winner')" —
+// and because that render happens inside the advance loop, it also killed the
+// Continue button for the rest of the session.
+function playoffBracketIsComplete(bracket) {
+  return !!(bracket && bracket.finals && bracket.finals[0] && bracket.finals[0].winner);
+}
+
 // The elimination round each playoff team reached: 0 first round, 1 conference
 // semis, 2 conference finals, 3 lost the Finals, 4 champion. Teams that missed
 // the playoffs are absent from the map entirely.
@@ -231,6 +245,7 @@ if (typeof module !== 'undefined' && module.exports) {
     weightedDrawWithoutReplacement: weightedDrawWithoutReplacement,
     lotteryWeight: lotteryWeight,
     playoffResultByTeam: playoffResultByTeam,
+    playoffBracketIsComplete: playoffBracketIsComplete,
     getPlayoffFinishOrder: getPlayoffFinishOrder,
     buildDraftOrder: buildDraftOrder,
     remapForPickOwnership: remapForPickOwnership,

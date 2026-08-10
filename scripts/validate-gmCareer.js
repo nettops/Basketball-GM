@@ -282,4 +282,29 @@ function checkChronicleGetsOneSeasonLinePerYear() {
 }
 checkChronicleGetsOneSeasonLinePerYear();
 
+// A bracket that EXISTS is not a bracket that FINISHED. playoffResultByTeam
+// reads bracket.finals[0] unconditionally, so every caller has to check first.
+// ui/draft.js did not, and opening the Draft screen mid-playoffs threw — which
+// then killed the Continue button, because that render runs inside the advance
+// loop. The guard is now one shared predicate rather than a condition each
+// caller remembers to repeat.
+function checkBracketCompletenessIsShared() {
+  const seeded = { first: [{ higherSeed: 'BOS', lowerSeed: 'MIA', winner: null }], semis: [], confFinals: [], finals: [] };
+  assert.strictEqual(draft.playoffBracketIsComplete(seeded), false, 'a seeded bracket is not complete');
+  assert.strictEqual(draft.playoffBracketIsComplete(null), false, 'no bracket is not complete');
+  assert.strictEqual(draft.playoffBracketIsComplete({}), false, 'an empty object is not complete');
+  assert.strictEqual(draft.playoffBracketIsComplete({ finals: [] }), false, 'empty finals is not complete');
+  assert.strictEqual(draft.playoffBracketIsComplete({ finals: [{ winner: null }] }), false,
+    'finals played but undecided is not complete');
+  assert.strictEqual(draft.playoffBracketIsComplete(fakeBracket()), true, 'a finished bracket is complete');
+
+  // And the thing the guard exists to protect: the raw function must still be
+  // the one that throws, so nobody is tempted to make it silently return
+  // nonsense for an unfinished bracket.
+  assert.throws(function () { draft.playoffResultByTeam(seeded); },
+    'playoffResultByTeam still requires a finished bracket');
+  console.log('checkBracketCompletenessIsShared: OK');
+}
+checkBracketCompletenessIsShared();
+
 console.log('All gmCareer validations passed');

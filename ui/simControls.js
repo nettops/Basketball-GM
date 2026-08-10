@@ -197,51 +197,71 @@ async function runAdvance(options) {
   // Hard cap. A season is ~170 days and a bracket ~105 games, so this is far
   // beyond any legitimate run; it exists only so a state the loop cannot
   // advance spins for a moment rather than forever.
-  let guard = 0;
-  while (guard++ < 20000) {
-    stop = evaluateStop(GameState, GameState.season.currentDay, {
-      target: opts.target || null,
-      userStopRequested: _advanceStopRequested,
-      // Both only on the first check. See simRunner.js — these are what let
-      // Continue step across a boundary, or a finished free agency, that it
-      // is parked on. A later season's free agency still stops the run.
-      crossBoundary: steps === 0,
-      crossStage: steps === 0 && !!opts.crossStage
-    });
-    if (stop) break;
+  // try/finally, not just the targeted catches inside: the flag below is what
+  // the Continue button checks, and if ANYTHING in this loop throws without
+  // clearing it the button is dead for the rest of the session -- no error
+  // message, no recovery short of a reload. That is how a single bad render
+  // turned into an unplayable league. Whatever goes wrong, the button comes
+  // back.
+  try {
+    let guard = 0;
+    while (guard++ < 20000) {
+      stop = evaluateStop(GameState, GameState.season.currentDay, {
+        target: opts.target || null,
+        userStopRequested: _advanceStopRequested,
+        // Both only on the first check. See simRunner.js — these are what let
+        // Continue step across a boundary, or a finished free agency, that it
+        // is parked on. A later season's free agency still stops the run.
+        crossBoundary: steps === 0,
+        crossStage: steps === 0 && !!opts.crossStage
+      });
+      if (stop) break;
 
-    // A throw inside a step must halt and say so. Without this the guard is
-    // the only thing between a broken step and 20000 attempts at it.
-    let advanced;
-    try {
-      advanced = stepOnce(out);
-    } catch (e) {
-      stop = { reason: STOP_REASONS.USER_STOP, label: 'Simulation error: ' + e.message };
-      break;
+      // A throw inside a step must halt and say so. Without this the guard is
+      // the only thing between a broken step and 20000 attempts at it.
+      let advanced;
+      try {
+        advanced = stepOnce(out);
+      } catch (e) {
+        stop = { reason: STOP_REASONS.USER_STOP, label: 'Simulation error: ' + e.message };
+        break;
+      }
+      steps += 1;
+      if (!advanced) { stop = { reason: STOP_REASONS.SEASON_COMPLETE, label: 'Nothing left to simulate' }; break; }
+
+      // A scene the user has to acknowledge (a retirement ceremony, a playoff
+      // intro) ends the run — simming past something that asked to be read is
+      // the opposite of what a stop system is for.
+      if (out.sceneShown) { stop = { reason: STOP_REASONS.NOTABLE_EVENT, label: '' }; break; }
+
+      // Show the day that was just simulated. Without this the record, the
+      // standings and the schedule all sat at their pre-Continue values for the
+      // whole run, so a long advance looked like nothing was happening. Cheap
+      // enough to do every step: ~0.1ms for the topbar and 1-4ms for a view,
+      // against ~9ms of possession sim for a single day's games.
+      // Rendering the frame must never be able to end the run. stepOnce is
+      // already wrapped above, but this call was not, and a throw here escaped
+      // runAdvance entirely — skipping `_advanceRunning = false` below, so
+      // Continue checked isAdvanceRunning(), saw true forever, and did nothing
+      // for the rest of the session. One bad view turned into an unplayable
+      // league. A frame that will not draw is worth a console line, not a dead
+      // button.
+      try {
+        refreshAdvanceFrame();
+      } catch (e) {
+        console.error('Advance frame render failed (continuing):', e);
+      }
+      setSimStatus('Simulating…');
+      // ALWAYS yield, including at ultra where delayMs is 0. The old loops
+      // skipped the await entirely at ultra, which froze the tab and made a run
+      // impossible to interrupt — there was no moment for a click to land.
+      await yieldToBrowser(delayMs);
     }
-    steps += 1;
-    if (!advanced) { stop = { reason: STOP_REASONS.SEASON_COMPLETE, label: 'Nothing left to simulate' }; break; }
 
-    // A scene the user has to acknowledge (a retirement ceremony, a playoff
-    // intro) ends the run — simming past something that asked to be read is
-    // the opposite of what a stop system is for.
-    if (out.sceneShown) { stop = { reason: STOP_REASONS.NOTABLE_EVENT, label: '' }; break; }
-
-    // Show the day that was just simulated. Without this the record, the
-    // standings and the schedule all sat at their pre-Continue values for the
-    // whole run, so a long advance looked like nothing was happening. Cheap
-    // enough to do every step: ~0.1ms for the topbar and 1-4ms for a view,
-    // against ~9ms of possession sim for a single day's games.
-    refreshAdvanceFrame();
-    setSimStatus('Simulating…');
-    // ALWAYS yield, including at ultra where delayMs is 0. The old loops
-    // skipped the await entirely at ultra, which froze the tab and made a run
-    // impossible to interrupt — there was no moment for a click to land.
-    await yieldToBrowser(delayMs);
+  } finally {
+    _advanceRunning = false;
+    _advanceStopRequested = false;
   }
-
-  _advanceRunning = false;
-  _advanceStopRequested = false;
   stop = stop || { reason: STOP_REASONS.USER_STOP, label: 'Stopped' };
 
   if (out.sceneShown) {

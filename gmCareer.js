@@ -21,7 +21,7 @@
 function _gmCareerDraftDep() {
   return (typeof require !== 'undefined')
     ? require('./draft.js')
-    : { playoffResultByTeam: playoffResultByTeam };
+    : { playoffResultByTeam: playoffResultByTeam, playoffBracketIsComplete: playoffBracketIsComplete };
 }
 
 // -1 is ours; 0-4 are draft.js's elimination-round encoding, reused rather than
@@ -88,7 +88,10 @@ function seasonResultFor(teamId, bracket) {
   // An unresolved or absent bracket is NOT a title. finalizeSeasonHistory can
   // be reached with a null bracket (a save abandoned mid-season, a commissioner
   // rewind), and defaulting the champion case would hand out a ring for it.
-  if (!bracket || !bracket.finals || !bracket.finals[0] || !bracket.finals[0].winner) {
+  // One definition of "the playoffs are finished", shared with draft.js. This
+  // guard was correct here and simply absent in the draft view; extracting it
+  // is what stops the two from drifting again.
+  if (!_gmCareerDraftDep().playoffBracketIsComplete(bracket)) {
     return SEASON_RESULT.MISSED;
   }
   const byTeam = _gmCareerDraftDep().playoffResultByTeam(bracket);
