@@ -135,6 +135,43 @@ function recordSeason(career, leagueYear, teamId, wins, losses, bracket) {
   return row;
 }
 
+// The permanent, SELECTIVE timeline. Not a copy of the news feed — the feed is
+// noise, which is exactly why script.js caps it at 200 entries and discards the
+// rest. This keeps only career-grade moments, so fifty seasons is a few hundred
+// short strings.
+const CHRONICLE_KINDS = { SEASON: 'season', MILESTONE: 'milestone', AWARD: 'award', DRAFT: 'draft', RECORD: 'record' };
+
+function addChronicle(career, leagueYear, kind, text) {
+  if (!career) return null;
+  if (!Array.isArray(career.chronicle)) career.chronicle = [];
+  const entry = { leagueYear: leagueYear, kind: kind, text: text };
+  career.chronicle.push(entry);
+  return entry;
+}
+
+// Returns null when this year already has its season line, mirroring
+// recordSeason's guard: the manual advance and the fast-forward both reach here.
+//
+// The text is FROZEN at write time rather than rendered lazily, which is the one
+// deliberate exception to "never store what can be computed". The reason is
+// specific: team names are mutable. commissioner.js can rename a franchise and
+// expansion teams appear mid-save, so a line rendered later could claim you won
+// the 2031 title with a team that did not exist until 2034.
+function recordSeasonChronicle(career, row, teamName) {
+  if (!career || !row) return null;
+  const already = (career.chronicle || []).some(function (e) {
+    return e.kind === CHRONICLE_KINDS.SEASON && e.leagueYear === row.leagueYear;
+  });
+  if (already) return null;
+  const label = SEASON_RESULT_LABEL[String(row.result)] || 'Season complete';
+  // teamName is accepted but not interpolated into the default line: the row
+  // already carries teamId and the career page groups by team. It is a
+  // parameter so a multi-team career can prefix the line later without
+  // changing this signature.
+  return addChronicle(career, row.leagueYear, CHRONICLE_KINDS.SEASON,
+    row.wins + '-' + row.losses + '. ' + label + '.');
+}
+
 function careerTotals(career) {
   const seasons = (career && career.seasons) || [];
   let wins = 0, losses = 0, playoffAppearances = 0, finalsAppearances = 0, titles = 0;
@@ -231,6 +268,9 @@ function playersAcquiredByTrade(career, leagueHistory) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SEASON_RESULT: SEASON_RESULT,
+    CHRONICLE_KINDS: CHRONICLE_KINDS,
+    addChronicle: addChronicle,
+    recordSeasonChronicle: recordSeasonChronicle,
     careerTotals: careerTotals,
     seasonsAscending: seasonsAscending,
     titleYears: titleYears,

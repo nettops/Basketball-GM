@@ -28,6 +28,9 @@ var _HISTORY_DATA = (typeof require !== 'undefined')
       gmCareer: {
         ensureGmCareer: ensureGmCareer,
         recordSeason: recordSeason,
+        recordSeasonChronicle: recordSeasonChronicle,
+        addChronicle: addChronicle,
+        CHRONICLE_KINDS: CHRONICLE_KINDS,
         regularSeasonRecord: regularSeasonRecord,
         careerTotals: careerTotals,
         seasonsAscending: seasonsAscending,
@@ -441,8 +444,9 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
     if (userTeam) {
       const rs = _HISTORY_DATA.gmCareer.regularSeasonRecord(
         GameState.season ? GameState.season.games : [], userTeam.id);
-      _HISTORY_DATA.gmCareer.recordSeason(career, leagueYear, userTeam.id,
+      const row = _HISTORY_DATA.gmCareer.recordSeason(career, leagueYear, userTeam.id,
         rs.wins, rs.losses, playoffBracket);
+      _HISTORY_DATA.gmCareer.recordSeasonChronicle(career, row, userTeam.name);
     }
   }
 

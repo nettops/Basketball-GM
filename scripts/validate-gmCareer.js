@@ -245,4 +245,41 @@ function checkTitlesAgreeWithAnIndependentWalkOfTheArchive() {
 }
 checkTitlesAgreeWithAnIndependentWalkOfTheArchive();
 
+function checkChronicleIsAppendOnlyAndDated() {
+  const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
+  const e = gmCareer.addChronicle(c, 2028, 'milestone', 'Won your first championship.');
+  assert.deepStrictEqual(e, { leagueYear: 2028, kind: 'milestone', text: 'Won your first championship.' });
+  gmCareer.addChronicle(c, 2029, 'award', 'Jayson Tatum wins MVP.');
+  assert.strictEqual(c.chronicle.length, 2, 'entries accumulate; nothing is overwritten');
+  console.log('checkChronicleIsAppendOnlyAndDated: OK');
+}
+checkChronicleIsAppendOnlyAndDated();
+
+function checkSeasonChronicleTextIsFrozenAtWriteTime() {
+  const R = gmCareer.SEASON_RESULT;
+  const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
+  const e = gmCareer.recordSeasonChronicle(c,
+    { leagueYear: 2028, teamId: 'BOS', wins: 62, losses: 20, result: R.CHAMPION }, 'Boston Celtics');
+  assert.strictEqual(e.kind, 'season');
+  assert.strictEqual(e.text, '62-20. Won the championship.',
+    'the line reads as a sentence and carries the record');
+
+  const miss = gmCareer.recordSeasonChronicle(c,
+    { leagueYear: 2031, teamId: 'BOS', wins: 30, losses: 52, result: R.MISSED }, 'Boston Celtics');
+  assert.strictEqual(miss.text, '30-52. Missed the playoffs.');
+  console.log('checkSeasonChronicleTextIsFrozenAtWriteTime: OK');
+}
+checkSeasonChronicleTextIsFrozenAtWriteTime();
+
+function checkChronicleGetsOneSeasonLinePerYear() {
+  const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
+  gmCareer.recordSeason(c, 2026, 'BOS', 58, 24, fakeBracket());
+  gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Celtics');
+  const again = gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Celtics');
+  assert.strictEqual(again, null, 'a year already chronicled returns null');
+  assert.strictEqual(c.chronicle.filter(function (e) { return e.kind === 'season'; }).length, 1);
+  console.log('checkChronicleGetsOneSeasonLinePerYear: OK');
+}
+checkChronicleGetsOneSeasonLinePerYear();
+
 console.log('All gmCareer validations passed');
