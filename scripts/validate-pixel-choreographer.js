@@ -477,11 +477,18 @@ function checkDribbleRoll() {
     assert.ok(n >= 0 && n <= 8 && n !== 1 && n !== 3, 'count is 0, 2, 4-6 or 7-8, got ' + n);
     seen[n === 0 ? '0' : n === 2 ? '2' : n <= 6 ? '4-6' : '7+'] += 1;
   }
+  // These are NOT the 50/25/15/10 the game is aimed at, and the gap is the
+  // point. Shots are weighted toward good handlers, and skill shifts the roll
+  // toward the longer buckets, so a table set to the target overshoots it: it
+  // measured 46.1/22.5/19.6/11.8 in-game. The table is the CORRECTION,
+  // calibrated by measurement (see scripts/probe-dribbles.js, which lands on
+  // 49.6/24.6/15.3/10.5). Asserting the target here instead would be asserting
+  // a number the game does not produce.
   const pct = function (k) { return (seen[k] / 20000) * 100; };
-  assert.ok(Math.abs(pct('0') - 50) < 2, '0 dribbles near 50%, got ' + pct('0').toFixed(1));
-  assert.ok(Math.abs(pct('2') - 25) < 2, '2 dribbles near 25%, got ' + pct('2').toFixed(1));
-  assert.ok(Math.abs(pct('4-6') - 15) < 2, '4-6 near 15%, got ' + pct('4-6').toFixed(1));
-  assert.ok(Math.abs(pct('7+') - 10) < 2, '7+ near 10%, got ' + pct('7+').toFixed(1));
+  assert.ok(Math.abs(pct('0') - 54.3) < 2, '0 dribbles near 54.3%, got ' + pct('0').toFixed(1));
+  assert.ok(Math.abs(pct('2') - 25.6) < 2, '2 dribbles near 25.6%, got ' + pct('2').toFixed(1));
+  assert.ok(Math.abs(pct('4-6') - 11.6) < 2, '4-6 near 11.6%, got ' + pct('4-6').toFixed(1));
+  assert.ok(Math.abs(pct('7+') - 8.5) < 2, '7+ near 8.5%, got ' + pct('7+').toFixed(1));
 
   // Skill biases the DISTRIBUTION, not which moves are unlocked. The 88a0ee3
   // failure was a cliff: ballHandling 79 got a crossover and 80 got a double

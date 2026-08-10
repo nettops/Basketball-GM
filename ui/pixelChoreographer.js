@@ -140,10 +140,10 @@ function roll01(seed) {
 // COUNT and letting the move follow from it cannot produce that failure,
 // because the shares are the thing being picked.
 const DRIBBLE_TABLE = [
-  { share: 0.50, counts: [0] },
-  { share: 0.25, counts: [2] },
-  { share: 0.15, counts: [4, 5, 6] },
-  { share: 0.10, counts: [7, 8] }
+  { share: 0.543, counts: [0] },
+  { share: 0.256, counts: [2] },
+  { share: 0.116, counts: [4, 5, 6] },
+  { share: 0.085, counts: [7, 8] }
 ];
 // Skill shifts the roll toward the longer buckets. Deliberately gentle: at
 // 0.12 a 95-rated handler moves the roll +0.108 and a 40-rated one -0.024, so
@@ -652,6 +652,13 @@ function createChoreographer(session) {
     });
   }
 
+  // Stamp the dribble count on the beat just pushed. Kept off `push`'s argument
+  // list, which is already thirteen positional parameters and where a
+  // fourteenth would be a bug waiting to happen.
+  function tagHandle(meta) {
+    if (keyframes.length) keyframes[keyframes.length - 1].handle = meta;
+  }
+
   function positionsFor(offenseTeam) {
     const pos = {};
     ['home', 'away'].forEach(function (side) {
@@ -956,8 +963,31 @@ function createChoreographer(session) {
         // 2, 3 or 4, never fewer and never more. An iso clears the side out
         // and lets one man work, which is a different SHAPE, not just
         // different timing. Outside shots only; a big posting up is not this.
-        const isoPlay = shooterOn && ev.defenderId && shotPos[ev.defenderId] &&
-          ev.zone !== 'inside' && (pi * 7 + ei) % 5 === 0;
+        // Classification is hoisted above the dribble roll because an
+        // ankle-breaker is a statement that the man PUT THE BALL ON THE FLOOR,
+        // and the count has to know that before it picks. classifyImpact reads
+        // only the event and the two players, so moving it earlier changes
+        // nothing about what it returns.
+        const shooterPlayer = playerById[ev.playerId];
+        const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
+        const impactKind = ev.made
+          ? classifyImpact(ev, shooterPlayer, playerById[ev.defenderId])
+          : null;
+
+        // Eligibility is unchanged — someone working on the ball against a
+        // defender, outside; a big sealing his man under the rim is not this
+        // and never was. What changed is that eligibility no longer DECIDES,
+        // it only earns a roll. The old `% 5 === 0` made every fifth eligible
+        // possession an isolation and the other four identical.
+        const onBall = shooterOn && ev.defenderId && shotPos[ev.defenderId] && ev.zone !== 'inside';
+        const handleSkill = (onBall && playerById[ev.playerId] && playerById[ev.playerId].attributes)
+          ? playerById[ev.playerId].attributes.ballHandling : 50;
+        let dribbles = onBall ? dribbleCount(pi * 101 + ei, handleSkill) : 0;
+        // The sim already said this shot came out of a breakdown. A man cannot
+        // break his defender down without dribbling, so an ankle-breaker
+        // FORCES the count up rather than the count silently contradicting it.
+        if (onBall && impactKind === 'ankle' && dribbles < 4) dribbles = 4;
+        const isoPlay = dribbles > 0;
 
         const chain = [poss.handlerId];
         // 0-3 rather than always 1-2, so possessions differ in how much the
@@ -1029,9 +1059,10 @@ function createChoreographer(session) {
             shotPos[rec] = step;   // he passes on from where he dribbled to
           }
         }
-        // The isolation itself: clear the side, then let him work. Two size-up
-        // dribbles that actually MOVE him — a stationary "dribble" draws no
-        // bounce and no leg cycle, so probing has to be real displacement.
+        // Working on the ball: one beat per dribble, each one MOVING him — a
+        // stationary "dribble" draws no bounce and no leg cycle, so probing has
+        // to be real displacement. The side clears out only for the long
+        // strings; nobody clears a side for a two-dribble put-down.
         if (isoPlay) {
           const me = ev.playerId, him = ev.defenderId;
           const toRimX = hoop.x - sp[0], toRimY = hoop.y - sp[1];
@@ -1039,15 +1070,21 @@ function createChoreographer(session) {
           const lx = -toRimY / rl, ly = toRimX / rl;   // lateral, across his man
           const dir = ((pi + ei) % 2) ? 1 : -1;
 
-          // everyone else vacates toward the weak side so the lane is his
-          const clear = Object.assign({}, shotPos);
-          five[poss.team].forEach(function (p) {
-            if (p.id === me || !clear[p.id]) return;
-            clear[p.id] = clampToCourt(clear[p.id][0] - lx * dir * 20, clear[p.id][1] - ly * dir * 20);
-          });
-          push(BEAT.isoClear, clear, { x: sp[0], y: sp[1], holder: me },
-            period, quarter, clock, '',
-            (pi % 3 === 0) ? fillT(COMMENT.bringUp, pi + ei, { h: ln(me), team: teamNames[poss.team] }) : '');
+          // Everyone else vacates toward the weak side so the lane is his — but
+          // only when he is actually going to work. A put-down is not an
+          // isolation; clearing a side for two dribbles would turn half the
+          // game's possessions into the same set piece.
+          let clear = shotPos;
+          if (dribbles >= 4) {
+            clear = Object.assign({}, shotPos);
+            five[poss.team].forEach(function (p) {
+              if (p.id === me || !clear[p.id]) return;
+              clear[p.id] = clampToCourt(clear[p.id][0] - lx * dir * 20, clear[p.id][1] - ly * dir * 20);
+            });
+            push(BEAT.isoClear, clear, { x: sp[0], y: sp[1], holder: me },
+              period, quarter, clock, '',
+              (pi % 3 === 0) ? fillT(COMMENT.bringUp, pi + ei, { h: ln(me), team: teamNames[poss.team] }) : '');
+          }
 
           // ballLat offsets the BALL laterally from the handler. It is what makes
           // a behind-the-back look different from a crossover at this size: in a
@@ -1073,33 +1110,32 @@ function createChoreographer(session) {
             return flowed;
           }
 
-          // WHICH move he reaches for. Keyed to ball-handling so a guard visibly
-          // has more in the bag than a big — the whole point of adding a
-          // vocabulary rather than making everyone do the same shimmy. The
-          // possession index breaks ties so the same player does not repeat one
-          // move all night.
-          const handleSkill = (playerById[me] && playerById[me].attributes)
-            ? playerById[me].attributes.ballHandling : 50;
-          const moveRoll = (pi + ei) % 3;
-          const moveKind = (handleSkill >= 80 && moveRoll === 0) ? 'double'
-            : (handleSkill >= 65 && moveRoll === 1) ? 'behind'
-            : 'cross';
+          // The shape falls out of the count rather than being picked beside
+          // it. Two dribbles cannot be a double move and eight cannot be a
+          // put-down, so there is nothing left to get out of step.
+          const moveKind = dribbles <= 2 ? 'putdown'
+            : dribbles >= 7 ? 'double'
+              : (roll01(pi * 17 + ei) < 0.5 ? 'cross' : 'behind');
 
-          let back;
-          if (moveKind === 'double') {
-            // Jab, cross back, cross AGAIN. Six beats where a crossover is four,
-            // so it is gated to elite handlers — on everyone else it would just
-            // read as dithering.
-            probe(11, 6, 1);
-            probe(-9, 2, 2);
-            back = probe(7, 4, 3);
-          } else if (moveKind === 'behind') {
-            // Body barely moves; the BALL takes the long way round behind him.
-            probe(6, 5, 1, -12);
-            back = probe(-7, 2, 2, 11);
-          } else {
-            probe(11, 6, 1);
-            back = probe(-9, 2, 2);
+          // One beat per dribble, so the marker is not a claim the beats fail
+          // to back up. The string alternates sides on a decaying amplitude and
+          // creeps toward the rim.
+          let back = clear;
+          for (let d = 0; d < dribbles; d++) {
+            const side = (d % 2) ? -1 : 1;
+            // the double move's signature is that the LAST pair is the biggest,
+            // after the defender has already ridden out three smaller ones
+            const late = (moveKind === 'double' && d >= dribbles - 2);
+            const amp = (moveKind === 'putdown' ? 5 : 11 - (d % 3) * 2) + (late ? 4 : 0);
+            const rim = 2 + (d % 3) * 2;
+            // Behind the back: the BALL takes the long way round a handler
+            // whose shoulders stay square. Without a separate ball path the two
+            // moves are the same rectangles sliding sideways at this size.
+            const ballLat = (moveKind === 'behind' && (d % 2) === 1) ? -12 : 0;
+            back = probe(side * amp, rim, d + 1, ballLat);
+            // the marker goes on the first beat of the string, one per string,
+            // which is what scripts/probe-dribbles.js counts
+            if (d === 0) tagHandle({ n: dribbles, move: moveKind });
           }
           // and back to the spot the sim says he shot from
           const attack = Object.assign({}, back);
@@ -1146,14 +1182,10 @@ function createChoreographer(session) {
           }
         }
 
-        // Classification is hoisted above the windup because an ankle breaker
-        // has to be choreographed BEFORE the shot goes up — the move is what
-        // creates the shot, not a decoration on top of it.
-        const shooterPlayer = playerById[ev.playerId];
-        const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
-        const impactKind = ev.made
-          ? classifyImpact(ev, shooterPlayer, playerById[ev.defenderId])
-          : null;
+        // `shooterPlayer`, `dunking` and `impactKind` are computed above the
+        // dribble roll — an ankle breaker has to be choreographed BEFORE the
+        // shot goes up, because the move is what creates the shot rather than a
+        // decoration on top of it, and the dribble count has to know about it.
 
         // The crossover. Worked ACROSS the defender rather than at him: the
         // lateral axis is perpendicular to the line to the rim, so the jab and
