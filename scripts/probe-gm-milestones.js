@@ -60,7 +60,15 @@ function buildGameState(seed, userTeamId) {
 
 const firstFire = {};
 const everUnlocked = {};
-gmMilestones.MILESTONES.forEach(function (m) { firstFire[m.id] = []; everUnlocked[m.id] = 0; });
+// How close each career got by the END of its run, for milestones that never
+// fired. Without this the probe cannot tell "nobody can ever do this" from "the
+// run was too short to find out" — an 8-season run reported ten_seasons,
+// twenty_five_seasons, thousand_wins and playoff_decade as UNREACHABLE, which
+// would have sent me lowering thresholds that were never tested.
+const bestFraction = {};
+gmMilestones.MILESTONES.forEach(function (m) {
+  firstFire[m.id] = []; everUnlocked[m.id] = 0; bestFraction[m.id] = 0;
+});
 let totalSeasons = 0;
 let careers = 0;
 
@@ -88,6 +96,18 @@ TEAMS.slice(0, TEAM_LIMIT).forEach(function (userTeam, teamIndex) {
       });
     }
   }
+
+  // End-of-career progress, for the never-fired verdict.
+  if (gs.gmCareer) {
+    const ctx = gmMilestones.buildContext(gs.gmCareer, history.LEAGUE_HISTORY,
+      PLAYERS_2026, history.LEAGUE_HISTORY.retiredPlayers, rq('ratings.js').toDisplayRating);
+    gmMilestones.MILESTONES.forEach(function (m) {
+      if (!m.progress) return;
+      const p = m.progress(ctx);
+      if (!p || !p.target) return;
+      bestFraction[m.id] = Math.max(bestFraction[m.id], p.current / p.target);
+    });
+  }
 });
 
 function median(arr) {
@@ -104,8 +124,17 @@ gmMilestones.MILESTONES.forEach(function (m) {
   const med = median(firstFire[m.id]);
   const sharePerSeason = hits / totalSeasons;
   let verdict = 'ok';
-  if (hits === 0) verdict = m.hidden ? 'never (hidden: acceptable if rare by design)' : 'UNREACHABLE — lower it';
-  else if (sharePerSeason > 0.6) verdict = 'TOO EASY — raise it';
+  if (hits === 0) {
+    const frac = bestFraction[m.id];
+    if (m.hidden) verdict = 'never (hidden: fine if rare by design)';
+    else if (m.progress && frac >= 0.5) {
+      verdict = 'not reached, but got to ' + (100 * frac).toFixed(0) + '% — RUN TOO SHORT to judge';
+    } else if (m.progress) {
+      verdict = 'UNREACHABLE — best career reached only ' + (100 * frac).toFixed(0) + '%';
+    } else {
+      verdict = 'never fired (binary — no progress signal, needs a longer run)';
+    }
+  } else if (sharePerSeason > 0.6) verdict = 'TOO EASY — raise it';
   else if (m.hidden && sharePerSeason > 0.05) verdict = 'hidden but common — raise it';
   console.log('  ' + m.id.padEnd(24) + ' ' + m.family.padEnd(10) + '  ' +
     (m.hidden ? 'y' : 'n') + '    ' + String(hits).padStart(3) + '/' + careers +
