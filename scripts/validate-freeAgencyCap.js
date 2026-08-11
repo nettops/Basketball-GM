@@ -1,0 +1,192 @@
+// The user's free-agency offer is subject to the SAME cap rule as every AI
+// team's, and the Disable Salary Cap setting is the only way past it.
+//
+// Before this existed, generateAIOffer held the cap logic inline, so it only
+// ever applied to offers the AI generated. The user's bidding path
+// (freeAgencyBidding.js) never touched that function and was therefore
+// unconstrained: a team $33.6M OVER the cap — a position where every AI team
+// is refused outright — could sign a $1,000,000,000 contract and drive its
+// payroll to eight times the cap. The Settings toggle promises "free agency
+// and trades ignore cap space entirely", which is only meaningful if the cap
+// otherwise binds.
+const assert = require('assert');
+const path = require('path');
+const ROOT = path.join(__dirname, '..');
+const rq = function (f) { return require(path.join(ROOT, f)); };
+
+rq('data.js'); rq('rng.js');
+const { TEAMS } = rq('teams.js');
+const traits = rq('traits.js');
+rq('scouting.js');
+const { PLAYERS_2026 } = rq('players-2026.js');
+traits.ensureHiddenPlayerData(PLAYERS_2026);
+const data = rq('data.js');
+const league = rq('league.js');
+const fa = rq('freeAgency.js');
+const bidding = rq('freeAgencyBidding.js');
+const { makeRng } = rq('rng.js');
+
+const BILLION = 1000000000;
+const CAP = data.getEffectiveSalaryCap(1);
+
+// freeAgency.js and freeAgencyBidding.js both read GameState.settings for
+// capLevel/capDisabled and tolerate its absence. Node has no GameState, so
+// give them one rather than testing a code path the browser never takes.
+global.GameState = { settings: { capLevel: 1, capDisabled: false } };
+
+// Each case gets the league back exactly as it started: teamId and contract
+// are the only things these paths mutate, and a leaked $1B contract would
+// silently poison every later assertion about payroll.
+function withFreeAgent(playerId, fn) {
+  const p = PLAYERS_2026.find(function (x) { return x.id === playerId; });
+  const teamId = p.teamId, contract = p.contract;
+  p.teamId = null;
+  try { return fn(p); } finally { p.teamId = teamId; p.contract = contract; }
+}
+
+function payrollOf(teamId) { return league.getTeamPayroll(teamId); }
+
+// A team over the cap is exactly where the AI is refused: generateAIOffer
+// returns null when capSpace < the minimum salary.
+function findOverCapTeam() {
+  const t = TEAMS.find(function (t) { return CAP - payrollOf(t.id) < 0; });
+  assert.ok(t, 'the fixture league needs at least one over-the-cap team');
+  return t;
+}
+function findUnderCapTeam() {
+  const t = TEAMS.slice().sort(function (a, b) { return payrollOf(a.id) - payrollOf(b.id); })[0];
+  assert.ok(CAP - payrollOf(t.id) > 5000000, 'need a team with real cap space');
+  return t;
+}
+
+function checkOverCapTeamCannotSignAtAll() {
+  const team = findOverCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const before = payrollOf(team.id);
+    // The AI in this exact position is refused outright — the user must be too.
+    assert.strictEqual(fa.generateAIOffer(team, star, makeRng(1)), null,
+      'precondition: an over-cap team must get no AI offer');
+
+    const state = bidding.startBidding(star.id, team.id, makeRng(1));
+    const result = bidding.evaluateBiddingRound(state, BILLION, 5);
+    assert.strictEqual(result.offerAccepted, false,
+      'a $1B offer from an over-cap team must be rejected');
+    assert.ok(result.rejectedReason, 'a rejection must say why');
+    assert.strictEqual(result.userWinning, false,
+      'a rejected offer cannot be described as winning the bidding');
+
+    // Defense in depth: pressing Sign Player must not award him either, even
+    // though the offer never legally existed.
+    const outcome = bidding.finalizeBidding(state, true);
+    assert.notStrictEqual(outcome.teamId, team.id,
+      'an over-cap team must not end up with the player');
+    assert.strictEqual(star.contract.salary < BILLION, true,
+      'no $1B contract may be written');
+    assert.ok(payrollOf(team.id) <= before + 1,
+      'an over-cap team payroll must not grow, was ' + before + ' now ' + payrollOf(team.id));
+  });
+  console.log('checkOverCapTeamCannotSignAtAll: OK');
+}
+
+function checkOfferCannotExceedCapSpace() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const space = CAP - payrollOf(team.id);
+    const state = bidding.startBidding(star.id, team.id, makeRng(2));
+
+    const tooBig = bidding.evaluateBiddingRound(state, space + 1000000, 3);
+    assert.strictEqual(tooBig.offerAccepted, false,
+      'an offer $1M above available space must be rejected');
+
+    const legal = bidding.evaluateBiddingRound(state, space - 1000000, 3);
+    assert.strictEqual(legal.offerAccepted, true,
+      'an offer inside cap space must be accepted, got: ' + legal.rejectedReason);
+
+    bidding.finalizeBidding(state, true);
+    assert.strictEqual(star.teamId, team.id, 'a legal offer must actually sign the player');
+    assert.ok(payrollOf(team.id) <= CAP,
+      'payroll must not exceed the cap after a legal signing');
+  });
+  console.log('checkOfferCannotExceedCapSpace: OK');
+}
+
+function checkBelowMinimumRejected() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const state = bidding.startBidding(star.id, team.id, makeRng(3));
+    const r = bidding.evaluateBiddingRound(state, 1000, 2);
+    assert.strictEqual(r.offerAccepted, false,
+      'an offer below the league minimum must be rejected');
+  });
+  console.log('checkBelowMinimumRejected: OK');
+}
+
+function checkDisableCapStillWorks() {
+  const team = findOverCapTeam();
+  global.GameState.settings.capDisabled = true;
+  try {
+    withFreeAgent('sas-victor-wembanyama', function (star) {
+      const state = bidding.startBidding(star.id, team.id, makeRng(4));
+      const r = bidding.evaluateBiddingRound(state, BILLION, 5);
+      assert.strictEqual(r.offerAccepted, true,
+        'with the cap disabled the offer must go through — that is what the setting is for');
+      const outcome = bidding.finalizeBidding(state, true);
+      assert.strictEqual(outcome.teamId, team.id);
+      assert.strictEqual(star.contract.salary, BILLION);
+    });
+  } finally {
+    global.GameState.settings.capDisabled = false;
+  }
+  console.log('checkDisableCapStillWorks: OK');
+}
+
+function checkFullRosterCannotSign() {
+  const team = TEAMS.find(function (t) { return league.getTeamRoster(t.id).length === 15; })
+    || (function () {
+      // Fill the roomiest team to 15 by borrowing free-agent-less bodies.
+      const t = findUnderCapTeam();
+      const spares = PLAYERS_2026.filter(function (p) { return p.teamId && p.teamId !== t.id; });
+      const moved = [];
+      while (league.getTeamRoster(t.id).length < 15) {
+        const p = spares.pop();
+        moved.push({ p: p, from: p.teamId });
+        p.teamId = t.id;
+      }
+      t.__restore = function () { moved.forEach(function (m) { m.p.teamId = m.from; }); };
+      return t;
+    })();
+  try {
+    withFreeAgent('sas-victor-wembanyama', function (star) {
+      const state = bidding.startBidding(star.id, team.id, makeRng(5));
+      const r = bidding.evaluateBiddingRound(state, 1500000, 1);
+      assert.strictEqual(r.offerAccepted, false,
+        'a 15-man roster must not be able to sign a 16th player');
+    });
+  } finally {
+    if (team.__restore) { team.__restore(); delete team.__restore; }
+  }
+  console.log('checkFullRosterCannotSign: OK');
+}
+
+// The extraction must not have moved the AI. If offerLimit changed what
+// generateAIOffer does, league behaviour changed and every golden is suspect.
+function checkAiOffersUnchanged() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const offer = fa.generateAIOffer(team, star, makeRng(7));
+    assert.ok(offer, 'a team with space and interest should still make an offer');
+    assert.ok(offer.salary >= 1200000, 'AI offer must respect the minimum');
+    assert.ok(offer.salary <= CAP - payrollOf(team.id),
+      'AI offer must still fit in cap space');
+  });
+  console.log('checkAiOffersUnchanged: OK');
+}
+
+checkOverCapTeamCannotSignAtAll();
+checkOfferCannotExceedCapSpace();
+checkBelowMinimumRejected();
+checkDisableCapStillWorks();
+checkFullRosterCannotSign();
+checkAiOffersUnchanged();
+
+console.log('All free agency cap validations passed');

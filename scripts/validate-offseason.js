@@ -360,12 +360,14 @@ checkSilentFreeAgencyResolution();
 function checkBiddingWar() {
   const biddingModule = require(path.join(__dirname, '..', 'freeAgencyBidding.js'));
   const rosterMovesModule = require(path.join(__dirname, '..', 'rosterMoves.js'));
+  const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgency.js'));
   const rng = makeRng(900);
 
-  // Find any team with roster room to spare so the waive is guaranteed to
-  // succeed regardless of how earlier tests in this cumulative file left
-  // team rosters sized.
-  const donorTeam = teamsModule.TEAMS.find(function (t) { return leagueModule.getTeamRoster(t.id).length > 12; });
+  // Roster room to spare so the waive is guaranteed to succeed regardless of
+  // how earlier tests in this cumulative file left team rosters sized — and
+  // now cap space too, since the bidder must be able to make a real offer.
+  const donorTeam = teamsModule.TEAMS.filter(function (t) { return leagueModule.getTeamRoster(t.id).length > 12; })
+    .sort(function (a, b) { return leagueModule.getTeamPayroll(a.id) - leagueModule.getTeamPayroll(b.id); })[0];
   const roster = leagueModule.getTeamRoster(donorTeam.id);
   const target = roster[roster.length - 1];
   const waiveResult = rosterMovesModule.waivePlayer(target.id);
@@ -377,12 +379,25 @@ function checkBiddingWar() {
   assert.strictEqual(state.playerId, target.id);
   assert.strictEqual(state.userTeamId, userTeamId);
 
+  // "Near-max" now means near the maximum this team may legally offer. The
+  // user's bid is subject to the same cap rule as every AI team's, so a flat
+  // $45,000,000 was only ever a legal offer by accident — and once it stopped
+  // being one, this test would have gone red for a reason that has nothing to
+  // do with bidding wars. Read the ceiling off the model rather than guessing.
+  const limit = freeAgencyModule.offerLimit(teamsModule.getTeamById(userTeamId));
+  assert.ok(!limit.reason, 'test setup: the donor team must be able to sign at all (' + limit.reason + ')');
+  const bigBid = Math.min(45000000, limit.max);
+  assert.ok(bigBid > limit.min, 'test setup: the donor team needs real cap space, has $' + limit.max);
+
   // A lowball offer should not obviously beat every competing AI bid.
-  const lowResult = biddingModule.evaluateBiddingRound(state, 1300000, 1);
+  const lowResult = biddingModule.evaluateBiddingRound(state, limit.min + 100000, 1);
+  assert.strictEqual(lowResult.offerAccepted, true, 'a minimum-salary offer should be legal');
   assert.ok(typeof lowResult.userWinning === 'boolean');
 
   // A near-max offer should win outright against any remaining competition.
-  const highResult = biddingModule.evaluateBiddingRound(state, 45000000, 4);
+  const highResult = biddingModule.evaluateBiddingRound(state, bigBid, 4);
+  assert.strictEqual(highResult.offerAccepted, true,
+    'the near-max offer must be legal, else userWinning below proves nothing: ' + highResult.rejectedReason);
   assert.strictEqual(highResult.userWinning, true, 'a near-max offer should beat any remaining AI bid');
 
   const outcome = biddingModule.finalizeBidding(state, true);

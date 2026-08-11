@@ -4,7 +4,7 @@ var _BIDDING_DATA = (typeof require !== 'undefined')
       league: { getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap },
-      freeAgency: { scoreOffer: scoreOffer, generateAIOffer: generateAIOffer, signPlayer: signPlayer }
+      freeAgency: { scoreOffer: scoreOffer, generateAIOffer: generateAIOffer, signPlayer: signPlayer, checkOffer: checkOffer }
     };
 
 function startBidding(playerId, userTeamId, rng) {
@@ -33,6 +33,21 @@ function bestAIOffer(state) {
 function evaluateBiddingRound(state, userSalary, userYears) {
   const player = _BIDDING_DATA.league.getPlayerById(state.playerId);
   const userTeam = _BIDDING_DATA.teams.getTeamById(state.userTeamId);
+
+  // The user's team is bound by the same rule as every AI team's — the cap
+  // check that used to live only inside generateAIOffer, which this path does
+  // not call. An illegal offer is not recorded at all, so state.userOffer
+  // still holds whatever legal offer preceded it (or null) and finalizeBidding
+  // cannot award the player on the strength of a bid that was refused.
+  const legality = _BIDDING_DATA.freeAgency.checkOffer(userTeam, userSalary);
+  if (!legality.ok) {
+    const stillBest = bestAIOffer(state);
+    return {
+      offerAccepted: false, rejectedReason: legality.reason, offerLimit: legality.limit,
+      userWinning: false, bestAIOffer: stillBest
+    };
+  }
+
   const userOffer = { teamId: state.userTeamId, salary: userSalary, yearsRemaining: userYears };
   state.userOffer = userOffer;
   const userScore = _BIDDING_DATA.freeAgency.scoreOffer(player, userTeam, userOffer);
@@ -55,14 +70,23 @@ function evaluateBiddingRound(state, userSalary, userYears) {
 
   const best = bestAIOffer(state);
   const bestScore = best ? _BIDDING_DATA.freeAgency.scoreOffer(player, _BIDDING_DATA.teams.getTeamById(best.teamId), best) : -Infinity;
-  return { userWinning: userScore >= bestScore, bestAIOffer: best };
+  return { offerAccepted: true, rejectedReason: null, offerLimit: legality.limit,
+    userWinning: userScore >= bestScore, bestAIOffer: best };
 }
 
 function finalizeBidding(state, userAccepts) {
   const player = _BIDDING_DATA.league.getPlayerById(state.playerId);
   if (userAccepts && state.userOffer) {
-    _BIDDING_DATA.freeAgency.signPlayer(player, state.userOffer);
-    return { signed: true, teamId: state.userTeamId };
+    // Re-checked at signing rather than trusted from the bidding round: cap
+    // space can move between the two (another signing, a trade), and a guard
+    // that only runs on the path the UI happens to take is the same mistake
+    // that created this bug. If the offer is no longer legal the player goes
+    // to the best AI bid instead, exactly as if the user had withdrawn.
+    const userTeam = _BIDDING_DATA.teams.getTeamById(state.userTeamId);
+    if (_BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary).ok) {
+      _BIDDING_DATA.freeAgency.signPlayer(player, state.userOffer);
+      return { signed: true, teamId: state.userTeamId };
+    }
   }
   const best = bestAIOffer(state);
   if (best) {

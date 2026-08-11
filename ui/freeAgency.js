@@ -69,19 +69,38 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
   const state = startBidding(playerId, userTeamId, GameState.rng);
 
   function draw(lastResult) {
+    // The same function the model enforces with, so the ceiling shown here and
+    // the ceiling applied at signing cannot drift apart.
+    const limit = offerLimit(getTeamById(userTeamId));
+    const canBid = !limit.reason;
+
     let html = '<div class="bid-panel"><h3>Bidding for ' + escapeHtml(player.name) + '</h3>';
     html += '<div class="kpi-sub">Competing offers: ' + state.aiOffers.length + '</div>';
-    if (lastResult) {
+    html += limit.capDisabled
+      ? '<div class="kpi-sub">Salary cap disabled — offer anything.</div>'
+      : '<div class="kpi-sub">Cap space: ' + capSpaceHtml(limit.capSpace) + '</div>';
+    if (limit.reason) {
+      html += '<p><span class="pill pill-loss">Cannot sign</span> ' + escapeHtml(limit.reason) + '</p>';
+    }
+    if (lastResult && lastResult.offerAccepted === false) {
+      html += '<p><span class="pill pill-loss">Offer rejected</span> ' +
+        escapeHtml(lastResult.rejectedReason) + '</p>';
+    } else if (lastResult) {
       html += lastResult.userWinning
         ? '<p><span class="pill pill-win">Leading</span> Your offer is currently winning.</p>'
         : '<p><span class="pill pill-loss">Behind</span> A competing offer is ahead' +
           (lastResult.bestAIOffer ? ' ($' + lastResult.bestAIOffer.salary.toLocaleString() + ')' : '') + '.</p>';
     }
-    html += '<div class="field-row"><label style="margin:0;">Salary $</label><input type="number" id="bid-salary" value="5000000" step="100000" style="width:140px;"></div>';
+    const startingBid = canBid ? Math.min(5000000, limit.max) : 0;
+    html += '<div class="field-row"><label style="margin:0;">Salary $</label><input type="number" id="bid-salary" value="' +
+      startingBid + '" step="100000" min="' + limit.min + '"' +
+      (limit.capDisabled ? '' : ' max="' + limit.max + '"') +
+      (canBid ? '' : ' disabled') + ' style="width:140px;"></div>';
     html += '<div class="field-row"><label style="margin:0;">Years</label><input type="number" id="bid-years" value="2" min="1" max="5" style="width:70px;"></div>';
+    const canSign = canBid && !!(lastResult && lastResult.offerAccepted);
     html += '<div class="toolbar" style="margin:14px 0 0;">' +
-      '<button id="submit-bid-btn">Submit Offer</button>' +
-      '<button id="accept-bid-btn" class="btn-primary"' + (lastResult ? '' : ' disabled') + '>Sign Player</button>' +
+      '<button id="submit-bid-btn"' + (canBid ? '' : ' disabled') + '>Submit Offer</button>' +
+      '<button id="accept-bid-btn" class="btn-primary"' + (canSign ? '' : ' disabled') + '>Sign Player</button>' +
       '<button id="withdraw-bid-btn" class="btn-ghost">Withdraw</button></div>';
     html += '</div>';
     container.innerHTML = html;
@@ -95,7 +114,12 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
     document.getElementById('accept-bid-btn').addEventListener('click', function () {
       pushUndoSnapshot(GameState);
       const outcome = finalizeBidding(state, true);
-      if (outcome.signed) signingLog.push(escapeHtml(getTeamById(outcome.teamId).name) + ' signed ' + escapeHtml(player.name));
+      // finalizeBidding re-checks the cap and can hand the player to the best
+      // rival bid instead, so say which happened rather than implying you got him.
+      if (outcome.signed) {
+        signingLog.push(escapeHtml(getTeamById(outcome.teamId).name) + ' signed ' + escapeHtml(player.name) +
+          (outcome.teamId === userTeamId ? '' : ' (your offer no longer fit under the cap)'));
+      }
       if (outcome.signed && GameState.automation.autoCap) autoEnforceRosterSize(getTeamById(userTeamId));
       container.innerHTML = '';
       redrawParent();

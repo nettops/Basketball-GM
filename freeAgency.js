@@ -118,13 +118,67 @@ function estimateFairSalary(player, roundsUnsigned) {
 const REBUILDING_SKIP_CHANCE = 0.9;
 const REBUILDING_SKIP_AGE_THRESHOLD = 27;
 
-function generateAIOffer(team, player, rng, roundsUnsigned) {
-  if (_FA_DATA.league.getTeamRoster(team.id).length >= 15) return null;
+const ROSTER_MAX = 15;
+const MIN_SALARY = 1200000;
+
+// THE one answer to "what may this team offer a free agent?".
+//
+// This lived inline inside generateAIOffer, which meant it only ever
+// constrained offers the AI generated. The user's bidding path
+// (freeAgencyBidding.js) does not go through that function, so it was bound by
+// nothing: a team $33.6M OVER the cap — refused outright when it is the AI —
+// could sign a $1,000,000,000 contract and take its payroll to eight times the
+// cap. A rule written inside one caller is not a rule.
+//
+// Returns the ceiling and, when there is none, the reason to show the user.
+// capSpace comes back too because generateAIOffer needs it for its own budget
+// maths; this must stay a pure extraction, or league behaviour moves and every
+// golden fixture is invalidated along with it.
+function offerLimit(team) {
   const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
   const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
   const payroll = _FA_DATA.league.getTeamPayroll(team.id);
   const capSpace = _FA_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
-  if (!capDisabled && capSpace < 1200000) return null;
+
+  if (_FA_DATA.league.getTeamRoster(team.id).length >= ROSTER_MAX) {
+    return { max: 0, min: MIN_SALARY, capSpace: capSpace, capDisabled: capDisabled,
+      reason: 'Roster is full (' + ROSTER_MAX + ' players).' };
+  }
+  if (capDisabled) {
+    return { max: Infinity, min: MIN_SALARY, capSpace: capSpace, capDisabled: true, reason: null };
+  }
+  if (capSpace < MIN_SALARY) {
+    return { max: 0, min: MIN_SALARY, capSpace: capSpace, capDisabled: false,
+      reason: 'No cap space: payroll is $' + Math.abs(capSpace).toLocaleString() +
+        ' over the $' + _FA_DATA.data.getEffectiveSalaryCap(capLevel).toLocaleString() + ' cap.' };
+  }
+  return { max: capSpace, min: MIN_SALARY, capSpace: capSpace, capDisabled: false, reason: null };
+}
+
+// Why a specific offer is or is not legal. Shared by the bidding path and the
+// panel that renders the input, so the number the user is told and the number
+// the model enforces cannot drift apart.
+function checkOffer(team, salary) {
+  const limit = offerLimit(team);
+  if (limit.reason) return { ok: false, reason: limit.reason, limit: limit };
+  if (!(salary >= limit.min)) {
+    return { ok: false, reason: 'Offer is below the $' + limit.min.toLocaleString() +
+      ' league minimum.', limit: limit };
+  }
+  if (salary > limit.max) {
+    return { ok: false, reason: 'Offer exceeds your $' + limit.max.toLocaleString() +
+      ' in cap space.', limit: limit };
+  }
+  return { ok: true, reason: null, limit: limit };
+}
+
+function generateAIOffer(team, player, rng, roundsUnsigned) {
+  const limit = offerLimit(team);
+  if (limit.reason) return null;
+  const capDisabled = limit.capDisabled;
+  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
+  const payroll = _FA_DATA.league.getTeamPayroll(team.id);
+  const capSpace = limit.capSpace;
 
   // A team still below the salary floor needs to keep spending regardless of
   // owner mood or marginal interest — it's on the hook for the shortfall as
@@ -260,6 +314,10 @@ if (typeof module !== 'undefined' && module.exports) {
     scoreOffer: scoreOffer,
     estimateFairSalary: estimateFairSalary,
     generateAIOffer: generateAIOffer,
+    offerLimit: offerLimit,
+    checkOffer: checkOffer,
+    ROSTER_MAX: ROSTER_MAX,
+    MIN_SALARY: MIN_SALARY,
     signPlayer: signPlayer,
     resolveFreeAgentSilently: resolveFreeAgentSilently,
     runFreeAgencySilently: runFreeAgencySilently,
