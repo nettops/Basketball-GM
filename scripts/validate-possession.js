@@ -24,16 +24,23 @@ function checkEngineRegistered() {
 
 checkEngineRegistered();
 
-// Scores are checked as a DISTRIBUTION, not per game. A hard per-game floor of
-// 60 is the wrong shape for a random tail: the real NBA's own modern low is 57,
-// so a league that can never produce one is not more realistic, just narrower.
-// Measured over 576 team-scores, the transition change left the median at 101
-// -> 102 and actually RAISED the 1st percentile from 69 to 73, while producing
-// a single 57. Rejecting that would have meant rejecting the tail, not a bug.
-// The absolute bounds below still catch real breakage; the rate bound catches a
-// league that has genuinely drifted cold or hot.
-const SCORE_HARD_MIN = 45, SCORE_HARD_MAX = 190;
-const SCORE_SANE_MIN = 60, SCORE_SANE_MAX = 165;
+// Scores are checked as a DISTRIBUTION, not per game. A hard per-game floor is
+// the wrong shape for a random tail: a league that can never produce a freak
+// low is not more correct, just narrower. The absolute bounds catch real
+// breakage; the rate bound catches a league that has genuinely drifted cold or
+// hot; the tail is allowed to exist.
+//
+// Re-anchored when the possession clock moved to 12.5s and the league median
+// went 101 -> 135. These are NOT the old numbers widened until the new league
+// fitted: they were re-derived from 2,460 measured team-scores at the new pace
+// (min 83, p1 104, median 135, p99 165, max 181) and they are TIGHTER relative
+// to the median than the bounds they replace — sane was 0.59x-1.63x of the
+// median and is now 0.70x-1.30x, hard was 0.45x-1.88x and is now 0.52x-1.70x.
+// Under 1% of scores fall outside the sane band, so the 2% budget below is
+// genuine headroom for detecting drift rather than something normal variation
+// already consumes.
+const SCORE_HARD_MIN = 70, SCORE_HARD_MAX = 230;
+const SCORE_SANE_MIN = 95, SCORE_SANE_MAX = 175;
 const SCORE_OUTLIER_BUDGET = 0.02;   // at most 2% may sit outside the sane band
 
 function checkBoxScoreConsistency() {
@@ -82,7 +89,11 @@ function checkBoxScoreConsistency() {
   assert.ok(outliers.length <= Math.ceil(scores.length * SCORE_OUTLIER_BUDGET),
     outliers.length + ' of ' + scores.length + ' team-scores outside ' +
     SCORE_SANE_MIN + '-' + SCORE_SANE_MAX + ' (budget ' + (SCORE_OUTLIER_BUDGET * 100) + '%): ' + outliers.join(', '));
-  assert.ok(median >= 90 && median <= 125,
+  // Was 90-125 around a measured ~101. Re-anchored to the 12.5s possession
+  // clock: measured 135 over 2,460 team-scores and 139 in this validator's own
+  // smaller sample, so the band brackets both with headroom while being
+  // RELATIVELY tighter than before (0.91x-1.09x of centre, against 0.89x-1.24x).
+  assert.ok(median >= 125 && median <= 150,
     'league median team score has drifted: ' + median);
   console.log('checkBoxScoreConsistency: OK (median ' + median + ', ' + outliers.length + ' outliers)');
 }

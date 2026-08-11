@@ -43,12 +43,17 @@ function checkSynergyStillDiscriminates() {
     }).join(', ') + ')');
 }
 
-// Every league rate is anchored on a measured real-NBA value. pts/team is
-// deliberately NOT held to the NBA's ~114: this engine runs 90.9 possessions
-// per team-game against the real league's ~100, so NBA scoring would demand
-// 1.19 points per possession against the real 1.15. The bound below is what
-// this engine's PACE implies. Closing that gap means raising
-// POSSESSIONS_PER_TEAM, which is a game-length decision.
+// Every league rate here is anchored on a measured real-NBA value EXCEPT
+// points per team, which is a deliberate design target and is not trying to be
+// realistic at all. This game aims at a high-scoring 130-140, reached by pace:
+// ~114 possessions a team against the real league's ~100, at a normal 48% from
+// the field. See POSSESSION_BASE_SECONDS in gameSim.js.
+//
+// The band below is DELIBERATELY the design target itself rather than a loose
+// window around whatever the engine currently produces. Measured 134.7-135.3
+// across independent samples, so it sits mid-band with ~5 points of headroom
+// each way — tight enough that drift fails it, wide enough that seed noise
+// (~0.6) cannot.
 function checkLeagueRatesAreRealistic() {
   const s = report.sim;
   assert.ok(s.fgPct >= 45 && s.fgPct <= 50, 'league FG% out of band: ' + s.fgPct.toFixed(1));
@@ -56,8 +61,8 @@ function checkLeagueRatesAreRealistic() {
     'league 3P% out of band (NBA 2025: 36.3): ' + s.tpPct.toFixed(1));
   assert.ok(s.tpaShare >= 26 && s.tpaShare <= 34,
     'league 3PA share out of band: ' + s.tpaShare.toFixed(1) + '%');
-  assert.ok(s.ptsPerTeam >= 96 && s.ptsPerTeam <= 112,
-    'points per team out of band for this engine pace: ' + s.ptsPerTeam.toFixed(1));
+  assert.ok(s.ptsPerTeam >= 130 && s.ptsPerTeam <= 140,
+    'points per team outside the 130-140 design target: ' + s.ptsPerTeam.toFixed(1));
   console.log('checkLeagueRatesAreRealistic: OK (FG% ' + s.fgPct.toFixed(1) +
     ', 3P% ' + s.tpPct.toFixed(1) + ', 3PA ' + s.tpaShare.toFixed(1) +
     '%, ' + s.ptsPerTeam.toFixed(1) + ' pts)');

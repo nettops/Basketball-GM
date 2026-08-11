@@ -187,8 +187,12 @@ function checkPaceMatchesLegacy() {
     total += sim.possessionsPlayed;
   });
   const avgPerTeam = total / seeds.length / 2;
-  assert.ok(avgPerTeam >= 82 && avgPerTeam <= 98,
-    'possessions per team should stay near the legacy 90, got ' + avgPerTeam.toFixed(1));
+  // Was 82-98, guarding the legacy 90. Pace is now a deliberate design lever:
+  // POSSESSION_BASE_SECONDS moved 16s -> 12.5s to put scoring in the 130-140
+  // band, which lands a team at ~114-117 possessions. The window keeps the SAME
+  // relative width it had (+/-9%), so it is re-anchored, not loosened.
+  assert.ok(avgPerTeam >= 105 && avgPerTeam <= 125,
+    'possessions per team should match the 12.5s possession clock, got ' + avgPerTeam.toFixed(1));
   console.log('checkPaceMatchesLegacy: OK (' + avgPerTeam.toFixed(1) + ' possessions/team)');
 }
 checkPaceMatchesLegacy();
@@ -229,9 +233,21 @@ function checkOvertimeIsPlayedWhenTied() {
   while (!sim.done && !(sim.period === 4 && sim.clock <= 20)) sim.step();
   assert.strictEqual(sim.done, false, 'should still be live at the end of regulation');
 
-  // Level it, then take the possession that ends the period.
-  sim.awayScore = sim.homeScore;
-  sim.step();
+  // Level it and keep it level until the period actually ends.
+  //
+  // This used to level once and take a SINGLE step, which worked only because a
+  // possession was 16 seconds long: from a clock of 20 or less, one step always
+  // ran out regulation. At 12.5s a possession can be as short as 7.5s, so one
+  // step left 9.5s on the clock and the game — correctly — kept playing, and
+  // the assertion below fired at a machine that had done nothing wrong. The
+  // test's assumption was the casualty of the pace change, not the behaviour it
+  // is guarding, so the assertion is unchanged and only the setup is fixed.
+  let guard = 0;
+  while (sim.period === 4 && !sim.done && guard++ < 200) {
+    sim.awayScore = sim.homeScore;   // still tied going into each possession
+    sim.step();
+  }
+  assert.ok(guard < 200, 'regulation should have ended within the guard');
 
   assert.ok(sim.period >= 5 || sim.homeScore !== sim.awayScore,
     'a tie at the buzzer must go to overtime rather than ending');
