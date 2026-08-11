@@ -469,6 +469,42 @@ function checkTheEffectActuallyArmsAtEverySpeed() {
   assert.strictEqual(impact.impactFreezeMs(block, { reduceMotion: false, speed: 4 }), 0,
     'a block must not freeze at 4x');
 
+  // THE ANKLE BREAKER IS THE CASE THAT MATTERS, and the first version of this
+  // check missed it: deleting the qualifying gate from startImpact altogether
+  // still passed, because a block is filtered a second time by `zoom` and a
+  // poster qualifies everywhere. An ankle breaker is the only kind the gate
+  // decides on its own -- it zooms (it is not a block) but stops qualifying
+  // above 4x -- so without the gate the camera would snap in on a play that
+  // has a zero-length freeze, and the zoom would flick in and straight out.
+  // ...and it has to be asked about the FLASH and the LINES, not the zoom.
+  // Asking about the zoom does not work: it self-expires the moment
+  // `nowMs - startMs > freezeMs`, and a non-qualifying play has a zero freeze,
+  // so the zoom looks correctly suppressed whether the gate is there or not.
+  // The flash and the lines are aged against their own durations and would
+  // still fire. A first version of this check only asked about the zoom and
+  // deleting the entire gate survived it.
+  const ankle = { kind: 'ankle', at: { x: 240, y: 160 }, byId: 'a', onId: 'b' };
+  function drawsAnything(marker, speed) {
+    impact.resetImpact();
+    impact.startImpact(marker, 0, { reduceMotion: false, speed: speed });
+    let calls = 0;
+    const spy = {
+      save: function () {}, restore: function () {}, beginPath: function () {},
+      moveTo: function () {}, lineTo: function () {},
+      stroke: function () { calls++; }, fillRect: function () { calls++; },
+      globalAlpha: 0, strokeStyle: '', fillStyle: '', lineWidth: 0, lineCap: ''
+    };
+    impact.drawImpactFlash(spy, 10, 480, 270);
+    impact.drawImpactLines(spy, impact.IMPACT_TIER1_FREEZE_MS / 2);
+    return calls > 0;
+  }
+  [1, 2, 4].forEach(function (speed) {
+    assert.ok(drawsAnything(ankle, speed), 'an ankle breaker must still land at ' + speed + 'x');
+  });
+  assert.strictEqual(drawsAnything(ankle, 8), false,
+    'at 8x only a poster survives -- an ankle breaker must draw nothing at all');
+  assert.ok(drawsAnything(poster, 8), 'a poster must still draw its flash and lines at 8x');
+
   impact.resetImpact();
   impact.startImpact(poster, 0, { reduceMotion: true, speed: 1 });
   assert.strictEqual(impact.impactZoom(10), null, 'reduced motion must still suppress everything');

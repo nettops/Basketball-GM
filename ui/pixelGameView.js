@@ -383,38 +383,10 @@ function renderPixelGame(container) {
   // threshold fired MID-RUN, teleporting players and zeroing their velocity
   // over and over. That was the choppiness in transition.
   //
-  // Nothing in normal play needs a snap: substitutions delete the spring
-  // (the player re-enters from the sideline) and showFinal clears them all.
-  // This is now purely a guard against a degenerate keyframe, set beyond half
-  // the court's width so real basketball never reaches it.
-  const SNAP_DIST = 260;
-
-  // Players sprint a little when they have ground to cover, but only a
-  // little: stiffness is what converts gap into per-frame movement, so an
-  // aggressive ramp turns a long run into its own teleport (a 3x boost here
-  // moved players 113px in a single frame). This tops out around 1.7x, which
-  // tightens the transition lag without outrunning the eye.
-  function omegaFor(base, dist) {
-    return base * (1 + Math.min(0.7, dist / 220));
-  }
-
-  // Hard ceiling on how far a sprite may move in one frame. Even a correct
-  // spring can outrun the eye when a beat asks for a lot of ground in very
-  // little time; clamping displacement (rather than snapping position) keeps
-  // motion continuous and simply lets the player arrive a beat late.
-  const MAX_STEP_PX_PER_SEC = 620;
+  // The spring, its stiffness ramp and its speed ceiling live in
+  // ui/pixelMotion.js now — see that file for why. MAX_SEPARATION_SHIFT_PX
+  // stays here because it belongs to the collision pass below, not the spring.
   const MAX_SEPARATION_SHIFT_PX = 4;
-
-  const SPRING_STEP = 1 / 90; // fixed integration step, in timeline seconds
-
-  function springAxis(x, v, target, omega, h) {
-    const f = 1 + 2 * h * omega;
-    const oo = omega * omega;
-    const hoo = h * oo;
-    const hhoo = h * hoo;
-    const detInv = 1 / (f + hhoo);
-    return [(f * x + h * v + hhoo * target) * detInv, (v + hoo * (target - x)) * detInv];
-  }
 
   // Defenders keep continuous pressure on the ball rather than standing on
   // a fixed spot: a small live offset toward the ball, which also means
@@ -424,6 +396,8 @@ function renderPixelGame(container) {
   awayRoster.forEach(function (p) { teamById[p.id] = 'away'; });
   let lastOffenseTeam = 'home';
   let ballSpin = 0;             // accumulated tumble, advanced during flight
+  // The flight's launch point, frozen for the duration of one flight.
+  let launchCache = { idx: -1, value: null };
   let excitementIsHome = true;  // which side the arena is reacting for
   let lastBallActor = null;     // last player to hold the ball
   let lastBouncePhase = 1;      // for detecting dribble floor contact
@@ -617,37 +591,7 @@ function renderPixelGame(container) {
           omega: 15 + (pid.charCodeAt(0) % 5) * 0.9 // slight per-player variation
         };
       }
-      const gapX = tx - s.x;
-      const gapY = ty - s.y;
-      if (Math.sqrt(gapX * gapX + gapY * gapY) > SNAP_DIST) { s.x = tx; s.y = ty; s.vx = 0; s.vy = 0; }
-      // Substep at a fixed timeline step so the spring integrates the same
-      // way at 1x and 8x. A single big step under-integrates and leaves
-      // players trailing their targets at high speed.
-      let remaining = dtTimeline;
-      while (remaining > 0) {
-        const h = Math.min(SPRING_STEP, remaining);
-        remaining -= h;
-        const prevX = s.x;
-        const prevY = s.y;
-        const dist = Math.sqrt(Math.pow(tx - s.x, 2) + Math.pow(ty - s.y, 2));
-        const w = omegaFor(s.omega, dist);
-        const rx = springAxis(s.x, s.vx, tx, w, h);
-        const ry = springAxis(s.y, s.vy, ty, w, h);
-        s.x = rx[0]; s.vx = rx[1];
-        s.y = ry[0]; s.vy = ry[1];
-        // speed ceiling: scale the step back rather than jumping
-        const stepX = s.x - prevX;
-        const stepY = s.y - prevY;
-        const step = Math.sqrt(stepX * stepX + stepY * stepY);
-        const maxStep = MAX_STEP_PX_PER_SEC * h;
-        if (step > maxStep) {
-          const k = maxStep / step;
-          s.x = prevX + stepX * k;
-          s.y = prevY + stepY * k;
-          s.vx *= k;
-          s.vy *= k;
-        }
-      }
+      stepSpring(s, tx, ty, dtTimeline);
       onCourtNow[pid] = true;
     });
 
@@ -792,27 +736,40 @@ function renderPixelGame(container) {
     // every other frame, and the ball's own path takes over.
     const prevKf = kfIndex > 0 ? kfs[kfIndex - 1] : null;
     const thrower = prevKf && prevKf.ball.holder;
-    // His KEYFRAME position, not his smoothed one. The smoothed body is what
-    // was drawn, so it would match the last held frame a hair more exactly —
-    // but it keeps moving after he lets go, and the launch point would crawl
-    // along behind him for the whole flight. Frozen is worth more than exact
-    // here, and it keeps the view, the probes and any preview agreeing on one
-    // answer.
-    const throwerAt = thrower && fr.a.pos[thrower];
-    const launch = throwerAt ? launchPoint({
-      prev: prevKf, a: fr.a,
-      hand: { x: throwerAt[0], y: throwerAt[1], vx: 0, vy: 0 },
-      facing: facingById[thrower] || 1,
-      shotComing: shotComingAt(kfIndex - 1),
-      reduceMotion: reduceMotion
-    }) : null;
-    // ...and where it ends up, so a flight lands in the hand that takes it
-    // rather than on the catcher's feet.
+    // The thrower's SMOOTHED position, computed once when the flight begins and
+    // held for the rest of it.
+    //
+    // The first version used his keyframe position instead, reasoning that a
+    // frozen point beats an exact one because the smoothed body keeps moving
+    // after he lets go and the launch would crawl along behind him. Both
+    // halves of that were right and the conclusion was still wrong: the HELD
+    // ball hangs off the smoothed body, so anchoring the flight to the
+    // keyframe reintroduced the spring's lag as a snap at the release —
+    // measured on rendered frames at 18px on a free throw. Caching gets the
+    // exactness and the frozen point at the same time.
+    if (kfIndex !== launchCache.idx) {
+      const throwerHand = thrower && smooth[thrower];
+      launchCache = {
+        idx: kfIndex,
+        value: throwerHand ? launchPoint({
+          prev: prevKf, a: fr.a,
+          hand: throwerHand,
+          facing: facingById[thrower] || 1,
+          shotComing: shotComingAt(kfIndex - 1),
+          reduceMotion: reduceMotion
+        }) : null
+      };
+    }
+    const launch = launchCache.value;
+    // The arrival is the opposite case and needs NO freezing: the ball should
+    // home in on where the catcher actually is, and he is still running. So it
+    // is recomputed every frame off his smoothed position, which is the body
+    // the ball has to end up in the hands of.
     const catcher = fr.b.ball.holder;
-    const catcherAt = catcher && fr.b.pos[catcher];
-    const arrival = catcherAt ? arrivalPoint({
+    const catcherHand = catcher && smooth[catcher];
+    const arrival = catcherHand ? arrivalPoint({
       b: fr.b, c: kfs[Math.min(kfIndex + 2, kfs.length - 1)],
-      hand: { x: catcherAt[0], y: catcherAt[1], vx: 0, vy: 0 },
+      hand: catcherHand,
       facing: facingById[catcher] || 1,
       shotComing: shotComingAt(kfIndex + 1),
       reduceMotion: reduceMotion

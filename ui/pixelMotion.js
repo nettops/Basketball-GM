@@ -297,6 +297,73 @@ function ballPosition(s) {
   };
 }
 
+// THE BODY SPRING. Same reason as everything else in this file: it lived
+// inside the render closure, so nothing outside the browser could run it --
+// which meant every floor measurement in the audit was of TARGET positions,
+// and any preview page had to re-implement it and drift.
+//
+// Players chase their keyframe target on a critically damped spring rather
+// than snapping to it, which is what turns a discrete timeline into motion.
+const SNAP_DIST = 260;
+// Players sprint a little when they have ground to cover, but only a little:
+// stiffness is what converts gap into per-frame movement, so an aggressive
+// ramp turns a long run into its own teleport (a 3x boost here moved players
+// 113px in a single frame). This tops out around 1.7x.
+function omegaFor(base, dist) {
+  return base * (1 + Math.min(0.7, dist / 220));
+}
+// Hard ceiling on how far a sprite may move in one frame. Even a correct
+// spring can outrun the eye when a beat asks for a lot of ground in very
+// little time; clamping displacement (rather than snapping position) keeps
+// motion continuous and simply lets the player arrive a beat late.
+const MAX_STEP_PX_PER_SEC = 620;
+const SPRING_STEP = 1 / 90;   // fixed integration step, in timeline seconds
+
+function springAxis(x, v, target, omega, h) {
+  const f = 1 + 2 * h * omega;
+  const oo = omega * omega;
+  const hoo = h * oo;
+  const hhoo = h * hoo;
+  const detInv = 1 / (f + hhoo);
+  return [(f * x + h * v + hhoo * target) * detInv, (v + hoo * (target - x)) * detInv];
+}
+
+// Advance one body toward (tx, ty) by dtTimeline seconds. Mutates `s`
+// ({x, y, vx, vy, omega}) in place, the way the render loop needs.
+//
+// Substepped at a fixed step so the spring integrates the same way at 1x and
+// 8x: a single big step under-integrates and leaves players trailing their
+// targets at high speed.
+function stepSpring(s, tx, ty, dtTimeline) {
+  const gapX = tx - s.x, gapY = ty - s.y;
+  if (Math.sqrt(gapX * gapX + gapY * gapY) > SNAP_DIST) {
+    s.x = tx; s.y = ty; s.vx = 0; s.vy = 0;
+  }
+  let remaining = dtTimeline;
+  while (remaining > 0) {
+    const h = Math.min(SPRING_STEP, remaining);
+    remaining -= h;
+    const prevX = s.x, prevY = s.y;
+    const dist = Math.sqrt(Math.pow(tx - s.x, 2) + Math.pow(ty - s.y, 2));
+    const w = omegaFor(s.omega, dist);
+    const rx = springAxis(s.x, s.vx, tx, w, h);
+    const ry = springAxis(s.y, s.vy, ty, w, h);
+    s.x = rx[0]; s.vx = rx[1];
+    s.y = ry[0]; s.vy = ry[1];
+    // speed ceiling: scale the step back rather than jumping
+    const stepX = s.x - prevX, stepY = s.y - prevY;
+    const step = Math.sqrt(stepX * stepX + stepY * stepY);
+    const maxStep = MAX_STEP_PX_PER_SEC * h;
+    if (step > maxStep) {
+      const k = maxStep / step;
+      s.x = prevX + stepX * k;
+      s.y = prevY + stepY * k;
+      s.vx *= k; s.vy *= k;
+    }
+  }
+  return s;
+}
+
 // Where the ball was on the last frame it was still in a hand — the point the
 // flight that follows has to start from.
 //
@@ -363,6 +430,12 @@ if (typeof module !== 'undefined' && module.exports) {
     ballMode: ballMode,
     ballPosition: ballPosition,
     launchPoint: launchPoint,
-    arrivalPoint: arrivalPoint
+    arrivalPoint: arrivalPoint,
+    SNAP_DIST: SNAP_DIST,
+    MAX_STEP_PX_PER_SEC: MAX_STEP_PX_PER_SEC,
+    SPRING_STEP: SPRING_STEP,
+    omegaFor: omegaFor,
+    springAxis: springAxis,
+    stepSpring: stepSpring
   };
 }
