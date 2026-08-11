@@ -70,8 +70,12 @@ function evaluateBiddingRound(state, userSalary, userYears) {
 
   const best = bestAIOffer(state);
   const bestScore = best ? _BIDDING_DATA.freeAgency.scoreOffer(player, _BIDDING_DATA.teams.getTeamById(best.teamId), best) : -Infinity;
+  // Recorded on the state, not merely reported: finalizeBidding has to know
+  // whether he actually chose you. It used to be returned for display and then
+  // discarded, which made the whole contest decorative.
+  state.userWinning = userScore >= bestScore;
   return { offerAccepted: true, rejectedReason: null, offerLimit: legality.limit,
-    userWinning: userScore >= bestScore, bestAIOffer: best };
+    userWinning: state.userWinning, bestAIOffer: best };
 }
 
 function finalizeBidding(state, userAccepts) {
@@ -91,7 +95,13 @@ function finalizeBidding(state, userAccepts) {
     // state.userOffer — but it is unreachable today, so do not "prove" it with
     // a test that only appears to exercise it.
     const userTeam = _BIDDING_DATA.teams.getTeamById(state.userTeamId);
-    if (_BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary, state.userOffer.yearsRemaining).ok) {
+    // He has to have CHOSEN you. Pressing Sign Player used to hand him over
+    // regardless of what the bidding said, so a 91-overall could be had for the
+    // $1,200,000 league minimum while eleven teams bid up to $31,833,686 and
+    // the panel read "Behind". Losing now behaves exactly like withdrawing:
+    // he signs with whoever actually won.
+    if (state.userWinning &&
+        _BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary, state.userOffer.yearsRemaining).ok) {
       _BIDDING_DATA.freeAgency.signPlayer(player, state.userOffer);
       return { signed: true, teamId: state.userTeamId };
     }

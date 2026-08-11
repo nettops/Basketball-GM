@@ -148,9 +148,10 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
         escapeHtml(lastResult.rejectedReason) + '</p>';
     } else if (lastResult) {
       html += lastResult.userWinning
-        ? '<p><span class="pill pill-win">Leading</span> Your offer is currently winning.</p>'
+        ? '<p><span class="pill pill-win">Leading</span> Your offer is currently winning — you can sign him.</p>'
         : '<p><span class="pill pill-loss">Behind</span> A competing offer is ahead' +
-          (lastResult.bestAIOffer ? ' ($' + lastResult.bestAIOffer.salary.toLocaleString() + ')' : '') + '.</p>';
+          (lastResult.bestAIOffer ? ' ($' + lastResult.bestAIOffer.salary.toLocaleString() + ')' : '') +
+          '. Raise your offer — he will not sign while he prefers someone else.</p>';
     }
     const startingBid = canBid ? Math.min(5000000, limit.max) : 0;
     html += '<div class="field-row"><label style="margin:0;">Salary $</label><input type="number" id="bid-salary" value="' +
@@ -162,7 +163,10 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
     // was hardened while this one silently accepted 99.
     html += '<div class="field-row"><label style="margin:0;">Years</label><input type="number" id="bid-years" value="2" min="1" max="' +
       MAX_CONTRACT_YEARS + '" step="1"' + (canBid ? '' : ' disabled') + ' style="width:70px;"></div>';
-    const canSign = canBid && !!(lastResult && lastResult.offerAccepted);
+    // Only a WINNING bid can be closed. The button used to be live the moment
+    // any legal offer had been submitted, which is how a superstar could be had
+    // at the league minimum while the panel next to the button read "Behind".
+    const canSign = canBid && !!(lastResult && lastResult.offerAccepted && lastResult.userWinning);
     html += '<div class="toolbar" style="margin:14px 0 0;">' +
       '<button id="submit-bid-btn"' + (canBid ? '' : ' disabled') + '>Submit Offer</button>' +
       '<button id="accept-bid-btn" class="btn-primary"' + (canSign ? '' : ' disabled') + '>Sign Player</button>' +

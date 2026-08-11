@@ -177,6 +177,45 @@ function checkContractLengthIsBounded() {
   console.log('checkContractLengthIsBounded: OK');
 }
 
+// The player has to actually choose you. finalizeBidding signed whoever the
+// user named the moment they pressed the button, so the entire bidding
+// contest was decorative: a 91-overall Wembanyama with a rival offering
+// $31,833,686 signed for the $1,200,000 league minimum, with the panel saying
+// "Behind" at the time. userWinning was computed every round and then thrown
+// away — the same shape as every other bug here, a value worked out on one
+// path and enforced on none.
+function checkLosingBidCannotJustBeSigned() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const state = bidding.startBidding(star.id, team.id, makeRng(12));
+    const minimum = fa.MIN_SALARY;
+    const r = bidding.evaluateBiddingRound(state, minimum, 5);
+    assert.strictEqual(r.offerAccepted, true, 'a minimum-salary offer is legal, just not competitive');
+    assert.ok(r.bestAIOffer, 'precondition: somebody else must be bidding on a 91-overall');
+    assert.ok(r.bestAIOffer.salary > minimum * 5,
+      'precondition: the rival bid must be far above the minimum, got ' + r.bestAIOffer.salary);
+    assert.strictEqual(r.userWinning, false, 'precondition: a minimum offer must be losing');
+
+    const outcome = bidding.finalizeBidding(state, true);
+    assert.notStrictEqual(outcome.teamId, team.id,
+      'a player must not join a team whose offer he is not choosing');
+    assert.notStrictEqual(star.teamId, team.id);
+    assert.strictEqual(outcome.signed, true, 'he should sign with whoever actually won');
+    star.teamId = null;
+
+    // ...and a WINNING bid still closes the deal.
+    const state2 = bidding.startBidding(star.id, team.id, makeRng(12));
+    const space = CAP - payrollOf(team.id);
+    const big = bidding.evaluateBiddingRound(state2, Math.min(space - 1000000, 44000000), 5);
+    assert.strictEqual(big.offerAccepted, true, big.rejectedReason || '');
+    assert.strictEqual(big.userWinning, true, 'a near-max offer should be winning');
+    const won = bidding.finalizeBidding(state2, true);
+    assert.strictEqual(won.teamId, team.id, 'a winning bid must still sign him');
+    assert.strictEqual(star.teamId, team.id);
+  });
+  console.log('checkLosingBidCannotJustBeSigned: OK');
+}
+
 function checkBelowMinimumRejected() {
   const team = findUnderCapTeam();
   withFreeAgent('sas-victor-wembanyama', function (star) {
@@ -253,6 +292,7 @@ checkOverCapTeamCannotSignAtAll();
 checkOfferCannotExceedCapSpace();
 checkCapSpaceLostBetweenBidAndSigning();
 checkContractLengthIsBounded();
+checkLosingBidCannotJustBeSigned();
 checkBelowMinimumRejected();
 checkDisableCapStillWorks();
 checkFullRosterCannotSign();
