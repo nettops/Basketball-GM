@@ -730,11 +730,7 @@ function renderPixelGame(container) {
       // anticipation: dip into the legs before rising into the shot
       const jumpLift = isDunkerNow
         ? dunkerLift
-        : (isJumperNow
-            ? jumperLift
-            : (shooting
-                ? Math.round(fr.f < 0.18 ? -(fr.f / 0.18) * 1.5 : Math.sin(((fr.f - 0.18) / 0.82) * Math.PI) * 5)
-                : 0));
+        : (isJumperNow ? jumperLift : (shooting ? closeLift(fr.f) : 0));
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       const dunkPose = isDunkerNow && jumpLift >= 3;

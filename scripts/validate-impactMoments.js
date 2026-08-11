@@ -626,8 +626,13 @@ function checkAnkleBreakerHasACrossover() {
 function viewDunkReach() {
   const apex = motion.DUNK_LIFT.rise;
   // The ball's height above the dunker's feet at the top of the leap, straight
-  // out of the function the canvas draws with.
-  const reach = motion.heldBallOffset('dunk', apex, motion.dunkCock(apex));
+  // out of the function the canvas draws with. `cock` is forced to 1 rather
+  // than passed dunkCock(apex): if the easing ever stopped reaching full
+  // extension at the apex this must FAIL, not quietly agree with itself about
+  // a shorter reach.
+  const reach = motion.heldBallOffset('dunk', apex, 1, { up: 0, side: 0 }).up;
+  assert.strictEqual(motion.dunkCock(apex), 1,
+    'a dunker must be at FULL extension at the apex, not ' + motion.dunkCock(apex));
   assert.strictEqual(choreo.DUNK_REACH, reach,
     'choreographer plants a dunker ' + choreo.DUNK_REACH + 'px below the rim, but the view ' +
     'puts his ball ' + reach + 'px above his feet -- the ball would miss the rim by ' +

@@ -46,16 +46,11 @@ function jumpLiftAt(kf) {
   return j.three ? Math.round(base * 1.35) : base;
 }
 
-// How far above the hand the ball sits at the top of a jump shot, and where it
-// starts from at the bottom of the dip. The gap between these two is the whole
-// reason the release used to jump: the ball was drawn at the top figure and
-// then handed to the flight code, which started it somewhere else entirely.
+// How far above his own feet a player holds the ball at full extension, by
+// shot kind. These are the numbers the finished poses already used and they do
+// not move — what changed is how the ball GETS here (see heldBallOffset).
 const JUMP_BALL_HIGH = 26;
-const JUMP_BALL_LOW = 17;
-// Same pair for a dunk: the hand offset grows from about where a dribble tops
-// out to the full cocked reach at the apex.
-const DUNK_BALL_LOW = 11;
-const DUNK_BALL_RISE = 19;
+const DUNK_BALL_HIGH = 30;
 // A shot that is neither a dunk nor a jumper — a layup, a floater, a putback.
 const CLOSE_BALL_HIGH = 24;
 
@@ -104,26 +99,90 @@ function resolveLifts(a, b, f, reduceMotion) {
   };
 }
 
-// Where a held ball sits relative to its holder's floor position, in screen
-// pixels above it. Split out from ballPosition because the RELEASE needs it
-// too: the flight has to start from the hand the ball just left, and the only
-// way to guarantee that is for both to ask the same function.
-function heldBallOffset(kind, lift, cock) {
-  if (kind === 'jump') return lift + (lift > 0 ? JUMP_BALL_HIGH : JUMP_BALL_LOW);
-  if (kind === 'dunk') return lift + DUNK_BALL_LOW + DUNK_BALL_RISE * cock;
+// WHERE A HELD BALL SITS, and the one idea that governs all of it.
+//
+// A ball a player is about to shoot has exactly two anchor points: it is in
+// his dribble, or it is up at full extension. Every defect this file has had
+// came from treating the second as a place to JUMP to rather than a place to
+// ARRIVE at. So there is now one rule for all three shot kinds: the offset is
+// a blend from wherever the dribble had it to wherever the shot needs it, and
+// `cock` (0..1) is how far through the gather he is. At cock 0 the ball is
+// exactly where the previous frame drew it, so the branch can change without
+// the ball moving at all.
+//
+// Full extension, in screen pixels above the shooter's feet.
+function overheadBallOffset(kind, lift) {
+  if (kind === 'jump') return lift + JUMP_BALL_HIGH;
+  if (kind === 'dunk') return lift + DUNK_BALL_HIGH;
   if (kind === 'close') return lift + CLOSE_BALL_HIGH;
+  return lift;
+}
+// ...and how far to the side of the body, which had its own smaller snap: a
+// dribble is carried 6px out and every shot pose brings it in, so the ball
+// stepped sideways on the same frame it stepped up.
+function overheadBallSide(kind) {
+  if (kind === 'jump') return 2;
+  if (kind === 'dunk') return 4;
   return 0;
 }
 
-// 0 at the bottom of a dunker's dip, 1 at the apex.
-function dunkCock(lift) { return Math.max(0, Math.min(1, (lift + 2) / 18)); }
+// Where the dribble has the ball right now. The bounce is a function of the
+// clock, not of the beat, which is why a gather has to blend out of the ACTUAL
+// current height rather than out of an average: the ball can be anywhere
+// between the floor and the top of the bounce when the shooter decides to go.
+const DRIBBLE_SIDE = 6;
+const DRIBBLE_RISE = 10;
+function dribbleBall(playbackMs, holderMoving) {
+  const bouncePhase = Math.abs(Math.sin(playbackMs / (holderMoving ? 95 : 140)));
+  return { up: 1 + bouncePhase * DRIBBLE_RISE, side: DRIBBLE_SIDE, bouncePhase: bouncePhase };
+}
+
+// How far through his gather a leaper is: 0 with his feet down, 1 at the top.
+//
+// Anchored at lift ZERO, not at the bottom of the dip. A shooter ENTERS these
+// branches at lift 0, straight out of a dribble, so a cock above zero there is
+// a step the eye sees on the very first frame — measured at 2.5px on a dunk
+// with the old `(lift + 2) / 18`. Saturating at the pull-up apex also means a
+// three, which goes higher, simply holds full extension through the last of
+// its rise rather than over-extending past it.
+function cockTo(lift, apex) { return Math.max(0, Math.min(1, lift / apex)); }
+function dunkCock(lift) { return cockTo(lift, DUNK_LIFT.rise); }
+function jumpCock(lift) { return cockTo(lift, JUMP_LIFT.rise); }
+// A layup has no phase markers — it is a plain beat that happens to end with
+// the ball gone — so its gather runs on beat progress instead.
+function closeCock(f) { return Math.max(0, Math.min(1, f)); }
+
+// The body lift for a close shot: a dip into the legs, then a rise into the
+// finish. Lives here rather than in the view's sprite loop because the BALL
+// has to ride it — while this was view-only, a layup lifted the body up to 5px
+// and left the ball at a flat 24, so the ball hung still while the man rose
+// under it.
+function closeLift(f) {
+  return Math.round(f < 0.18 ? -(f / 0.18) * 1.5 : Math.sin(((f - 0.18) / 0.82) * Math.PI) * 5);
+}
+
+// The blend itself. `kind` is the shot, `lift` the body height, `cock` the
+// gather progress, and the dribble is where it came from.
+function heldBallOffset(kind, lift, cock, drib) {
+  const from = drib || { up: 1 + DRIBBLE_RISE, side: DRIBBLE_SIDE };
+  const c = Math.max(0, Math.min(1, cock));
+  return {
+    up: from.up + (overheadBallOffset(kind, lift) - from.up) * c,
+    side: from.side + (overheadBallSide(kind) - from.side) * c
+  };
+}
 
 // Which of the four ball behaviours this frame is in. Named so the probes can
 // bucket by it and so the branch order is stated once rather than implied by
 // the shape of an if-chain.
 function ballMode(s) {
   if (!s.holder || !s.hand) return 'flight';
-  if (s.holder === s.lifts.jumperId && s.lifts.jumperLift !== 0) return 'jump';
+  // Gated on WHO he is, not on how high he happens to be. The old gate was
+  // `jumperLift !== 0`, and a shooter's lift passes through zero twice on the
+  // way up — so mid-gather the ball flickered back to the dribble bounce and
+  // out again, jumping a mean 7.8px each way. Same defect the dunk had, same
+  // fix: identity decides the branch, height only decides the offset.
+  if (s.holder === s.lifts.jumperId && !s.reduceMotion) return 'jump';
   if (s.holder === s.lifts.dunkerId && !s.reduceMotion) return 'dunk';
   if (s.b.ball.holder === null && s.shotComing) return 'close';
   return 'dribble';
@@ -152,60 +211,43 @@ function ballPosition(s) {
     // it belongs to
     const hx = s.hand.x, hy = s.hand.y;
     const face = (s.facing || 1) >= 0 ? 1 : -1;
-
-    if (mode === 'jump') {
-      // gathered in front of the chest on the dip, raised overhead as he
-      // rises — the ball has to travel with the shot, not sit at a fixed
-      // offset while the body moves under it
-      return {
-        bx: hx + face * 2,
-        by: hy - heldBallOffset('jump', s.lifts.jumperLift, 0),
-        groundY: hy, mode: mode, bouncePhase: null
-      };
-    }
-
-    if (mode === 'dunk') {
-      // Cocked in the raised hand, riding the leap — and RISING WITH HIM, not
-      // snapping into place. This was once gated on `dunkerLift > 0`, with the
-      // dribble bounce as the fallback, so on the single frame the leap began
-      // the ball went from 1px off the floor to 31px overhead: a 30px jump,
-      // more than the body is tall, in one frame. It read as the ball
-      // teleporting into his hand rather than being carried up, which is most
-      // of why the dunk did not look like a dunk.
-      const cock = dunkCock(s.lifts.dunkerLift);
-      let bx = hx + face * 4;
-      let by = hy - heldBallOffset('dunk', s.lifts.dunkerLift, cock);
-      // THE SLAM ITSELF. `holder` is read from keyframe a, so the ball stayed
-      // in his hand for the whole 90ms slam beat and was simply at the rim on
-      // the next frame — a 43px drop between two frames. The hardest motion in
-      // a dunk was the one part you never actually saw. Eased so it leaves the
-      // hand unhurried and finishes fast, which is the shape of a slam; a
-      // linear drop reads as the ball being lowered.
-      if (s.b.ball.holder === null && s.b.dunk && s.b.dunk.phase === 'slam') {
-        const drive = Math.pow(s.f, 1.8);
-        bx += (s.b.ball.x - bx) * drive;
-        by += (s.b.ball.y - by) * drive;
-      }
-      return { bx: bx, by: by, groundY: hy, mode: mode, bouncePhase: null };
-    }
-
-    if (mode === 'close') {
-      return {
-        bx: hx,
-        by: hy - heldBallOffset('close', 0, 0),
-        groundY: hy, mode: mode, bouncePhase: null
-      };
-    }
-
-    // dribble
+    // Where the dribble has it RIGHT NOW. Every held branch blends out of
+    // this, so no branch change can move the ball on its own.
     const holderMoving = Math.sqrt(s.hand.vx * s.hand.vx + s.hand.vy * s.hand.vy) > 6;
-    const bouncePeriod = holderMoving ? 95 : 140;
-    const bouncePhase = Math.abs(Math.sin(s.playbackMs / bouncePeriod));
-    return {
-      bx: hx + face * 6,
-      by: hy - 1 - bouncePhase * 10,   // dribble: hand to floor
-      groundY: hy, mode: mode, bouncePhase: bouncePhase
-    };
+    const drib = dribbleBall(s.playbackMs, holderMoving);
+
+    if (mode === 'dribble') {
+      return {
+        bx: hx + face * drib.side,
+        by: hy - drib.up,
+        groundY: hy, mode: mode, bouncePhase: drib.bouncePhase
+      };
+    }
+
+    // One gather for all three shot kinds: how high the body is, how far
+    // through the gather he is, and where the dribble left the ball.
+    const lift = mode === 'jump' ? s.lifts.jumperLift
+      : mode === 'dunk' ? s.lifts.dunkerLift
+      : closeLift(s.f);
+    const cock = mode === 'jump' ? jumpCock(s.lifts.jumperLift)
+      : mode === 'dunk' ? dunkCock(s.lifts.dunkerLift)
+      : closeCock(s.f);
+    const off = heldBallOffset(mode, lift, cock, drib);
+    let bx = hx + face * off.side;
+    let by = hy - off.up;
+
+    // THE SLAM ITSELF. `holder` is read from keyframe a, so the ball stayed in
+    // his hand for the whole 90ms slam beat and was simply at the rim on the
+    // next frame — a 43px drop between two frames. The hardest motion in a dunk
+    // was the one part you never actually saw. Eased so it leaves the hand
+    // unhurried and finishes fast, which is the shape of a slam; a linear drop
+    // reads as the ball being lowered.
+    if (mode === 'dunk' && s.b.ball.holder === null && s.b.dunk && s.b.dunk.phase === 'slam') {
+      const drive = Math.pow(s.f, 1.8);
+      bx += (s.b.ball.x - bx) * drive;
+      by += (s.b.ball.y - by) * drive;
+    }
+    return { bx: bx, by: by, groundY: hy, mode: mode, bouncePhase: null };
   }
 
   // A released ball is a projectile: constant horizontal velocity with a
@@ -235,15 +277,19 @@ if (typeof module !== 'undefined' && module.exports) {
     JUMP_LIFT: JUMP_LIFT,
     JUMP_FOLLOW_MAX_MS: JUMP_FOLLOW_MAX_MS,
     JUMP_BALL_HIGH: JUMP_BALL_HIGH,
-    JUMP_BALL_LOW: JUMP_BALL_LOW,
-    DUNK_BALL_LOW: DUNK_BALL_LOW,
-    DUNK_BALL_RISE: DUNK_BALL_RISE,
+    DUNK_BALL_HIGH: DUNK_BALL_HIGH,
     CLOSE_BALL_HIGH: CLOSE_BALL_HIGH,
     dunkLiftAt: dunkLiftAt,
     jumpLiftAt: jumpLiftAt,
     resolveLifts: resolveLifts,
     heldBallOffset: heldBallOffset,
+    overheadBallOffset: overheadBallOffset,
+    overheadBallSide: overheadBallSide,
+    dribbleBall: dribbleBall,
+    closeLift: closeLift,
+    closeCock: closeCock,
     dunkCock: dunkCock,
+    jumpCock: jumpCock,
     ballMode: ballMode,
     ballPosition: ballPosition
   };
