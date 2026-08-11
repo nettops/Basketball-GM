@@ -850,11 +850,36 @@ function renderPixelGame(container) {
         // offset while the body moves under it
         bx = hx + ((facingById[holder] || 1) >= 0 ? 2 : -2);
         by = hy - jumperLift - (jumperLift > 0 ? 26 : 17);
-      } else if (holder === dunkerId && dunkerLift > 0) {
-        // cocked in the raised hand, riding the leap — not gathered at the
-        // chest, or the ball visibly lags the body on the way up
+      } else if (holder === dunkerId && !reduceMotion) {
+        // Cocked in the raised hand, riding the leap — and RISING WITH HIM, not
+        // snapping into place.
+        //
+        // This was gated on `dunkerLift > 0`, with the dribble bounce as the
+        // fallback below. So on the single frame the leap began, the ball went
+        // from 1px off the floor to 31px overhead: a 30px jump, more than the
+        // body is tall, in one frame. It read as the ball teleporting into his
+        // hand rather than being carried up, which is most of why the dunk did
+        // not look like a dunk.
+        //
+        // `cock` runs 0 at the bottom of the dip to 1 at the apex, so the hand
+        // offset grows from 11px (about where a dribble tops out) to the same
+        // 30px it always ended at. Same apex, continuous path.
+        const cock = Math.max(0, Math.min(1, (dunkerLift + 2) / 18));
         bx = hx + ((facingById[holder] || 1) >= 0 ? 4 : -4);
-        by = hy - dunkerLift - 30;
+        by = hy - dunkerLift - 11 - 19 * cock;
+        // THE SLAM ITSELF. `holder` is read from frame A, so the ball stayed in
+        // his hand for the whole 90ms slam beat and was simply at the rim on
+        // the next frame — a 43px drop between two frames. The hardest motion
+        // in a dunk was the one part you never actually saw.
+        //
+        // Across this beat it now travels from the raised hand down through the
+        // rim. Eased so it leaves the hand unhurried and finishes fast, which is
+        // the shape of a slam; a linear drop reads as the ball being lowered.
+        if (fr.b.ball.holder === null && fr.b.dunk && fr.b.dunk.phase === 'slam') {
+          const drive = Math.pow(fr.f, 1.8);
+          bx += (fr.b.ball.x - bx) * drive;
+          by += (fr.b.ball.y - by) * drive;
+        }
       } else if (holderShooting) {
         bx = hx;
         by = hy - 24; // gathered overhead for the release
