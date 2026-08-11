@@ -365,6 +365,10 @@ table { border-collapse: collapse; width: 100%; }
 .pill-loss { background: rgba(248, 81, 73, .16); color: var(--loss); }
 .pill-gold { background: rgba(212, 169, 78, .16); color: var(--gold); }
 .pill-mute { background: transparent; color: var(--text-mute); border: 1px solid var(--line); }
+/* Marks a playoff row in the schedule, which otherwise looks like any other
+   game against the same opponent. Warm rather than the mute grey so the
+   postseason reads as a different stretch of the list at a glance. */
+.pill-playoff { background: rgba(232, 130, 60, 0.14); color: #e8823c; border: 1px solid rgba(232, 130, 60, 0.4); }
 
 /* Impact-moment skill check under a commentary line. Dimmer and smaller than
    the caption it hangs off — it is supporting evidence, not the headline. */

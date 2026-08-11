@@ -142,7 +142,9 @@ function stepOnce(out) {
       }
       return true;
     }
-    return simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng) !== null;
+    const played = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng) !== null;
+    collectFinishedPlayoffGames();
+    return played;
   }
 
   // --- Regular season -------------------------------------------------------
@@ -359,6 +361,7 @@ async function handleWatchNextPlayoffGame() {
   // malformed bracket can't spin forever.
   while (guard++ < 200) {
     const game = simulateNextPlayoffGame(GameState.playoffBracket, GameState.settings, GameState.rng, watch);
+    collectFinishedPlayoffGames();     // the other teams' games played on the way
     if (watch.liveGame) break;         // reached the user's game
     if (game === null) break;          // champion already crowned
   }
@@ -386,10 +389,44 @@ async function handleWatchNextPlayoffGame() {
       // The bracket advance was deferred along with the result — do it now
       // that the series actually contains this game.
       advanceBracketIfRoundComplete(GameState.playoffBracket);
+      // Including the game just coached: finish() is what completes it, so it
+      // only becomes drainable here. Without this the ONE playoff game the
+      // user actually played would be the only one with no box score.
+      collectFinishedPlayoffGames();
       autosave(GameState);
     }
   });
   renderView('pixelGame');
+}
+
+// Files anything the playoff machinery has finished into the season's game
+// list, which is where the Schedule view looks and what save.js persists.
+// Playoff games used to be simulated and discarded, so there was no playoff
+// box score to open anywhere in the app.
+function collectFinishedPlayoffGames() {
+  const finished = drainFinishedPlayoffGames();
+  if (!finished.length) return 0;
+  // Each gets a day continuing past the regular season. Not decoration: the
+  // Schedule view sorts by day, and a game without one sorts by NaN, which
+  // scatters the playoffs through the list in an order the comparator does not
+  // define. One day per game also happens to be true — playoff games are not
+  // played two-a-night.
+  let day = 0, id = 0;
+  GameState.season.games.forEach(function (g) {
+    if (typeof g.day === 'number' && g.day > day) day = g.day;
+    if (typeof g.id === 'number' && g.id > id) id = g.id;
+  });
+  finished.forEach(function (g) {
+    day += 1;
+    id += 1;
+    g.day = day;
+    // Numeric and unique across the season, matching the schedule's own ids.
+    // The Schedule view reads this back through Number(), so a string id would
+    // become NaN and the row would refuse to expand.
+    g.id = id;
+    GameState.season.games.push(g);
+  });
+  return finished.length;
 }
 
 // Sims forward to `targetDay` and watches the user's game that day. Shared by

@@ -13,6 +13,47 @@ var _PLAYOFF_DATA = (typeof require !== 'undefined')
       rng: { makeRng: makeRng }
     };
 
+// FINISHED PLAYOFF GAMES, waiting to be filed into the season.
+//
+// Every playoff game was being simulated, counted towards records and season
+// stats, and then dropped on the floor: nothing kept the game object, so there
+// was no playoff box score anywhere in the app to show. save.js has always
+// round-tripped `isPlayoff` and `seriesId` on season games and always pruned
+// box scores to the user's own — the format expected these all along; nothing
+// ever put one there.
+//
+// A drain buffer rather than a season reference because playoffs.js has no
+// business knowing about GameState, and because it covers all three paths that
+// finish a game with one mechanism: an ordinary series game, a play-in game,
+// and a live-watched game that finishes minutes later when the user stops
+// coaching it.
+let _finishedPlayoffGames = [];
+
+function filePlayoffGame(game) {
+  // No id here on purpose. Ids have to be unique across the whole season and
+  // numeric like the schedule's own, and only the caller filing these into the
+  // season can see the ids already in use. A first version minted 'po-1' here
+  // and the Schedule view silently stopped expanding: its click handler reads
+  // the id with Number(), which turns 'po-1' into NaN, and NaN matches nothing
+  // — not even itself.
+  game.played = true;
+  _finishedPlayoffGames.push(game);
+}
+
+// Hands over everything finished since the last call, and forgets it. The
+// caller appends them to the season so the schedule (which already expands any
+// played game into a box score) picks them up with no new UI.
+function drainFinishedPlayoffGames() {
+  const out = _finishedPlayoffGames;
+  _finishedPlayoffGames = [];
+  return out;
+}
+
+// Only for tests and for a fresh league: ids restart with the bracket.
+function resetPlayoffGameLog() {
+  _finishedPlayoffGames = [];
+}
+
 function getPlayoffSeeds(conference, count) {
   const confTeams = _PLAYOFF_DATA.teams.TEAMS.filter(function (t) { return t.conference === conference; });
   return confTeams.slice().sort(function (a, b) {
@@ -42,6 +83,8 @@ function simulatePlayInGame(homeTeamId, awayTeamId, settings, rng) {
     _PLAYOFF_DATA.morale.tickMoraleForTeamGame(homeTeamId, homeWon, minutesByPlayerId);
     _PLAYOFF_DATA.morale.tickMoraleForTeamGame(awayTeamId, !homeWon, minutesByPlayerId);
   }
+  game.round = 'Play-In';
+  filePlayoffGame(game);
   return game;
 }
 
@@ -75,10 +118,13 @@ function resolvePlayInForConference(conference, settings, rng) {
 // simplification for this project — there is no separate playoffRecord /
 // playoffStats anywhere. Don't "fix" it without changing that decision first.
 let _seriesIdCounter = 0;
-function createSeries(higherSeedTeamId, lowerSeedTeamId) {
+function createSeries(higherSeedTeamId, lowerSeedTeamId, roundName) {
   _seriesIdCounter += 1;
   return {
     id: 'series-' + _seriesIdCounter,
+    // Carried so a finished game can say which round it belongs to without
+    // anything having to search the bracket for its own series.
+    round: roundName || 'Playoffs',
     higherSeed: higherSeedTeamId,
     lowerSeed: lowerSeedTeamId,
     winsHigher: 0,
@@ -114,7 +160,7 @@ function generateBracket(rng, settings) {
       seeds = getPlayoffSeeds(conf);
     }
     ROUND1_SEED_PAIRS.forEach(function (pair) {
-      bracket.first.push(createSeries(seeds[pair[0]].id, seeds[pair[1]].id));
+      bracket.first.push(createSeries(seeds[pair[0]].id, seeds[pair[1]].id, 'Round 1'));
     });
   });
   return bracket;
@@ -198,6 +244,11 @@ function recordSeriesGameResult(series, game, result, homeIsHigher, rng) {
   const higherWonThisGame = homeWon === homeIsHigher;
   if (higherWonThisGame) series.winsHigher += 1; else series.winsLower += 1;
 
+  // After the win counts move, so gameNumber reads 1..7 for this series.
+  game.round = series.round;
+  game.gameNumber = series.winsHigher + series.winsLower;
+  filePlayoffGame(game);
+
   if (isSeriesComplete(series)) {
     series.complete = true;
     series.winner = series.winsHigher === 4 ? series.higherSeed : series.lowerSeed;
@@ -213,15 +264,15 @@ function advanceBracketIfRoundComplete(bracket) {
     // Winners of series 0&1 face each other, winners of series 2&3 face each other,
     // within each conference (bracket.first is [E0,E1,E2,E3, W0,W1,W2,W3]).
     for (let confStart = 0; confStart < 8; confStart += 4) {
-      bracket.semis.push(createSeries(bracket.first[confStart].winner, bracket.first[confStart + 1].winner));
-      bracket.semis.push(createSeries(bracket.first[confStart + 2].winner, bracket.first[confStart + 3].winner));
+      bracket.semis.push(createSeries(bracket.first[confStart].winner, bracket.first[confStart + 1].winner, 'Conf Semis'));
+      bracket.semis.push(createSeries(bracket.first[confStart + 2].winner, bracket.first[confStart + 3].winner, 'Conf Semis'));
     }
   } else if (bracket.confFinals.length === 0 && allComplete(bracket.semis)) {
     for (let confStart = 0; confStart < 4; confStart += 2) {
-      bracket.confFinals.push(createSeries(bracket.semis[confStart].winner, bracket.semis[confStart + 1].winner));
+      bracket.confFinals.push(createSeries(bracket.semis[confStart].winner, bracket.semis[confStart + 1].winner, 'Conf Finals'));
     }
   } else if (bracket.finals.length === 0 && allComplete(bracket.confFinals)) {
-    bracket.finals.push(createSeries(bracket.confFinals[0].winner, bracket.confFinals[1].winner));
+    bracket.finals.push(createSeries(bracket.confFinals[0].winner, bracket.confFinals[1].winner, 'Finals'));
   }
 }
 
@@ -260,6 +311,8 @@ if (typeof module !== 'undefined' && module.exports) {
     generateBracket: generateBracket,
     ROUND1_SEED_PAIRS: ROUND1_SEED_PAIRS,
     simulateNextPlayoffGame: simulateNextPlayoffGame,
+    drainFinishedPlayoffGames: drainFinishedPlayoffGames,
+    resetPlayoffGameLog: resetPlayoffGameLog,
     simulateSeriesGame: simulateSeriesGame,
     advanceBracketIfRoundComplete: advanceBracketIfRoundComplete,
     getCurrentRoundSeries: getCurrentRoundSeries,

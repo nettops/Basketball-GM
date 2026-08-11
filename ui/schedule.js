@@ -13,7 +13,15 @@ function renderSchedule(container, teamId) {
       const isHome = g.homeTeamId === teamId;
       const oppId = isHome ? g.awayTeamId : g.homeTeamId;
       const opp = getTeamById(oppId);
-      const oppLabel = '<span class="pill pill-mute">' + (isHome ? 'VS' : '@') + '</span> ' + teamLogoImgHtml(oppId, 18) + ' ' + escapeHtml(opp.name);
+      const oppLabel = '<span class="pill pill-mute">' + (isHome ? 'VS' : '@') + '</span> ' + teamLogoImgHtml(oppId, 18) + ' ' + escapeHtml(opp.name) +
+        (g.isPlayoff ? ' <span class="pill pill-playoff">' + escapeHtml(g.round || 'Playoffs') + '</span>' : '');
+      // A playoff game's day number is a bookkeeping value that keeps the list
+      // in order (see collectFinishedPlayoffGames); showing it would read as a
+      // 100-something "day" of a season that ended. The game number within the
+      // series is what a reader actually wants there.
+      const dayCell = g.isPlayoff
+        ? (g.gameNumber ? 'G' + g.gameNumber : '—')
+        : g.day;
       let resultLabel = '<span class="pill pill-mute">Scheduled</span>';
       if (g.played) {
         const teamScore = isHome ? g.homeScore : g.awayScore;
@@ -22,7 +30,7 @@ function renderSchedule(container, teamId) {
         resultLabel = '<span class="pill ' + (won ? 'pill-win' : 'pill-loss') + '">' + (won ? 'W' : 'L') + '</span> ' +
           teamScore + '-' + oppScore;
       }
-      const isExpanded = g.id === expandedGameId;
+      const isExpanded = String(g.id) === expandedGameId;
       const rowClasses = 'is-clickable schedule-row' + (g.played ? ' is-playable' : '') + (isExpanded ? ' is-expanded' : '');
       const title = g.played ? 'Click to view box score' : 'Not played yet';
       // Unplayed games get a Watch button so a specific future matchup can be
@@ -31,7 +39,7 @@ function renderSchedule(container, teamId) {
       const actionCell = g.played
         ? (isExpanded ? '▾' : '▸')
         : (GameState.playoffBracket ? '' : '<button class="btn-ghost schedule-watch-btn" data-watch-day="' + g.day + '">Watch</button>');
-      html += '<tr class="' + rowClasses + '" data-game-id="' + g.id + '" title="' + title + '"><td class="num">' + g.day + '</td>' +
+      html += '<tr class="' + rowClasses + '" data-game-id="' + g.id + '" title="' + title + '"><td class="num">' + dayCell + '</td>' +
         '<td class="col-name">' + oppLabel + '</td><td>' + resultLabel + '</td>' +
         '<td class="num schedule-chevron">' + actionCell + '</td></tr>';
 
@@ -67,7 +75,10 @@ function renderSchedule(container, teamId) {
 
     container.querySelectorAll('tr[data-game-id]').forEach(function (row) {
       row.addEventListener('click', function () {
-        const gameId = Number(row.getAttribute('data-game-id'));
+        // Compared as STRINGS. Number() was the old reading, and any id that
+        // is not a plain number became NaN — which never equals the row it came
+        // from, so the row simply refused to open with no error anywhere.
+        const gameId = row.getAttribute('data-game-id');
         expandedGameId = expandedGameId === gameId ? null : gameId;
         draw();
         if (expandedGameId !== null) scrollDetailIntoView();
