@@ -82,6 +82,14 @@ function finalizeBidding(state, userAccepts) {
     // that only runs on the path the UI happens to take is the same mistake
     // that created this bug. If the offer is no longer legal the player goes
     // to the best AI bid instead, exactly as if the user had withdrawn.
+    //
+    // The CAP half of this is reachable and tested (validate-freeAgencyCap's
+    // checkCapSpaceLostBetweenBidAndSigning). The YEARS half is not: term
+    // cannot change between bidding and signing, so state.userOffer can only
+    // ever hold a term evaluateBiddingRound already accepted. It is passed
+    // anyway, as belt and braces against anything that later mutates
+    // state.userOffer — but it is unreachable today, so do not "prove" it with
+    // a test that only appears to exercise it.
     const userTeam = _BIDDING_DATA.teams.getTeamById(state.userTeamId);
     if (_BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary, state.userOffer.yearsRemaining).ok) {
       _BIDDING_DATA.freeAgency.signPlayer(player, state.userOffer);

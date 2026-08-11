@@ -150,7 +150,10 @@ function checkContractLengthIsBounded() {
   const team = findUnderCapTeam();
   withFreeAgent('sas-victor-wembanyama', function (star) {
     const legalSalary = Math.min(20000000, (CAP - payrollOf(team.id)) - 1000000);
-    [99, 50, 6, 0, -3, NaN].forEach(function (years) {
+    // 2.5 is in here because a number input's step= is advisory only — you can
+    // type a fraction into it. Without this case the whole-years requirement
+    // was untested and deleting it changed nothing.
+    [99, 50, 6, 0, -3, 2.5, NaN].forEach(function (years) {
       const state = bidding.startBidding(star.id, team.id, makeRng(9));
       const r = bidding.evaluateBiddingRound(state, legalSalary, years);
       assert.strictEqual(r.offerAccepted, false,
