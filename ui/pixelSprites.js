@@ -289,57 +289,123 @@ function spriteCardScale(sizePx) {
   return Math.max(1, Math.floor(((sizePx || 80) * 1.5) / SPRITE_CARD.h));
 }
 
-// Encoding a PNG costs about 1.1ms, against 0.02ms to build the SVG face this
-// replaces — 58x, measured over 300 rows. That is invisible on the one-off
-// profile header and ruinous in the trade centre, which renders a row per
-// player in the league: 300 rows blocked for a third of a second on EVERY
-// redraw. The picture is a pure function of these four values, so it is worth
-// keeping. Nothing here changes without the key changing: height never moves,
-// colours come from the face, and a trade or a draft moves the team or the
-// number.
-const _spriteUrlCache = {};
+// The picture is a real drawing surface in the page, painted directly. It used
+// to be a PNG file embedded as text, and that conversion was 80% of the cost:
+//
+//   drawing the figure   0.0035ms      0.4%
+//   allocating a canvas  0.0067ms      0.7%
+//   encoding the PNG     0.7645ms     80%
+//
+// The conversion cost is also very nearly FIXED per call rather than per
+// pixel — a 14x32 table sprite encodes in 0.60ms and a 56x128 profile picture
+// in 0.44ms, so the small one is DEARER. Shrinking cannot help and neither can
+// WebP (0.81ms). The only real fix is to stop converting. Measured over 400
+// rows: 509ms of data URLs against 16ms of canvases, and the page HTML drops
+// from 172KB to 32KB. The memoisation this replaces is gone with it — at
+// 0.04ms a row there is nothing left worth remembering.
+//
+// Everything the paint needs rides on the element, so painting depends on no
+// game state and can happen at any time, in any order, more than once.
 
-function spriteCacheKey(player, team, s) {
-  return player.id + '|' + (team ? team.id : '-') + '|' + s + '|' + player.jerseyNumber;
+// Colours reach the DOM as attributes, so they are pinned to a strict hex
+// shape rather than trusted. Custom players can carry author-supplied colour
+// values (see the commissioner's player editor), and an attribute is exactly
+// where an unescaped one would matter.
+function safeSpriteColor(value, fallback) {
+  return (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value)) ? value : fallback;
 }
 
-function playerSpriteDataUrl(player, team, scale) {
-  if (typeof document === 'undefined' || !player) return '';
-  const s = Math.max(1, Math.round(scale || 1));
-  const key = spriteCacheKey(player, team, s);
-  if (_spriteUrlCache[key]) return _spriteUrlCache[key];
-  const c = document.createElement('canvas');
-  c.width = SPRITE_CARD.w * s;
-  c.height = SPRITE_CARD.h * s;
-  const ctx = c.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.scale(s, s);
-  drawPlayerSprite(ctx, SPRITE_CARD.w / 2, SPRITE_CARD.footY,
-    spriteColorsForPlayer(player, team || SPRITE_CARD_NO_TEAM, true),
-    player.jerseyNumber, { heightIn: player.heightIn, idleFrame: 0 });
-  _spriteUrlCache[key] = c.toDataURL('image/png');
-  return _spriteUrlCache[key];
+function spriteCanvasAttrs(player, team, s) {
+  const c = spriteColorsForPlayer(player, team || SPRITE_CARD_NO_TEAM, true);
+  const num = player.jerseyNumber;
+  return ' data-sprite="1"' +
+    ' data-h="' + (typeof player.heightIn === 'number' ? Math.round(player.heightIn) : '') + '"' +
+    ' data-n="' + (num == null ? '' : String(num).replace(/[^0-9]/g, '')) + '"' +
+    ' data-jersey="' + safeSpriteColor(c.jersey, '#5b6673') + '"' +
+    ' data-trim="' + safeSpriteColor(c.trim, '#c9d1d9') + '"' +
+    ' data-skin="' + safeSpriteColor(c.skin, FALLBACK_SKIN) + '"' +
+    ' data-hair="' + safeSpriteColor(c.hair, FALLBACK_HAIR) + '"' +
+    ' data-scale="' + s + '"';
 }
 
 // Drop-in shape-alike for faces.js's playerFaceHtml, so a caller swaps one
-// name for the other and nothing else.
+// name for the other and nothing else. Returns markup only — no drawing
+// happens here, and none can: the element does not exist yet.
 function playerSpriteHtml(player, team, sizePx) {
+  if (!player) return '';
   const s = spriteCardScale(sizePx);
-  const url = playerSpriteDataUrl(player, team, s);
-  if (!url) return '';
-  return '<span class="player-sprite" style="display:inline-block;width:' +
-    (SPRITE_CARD.w * s) + 'px;height:' + (SPRITE_CARD.h * s) + 'px;">' +
-    '<img src="' + url + '" alt="" style="width:100%;height:100%;' +
-    'image-rendering:pixelated;display:block;"></span>';
+  return '<canvas class="player-sprite" width="' + (SPRITE_CARD.w * s) +
+    '" height="' + (SPRITE_CARD.h * s) + '"' + spriteCanvasAttrs(player, team, s) + '></canvas>';
 }
+
+// Paints one placeholder. Idempotent — a canvas already painted is skipped, so
+// a second sweep over the same subtree costs a marker check and nothing else.
+function paintPlayerSprite(canvas) {
+  if (!canvas || canvas.dataset.spritePainted === '1') return false;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return false;
+  const s = Math.max(1, parseInt(canvas.dataset.scale, 10) || 1);
+  ctx.imageSmoothingEnabled = false;
+  ctx.save();
+  ctx.scale(s, s);
+  drawPlayerSprite(ctx, SPRITE_CARD.w / 2, SPRITE_CARD.footY, {
+    jersey: canvas.dataset.jersey, trim: canvas.dataset.trim,
+    skin: canvas.dataset.skin, hair: canvas.dataset.hair
+  }, canvas.dataset.n === '' ? null : canvas.dataset.n,
+    { heightIn: canvas.dataset.h === '' ? null : Number(canvas.dataset.h), idleFrame: 0 });
+  ctx.restore();
+  canvas.dataset.spritePainted = '1';
+  return true;
+}
+
+function paintPlayerSprites(root) {
+  const scope = root || (typeof document !== 'undefined' ? document : null);
+  if (!scope || !scope.querySelectorAll) return 0;
+  let n = 0;
+  scope.querySelectorAll('canvas.player-sprite[data-sprite="1"]').forEach(function (c) {
+    if (paintPlayerSprite(c)) n += 1;
+  });
+  return n;
+}
+
+// Nothing has to remember to call the paint. Every view in this app builds a
+// string and assigns innerHTML, and a rule that says "and afterwards call
+// paintPlayerSprites" is a rule somebody eventually forgets — the failure
+// being a silently blank box, which looks like a bug in the sprite rather
+// than a missing call. The observer watches for placeholders appearing and
+// fills them in, so a view only has to emit the markup.
+//
+// MutationObserver callbacks run as microtasks, before the browser paints, so
+// there is no flash of an empty box.
+function startPlayerSpriteAutoPaint() {
+  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return null;
+  const obs = new MutationObserver(function (records) {
+    for (let i = 0; i < records.length; i++) {
+      const added = records[i].addedNodes;
+      for (let j = 0; j < added.length; j++) {
+        const node = added[j];
+        if (node.nodeType !== 1) continue;
+        if (node.matches && node.matches('canvas.player-sprite[data-sprite="1"]')) paintPlayerSprite(node);
+        else if (node.querySelectorAll) paintPlayerSprites(node);
+      }
+    }
+  });
+  obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
+  paintPlayerSprites(document);   // anything already on the page
+  return obs;
+}
+
+if (typeof document !== 'undefined') startPlayerSpriteAutoPaint();
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SPRITE_CARD: SPRITE_CARD,
     spriteCardScale: spriteCardScale,
-    spriteCacheKey: spriteCacheKey,
-    playerSpriteDataUrl: playerSpriteDataUrl,
+    safeSpriteColor: safeSpriteColor,
     playerSpriteHtml: playerSpriteHtml,
+    paintPlayerSprite: paintPlayerSprite,
+    paintPlayerSprites: paintPlayerSprites,
+    startPlayerSpriteAutoPaint: startPlayerSpriteAutoPaint,
     DIGIT_FONT: DIGIT_FONT,
     LETTER_FONT: LETTER_FONT,
     spriteColorsForPlayer: spriteColorsForPlayer,

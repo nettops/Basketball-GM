@@ -97,6 +97,17 @@ select { cursor: pointer; }
 }
 .player-face svg { width: 100%; height: 100%; display: block; }
 
+/* The sprite is a real canvas, painted directly — no image file in between.
+   Its width/height attributes already carry the pixel size, so the box needs
+   no inline style; `pixelated` is what stops the browser smoothing a 10px-wide
+   figure into mush on a high-DPI screen. */
+.player-sprite {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
 .placeholder-view { padding: 64px 24px; text-align: center; color: var(--text-mute); font-style: italic; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }

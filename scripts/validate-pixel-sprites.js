@@ -173,43 +173,99 @@ checkSpriteHeightVariation();
 
 function checkSpriteCard() {
   // The box must fit the tallest body without clipping. A 7'7" sprite grows
-  // 5px above the standard 24, and the dunk pose reaches 6px above the head —
-  // not used by the card, but the box should not be sized to the exact limit
-  // of the one pose it happens to draw.
+  // 5px above the standard 24.
   const highest = sprites.SPRITE_CARD.footY - 24 - 5;
   assert.ok(highest >= 0, 'tallest body fits in the card, top at ' + highest);
-  assert.ok(sprites.SPRITE_CARD.footY <= sprites.SPRITE_CARD.h,
-    'feet are inside the card');
+  assert.ok(sprites.SPRITE_CARD.footY <= sprites.SPRITE_CARD.h, 'feet are inside the card');
 
   // Integer scales only. A fractional scale gives some pixels two screen
   // pixels and their neighbours three, which at this size reads as a broken
   // renderer rather than as pixel art.
+  let prev = 0;
   [22, 24, 32, 90, 100].forEach(function (size) {
     const s = sprites.spriteCardScale(size);
     assert.ok(s === Math.floor(s) && s >= 1, 'scale for ' + size + ' is a whole number, got ' + s);
     assert.ok(sprites.SPRITE_CARD.h * s <= size * 1.5,
       'card at ' + size + ' is no taller than the face it replaces');
-  });
-  // bigger request, never a smaller picture
-  let prev = 0;
-  [22, 24, 32, 90, 100].forEach(function (size) {
-    const s = sprites.spriteCardScale(size);
     assert.ok(s >= prev, 'scale must not shrink as the request grows');
     prev = s;
   });
-
-  // No canvas in Node. These run in the browser, and the assertion that
-  // matters here is that they DEGRADE rather than throw — this module is
-  // required by six validators that have no DOM.
-  assert.strictEqual(sprites.playerSpriteDataUrl({ id: 1 }, null, 4), '',
-    'no document means no data url, not a crash');
-  assert.strictEqual(sprites.playerSpriteHtml({ id: 1 }, null, 100), '',
-    'and no markup either, so a caller emits nothing rather than a broken img');
-  assert.strictEqual(sprites.playerSpriteDataUrl(null, null, 4), '', 'no player, no url');
   console.log('checkSpriteCard: OK (100px request -> scale ' +
     sprites.spriteCardScale(100) + ', ' + (sprites.SPRITE_CARD.w * sprites.spriteCardScale(100)) +
     'x' + (sprites.SPRITE_CARD.h * sprites.spriteCardScale(100)) + 'px)');
 }
 checkSpriteCard();
+
+const HOSTILE = { id: 9, jerseyNumber: 7, heightIn: 84,
+  face: { body: { color: '#c98a5a' }, hair: { color: '#272421' } } };
+const TEAM = { id: 'BOS', colors: { primary: '#007A33', secondary: '#BA9653' } };
+
+function checkSpriteMarkupCarriesEverything() {
+  // Markup only — no drawing, so this now works with no DOM at all. The old
+  // data-URL version could not run in Node and was asserted only to return an
+  // empty string, which tested nothing about what a user sees.
+  const html = sprites.playerSpriteHtml(HOSTILE, TEAM, 100);
+  const s = sprites.spriteCardScale(100);
+
+  assert.ok(/^<canvas /.test(html), 'emits a canvas, got ' + html.slice(0, 40));
+  assert.ok(html.indexOf('data:') === -1,
+    'NO encoded image — the whole point is that nothing is converted');
+  assert.ok(html.indexOf('width="' + (sprites.SPRITE_CARD.w * s) + '"') !== -1, 'carries its pixel width');
+  assert.ok(html.indexOf('height="' + (sprites.SPRITE_CARD.h * s) + '"') !== -1, 'carries its pixel height');
+  assert.ok(html.indexOf('data-scale="' + s + '"') !== -1, 'carries the scale the paint needs');
+  assert.ok(html.indexOf('data-h="84"') !== -1, 'carries the height that makes a big man big');
+  assert.ok(html.indexOf('data-n="7"') !== -1, 'carries the jersey number');
+  assert.ok(html.indexOf('data-jersey="#007A33"') !== -1, "carries the team's colour");
+
+  // A player with no team and no number must still render, not throw and not
+  // emit `undefined` into an attribute. Draft prospects are exactly this.
+  const bare = sprites.playerSpriteHtml({ id: 1, jerseyNumber: null, heightIn: null }, null, 32);
+  assert.ok(/^<canvas /.test(bare), 'a prospect with no team still emits a canvas');
+  assert.ok(bare.indexOf('undefined') === -1, 'no "undefined" leaks into an attribute');
+  assert.ok(bare.indexOf('data-n=""') !== -1, 'absent number is empty, not "null"');
+  assert.strictEqual(sprites.playerSpriteHtml(null, TEAM, 32), '', 'no player, no markup');
+  console.log('checkSpriteMarkupCarriesEverything: OK');
+}
+checkSpriteMarkupCarriesEverything();
+
+function checkSpriteColorsCannotBreakOutOfTheAttribute() {
+  // Colours now travel through an HTML attribute. Custom players can carry
+  // author-supplied colour values, so this is exactly where an unescaped one
+  // would matter. Pinned to a hex shape rather than escaped, because a colour
+  // that is not a colour has no business being drawn either.
+  const attacks = ['" onload="alert(1)', "'><script>bad()</script>", 'red; }', '#fff"', 'javascript:x', ''];
+  attacks.forEach(function (bad) {
+    assert.strictEqual(sprites.safeSpriteColor(bad, '#123456'), '#123456',
+      'rejects ' + JSON.stringify(bad));
+  });
+  ['#fff', '#007A33', '#12345678'].forEach(function (good) {
+    assert.strictEqual(sprites.safeSpriteColor(good, '#000'), good, 'keeps ' + good);
+  });
+
+  const evil = { id: 2, jerseyNumber: '7" onerror="x', heightIn: 80,
+    face: { body: { color: '" onload="alert(1)' }, hair: { color: '#272421' } } };
+  const html = sprites.playerSpriteHtml(evil, { id: 'X', colors: { primary: '"><img src=x>', secondary: '#111' } }, 32);
+  assert.ok(html.indexOf('onload') === -1 && html.indexOf('onerror') === -1,
+    'no event handler survives into the markup: ' + html);
+  assert.ok(html.indexOf('<img') === -1, 'no injected tag survives: ' + html);
+  // The whole output must be ONE canvas tag whose attribute region contains no
+  // angle brackets at all — a stricter statement than "no <script> survived",
+  // and it does not depend on guessing which payload an attacker picks.
+  assert.ok(/^<canvas [^<>]*><\/canvas>$/.test(html), 'output is one clean tag: ' + html);
+  assert.ok(html.indexOf('data-jersey="#5b6673"') !== -1,
+    'a colour that is not a colour falls back rather than reaching the DOM');
+  assert.ok(html.indexOf('data-n="7"') !== -1, 'a jersey number is stripped to digits');
+  console.log('checkSpriteColorsCannotBreakOutOfTheAttribute: OK');
+}
+checkSpriteColorsCannotBreakOutOfTheAttribute();
+
+function checkPaintDegradesWithoutADom() {
+  // ui/pixelSprites.js is required by six validators that have no DOM.
+  assert.strictEqual(sprites.paintPlayerSprites(null), 0, 'no document, nothing painted, no throw');
+  assert.strictEqual(sprites.paintPlayerSprite(null), false, 'no element, nothing painted');
+  assert.strictEqual(sprites.startPlayerSpriteAutoPaint(), null, 'no observer without a DOM');
+  console.log('checkPaintDegradesWithoutADom: OK');
+}
+checkPaintDegradesWithoutADom();
 
 console.log('All pixel sprite validations passed');
