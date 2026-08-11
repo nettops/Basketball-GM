@@ -554,8 +554,11 @@ function renderPixelGame(container) {
     pushCommentary(fr.a);
 
     // is the current ball sequence a shot (heading to a rim) or a pass?
-    const lookAhead = kfs[Math.min(kfIndex + 2, kfs.length - 1)];
-    const shotComing = lookAhead.ball.holder === null && distToNearestHoop(lookAhead.ball) < 20;
+    const shotComingAt = function (idx) {
+      const la = kfs[Math.min(idx + 2, kfs.length - 1)];
+      return la.ball.holder === null && distToNearestHoop(la.ball) < 20;
+    };
+    const shotComing = shotComingAt(kfIndex);
 
     // Who is airborne, and how high. Resolved once per frame rather than per
     // sprite because the ball needs it too.
@@ -785,6 +788,24 @@ function renderPixelGame(container) {
     // ball: dribbled by the holder, held high when shooting, otherwise in
     // flight with a distance-scaled arc and its own ground shadow
     const holder = fr.a.ball.holder;
+    // Where the ball left the hand, for a flight that has just begun. Null on
+    // every other frame, and the ball's own path takes over.
+    const prevKf = kfIndex > 0 ? kfs[kfIndex - 1] : null;
+    const thrower = prevKf && prevKf.ball.holder;
+    // His KEYFRAME position, not his smoothed one. The smoothed body is what
+    // was drawn, so it would match the last held frame a hair more exactly —
+    // but it keeps moving after he lets go, and the launch point would crawl
+    // along behind him for the whole flight. Frozen is worth more than exact
+    // here, and it keeps the view, the probes and any preview agreeing on one
+    // answer.
+    const throwerAt = thrower && fr.a.pos[thrower];
+    const launch = throwerAt ? launchPoint({
+      prev: prevKf, a: fr.a,
+      hand: { x: throwerAt[0], y: throwerAt[1], vx: 0, vy: 0 },
+      facing: facingById[thrower] || 1,
+      shotComing: shotComingAt(kfIndex - 1),
+      reduceMotion: reduceMotion
+    }) : null;
     const bp = ballPosition({
       a: fr.a, b: fr.b, f: fr.f,
       holder: holder,
@@ -793,7 +814,8 @@ function renderPixelGame(container) {
       lifts: lifts,
       shotComing: shotComing,
       reduceMotion: reduceMotion,
-      playbackMs: playbackMs
+      playbackMs: playbackMs,
+      launch: launch
     });
     const bx = bp.bx, by = bp.by, groundY = bp.groundY;
     // thud on the floor contact, keyed off the same phase the eye sees
