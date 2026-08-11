@@ -675,6 +675,27 @@ function createChoreographer(session) {
     if (keyframes.length) keyframes[keyframes.length - 1].handle = meta;
   }
 
+  // Where the ball is right now, if somebody is holding it.
+  //
+  // Every pass in the game used to be drawn as leaving from whoever the code
+  // DECIDED should throw it — the possession's handler, or the deepest man on
+  // a break — regardless of who actually had the ball a beat earlier. When
+  // those differed the ball simply appeared in the thrower's hands: measured
+  // at ~10 a game and up to 139px in a single 60ms beat, a third of the court.
+  // A rebounder is the commonest case; he catches it under one basket and the
+  // next beat opens a pass from a man standing at half court.
+  //
+  // Anything that starts a pass asks this first, so a pass always leaves from
+  // where the ball is.
+  function heldBallSpot() {
+    const last = keyframes.length ? keyframes[keyframes.length - 1].ball : null;
+    return (last && last.holder) ? [last.x, last.y] : null;
+  }
+  function heldBallHolder() {
+    const last = keyframes.length ? keyframes[keyframes.length - 1].ball : null;
+    return (last && last.holder) || null;
+  }
+
   function positionsFor(offenseTeam) {
     const pos = {};
     ['home', 'away'].forEach(function (side) {
@@ -897,11 +918,15 @@ function createChoreographer(session) {
       const deep = Object.keys(transPos)
         .filter(function (id) { return id !== h && pos[id]; })
         .sort(function (a, b) { return (transPos[b][0] - transPos[a][0]) * dir; })[0];
-      const from = deep ? transPos[deep] : transHandler;
+      // The outlet leaves from the ball, not from the man the code picked to
+      // throw it. On a break off a defensive rebound those are almost never
+      // the same player, and the difference was the whole width of the floor.
+      const outletBy = heldBallHolder() || deep;
+      const from = heldBallSpot() || (deep ? transPos[deep] : transHandler);
 
       push(BEAT.release, transPos, { x: from[0], y: from[1] - 6, holder: null },
         period, quarter, clock, '');
-      push(BEAT.fbOutlet, flowPositions(transPos, [h, deep], pi * 31, defendersOf(poss.team, transPos)),
+      push(BEAT.fbOutlet, flowPositions(transPos, [h, deep, outletBy], pi * 31, defendersOf(poss.team, transPos)),
         { x: transHandler[0], y: transHandler[1] - 6, holder: h, arc: 5 },
         period, quarter, clock, '', transComment);
       // filling the lanes — everyone actually travels, so the leg cycle runs
@@ -1014,7 +1039,21 @@ function createChoreographer(session) {
         if (ankle) dribbles = 4;
         const isoPlay = dribbles > 0 && !ankle;
 
+        // The chain starts with whoever is ACTUALLY holding the ball, which is
+        // not always the possession's designated handler. A defensive rebounder
+        // catches it under his own basket and the next beat used to open a pass
+        // from the handler standing 130px away — so the ball simply appeared in
+        // the handler's hands, having crossed a third of the court in the 60ms
+        // release beat. Measured at ~10 a game, up to 139px in one frame: the
+        // single biggest teleport left in the ball's path.
+        //
+        // Prepending him turns that into the outlet pass it always was.
         const chain = [poss.handlerId];
+        const lastHolder = heldBallHolder();
+        if (lastHolder && lastHolder !== poss.handlerId &&
+            shotPos[lastHolder] && offenseIds.indexOf(lastHolder) >= 0) {
+          chain.unshift(lastHolder);
+        }
         // 0-3 rather than always 1-2, so possessions differ in how much the
         // ball moves and not just in how long each beat lasts
         // A break that swings the ball three times is not a break any more —
@@ -1052,8 +1091,15 @@ function createChoreographer(session) {
         if (shooterOn && chain[chain.length - 1] !== ev.playerId) {
           chain.push(ev.playerId);
         }
+        // Where the ball actually is as this possession opens. Prepending the
+        // rebounder above covers the case where he is still on the floor; this
+        // covers the rest, because a player can be SUBSTITUTED OUT while
+        // holding the ball, and then he is in no formation to pass from. The
+        // first pass leaves from the ball's real position either way, so the
+        // ball never crosses the floor without a pass under it.
+        const openFrom = heldBallSpot();
         for (let c = 0; c < chain.length - 1; c++) {
-          const from = shotPos[chain[c]] || pos[chain[c]] || handlerPos;
+          const from = (c === 0 && openFrom) || shotPos[chain[c]] || pos[chain[c]] || handlerPos;
           const to = shotPos[chain[c + 1]];
           if (!to) continue;
           // the last pass of the chain is the feed to the shooter

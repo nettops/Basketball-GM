@@ -253,7 +253,21 @@ function ballPosition(s) {
   // A released ball is a projectile: constant horizontal velocity with a
   // parabolic rise and fall. (Easing the horizontal axis made shots visibly
   // brake in mid-air.)
-  const flightDist = Math.abs(s.b.ball.x - s.a.ball.x) + Math.abs(s.b.ball.y - s.a.ball.y);
+  //
+  // WHERE IT STARTS FROM. The choreographer bakes a launch height into the
+  // release keyframe -- 20px up for a jump shot, 12 for a layup, 8 for a pass.
+  // Those were guesses, and none of them matched where the hand actually had
+  // the ball. Measured over 6 games, the gap between the last held frame and
+  // the first airborne one:
+  //
+  //     free throw  32.8px mean      jump shot   15-19px
+  //     pass        16.0px           layup        8.8px
+  //
+  // ~550 times a game the ball jumped at the exact instant it should have been
+  // launching. `s.launch` is the ball's real position on the last held frame
+  // (see launchPoint), so the flight now begins where the hand let go.
+  const from = s.launch || { bx: s.a.ball.x, by: s.a.ball.y, groundY: s.a.ball.y };
+  const flightDist = Math.abs(s.b.ball.x - from.bx) + Math.abs(s.b.ball.y - from.groundY);
   // A slam is the one ball path with no arc in it — it goes straight down
   // through the rim. The default floor of 4px would lob it upward.
   const slamming = s.a.dunk && s.a.dunk.phase === 'slam';
@@ -263,12 +277,42 @@ function ballPosition(s) {
   const arcHeight = slamming ? 0
     : (typeof s.b.ball.arc === 'number' ? s.b.ball.arc
        : Math.max(4, Math.min(32, flightDist * 0.3)));
-  const groundY = motionLerp(s.a.ball.y, s.b.ball.y, s.f);
+  // Two separate lines: the SHADOW runs along the floor from the thrower's
+  // feet to the target's, while the BALL runs from the height it left the hand
+  // at down to the target, with the arc on top. Sharing one line was what put
+  // the ball on the floor for the first frame of every shot.
+  const groundY = motionLerp(from.groundY, s.b.ball.y, s.f);
   return {
-    bx: motionLerp(s.a.ball.x, s.b.ball.x, s.f),
-    by: groundY - Math.sin(s.f * Math.PI) * arcHeight,
+    bx: motionLerp(from.bx, s.b.ball.x, s.f),
+    by: motionLerp(from.by, s.b.ball.y, s.f) - Math.sin(s.f * Math.PI) * arcHeight,
     groundY: groundY, mode: mode, bouncePhase: null
   };
+}
+
+// Where the ball was on the last frame it was still in a hand — the point the
+// flight that follows has to start from.
+//
+// RECOMPUTED from the keyframes rather than remembered from the last drawn
+// frame. Remembering would be one line shorter and wrong: seeking into the
+// middle of a shot, or arriving there after a pause, has no previous frame to
+// remember, and the ball would launch from the stale one. This gives the same
+// answer whether you played into the moment or jumped straight to it.
+//
+// Returns null when the previous beat had nobody holding the ball, which is
+// every flight segment after the first — a ball already in the air launched a
+// while ago and keeps its own path.
+function launchPoint(s) {
+  if (!s.prev || s.prev.ball.holder === null || !s.hand) return null;
+  const lifts = resolveLifts(s.prev, s.a, 1, s.reduceMotion);
+  return ballPosition({
+    a: s.prev, b: s.a, f: 1,
+    holder: s.prev.ball.holder, hand: s.hand, facing: s.facing,
+    lifts: lifts, shotComing: s.shotComing,
+    reduceMotion: s.reduceMotion,
+    // The keyframe's own timestamp, not the live clock: that is the instant
+    // the ball left, and it makes the dribble bounce deterministic.
+    playbackMs: s.a.t
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -291,6 +335,7 @@ if (typeof module !== 'undefined' && module.exports) {
     dunkCock: dunkCock,
     jumpCock: jumpCock,
     ballMode: ballMode,
-    ballPosition: ballPosition
+    ballPosition: ballPosition,
+    launchPoint: launchPoint
   };
 }

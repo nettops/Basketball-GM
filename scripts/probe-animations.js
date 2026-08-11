@@ -91,6 +91,20 @@ function familyOf(a, b) {
   return 'live';
 }
 
+// The ball's position on the last frame it was held, for the flight that
+// follows. Same call the view makes.
+function launchAt(kfs, i) {
+  const prev = i > 0 ? kfs[i - 1] : null;
+  if (!prev || prev.ball.holder === null) return null;
+  const hp = kfs[i].pos[prev.ball.holder];
+  if (!hp) return null;
+  return motion.launchPoint({
+    prev: prev, a: kfs[i],
+    hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 },
+    facing: 1, shotComing: shotComingAt(kfs, i - 1), reduceMotion: false
+  });
+}
+
 function stat() { return { n: 0, sum: 0, max: 0, maxAt: null, zero: 0 }; }
 function add(s, v, at) {
   s.n++; s.sum += v;
@@ -157,7 +171,8 @@ function run(games) {
         const bp = motion.ballPosition({
           a: a, b: b, f: f, holder: holder, hand: hand, facing: 1,
           lifts: lifts, shotComing: shotComingAt(kfs, i),
-          reduceMotion: false, playbackMs: a.t + span * f
+          reduceMotion: false, playbackMs: a.t + span * f,
+          launch: launchAt(kfs, i)
         });
         if (prev) {
           const d = Math.hypot(bp.bx - prev.bx, bp.by - prev.by);
@@ -213,7 +228,8 @@ function run(games) {
             const liftsNext = motion.resolveLifts(b, c, 0, false);
             const flown = motion.ballPosition({
               a: b, b: c, f: 0, holder: null, hand: null, facing: 1,
-              lifts: liftsNext, shotComing: false, reduceMotion: false, playbackMs: b.t
+              lifts: liftsNext, shotComing: false, reduceMotion: false, playbackMs: b.t,
+              launch: launchAt(kfs, i + 1)
             });
             if (!geometry.releaseByKind[fam]) geometry.releaseByKind[fam] = stat();
             add(geometry.releaseByKind[fam],
