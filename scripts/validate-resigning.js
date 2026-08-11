@@ -108,8 +108,12 @@ function checkOverCapTeamCanRetainItsOwnStar() {
   const rng = makeRng(11);
 
   // Precondition: on the open market this same team could not sign him at all.
-  assert.ok(!fa.checkOffer(team, 20000000).ok,
-    'precondition: an over-cap team must be barred from the open market');
+  // Years passed explicitly so this fails for the CAP reason under test, not
+  // because an omitted argument tripped the contract-length check.
+  const openMarket = fa.checkOffer(team, 20000000, 3);
+  assert.ok(!openMarket.ok, 'precondition: an over-cap team must be barred from the open market');
+  assert.ok(/cap space/i.test(openMarket.reason),
+    'precondition must fail on cap space, not something else: ' + openMarket.reason);
 
   const originalContract = star.contract;
   star.contract = { salary: originalContract.salary, yearsRemaining: 0, playerOption: false, teamOption: false };

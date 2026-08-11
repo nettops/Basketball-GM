@@ -157,7 +157,11 @@ function renderBiddingPanel(container, playerId, userTeamId, redrawParent, signi
       startingBid + '" step="100000" min="' + limit.min + '"' +
       (limit.capDisabled ? '' : ' max="' + limit.max + '"') +
       (canBid ? '' : ' disabled') + ' style="width:140px;"></div>';
-    html += '<div class="field-row"><label style="margin:0;">Years</label><input type="number" id="bid-years" value="2" min="1" max="5" style="width:70px;"></div>';
+    // Bounds read from the model rather than typed in here, so the box and the
+    // rule it is checked against cannot drift apart — the salary box beside it
+    // was hardened while this one silently accepted 99.
+    html += '<div class="field-row"><label style="margin:0;">Years</label><input type="number" id="bid-years" value="2" min="1" max="' +
+      MAX_CONTRACT_YEARS + '" step="1"' + (canBid ? '' : ' disabled') + ' style="width:70px;"></div>';
     const canSign = canBid && !!(lastResult && lastResult.offerAccepted);
     html += '<div class="toolbar" style="margin:14px 0 0;">' +
       '<button id="submit-bid-btn"' + (canBid ? '' : ' disabled') + '>Submit Offer</button>' +

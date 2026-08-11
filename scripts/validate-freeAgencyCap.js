@@ -142,6 +142,38 @@ function checkCapSpaceLostBetweenBidAndSigning() {
   console.log('checkCapSpaceLostBetweenBidAndSigning: OK');
 }
 
+// The salary box was hardened and the YEARS box next to it was not. Both are
+// user input on the same form; guarding one and not the other is how a fixed
+// exploit reappears wearing a different hat. $5,000,000 x 99 years signed
+// cleanly — a superstar locked up for a century at a rotation player's price.
+function checkContractLengthIsBounded() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const legalSalary = Math.min(20000000, (CAP - payrollOf(team.id)) - 1000000);
+    [99, 50, 6, 0, -3, NaN].forEach(function (years) {
+      const state = bidding.startBidding(star.id, team.id, makeRng(9));
+      const r = bidding.evaluateBiddingRound(state, legalSalary, years);
+      assert.strictEqual(r.offerAccepted, false,
+        'a ' + years + '-year contract must be rejected');
+      assert.ok(r.rejectedReason, 'and must say why');
+      // Defense in depth, exactly as for salary: the Sign button must not
+      // honour it either.
+      const outcome = bidding.finalizeBidding(state, true);
+      assert.notStrictEqual(outcome.teamId, team.id,
+        'a ' + years + '-year offer must not be signed');
+      assert.ok(!star.teamId || star.contract.yearsRemaining <= fa.MAX_CONTRACT_YEARS,
+        'no contract may exceed ' + fa.MAX_CONTRACT_YEARS + ' years');
+      star.teamId = null;
+    });
+    // ...and a legal term still works.
+    const state = bidding.startBidding(star.id, team.id, makeRng(9));
+    const ok = bidding.evaluateBiddingRound(state, legalSalary, fa.MAX_CONTRACT_YEARS);
+    assert.strictEqual(ok.offerAccepted, true,
+      'the maximum legal term must still be allowed: ' + ok.rejectedReason);
+  });
+  console.log('checkContractLengthIsBounded: OK');
+}
+
 function checkBelowMinimumRejected() {
   const team = findUnderCapTeam();
   withFreeAgent('sas-victor-wembanyama', function (star) {
@@ -217,6 +249,7 @@ function checkAiOffersUnchanged() {
 checkOverCapTeamCannotSignAtAll();
 checkOfferCannotExceedCapSpace();
 checkCapSpaceLostBetweenBidAndSigning();
+checkContractLengthIsBounded();
 checkBelowMinimumRejected();
 checkDisableCapStillWorks();
 checkFullRosterCannotSign();

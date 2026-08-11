@@ -39,7 +39,7 @@ function evaluateBiddingRound(state, userSalary, userYears) {
   // not call. An illegal offer is not recorded at all, so state.userOffer
   // still holds whatever legal offer preceded it (or null) and finalizeBidding
   // cannot award the player on the strength of a bid that was refused.
-  const legality = _BIDDING_DATA.freeAgency.checkOffer(userTeam, userSalary);
+  const legality = _BIDDING_DATA.freeAgency.checkOffer(userTeam, userSalary, userYears);
   if (!legality.ok) {
     const stillBest = bestAIOffer(state);
     return {
@@ -83,7 +83,7 @@ function finalizeBidding(state, userAccepts) {
     // that created this bug. If the offer is no longer legal the player goes
     // to the best AI bid instead, exactly as if the user had withdrawn.
     const userTeam = _BIDDING_DATA.teams.getTeamById(state.userTeamId);
-    if (_BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary).ok) {
+    if (_BIDDING_DATA.freeAgency.checkOffer(userTeam, state.userOffer.salary, state.userOffer.yearsRemaining).ok) {
       _BIDDING_DATA.freeAgency.signPlayer(player, state.userOffer);
       return { signed: true, teamId: state.userTeamId };
     }

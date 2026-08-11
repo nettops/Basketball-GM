@@ -237,9 +237,14 @@ function offerLimit(team) {
 }
 
 // Why a specific offer is or is not legal. Shared by the bidding path and the
-// panel that renders the input, so the number the user is told and the number
+// panel that renders the inputs, so the numbers the user is told and the ones
 // the model enforces cannot drift apart.
-function checkOffer(team, salary) {
+//
+// BOTH boxes on that form are user input. The first version of this guarded
+// salary and not years, and $5,000,000 x 99 years signed cleanly — a superstar
+// locked up for a century at a rotation player's price. Hardening one field on
+// a form is how a closed exploit reopens next to itself.
+function checkOffer(team, salary, years) {
   const limit = offerLimit(team);
   if (limit.reason) return { ok: false, reason: limit.reason, limit: limit };
   if (!(salary >= limit.min)) {
@@ -249,6 +254,13 @@ function checkOffer(team, salary) {
   if (salary > limit.max) {
     return { ok: false, reason: 'Offer exceeds your $' + limit.max.toLocaleString() +
       ' in cap space.', limit: limit };
+  }
+  // Whole years only, within the same 1..MAX_CONTRACT_YEARS the AI is held to
+  // by contractYearsFor. NaN (an emptied box) fails every comparison, so it is
+  // caught here rather than being signed as a NaN-year deal.
+  if (!(years >= 1 && years <= MAX_CONTRACT_YEARS && Math.floor(years) === years)) {
+    return { ok: false, reason: 'Contracts run 1 to ' + MAX_CONTRACT_YEARS +
+      ' whole years.', limit: limit };
   }
   return { ok: true, reason: null, limit: limit };
 }
