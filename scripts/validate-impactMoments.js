@@ -11,6 +11,7 @@ const path = require('path');
 const fs = require('fs');
 
 const choreo = require(path.join(__dirname, '..', 'ui', 'pixelChoreographer.js'));
+const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
 
 // Fixture players built to sit at the extremes, so these assertions test the
 // STRUCTURE of the rules and stay true whatever the calibrated numbers become.
@@ -612,21 +613,21 @@ function checkAnkleBreakerHasACrossover() {
 // The camera frames impact.at. Off-ball flow now moves most of the floor every
 // beat, so the one thing that must NOT move is the player the camera is about
 // to zoom in on — otherwise the effect fires on empty hardwood.
-// Where ui/pixelGameView.js ACTUALLY puts a dunker's ball at full extension,
-// read out of that file rather than taken from the choreographer's own
-// constant. Asking DUNK_REACH about DUNK_REACH is vacuous -- mutation testing
-// proved it: doubling it and halving it both survived, because the placement
-// and the check were quoting the same number. The view is the independent
-// authority on how far above his feet the ball ends up, so the view is what
-// gets read.
+// Where the VIEW actually puts a dunker's ball at full extension, obtained by
+// running the view's own code rather than by quoting the choreographer's
+// constant back at itself. Asking DUNK_REACH about DUNK_REACH is vacuous --
+// mutation testing proved it: doubling it and halving it both survived,
+// because the placement and the check were reading the same number.
+//
+// This used to scrape the numbers out of ui/pixelGameView.js with a regex,
+// which was independent but brittle: moving the code to ui/pixelMotion.js
+// broke the parse. Now it CALLS the drawing function. Independent and exact --
+// any change to the lift table, the hand offset or the easing moves this.
 function viewDunkReach() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'ui', 'pixelGameView.js'), 'utf8');
-  const liftBlock = /const DUNK_LIFT = \{([^}]*)\}/.exec(src);
-  const lift = liftBlock && /rise:\s*(-?\d+)/.exec(liftBlock[1]);
-  const hand = /by = hy - dunkerLift - (\d+) - (\d+) \* cock;/.exec(src);
-  assert.ok(lift, 'could not read DUNK_LIFT.rise from ui/pixelGameView.js');
-  assert.ok(hand, 'could not read the dunk hand offset from ui/pixelGameView.js');
-  const reach = Number(lift[1]) + Number(hand[1]) + Number(hand[2]);
+  const apex = motion.DUNK_LIFT.rise;
+  // The ball's height above the dunker's feet at the top of the leap, straight
+  // out of the function the canvas draws with.
+  const reach = motion.heldBallOffset('dunk', apex, motion.dunkCock(apex));
   assert.strictEqual(choreo.DUNK_REACH, reach,
     'choreographer plants a dunker ' + choreo.DUNK_REACH + 'px below the rim, but the view ' +
     'puts his ball ' + reach + 'px above his feet -- the ball would miss the rim by ' +

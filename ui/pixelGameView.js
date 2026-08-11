@@ -61,29 +61,9 @@ function isMakeKeyframe(kf) {
   return kf.sfx === 'swish' || kf.sfx === 'dunk';
 }
 
-// How high off the floor the dunker's sprite sits at each dunk beat, in
-// stage pixels. The choreographer marks the beats; the height lives here so
-// the timeline stays pure positions. Interpolated between keyframes like
-// everything else, so seeking mid-leap lands at the right height.
-const DUNK_LIFT = { gather: -2, rise: 16, slam: 13, land: 0 };
-function dunkLiftAt(kf) {
-  const d = kf && kf.dunk;
-  return (d && DUNK_LIFT[d.phase] !== undefined) ? DUNK_LIFT[d.phase] : 0;
-}
-
-// Jump shot. Smaller than a dunk on purpose — a pull-up is not a leap — but a
-// three gets more of everything, because a deep shot is a bigger effort.
-const JUMP_LIFT = { gather: -3, rise: 9, release: 9, follow: 0 };
-// How long the shooter holds his hand up after the release. Shorter than a
-// three's flight time on purpose — the pose should end while the ball is still
-// up, not carry into the rebound.
-const JUMP_FOLLOW_MAX_MS = 520;
-function jumpLiftAt(kf) {
-  const j = kf && kf.jump;
-  if (!j || JUMP_LIFT[j.phase] === undefined) return 0;
-  const base = JUMP_LIFT[j.phase];
-  return j.three ? Math.round(base * 1.35) : base;
-}
+// Airborne heights and ball positions live in ui/pixelMotion.js — pure, and
+// reachable from Node, which this render closure is not. See that file's
+// header for why.
 
 // The subset of plays the crowd goes wild for.
 const BIG_PLAY_LABELS = [
@@ -577,18 +557,12 @@ function renderPixelGame(container) {
     const lookAhead = kfs[Math.min(kfIndex + 2, kfs.length - 1)];
     const shotComing = lookAhead.ball.holder === null && distToNearestHoop(lookAhead.ball) < 20;
 
-    // Who is airborne on a dunk, and how high. Resolved once per frame rather
-    // than per sprite because the ball needs it too — and after the slam the
-    // holder is null, so the id has to come off the keyframe, not the ball.
-    const dunkA = fr.a.dunk, dunkB = fr.b.dunk;
-    const dunkerId = (dunkA && dunkA.id) || (dunkB && dunkB.id) || null;
-    let dunkerLift = 0;
-    if (dunkerId && !reduceMotion) {
-      const la = dunkLiftAt(fr.a), lb = dunkLiftAt(fr.b);
-      // snap up, fall away — a symmetric ease makes the leap look weightless
-      const ef = lb > la ? 1 - Math.pow(1 - fr.f, 2) : Math.pow(fr.f, 1.6);
-      dunkerLift = Math.round(la + (lb - la) * ef);
-    }
+    // Who is airborne, and how high. Resolved once per frame rather than per
+    // sprite because the ball needs it too.
+    const lifts = resolveLifts(fr.a, fr.b, fr.f, reduceMotion);
+    const dunkerId = lifts.dunkerId, dunkerLift = lifts.dunkerLift;
+    const jumperId = lifts.jumperId, jumperLift = lifts.jumperLift;
+    const jumpFollow = lifts.jumpFollow;
 
     // Who just got crossed over. The stumble starts on the CUT — he is still
     // upright while he bites on the jab — and holds through the windup so he
@@ -596,27 +570,6 @@ function renderPixelGame(container) {
     const crossA = fr.a.cross;
     const stumbleId = (crossA && (crossA.phase === 'cross' || crossA.phase === 'clear' || crossA.phase === 'recover'))
       ? crossA.on : null;
-
-    // The jumper. The descent is deliberately NOT spread across the beat: the
-    // last beat of a jump shot is the ball's whole flight (650-850ms), and
-    // easing him down over all of it would leave him hanging in the air until
-    // the ball reached the rim. He comes down in a fixed 170ms whatever the
-    // beat length, then stands in his follow-through.
-    const jumpA = fr.a.jump, jumpB = fr.b.jump;
-    const jumperId = (jumpA && jumpA.id) || (jumpB && jumpB.id) || null;
-    let jumperLift = 0, jumpFollow = false;
-    if (jumperId && !reduceMotion) {
-      const la = jumpLiftAt(fr.a), lb = jumpLiftAt(fr.b);
-      const spanMs = Math.max(1, fr.b.t - fr.a.t);
-      const f = lb < la ? Math.min(1, fr.f * (spanMs / 170)) : fr.f;
-      const ef = lb > la ? 1 - Math.pow(1 - f, 2) : Math.pow(f, 1.4);
-      jumperLift = Math.round(la + (lb - la) * ef);
-      // Follow-through runs from the release, for as long as the ball is in
-      // the air — but capped. Left uncapped it rode the 'follow' keyframe into
-      // the rebound beat as well, so shooters stood posing with their hand up
-      // for 1.6s while the board was being fought for.
-      jumpFollow = !!(jumpA && jumpA.phase === 'release' && fr.f * spanMs < JUMP_FOLLOW_MAX_MS);
-    }
 
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
@@ -835,82 +788,24 @@ function renderPixelGame(container) {
 
     // ball: dribbled by the holder, held high when shooting, otherwise in
     // flight with a distance-scaled arc and its own ground shadow
-    let bx, by, groundY;
     const holder = fr.a.ball.holder;
-    if (holder && smooth[holder]) {
-      // attach to the SMOOTHED hand position, or the ball detaches from the
-      // body it belongs to
-      const hs = smooth[holder];
-      const hx = hs.x;
-      const hy = hs.y;
-      const holderShooting = fr.b.ball.holder === null && shotComing;
-      if (holder === jumperId && jumperLift !== 0) {
-        // gathered in front of the chest on the dip, raised overhead as he
-        // rises — the ball has to travel with the shot, not sit at a fixed
-        // offset while the body moves under it
-        bx = hx + ((facingById[holder] || 1) >= 0 ? 2 : -2);
-        by = hy - jumperLift - (jumperLift > 0 ? 26 : 17);
-      } else if (holder === dunkerId && !reduceMotion) {
-        // Cocked in the raised hand, riding the leap — and RISING WITH HIM, not
-        // snapping into place.
-        //
-        // This was gated on `dunkerLift > 0`, with the dribble bounce as the
-        // fallback below. So on the single frame the leap began, the ball went
-        // from 1px off the floor to 31px overhead: a 30px jump, more than the
-        // body is tall, in one frame. It read as the ball teleporting into his
-        // hand rather than being carried up, which is most of why the dunk did
-        // not look like a dunk.
-        //
-        // `cock` runs 0 at the bottom of the dip to 1 at the apex, so the hand
-        // offset grows from 11px (about where a dribble tops out) to the same
-        // 30px it always ended at. Same apex, continuous path.
-        const cock = Math.max(0, Math.min(1, (dunkerLift + 2) / 18));
-        bx = hx + ((facingById[holder] || 1) >= 0 ? 4 : -4);
-        by = hy - dunkerLift - 11 - 19 * cock;
-        // THE SLAM ITSELF. `holder` is read from frame A, so the ball stayed in
-        // his hand for the whole 90ms slam beat and was simply at the rim on
-        // the next frame — a 43px drop between two frames. The hardest motion
-        // in a dunk was the one part you never actually saw.
-        //
-        // Across this beat it now travels from the raised hand down through the
-        // rim. Eased so it leaves the hand unhurried and finishes fast, which is
-        // the shape of a slam; a linear drop reads as the ball being lowered.
-        if (fr.b.ball.holder === null && fr.b.dunk && fr.b.dunk.phase === 'slam') {
-          const drive = Math.pow(fr.f, 1.8);
-          bx += (fr.b.ball.x - bx) * drive;
-          by += (fr.b.ball.y - by) * drive;
-        }
-      } else if (holderShooting) {
-        bx = hx;
-        by = hy - 24; // gathered overhead for the release
-      } else {
-        const holderMoving = Math.sqrt(hs.vx * hs.vx + hs.vy * hs.vy) > 6;
-        const bouncePeriod = holderMoving ? 95 : 140;
-        bx = hx + (facingById[holder] || 1) * 6;
-        const bouncePhase = Math.abs(Math.sin(playbackMs / bouncePeriod));
-        by = hy - 1 - bouncePhase * 10; // dribble: hand to floor
-        // thud on the floor contact, keyed off the same phase the eye sees
-        if (speed <= 2 && bouncePhase < 0.12 && lastBouncePhase >= 0.12) playPixelSfx('dribble');
-        lastBouncePhase = bouncePhase;
-      }
-      groundY = hy;
-    } else {
-      // A released ball is a projectile: constant horizontal velocity with a
-      // parabolic rise and fall. (Easing the horizontal axis made shots
-      // visibly brake in mid-air.)
-      const flightDist = Math.abs(fr.b.ball.x - fr.a.ball.x) + Math.abs(fr.b.ball.y - fr.a.ball.y);
-      // A slam is the one ball path with no arc in it — it goes straight down
-      // through the rim. The default floor of 4px would lob it upward.
-      const slamming = fr.a.dunk && fr.a.dunk.phase === 'slam';
-      // A pass carries its own arc (see passShape): a dish barely leaves the
-      // floor, a skip is a flat line drive. Falling back to the distance
-      // formula made every long pass lob at the 32px ceiling.
-      const arcHeight = slamming ? 0
-        : (typeof fr.b.ball.arc === 'number' ? fr.b.ball.arc
-           : Math.max(4, Math.min(32, flightDist * 0.3)));
-      bx = pixelLerp(fr.a.ball.x, fr.b.ball.x, fr.f);
-      groundY = pixelLerp(fr.a.ball.y, fr.b.ball.y, fr.f);
-      by = groundY - Math.sin(fr.f * Math.PI) * arcHeight;
+    const bp = ballPosition({
+      a: fr.a, b: fr.b, f: fr.f,
+      holder: holder,
+      hand: (holder && smooth[holder]) || null,
+      facing: facingById[holder] || 1,
+      lifts: lifts,
+      shotComing: shotComing,
+      reduceMotion: reduceMotion,
+      playbackMs: playbackMs
+    });
+    const bx = bp.bx, by = bp.by, groundY = bp.groundY;
+    // thud on the floor contact, keyed off the same phase the eye sees
+    if (bp.bouncePhase !== null) {
+      if (speed <= 2 && bp.bouncePhase < 0.12 && lastBouncePhase >= 0.12) playPixelSfx('dribble');
+      lastBouncePhase = bp.bouncePhase;
+    }
+    if (bp.mode === 'flight') {
       ballSpin += (Math.abs(fr.b.ball.x - fr.a.ball.x) > 2 ? 0.6 : 0.25) * (fr.b.ball.x >= fr.a.ball.x ? 1 : -1);
     }
     // Legibility at speed. At 1x you can follow the ball unaided; at 8x it is a
