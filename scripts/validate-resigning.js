@@ -246,6 +246,64 @@ function checkExpiryReleasesOnlyTheUndecided() {
     resignedByAi.length + ' re-signed by AI teams)');
 }
 
+// There are TWO routes into the offseason — the automatic one through
+// runOffseasonThroughDraft, and the manual-draft one in script.js that reaches
+// runOffseasonPreDraft directly — and the user's team id has to travel down
+// both. It did not: script.js's runInteractiveDraft omitted it, so a manual
+// drafter got no re-signing window at all and every expiring player was
+// released before they saw the screen. Node validators all passed; only
+// opening the game caught it.
+//
+// Checked statically because the manual route lives in script.js, which Node
+// cannot load. Same reasoning as validate-browserBridges.
+function checkBothOffseasonRoutesPassTheUserTeam() {
+  const fs = require('fs');
+  function argsAt(src, callIdx, name) {
+    const open = src.indexOf('(', callIdx + name.length - 1);
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === '(') depth++;
+      else if (src[i] === ')') { depth--; if (depth === 0) return src.slice(open + 1, i); }
+    }
+    return '';
+  }
+  function callSites(file, name) {
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const out = [];
+    let i = 0;
+    while ((i = src.indexOf(name + '(', i)) !== -1) {
+      // Skip the declaration itself.
+      const before = src.slice(Math.max(0, i - 9), i);
+      if (!/function\s*$/.test(before)) out.push({ file: file, args: argsAt(src, i, name) });
+      i += name.length;
+    }
+    return out;
+  }
+
+  const preDraft = callSites('script.js', 'runOffseasonPreDraft')
+    .concat(callSites('seasonTransition.js', 'runOffseasonPreDraft'));
+  assert.ok(preDraft.length > 0, 'expected at least one runOffseasonPreDraft call site');
+  preDraft.forEach(function (c) {
+    const argc = c.args.split(',').length;
+    assert.ok(argc >= 3,
+      c.file + ' calls runOffseasonPreDraft with ' + argc + ' arguments — the third is the ' +
+      'user team whose expiring players must be deferred, and without it that route has no ' +
+      're-signing window at all. Got: (' + c.args.trim() + ')');
+  });
+
+  const throughDraft = callSites('seasonRollover.js', 'runOffseasonThroughDraft');
+  assert.ok(throughDraft.length > 0, 'expected at least one runOffseasonThroughDraft call site');
+  throughDraft.forEach(function (c) {
+    const argc = c.args.split(',').length;
+    assert.ok(argc >= 6,
+      c.file + ' calls runOffseasonThroughDraft with ' + argc + ' arguments, needs 6 (the ' +
+      'sixth is the deferred user team)');
+  });
+  console.log('checkBothOffseasonRoutesPassTheUserTeam: OK (' +
+    (preDraft.length + throughDraft.length) + ' call sites)');
+}
+
+checkBothOffseasonRoutesPassTheUserTeam();
 checkContractLengthTracksQuality();
 checkIncumbentOfferScoresHigher();
 checkOverCapTeamCanRetainItsOwnStar();

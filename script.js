@@ -339,7 +339,14 @@ function isRegularSeasonAndPlayoffsComplete() {
 // Season Recap route does. When only one of them passed it, Continue silently
 // auto-drafted for every manual drafter.
 function runInteractiveDraft(gs) {
-  const preDraft = runOffseasonPreDraft(gs.rng, gs.leagueYear);
+  // gs.userTeamId is what holds YOUR expiring players back from the market for
+  // you to decide on. The automatic route passes it through
+  // runOffseasonThroughDraft; this is the manual-draft route, which reaches
+  // runOffseasonPreDraft directly and so has to pass it itself. Omitting it
+  // here left a manual drafter with no re-signing window at all — every one of
+  // their expiring players was released before they ever saw the screen, which
+  // is the exact behaviour the window was built to remove.
+  const preDraft = runOffseasonPreDraft(gs.rng, gs.leagueYear, gs.userTeamId);
   announceSecretBadges(preDraft.secretBadges, function (text) { pushToFeed(text); });
   const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
   gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
