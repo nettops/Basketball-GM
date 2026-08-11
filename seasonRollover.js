@@ -28,7 +28,7 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       // seasonTransition.js, NOT draft.js — draft.js owns the interactive
       // draft session, not the offseason pipeline.
       seasonTransition: { runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason },
-      freeAgency: { runFreeAgencySilently: runFreeAgencySilently },
+      freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
       traits: { announceSecretBadges: announceSecretBadges }
@@ -77,7 +77,7 @@ function runOffseasonRollover(gameState, deps) {
   } else {
     const draftResult = _ROLLOVER_DATA.seasonTransition.runOffseasonThroughDraft(
       gameState.playoffBracket, gameState.rng, gameState.upcomingDraftClass,
-      gameState.leagueYear, gameState.settings.lotteryFormat);
+      gameState.leagueYear, gameState.settings.lotteryFormat, gameState.userTeamId);
     // Both offseason routes announce these. The manual-draft path calls
     // runOffseasonPreDraft itself (script.js) and reports there; this is the
     // fast-forward path, the one that runs unattended, where a silent
@@ -98,6 +98,11 @@ function runOffseasonRollover(gameState, deps) {
     return { careerSceneShown: false, stoppedAfterDraft: true };
   }
 
+  // The user's own expiring players were deferred rather than decided for
+  // them, so this path — which runs unattended — has to answer for them before
+  // the market opens, or an automated save quietly loses every star it was
+  // meant to keep. Anyone the offer does not hold onto is released here.
+  _ROLLOVER_DATA.freeAgency.autoExerciseResignRights(gameState.userTeamId, gameState.rng);
   _ROLLOVER_DATA.freeAgency.runFreeAgencySilently(gameState.rng);
   _ROLLOVER_DATA.autoGM.autoEnforceRosterSize(_ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId));
 

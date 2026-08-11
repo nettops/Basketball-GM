@@ -9,8 +9,33 @@ function renderFreeAgency(container, userTeamId) {
     }
 
     const pool = getFreeAgents().slice().sort(function (a, b) { return b.overall - a.overall; });
+    // Your own expiring players, held back from the market so you get first
+    // refusal. Every other team already made this call for itself during the
+    // offseason; these are the ones nobody decided for you.
+    const expiring = getTeamRoster(userTeamId)
+      .filter(function (p) { return p.resignRights; })
+      .sort(function (a, b) { return b.overall - a.overall; });
 
     let html = '<div class="view-header"><h2>Free Agency</h2><span class="view-sub">' + pool.length + ' available</span></div>';
+
+    if (expiring.length) {
+      html += '<div class="panel"><div class="panel-header">Your Expiring Contracts — ' +
+        expiring.length + ' to decide</div>' +
+        '<div class="kpi-sub" style="padding:0 14px 8px;">First refusal is yours. Anyone you do not re-sign walks when the market opens.</div>' +
+        '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Age</th>' +
+        '<th class="num">OVR</th><th class="num">Asking</th><th class="num">Action</th></tr></thead><tbody>';
+      expiring.forEach(function (p) {
+        html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
+          '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
+          '<td class="num">' + p.age + '</td>' +
+          '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+          '<td class="num">$' + p.resignRights.salary.toLocaleString() + ' &times; ' +
+          p.resignRights.yearsRemaining + 'y</td>' +
+          '<td class="actions"><button data-resign-id="' + p.id + '">Re-Sign</button> ' +
+          '<button data-letgo-id="' + p.id + '" class="btn-ghost">Let Go</button></td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }
     // Nothing to resolve when the pool is empty. Disabled rather than removed
     // so the screen still says what it does, matching the dock's Watch/Undo.
     html += '<div class="toolbar"><button id="resolve-remaining-btn" class="btn-ghost"' +
@@ -57,6 +82,42 @@ function renderFreeAgency(container, userTeamId) {
     container.querySelectorAll('button[data-offer-id]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         renderBiddingPanel(document.getElementById('bidding-panel'), btn.getAttribute('data-offer-id'), userTeamId, draw, signingLog);
+      });
+    });
+
+    container.querySelectorAll('button[data-resign-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        pushUndoSnapshot(GameState);
+        const player = getPlayerById(btn.getAttribute('data-resign-id'));
+        const team = getTeamById(userTeamId);
+        const ask = { salary: player.resignRights.salary, yearsRemaining: player.resignRights.yearsRemaining };
+        // He can still say no — that is the point of a window rather than a
+        // button. Rights are spent either way, so a refusal sends him to the
+        // market exactly as letting him go would.
+        const verdict = evaluateResign(player, team, ask, GameState.rng);
+        if (verdict.accepted) {
+          delete player.resignRights;
+          applyResign(player, team, ask);
+          signingLog.push(escapeHtml(team.name) + ' re-signed ' + escapeHtml(player.name) +
+            ' ($' + ask.salary.toLocaleString() + '/yr, ' + ask.yearsRemaining + ' yr' +
+            (ask.yearsRemaining === 1 ? '' : 's') + ')');
+        } else {
+          delete player.resignRights;
+          player.teamId = null;
+          signingLog.push(escapeHtml(player.name) + ' turned down your offer and will test the market');
+        }
+        draw();
+      });
+    });
+
+    container.querySelectorAll('button[data-letgo-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        pushUndoSnapshot(GameState);
+        const player = getPlayerById(btn.getAttribute('data-letgo-id'));
+        delete player.resignRights;
+        player.teamId = null;
+        signingLog.push(escapeHtml(player.name) + ' was let go and enters free agency');
+        draw();
       });
     });
   }

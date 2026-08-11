@@ -93,6 +93,11 @@ function stepOnce(out) {
   if (GameState.offseasonStage === 'draft') {
     GameState.offseasonStage = 'freeagency';
     if (autoFreeAgencyEffective()) {
+      // Your expiring players were held back for you to decide on. With free
+      // agency delegated there is nobody to ask, so the same rule every AI
+      // team just used is applied on your behalf — otherwise delegating free
+      // agency would silently cost you every star you meant to keep.
+      autoExerciseResignRights(GameState.userTeamId, GameState.rng);
       runFreeAgencySilently(GameState.rng);
       autoEnforceRosterSize(getTeamById(GameState.userTeamId));
     }

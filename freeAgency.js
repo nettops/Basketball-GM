@@ -1,5 +1,5 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js'), ratings: require('./ratings.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
@@ -7,7 +7,8 @@ var _FA_DATA = (typeof require !== 'undefined')
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
       rosterMoves: { getFreeAgents: getFreeAgents },
       careerHistory: { recordContractInHistory: recordContractInHistory },
-      finances: { budgetSpendMultiplier: budgetSpendMultiplier, ARENA_MAX_TIER: ARENA_MAX_TIER }
+      finances: { budgetSpendMultiplier: budgetSpendMultiplier, ARENA_MAX_TIER: ARENA_MAX_TIER },
+      ratings: { RATING_BANDS: RATING_BANDS }
     };
 
 // Higher score = more playing-time opportunity: wide open at the position,
@@ -49,14 +50,45 @@ function tradedAwayPenalty(player, team) {
   return trades.some(function (t) { return t.fromTeam === team.id; }) ? 1 : 0;
 }
 
+// Staying put is worth something. This model had no concept of an incumbent at
+// all — the note that used to sit here explained that there was no tracked
+// "previous team" once a contract expired, because decrementContracts wiped
+// teamId before free agency ever ran. The consequence was measurable and
+// total: over 5 offseasons every one of 437 contracts was recorded as an
+// open-market signing and not a single player in the league ever re-signed
+// where he already played. A star drew a mean of 20 bids and his own team was
+// one of the 20.
+//
+// `offer.incumbent` now marks an offer from the team the player just played
+// for, and it is worth INCUMBENT_BONUS before personality. Loyalty pushes it
+// up, morale pulls it down — an unhappy star will still walk, which is the
+// whole drama of a re-signing window. Calibrated by sweep against the measured
+// star re-sign rate; see scripts/sweep-resign.js.
+// Mutable holder rather than a bare const so a calibration sweep can move it
+// without editing committed source, the same shape as seasonTransition.js's
+// RETIREMENT_TUNING. The shipped value is whatever sits here.
+//
+// Chosen by measured rate, not taste. scripts/probe-star-churn.js, 6 offseasons
+// through the full pipeline, star (85+) re-sign rate by bonus:
+//
+//   0.00  31.9%   (the window alone, with no incumbent bonus at all)
+//   0.05  55.0%
+//   0.10  57.0%
+//   0.16  68.0%   seeds 75.0 / 56.3 / 70.7 / 70.0 — spread of 19 points
+//   0.22  71.8%   seeds 71.9 / 70.8 / 71.2 / 73.1 — spread of 2
+//
+// 0.22 over 0.16 for BOTH reasons: it lands on the target, and it is stable
+// across seeds where 0.16 is not — a bonus small enough to be swamped by
+// market noise gives a re-sign rate that swings 19 points on the dice, which
+// reads as randomness rather than as loyalty.
+var RESIGN_TUNING = { incumbentBonus: 0.22 };
+
 // 8-factor mood model: money, contention (timeline), current-season hype,
 // playing time, market size, prestige, facilities, being traded away by this
-// exact team before — plus hidden personality modifiers layered on top.
-// There's no tracked "previous team" once a contract expires (teamId is
-// wiped in decrementContracts), so Loyalty is modeled as "doesn't need max
-// money to be satisfied" rather than an incumbent-team discount; Ambition
-// amplifies how much contention matters; Ego penalizes offers implying a
-// diminished role.
+// exact team before — plus the incumbent bonus above and hidden personality
+// modifiers layered on top. Loyalty ALSO means "doesn't need max money to be
+// satisfied"; Ambition amplifies how much contention matters; Ego penalizes
+// offers implying a diminished role.
 function scoreOffer(player, team, offer) {
   const salaryScore = Math.min(1, offer.salary / 45000000);
   const contentionScore = team.timeline === 'win-now' ? 1 : (team.timeline === 'retooling' ? 0.6 : 0.3);
@@ -80,6 +112,17 @@ function scoreOffer(player, team, offer) {
     marketScore * marketWeight + prestigeScore * prestigeWeight + facilities * facilitiesWeight + hype * hypeWeight;
 
   score -= tradedAwayPenalty(player, team) * 0.05;
+
+  // Staying is worth something, and how much depends on the man. A loyal
+  // player leans hard on it; an unhappy one barely counts it, which is how a
+  // star still forces his way out of a place he has stopped enjoying.
+  if (offer.incumbent) {
+    const personality = player.hiddenPersonality || {};
+    const morale = (player.status && player.status.morale !== undefined) ? player.status.morale : 70;
+    const loyaltyLean = personality.loyalty !== undefined ? (personality.loyalty - 50) / 50 : 0;
+    const moraleLean = (morale - 55) / 45;   // below ~55 morale this goes negative
+    score += RESIGN_TUNING.incumbentBonus * (1 + loyaltyLean * 0.5) * Math.max(-0.5, Math.min(1, moraleLean));
+  }
 
   const personality = player.hiddenPersonality;
   if (personality && personality.loyalty !== undefined) {
@@ -108,6 +151,44 @@ function estimateFairSalary(player, roundsUnsigned) {
   const moraleMultiplier = 0.85 + (morale / 100) * 0.3;
   const decayMultiplier = Math.max(0.6, 1 - (roundsUnsigned || 0) * 0.08);
   return Math.round(base * moraleMultiplier * decayMultiplier);
+}
+
+// Contract length used to be `1 + Math.floor(rng() * 4)` — a flat 1-4 years
+// drawn with no reference to who the player was, so a 99-overall franchise
+// player got the same coin flip as a minimum-salary body. Measured over 437
+// signings that averaged 2.46 years, which put 36% of the entire league on the
+// open market EVERY season and held a star's unbroken tenure to 2.27 seasons.
+// Nobody could build anything.
+//
+// Length now tracks quality, because that is what makes a market rare: the
+// players worth keeping are off the board for years at a time, and the churn
+// is concentrated among the players nobody minds churning.
+// Banded on ratings.js's RATING_BANDS — the league's own named tiers, on the
+// DISPLAY scale. Not rawOverall: that is a different scale entirely (median 47
+// against the display median of 75, and exactly one player league-wide above
+// 85), so banding on it filed all but one player under "fringe" and made every
+// contract in the league shorter rather than longer. Measured, caught, moved.
+const MAX_CONTRACT_YEARS = 5;
+function contractYearBands() {
+  const b = _FA_DATA.ratings.RATING_BANDS;
+  return [
+    { min: b.superstar, low: 4, high: 5 },   // 90+, franchise players
+    { min: b.star, low: 4, high: 5 },        // 87+, stars
+    { min: b.rotation, low: 2, high: 4 },    // 79+, starters and rotation
+    { min: b.fringe, low: 1, high: 3 },      // 70+, end of the bench
+    { min: 0, low: 1, high: 2 }              // everyone else
+  ];
+}
+// Nobody signs a deal that runs past the age players stop being signable at —
+// otherwise 36-year-olds collect five-year contracts and the league fills up
+// with unwaivable 41-year-olds.
+const CONTRACT_AGE_HORIZON = 39;
+
+function contractYearsFor(player, rng) {
+  const band = contractYearBands().find(function (b) { return player.overall >= b.min; });
+  const drawn = band.low + Math.floor(rng() * (band.high - band.low + 1));
+  const ageLimit = Math.max(1, CONTRACT_AGE_HORIZON - (player.age || 25));
+  return Math.max(1, Math.min(MAX_CONTRACT_YEARS, drawn, ageLimit));
 }
 
 // Rebuilding teams shouldn't behave like a win-now team's free agency
@@ -199,8 +280,180 @@ function generateAIOffer(team, player, rng, roundsUnsigned) {
   // above could be silently overrun.
   const desired = Math.min(budgetCappedSpace, Math.round(fair * (0.85 + rng() * 0.3)));
   const salary = capDisabled ? Math.max(1200000, desired) : Math.max(1200000, Math.min(desired, capSpace));
-  const years = 1 + Math.floor(rng() * 4);
+  const years = contractYearsFor(player, rng);
   return { teamId: team.id, salary: salary, yearsRemaining: years };
+}
+
+// --- Re-signing --------------------------------------------------------------
+//
+// The window that did not exist. Contracts simply ran out and the player was
+// cut loose (decrementContracts set teamId = null) before free agency opened,
+// so a franchise player's own team had no claim on him and no chance to speak
+// first — it was one of ~20 bidders on the open market like anybody else.
+//
+// A team now gets first refusal on its own expiring players, BEFORE the market
+// exists. Two things make it a real decision rather than a formality:
+//
+//   - the team must want him (the same interest bar the AI applies to any
+//     free agent) and have a roster spot,
+//   - the player compares the offer against what the open market would
+//     actually pay him, computed with the same functions the market uses.
+//
+// He may exceed the cap to re-sign HIS OWN player and nobody else — real
+// leagues work this way, and without it the good teams (which are the ones
+// over the cap) would still lose every star they developed. The salary is the
+// model's own asking price, so this is not a door back into "offer a billion".
+const RESIGN_MAX_PREMIUM = 1.5;   // the most a team may bid above the asking price
+
+function resignAsk(player, rng) {
+  return {
+    salary: estimateFairSalary(player, 0),
+    yearsRemaining: contractYearsFor(player, rng)
+  };
+}
+
+// What the open market would give him — the best offer from anyone else,
+// scored exactly as resolveFreeAgentSilently would score it. Computed with the
+// player still on his roster, which is the point: his own team's payroll still
+// carries him, so rivals with space look richer, just as they should.
+function bestMarketAlternative(player, rng, excludeTeamId) {
+  let best = null, bestScore = -Infinity;
+  _FA_DATA.teams.TEAMS.forEach(function (t) {
+    if (t.id === excludeTeamId) return;
+    const offer = generateAIOffer(t, player, rng);
+    if (!offer) return;
+    const s = scoreOffer(player, t, offer);
+    if (s > bestScore) { best = offer; bestScore = s; }
+  });
+  return { offer: best, score: best ? bestScore : -Infinity };
+}
+
+// Would this player accept this re-signing offer? Exported so the user's panel
+// can show the verdict before committing, rather than making them guess.
+function evaluateResign(player, team, offer, rng) {
+  const incumbentOffer = {
+    teamId: team.id, salary: offer.salary,
+    yearsRemaining: offer.yearsRemaining, incumbent: true
+  };
+  const mine = scoreOffer(player, team, incumbentOffer);
+  const market = bestMarketAlternative(player, rng, team.id);
+  return {
+    accepted: mine >= market.score,
+    offer: incumbentOffer,
+    myScore: mine,
+    marketScore: market.score,
+    marketOffer: market.offer
+  };
+}
+
+// Bounds on what a team may offer its own expiring player. Same shape as
+// checkOffer so the panel can treat them alike.
+function checkResignOffer(team, player, salary, years, rng) {
+  const ask = resignAsk(player, rng);
+  const max = Math.round(ask.salary * RESIGN_MAX_PREMIUM);
+  if (_FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
+    return { ok: false, reason: 'Roster is full (' + ROSTER_MAX + ' players).', ask: ask, max: max };
+  }
+  if (!(salary >= ask.salary)) {
+    return { ok: false, reason: 'He is asking $' + ask.salary.toLocaleString() + '.', ask: ask, max: max };
+  }
+  if (salary > max) {
+    return { ok: false, reason: 'You cannot go above $' + max.toLocaleString() +
+      ' to re-sign your own player.', ask: ask, max: max };
+  }
+  if (!(years >= 1 && years <= MAX_CONTRACT_YEARS)) {
+    return { ok: false, reason: 'Contracts run 1 to ' + MAX_CONTRACT_YEARS + ' years.', ask: ask, max: max };
+  }
+  return { ok: true, reason: null, ask: ask, max: max };
+}
+
+// Commits a re-signing. Separate from signPlayer only in that the player is
+// already on the roster, so signPlayer's own 're_signing' branch finally
+// becomes reachable — it never could be before, because teamId was always
+// wiped first.
+function applyResign(player, team, offer) {
+  signPlayer(player, { teamId: team.id, salary: offer.salary, yearsRemaining: offer.yearsRemaining });
+}
+
+// Runs first refusal across the league for everyone whose deal has just run
+// out. `deferTeamId` (the human's team) is skipped and reported back instead,
+// so the user makes their own calls rather than having an assistant GM make
+// them; those players carry resignRights until the user acts or the market
+// opens.
+//
+// Best players first, so a team facing two expiring stars and one roster spot
+// keeps the better one — the same ordering runFreeAgencySilently uses.
+function runResigningWindow(expiring, rng, deferTeamId) {
+  const resigned = [], lost = [], deferred = [];
+  expiring.slice()
+    .sort(function (a, b) {
+      return _FA_DATA.tradeEvaluator.basePlayerValue(b) - _FA_DATA.tradeEvaluator.basePlayerValue(a);
+    })
+    .forEach(function (player) {
+      const team = _FA_DATA.teams.getTeamById(player.teamId);
+      if (!team) return;
+      const ask = resignAsk(player, rng);
+      if (player.teamId === deferTeamId) {
+        player.resignRights = { teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining };
+        deferred.push(player);
+        return;
+      }
+      // Does the team even want him? Same bar the AI applies to any free
+      // agent, so a declining veteran is allowed to be let go.
+      const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
+      if (interest < 40 || _FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
+        lost.push(player);
+        return;
+      }
+      const verdict = evaluateResign(player, team, ask, rng);
+      if (!verdict.accepted) { lost.push(player); return; }
+      applyResign(player, team, ask);
+      resigned.push({ playerId: player.id, teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining });
+    });
+  return { resigned: resigned, lost: lost, deferred: deferred };
+}
+
+// A deferred player STAYS on the roster, on an expired contract, until the
+// user acts — decrementContracts deliberately does not release anyone still
+// holding rights. Both endings below therefore have to release him themselves;
+// leaving him rostered on a zero-year deal is how he would become permanent.
+function releaseFromRights(player) {
+  delete player.resignRights;
+  player.teamId = null;
+}
+
+// The user's outstanding rights, exercised for them when free agency is
+// automated (spectator mode, or autoFreeAgency on) — otherwise an automated
+// save would quietly lose every star it was meant to keep.
+function autoExerciseResignRights(teamId, rng) {
+  const done = [];
+  const team = _FA_DATA.teams.getTeamById(teamId);
+  _FA_DATA.league.getTeamRoster(teamId).slice().forEach(function (player) {
+    if (!player.resignRights) return;
+    const ask = { salary: player.resignRights.salary, yearsRemaining: player.resignRights.yearsRemaining };
+    const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
+    const verdict = evaluateResign(player, team, ask, rng);
+    if (interest >= 40 && verdict.accepted) {
+      delete player.resignRights;
+      applyResign(player, team, ask);
+      done.push({ playerId: player.id, teamId: teamId, salary: ask.salary, yearsRemaining: ask.yearsRemaining });
+    } else {
+      releaseFromRights(player);
+    }
+  });
+  return done;
+}
+
+// Anyone the user never got round to. Called when the market opens: rights do
+// not survive into free agency, and an unexercised one means he walks.
+function releaseUnexercisedResignRights(teamId) {
+  const released = [];
+  _FA_DATA.league.getTeamRoster(teamId).slice().forEach(function (player) {
+    if (!player.resignRights) return;
+    releaseFromRights(player);
+    released.push(player.id);
+  });
+  return released;
 }
 
 const ROSTER_FLOOR = 12;
@@ -318,6 +571,17 @@ if (typeof module !== 'undefined' && module.exports) {
     checkOffer: checkOffer,
     ROSTER_MAX: ROSTER_MAX,
     MIN_SALARY: MIN_SALARY,
+    contractYearsFor: contractYearsFor,
+    MAX_CONTRACT_YEARS: MAX_CONTRACT_YEARS,
+    RESIGN_TUNING: RESIGN_TUNING,
+    resignAsk: resignAsk,
+    bestMarketAlternative: bestMarketAlternative,
+    evaluateResign: evaluateResign,
+    checkResignOffer: checkResignOffer,
+    applyResign: applyResign,
+    runResigningWindow: runResigningWindow,
+    autoExerciseResignRights: autoExerciseResignRights,
+    releaseUnexercisedResignRights: releaseUnexercisedResignRights,
     signPlayer: signPlayer,
     resolveFreeAgentSilently: resolveFreeAgentSilently,
     runFreeAgencySilently: runFreeAgencySilently,

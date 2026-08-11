@@ -545,6 +545,12 @@ function handleUserDraftPick(prospectId) {
 }
 
 function handleAdvanceToNewSeason() {
+  // Leaving the free agency stage closes the window on your own expiring
+  // players. Anyone you never got round to walks — a re-sign right that
+  // survived into the new season would leave him rostered forever on a
+  // zero-year contract.
+  releaseUnexercisedResignRights(GameState.userTeamId);
+
   // Unconditional, not gated on autoFreeAgency. That setting governs whether
   // the USER's free agency is automated, but AI teams have to start the season
   // with a legal roster either way — a user who clicks straight past the free
