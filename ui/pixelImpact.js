@@ -110,7 +110,20 @@ function armImpactZoom(marker, nowMs, opts) {
 function startImpact(marker, nowMs, opts) {
   const o = opts || {};
   if (!marker) return;
-  if (o.reduceMotion || o.speed >= 8) return;   // motion suppressed; caption still shows
+  if (o.reduceMotion) return;                   // motion suppressed; caption still shows
+  // `o.speed >= 8` used to sit on that line, and it was the whole bug.
+  //
+  // b9b0b2e set out to make big moments hit HARDEST at high speed -- at 1x you
+  // can follow a dunk unaided, at 8x it is a smear -- and it removed the 8x
+  // bail-out from armImpactZoom and rewrote impactFreezeMs to scale up. It did
+  // not remove this one. So at 8x nothing was ever armed: no zoom, no flash,
+  // no speed lines, no freeze. The feature was dead at exactly the speed it was
+  // rebuilt for.
+  //
+  // It stayed hidden because impactFreezeMs answers 900ms when asked directly,
+  // which is what the Node validator asks, while the game never got that far.
+  // Same bar as armImpactZoom and impactFreezeMs now -- one rule, three places.
+  if (!impactQualifies(marker.kind, typeof o.speed === 'number' ? o.speed : 1)) return;
   // The slam supersedes any lead-in outright. It does NOT need to carry the
   // lead-in's origin forward: the zoom is a snap at a fixed scale, not a
   // tween, so there is nothing part-way to preserve — and once startMs is set

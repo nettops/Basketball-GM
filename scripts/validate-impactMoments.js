@@ -332,10 +332,14 @@ function checkEffectTiming() {
   impact.startImpact(block, 1000, full);
   assert.strictEqual(impact.impactZoom(1010), null, 'tier 2 is flash and shake only');
 
-  // 8x starts nothing at all
+  // ...and at 8x a poster fires HARDER, not less. This line used to assert the
+  // opposite ('nothing fires at 8x'), left behind by b9b0b2e along with the
+  // startImpact gate that made it true. Both are corrected now: at 1x you can
+  // follow a dunk unaided, at 8x it is a smear, so 8x is where the camera and
+  // the freeze earn their keep.
   impact.resetImpact();
   impact.startImpact(poster, 1000, { reduceMotion: false, speed: 8 });
-  assert.strictEqual(impact.impactZoom(1010), null, 'nothing fires at 8x');
+  assert.ok(impact.impactZoom(1010) !== null, 'a poster must still fire at 8x');
 
   impact.resetImpact();
 }
@@ -428,6 +432,49 @@ function checkEffectsUseARealTimeClock() {
   assert.ok(!/(drawImpactLines|drawImpactFlash|impactZoom)\(\s*(ctx\s*,\s*)?playbackMs/.test(src),
     'no impact effect may be aged off playbackMs — it stops during the freeze');
   console.log('checkEffectsUseARealTimeClock: OK');
+}
+
+// The effect has to ARM, not merely be willing to.
+//
+// This exists because it did not. b9b0b2e made big moments hit hardest at high
+// speed and removed the 8x bail-out from armImpactZoom, but left an identical
+// one in startImpact -- so at 8x nothing was ever armed: no zoom, no flash, no
+// speed lines, no freeze. The feature was dead at exactly the speed it had just
+// been rebuilt for.
+//
+// It survived because every check here asked impactFreezeMs, which answers
+// 900ms quite happily; the game never reached it. So this drives the real
+// entry point and then asks what the VIEW would get back, which is the only
+// question that matters.
+function checkTheEffectActuallyArmsAtEverySpeed() {
+  const impact = require(path.join(__dirname, '..', 'ui', 'pixelImpact.js'));
+  const poster = { kind: 'poster', at: { x: 240, y: 160 }, byId: 'a', onId: 'b' };
+  const block = { kind: 'block', at: { x: 240, y: 160 }, byId: 'a', onId: 'b' };
+
+  [1, 2, 4, 8].forEach(function (speed) {
+    impact.resetImpact();
+    impact.startImpact(poster, 0, { reduceMotion: false, speed: speed });
+    assert.ok(impact.impactZoom(10) !== null,
+      'a poster must arm the camera at ' + speed + 'x -- it is the rarest play in the game');
+    assert.ok(impact.impactFreezeMs(poster, { reduceMotion: false, speed: speed }) > 0,
+      'a poster must still freeze at ' + speed + 'x');
+  });
+
+  // ...and the bar still rises: a block is common and least spectacular, so it
+  // is the first to stop interrupting. If this ever passed at 4x the fix above
+  // would have gone too far the other way.
+  impact.resetImpact();
+  impact.startImpact(block, 0, { reduceMotion: false, speed: 4 });
+  assert.strictEqual(impact.impactZoom(10), null, 'a block must not arm anything at 4x');
+  assert.strictEqual(impact.impactFreezeMs(block, { reduceMotion: false, speed: 4 }), 0,
+    'a block must not freeze at 4x');
+
+  impact.resetImpact();
+  impact.startImpact(poster, 0, { reduceMotion: true, speed: 1 });
+  assert.strictEqual(impact.impactZoom(10), null, 'reduced motion must still suppress everything');
+
+  impact.resetImpact();
+  console.log('checkTheEffectActuallyArmsAtEverySpeed: OK');
 }
 
 // With a clock that advances, the lines must own the middle of the freeze
@@ -689,6 +736,7 @@ function checkTheCameraStillLandsOnTheActor() {
 checkTheCameraStillLandsOnTheActor();
 checkAnkleBreakerHasACrossover();
 checkEffectsUseARealTimeClock();
+checkTheEffectActuallyArmsAtEverySpeed();
 checkLinesPlayInsideTheFreeze();
 checkZoomLeadIn();
 checkEdgesRespondToMatchup();

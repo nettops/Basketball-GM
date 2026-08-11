@@ -829,14 +829,34 @@ const UI_SMOKE = (function () {
     results.push(ok('impact:reduced-motion-suppresses', impactZoom(10) === null &&
       impactFreezeMs(poster, { reduceMotion: true, speed: 1 }) === 0));
 
+    // These two used to assert that a poster produced NO zoom and NO freeze at
+    // 8x, and that 4x HALVED the freeze. b9b0b2e deliberately reversed both --
+    // at 1x you can see a dunk unaided, at 8x it is a smear, so the emphasis
+    // now grows with speed instead of fading out. That commit updated the Node
+    // validator and left these behind, and because this file only runs in a
+    // browser (under Node it exits 0 and proves nothing) they sat red and
+    // unread. They now assert the design that actually shipped.
     resetImpact();
     startImpact(poster, 0, { reduceMotion: false, speed: 8 });
-    results.push(ok('impact:nothing-at-8x', impactZoom(10) === null &&
-      impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) === 0));
+    results.push(ok('impact:poster-still-lands-at-8x',
+      impactZoom(10) !== null &&
+      impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) > 0,
+      'freeze ' + impactFreezeMs(poster, { reduceMotion: false, speed: 8 }) + 'ms'));
 
-    results.push(ok('impact:4x-halves-the-freeze',
-      impactFreezeMs(poster, { reduceMotion: false, speed: 4 }) ===
-        Math.round(impactFreezeMs(poster, { reduceMotion: false, speed: 1 }) / 2)));
+    // The bar RISES with speed: a block is the most common and least
+    // spectacular kind, so it is the first to stop interrupting.
+    results.push(ok('impact:block-drops-out-above-2x',
+      impactFreezeMs(block, { reduceMotion: false, speed: 2 }) > 0 &&
+      impactFreezeMs(block, { reduceMotion: false, speed: 4 }) === 0));
+
+    // A freeze is real milliseconds, so at 8x it buys proportionally less of
+    // the game -- it scales UP, and caps before a pause reads as a hang.
+    const f1 = impactFreezeMs(poster, { reduceMotion: false, speed: 1 });
+    const f4 = impactFreezeMs(poster, { reduceMotion: false, speed: 4 });
+    const f8 = impactFreezeMs(poster, { reduceMotion: false, speed: 8 });
+    results.push(ok('impact:freeze-grows-with-speed-then-caps',
+      f4 > f1 && f8 >= f4 && f8 === IMPACT_FREEZE_MAX_MS,
+      f1 + ' / ' + f4 + ' / ' + f8 + ' (cap ' + IMPACT_FREEZE_MAX_MS + ')'));
 
     // Leaving state armed here would zoom the first frame of whatever the user
     // opens next, which is exactly the leak stopPixelPlayback exists to close.
