@@ -94,6 +94,9 @@ const BEAT = {
   // time is better spent there than on players strolling into position.
   transition: 580, formation: 540, fastBreak: 420, pass: 340, windup: 300, drive: 500,
   release: 60, flight3: 850, flightMid: 650, flightIn: 420,
+  // A layup gathers over this. Long enough for the ball to come up out of the
+  // dribble and the body to dip and rise -- twelve frames rather than four.
+  closeRelease: 200,
   // Dunk beats. The rise is short and the hang is shorter — a leap that takes
   // as long as a jump shot's flight reads as floating, not exploding.
   dunkGather: 170, dunkRise: 150, dunkSlam: 90, dunkLand: 130,
@@ -695,6 +698,19 @@ function createChoreographer(session) {
     const last = keyframes.length ? keyframes[keyframes.length - 1].ball : null;
     return (last && last.holder) || null;
   }
+  // The floor as it stands right now.
+  //
+  // A pass is two beats: a 60ms release and a 170-430ms flight. The whole new
+  // formation was being installed on the RELEASE -- measured at 8.1px per
+  // player per frame, the largest floor movement anywhere in the game, ~440
+  // times a game -- while the flight that follows sat at 0.5px, nearly frozen.
+  // Exactly backwards: the eye is yanked sideways in the instant the ball
+  // leaves the hand, then given a still picture for the four times longer it
+  // spends in the air. Holding here moves that same travel onto the flight,
+  // where players are supposed to be cutting anyway.
+  function lastPositions() {
+    return keyframes.length ? keyframes[keyframes.length - 1].pos : null;
+  }
 
   function positionsFor(offenseTeam) {
     const pos = {};
@@ -924,7 +940,7 @@ function createChoreographer(session) {
       const outletBy = heldBallHolder() || deep;
       const from = heldBallSpot() || (deep ? transPos[deep] : transHandler);
 
-      push(BEAT.release, transPos, { x: from[0], y: from[1] - 6, holder: null },
+      push(BEAT.release, lastPositions() || transPos, { x: from[0], y: from[1] - 6, holder: null },
         period, quarter, clock, '');
       push(BEAT.fbOutlet, flowPositions(transPos, [h, deep, outletBy], pi * 31, defendersOf(poss.team, transPos)),
         { x: transHandler[0], y: transHandler[1] - 6, holder: h, arc: 5 },
@@ -1105,7 +1121,13 @@ function createChoreographer(session) {
           // the last pass of the chain is the feed to the shooter
           const isFeed = (c === chain.length - 2) && !!ev.assistPlayerId;
           const shape = passShape(from, to, isFeed);
-          push(BEAT.release, shotPos, { x: from[0], y: from[1] - 8, holder: null }, period, quarter, clock, '');
+          // Only the FIRST release holds: from c=1 on, the previous pass beat has
+          // already installed shotPos, so holding and passing shotPos are the
+          // same thing. And the ball is at `from`, which for c=0 is now the
+          // ball's real previous position -- so the body it leaves is the body
+          // that had it.
+          push(BEAT.release, (c === 0 ? lastPositions() : null) || shotPos,
+            { x: from[0], y: from[1] - 8, holder: null }, period, quarter, clock, '');
           // The ball swing is the single biggest pocket of frozen players in
           // the game. The passer and receiver stay put; everyone else cuts.
           push(shape.ms, flowPositions(shotPos, [chain[c], chain[c + 1]], pi * 3 + c, defenderIds),
@@ -1432,10 +1454,23 @@ function createChoreographer(session) {
           // Positions do NOT change through the jump — only height, which lives
           // in the view. That matters: an ankle breaker's camera is aimed at
           // relSpot, and the shooter has to still be standing on it.
-          push(three ? BEAT.jumpGatherThree : BEAT.jumpGatherMid, releasePos,
+          // The SHOOTER holds his spot -- his height is what moves, and an
+          // ankle breaker's camera is aimed at relSpot, so he has to still be
+          // standing on it. Everyone else keeps playing.
+          //
+          // All three beats used to hand out the identical `releasePos`, which
+          // measured 100% of players motionless for the whole rise and 81-84%
+          // through the release: 180-210ms of a ten-man freeze frame on every
+          // jump shot in the game, ~85 a game. The dunk already solved this --
+          // flow the floor, lock the two men the moment belongs to -- and the
+          // jump shot never got the same treatment.
+          const jumpLock = [ev.playerId, ev.defenderId];
+          push(three ? BEAT.jumpGatherThree : BEAT.jumpGatherMid,
+            flowPositions(releasePos, jumpLock, pi * 13 + ei, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null, null, null, { phase: 'gather', id: jumpBy, three: three });
-          push(three ? BEAT.jumpRiseThree : BEAT.jumpRiseMid, releasePos,
+          push(three ? BEAT.jumpRiseThree : BEAT.jumpRiseMid,
+            flowPositions(releasePos, jumpLock, pi * 17 + ei * 3, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null, null, null, { phase: 'rise', id: jumpBy, three: three });
           // the ball leaves at the apex, not from a standing sprite
@@ -1449,7 +1484,13 @@ function createChoreographer(session) {
           curPos = crashPos;
         } else {
           // release: ball leaves the hands...
-          push(BEAT.release, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
+          // BEAT.closeRelease, not BEAT.release. A layup's entire gather -- the
+          // ball coming up out of the dribble AND the body's dip into the
+          // finish -- lived inside the 60ms release beat, which at 60fps is
+          // four frames. That is the same defect the jump shot was given its
+          // own gather and rise beats to fix; shots at the rim that are not
+          // dunks never got it.
+          push(BEAT.closeRelease, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
           // ...and flies to the rim while everyone crashes the glass — the
           // floor keeps moving for the whole flight instead of freezing
           push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,

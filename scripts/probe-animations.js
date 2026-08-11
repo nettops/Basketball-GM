@@ -105,6 +105,19 @@ function launchAt(kfs, i) {
   });
 }
 
+// Where the ball ends up once a hand closes on it. Same call the view makes.
+function arrivalAt(kfs, i) {
+  const b = kfs[i + 1];
+  if (!b || b.ball.holder === null) return null;
+  const hp = b.pos[b.ball.holder];
+  if (!hp) return null;
+  return motion.arrivalPoint({
+    b: b, c: kfs[i + 2] || b,
+    hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 },
+    facing: 1, shotComing: shotComingAt(kfs, i + 1), reduceMotion: false
+  });
+}
+
 function stat() { return { n: 0, sum: 0, max: 0, maxAt: null, zero: 0 }; }
 function add(s, v, at) {
   s.n++; s.sum += v;
@@ -120,7 +133,8 @@ function run(games) {
   const ballStats = {};    // family -> px per frame of ball motion
   const modeSwitch = {};   // 'from->to' -> jump size at the switch
   const beatMs = {};       // family -> beat duration, so px/frame has context
-  const geometry = { dunkBallToRim: stat(), releaseFromHand: stat(), releaseByKind: {} };
+  const geometry = { dunkBallToRim: stat(), releaseFromHand: stat(), releaseByKind: {},
+                     catchIntoHand: stat(), catchByKind: {} };
 
   for (let g = 0; g < games; g++) {
     const kfs = buildTimeline(1000 + g);
@@ -172,7 +186,7 @@ function run(games) {
           a: a, b: b, f: f, holder: holder, hand: hand, facing: 1,
           lifts: lifts, shotComing: shotComingAt(kfs, i),
           reduceMotion: false, playbackMs: a.t + span * f,
-          launch: launchAt(kfs, i)
+          launch: launchAt(kfs, i), arrival: arrivalAt(kfs, i)
         });
         if (prev) {
           const d = Math.hypot(bp.bx - prev.bx, bp.by - prev.by);
@@ -206,6 +220,34 @@ function run(games) {
         }
       }
 
+      // THE CATCH, which is the release run backwards and had never been
+      // measured at all. The ball's last airborne position should be the hand
+      // that takes it, or it arrives by jumping the last stretch.
+      if (a.ball.holder === null && b.ball.holder !== null) {
+        const hp = b.pos[b.ball.holder];
+        if (hp) {
+          const flying = motion.ballPosition({
+            a: a, b: b, f: 0.999, holder: null, hand: null, facing: 1,
+            lifts: motion.resolveLifts(a, b, 1, false), shotComing: false,
+            reduceMotion: false, playbackMs: b.t, launch: launchAt(kfs, i),
+            arrival: arrivalAt(kfs, i)
+          });
+          const c2 = kfs[i + 2];
+          if (c2) {
+            const caught = motion.ballPosition({
+              a: b, b: c2, f: 0, holder: b.ball.holder,
+              hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 }, facing: 1,
+              lifts: motion.resolveLifts(b, c2, 0, false),
+              shotComing: shotComingAt(kfs, i + 1), reduceMotion: false, playbackMs: b.t
+            });
+            const d = Math.hypot(caught.bx - flying.bx, caught.by - flying.by);
+            if (!geometry.catchByKind[fam]) geometry.catchByKind[fam] = stat();
+            add(geometry.catchByKind[fam], d, fam);
+            add(geometry.catchIntoHand, d, fam);
+          }
+        }
+      }
+
       // The release: the ball's first airborne position should be where the
       // hand just let go of it, not somewhere else.
       if (a.ball.holder !== null && b.ball.holder === null && !(b.dunk && b.dunk.phase === 'slam')) {
@@ -229,7 +271,7 @@ function run(games) {
             const flown = motion.ballPosition({
               a: b, b: c, f: 0, holder: null, hand: null, facing: 1,
               lifts: liftsNext, shotComing: false, reduceMotion: false, playbackMs: b.t,
-              launch: launchAt(kfs, i + 1)
+              launch: launchAt(kfs, i + 1), arrival: arrivalAt(kfs, i + 1)
             });
             if (!geometry.releaseByKind[fam]) geometry.releaseByKind[fam] = stat();
             add(geometry.releaseByKind[fam],
@@ -284,10 +326,12 @@ table('A) FLOOR MOTION per player-beat (px/frame)', R.floorStats, 'px/frame', 'm
 table('B) BALL MOTION per frame (px/frame)', R.ballStats, 'px/frame', 'max');
 table('B2) BALL JUMP at a formula change (px in one frame)', R.modeSwitch, 'px', 'max');
 console.log('\nC) GEOMETRY');
-Object.keys(R.geometry).filter(function (k) { return k !== 'releaseByKind'; }).forEach(function (k) {
+Object.keys(R.geometry).filter(function (k) { return k !== 'releaseByKind' && k !== 'catchByKind'; }).forEach(function (k) {
   const s = R.geometry[k];
   console.log('  ' + k.padEnd(22) + 'n=' + String(s.n).padStart(5) +
     '  mean ' + mean(s).toFixed(1) + 'px  max ' + s.max.toFixed(1) + 'px');
 });
 
 table('C2) BALL JUMP AT THE RELEASE, by kind (px)', R.geometry.releaseByKind, 'px', 'mean');
+
+table('C3) BALL JUMP AT THE CATCH, by kind (px)', R.geometry.catchByKind, 'px', 'mean');

@@ -806,6 +806,17 @@ function renderPixelGame(container) {
       shotComing: shotComingAt(kfIndex - 1),
       reduceMotion: reduceMotion
     }) : null;
+    // ...and where it ends up, so a flight lands in the hand that takes it
+    // rather than on the catcher's feet.
+    const catcher = fr.b.ball.holder;
+    const catcherAt = catcher && fr.b.pos[catcher];
+    const arrival = catcherAt ? arrivalPoint({
+      b: fr.b, c: kfs[Math.min(kfIndex + 2, kfs.length - 1)],
+      hand: { x: catcherAt[0], y: catcherAt[1], vx: 0, vy: 0 },
+      facing: facingById[catcher] || 1,
+      shotComing: shotComingAt(kfIndex + 1),
+      reduceMotion: reduceMotion
+    }) : null;
     const bp = ballPosition({
       a: fr.a, b: fr.b, f: fr.f,
       holder: holder,
@@ -815,7 +826,8 @@ function renderPixelGame(container) {
       shotComing: shotComing,
       reduceMotion: reduceMotion,
       playbackMs: playbackMs,
-      launch: launch
+      launch: launch,
+      arrival: arrival
     });
     const bx = bp.bx, by = bp.by, groundY = bp.groundY;
     // thud on the floor contact, keyed off the same phase the eye sees

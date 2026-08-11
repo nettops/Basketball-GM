@@ -281,10 +281,18 @@ function ballPosition(s) {
   // feet to the target's, while the BALL runs from the height it left the hand
   // at down to the target, with the arc on top. Sharing one line was what put
   // the ball on the floor for the first frame of every shot.
-  const groundY = motionLerp(from.groundY, s.b.ball.y, s.f);
+  // ...AND WHERE IT ENDS, which is the same problem run backwards and was
+  // never measured until the release was fixed. The flight's target is the
+  // catcher's keyframe position, which is his FEET. So the ball landed on the
+  // floor in front of him and jumped up into his hand on the next frame:
+  // measured at 7.8px mean and 12.6px max, on every catch, rebound and
+  // handoff in the game -- ~575 a game, more often than the release it
+  // mirrors. `s.arrival` is where the hand will actually hold it.
+  const to = s.arrival || { bx: s.b.ball.x, by: s.b.ball.y, groundY: s.b.ball.y };
+  const groundY = motionLerp(from.groundY, to.groundY, s.f);
   return {
-    bx: motionLerp(from.bx, s.b.ball.x, s.f),
-    by: motionLerp(from.by, s.b.ball.y, s.f) - Math.sin(s.f * Math.PI) * arcHeight,
+    bx: motionLerp(from.bx, to.bx, s.f),
+    by: motionLerp(from.by, to.by, s.f) - Math.sin(s.f * Math.PI) * arcHeight,
     groundY: groundY, mode: mode, bouncePhase: null
   };
 }
@@ -315,6 +323,24 @@ function launchPoint(s) {
   });
 }
 
+// The mirror of launchPoint: where the ball will be once the hand closes on
+// it. Same reasoning for recomputing rather than remembering -- a seek has no
+// next frame to look at either.
+//
+// Returns null when nobody catches it, which is every shot: a ball on its way
+// to the rim has no hand to arrive in and keeps the keyframe target.
+function arrivalPoint(s) {
+  if (!s.b || s.b.ball.holder === null || !s.hand) return null;
+  const c = s.c || s.b;
+  return ballPosition({
+    a: s.b, b: c, f: 0,
+    holder: s.b.ball.holder, hand: s.hand, facing: s.facing,
+    lifts: resolveLifts(s.b, c, 0, s.reduceMotion),
+    shotComing: s.shotComing, reduceMotion: s.reduceMotion,
+    playbackMs: s.b.t
+  });
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DUNK_LIFT: DUNK_LIFT,
@@ -336,6 +362,7 @@ if (typeof module !== 'undefined' && module.exports) {
     jumpCock: jumpCock,
     ballMode: ballMode,
     ballPosition: ballPosition,
-    launchPoint: launchPoint
+    launchPoint: launchPoint,
+    arrivalPoint: arrivalPoint
   };
 }
