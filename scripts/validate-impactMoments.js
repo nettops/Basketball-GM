@@ -8,6 +8,7 @@
 // as progression moves ratings every season.
 const assert = require('assert');
 const path = require('path');
+const fs = require('fs');
 
 const choreo = require(path.join(__dirname, '..', 'ui', 'pixelChoreographer.js'));
 
@@ -611,6 +612,28 @@ function checkAnkleBreakerHasACrossover() {
 // The camera frames impact.at. Off-ball flow now moves most of the floor every
 // beat, so the one thing that must NOT move is the player the camera is about
 // to zoom in on — otherwise the effect fires on empty hardwood.
+// Where ui/pixelGameView.js ACTUALLY puts a dunker's ball at full extension,
+// read out of that file rather than taken from the choreographer's own
+// constant. Asking DUNK_REACH about DUNK_REACH is vacuous -- mutation testing
+// proved it: doubling it and halving it both survived, because the placement
+// and the check were quoting the same number. The view is the independent
+// authority on how far above his feet the ball ends up, so the view is what
+// gets read.
+function viewDunkReach() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'ui', 'pixelGameView.js'), 'utf8');
+  const liftBlock = /const DUNK_LIFT = \{([^}]*)\}/.exec(src);
+  const lift = liftBlock && /rise:\s*(-?\d+)/.exec(liftBlock[1]);
+  const hand = /by = hy - dunkerLift - (\d+) - (\d+) \* cock;/.exec(src);
+  assert.ok(lift, 'could not read DUNK_LIFT.rise from ui/pixelGameView.js');
+  assert.ok(hand, 'could not read the dunk hand offset from ui/pixelGameView.js');
+  const reach = Number(lift[1]) + Number(hand[1]) + Number(hand[2]);
+  assert.strictEqual(choreo.DUNK_REACH, reach,
+    'choreographer plants a dunker ' + choreo.DUNK_REACH + 'px below the rim, but the view ' +
+    'puts his ball ' + reach + 'px above his feet -- the ball would miss the rim by ' +
+    Math.abs(reach - choreo.DUNK_REACH) + 'px');
+  return reach;
+}
+
 function checkTheCameraStillLandsOnTheActor() {
   require(path.join(__dirname, '..', 'data.js'));
   const { TEAMS } = require(path.join(__dirname, '..', 'teams.js'));
@@ -639,7 +662,15 @@ function checkTheCameraStillLandsOnTheActor() {
       const whoId = k.impact.kind === 'block' ? k.impact.onId : k.impact.byId;
       const who = k.pos[whoId];
       if (!who) return;
-      const off = Math.hypot(who[0] - k.impact.at.x, who[1] - k.impact.at.y);
+      // A POSTER RESOLVES AT HIS HAND, NOT HIS FEET. A dunker plants
+      // DUNK_REACH below the rim precisely so his raised hand arrives ON it, so
+      // his floor position is 46px from the impact BY DESIGN and measuring
+      // there would demand the camera frame his shoes. What the zoom actually
+      // holds is the rim, the ball and his outstretched arm — all at the point
+      // DUNK_REACH above him. The margin below is unchanged; only the point
+      // being measured is corrected.
+      const reach = k.impact.kind === 'poster' ? viewDunkReach() : 0;
+      const off = Math.hypot(who[0] - k.impact.at.x, (who[1] - reach) - k.impact.at.y);
       assert.ok(off <= 8,
         k.impact.kind + ' fires ' + off.toFixed(1) + 'px away from its actor — the zoom would frame empty court');
       checked += 1;

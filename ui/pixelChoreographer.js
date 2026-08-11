@@ -79,6 +79,13 @@ function assignSlots(five) {
 // a keyframe's holder for that keyframe's whole span, so without a short
 // holder-null keyframe at the moment the ball leaves the hands, a pass or
 // shot never flies — it teleports to its destination at the next keyframe.
+// How far below the rim a dunker plants, so his raised hand ARRIVES at the
+// rim instead of sailing past it. Equals the dunk lift (16) plus the hand
+// offset (30) in ui/pixelGameView.js -- the exact gap that view puts
+// between a dunker's feet and the ball at full extension. Wrong the moment
+// either of those moves, which is why it is named rather than inlined.
+const DUNK_REACH = 46;
+
 const BEAT = {
   // Trimmed from 700/650/600. These three are the possession's dead air — the
   // walk up the floor, the flow into the set, the reset after a board — and
@@ -1266,7 +1273,10 @@ function createChoreographer(session) {
           // Measured travel by approach distance: 8px->6.2, 12px->9.7, 16px->13.5,
           // 20px->17.4. 16 clears a full body width across the 150ms rise (90
           // px/sec) without turning the drive into a slide.
-          const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -16 : 16), hoop.y + cutJitter(pi + ei, 6));
+          // A dunker drives along the line he will jump FROM, so the leap is
+          // straight up rather than a lurch toward the hoop at the last moment.
+          const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -16 : 16),
+            hoop.y + (dunking ? DUNK_REACH : 0) + cutJitter(pi + ei, 6));
           releasePos = Object.assign({}, shotPos);
           releasePos[ev.playerId] = rimSpot;
           relSpot = rimSpot;
@@ -1309,8 +1319,13 @@ function createChoreographer(session) {
           // slam, land. Drawn as four beats so the view can hang the sprite at
           // the top instead of sliding it past the rim at constant speed.
           const rimX = hoop.x + (poss.team === 'home' ? -3 : 3);
+          // HE HAS TO STAND BACK BY HIS OWN REACH, or the leap carries his hand
+          // AWAY from the rim. This put his feet on the hoop's own floor spot,
+          // so once the view lifted him 16px and hung the ball 30px above that,
+          // the ball sat 46px clear of the rim at the top of the dunk -- nearly
+          // two body heights on a 24px sprite. He was dunking on nothing.
           const apexPos = Object.assign({}, releasePos);
-          apexPos[ev.playerId] = clampToCourt(rimX, hoop.y);
+          apexPos[ev.playerId] = clampToCourt(rimX, hoop.y + DUNK_REACH);
           // THE FLOOR HOLDS. This used to be built from crashPos, the rebound
           // formation — so on the slam, the one beat that is supposed to be
           // the moment, all nine other players teleported into rebounding
@@ -1478,6 +1493,7 @@ if (typeof module !== 'undefined' && module.exports) {
     createChoreographer: createChoreographer,
     groupPossessions: groupPossessions,
     assignSlots: assignSlots,
+    DUNK_REACH: DUNK_REACH,
     IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
     roll01: roll01,
     dribbleCount: dribbleCount,
