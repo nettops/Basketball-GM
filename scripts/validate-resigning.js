@@ -115,12 +115,54 @@ function checkOverCapTeamCanRetainItsOwnStar() {
   star.contract = { salary: originalContract.salary, yearsRemaining: 0, playerOption: false, teamOption: false };
   const result = fa.runResigningWindow([star], rng, null);
   const kept = star.teamId === team.id && star.contract.yearsRemaining > 0;
+  void result;
   assert.ok(kept || result.lost.length === 1,
     'the window must either retain him or explicitly lose him, never leave him in limbo');
   assert.ok(kept, 'an over-cap team must be able to re-sign its OWN star, over the cap');
   assert.ok(star.contract.salary > 0);
   star.contract = originalContract;
   console.log('checkOverCapTeamCanRetainItsOwnStar: OK (' + team.id + ' kept ' + star.name + ')');
+}
+
+// First refusal is a decision, not an obligation. A team that does not want a
+// player has to be able to let him go, or every roster ossifies and nobody
+// ever reaches the market. Deleting the interest bar survived this file until
+// this case existed.
+function checkTeamsCanDeclineToRetain() {
+  const rng = makeRng(51);
+  // Selected by the quantity the bar actually reads — adjustedPlayerValue on
+  // his own team — not by overall. Picking "lowest overall" gave a player who
+  // walked of his own accord, so the test passed for the wrong reason and
+  // deleting the bar changed nothing.
+  const tradeEvaluator = rq('tradeEvaluator.js');
+  const dud = PLAYERS_2026.filter(function (p) { return p.teamId; })
+    .sort(function (a, b) {
+      return tradeEvaluator.adjustedPlayerValue(a, getTeamById(a.teamId)) -
+        tradeEvaluator.adjustedPlayerValue(b, getTeamById(b.teamId));
+    })[0];
+  const team = getTeamById(dud.teamId);
+  const original = dud.contract;
+  const originalTeam = dud.teamId;
+  const value = tradeEvaluator.adjustedPlayerValue(dud, team);
+  assert.ok(value < fa.RESIGN_INTEREST_BAR,
+    'precondition: need a player his own team does not want, value ' + value.toFixed(1));
+
+  dud.contract = { salary: original.salary, yearsRemaining: 0, playerOption: false, teamOption: false };
+  const result = fa.runResigningWindow([dud], rng, null);
+  assert.strictEqual(result.resigned.length, 0,
+    'a team must not be forced to re-sign a player it has no interest in (' + dud.name + ', ovr ' + dud.overall + ')');
+  assert.strictEqual(result.lost.length, 1, 'and he must be reported as lost');
+  // The REASON is the assertion that bites. He is refused by the interest bar,
+  // not by his own preference: without checking which, deleting the bar
+  // entirely changed no test result, because this player would have walked on
+  // his own anyway.
+  assert.strictEqual(result.lost[0].reason, 'declined',
+    'he must be turned down by the team, not merely choose to leave');
+  assert.strictEqual(dud.contract.yearsRemaining, 0, 'his expired contract must not have been replaced');
+
+  dud.contract = original;
+  dud.teamId = originalTeam;
+  console.log('checkTeamsCanDeclineToRetain: OK (' + team.id + ' let ' + dud.name + ' go, value ' + value.toFixed(1) + ')');
 }
 
 // The user's players are not decided for them.
@@ -182,17 +224,32 @@ function checkExpiryReleasesOnlyTheUndecided() {
   assert.strictEqual(stranded.length, 0,
     stranded.length + ' players are rostered on an expired contract with no rights');
   const rights = PLAYERS_2026.filter(function (p) { return p.resignRights; });
+  // Asserted BEFORE the per-player check below, which is vacuously true when
+  // the list is empty — deleting the runResigningWindow call from
+  // decrementContracts survived this test until this line existed.
+  assert.ok(rights.length > 0,
+    'the window must actually have run: no player anywhere holds re-sign rights');
   rights.forEach(function (p) {
     assert.strictEqual(p.teamId, 'BOS', 'only the deferred team may hold rights, found ' + p.teamId);
   });
+  // ...and it must have DECIDED for everyone else. Somebody, somewhere, has to
+  // have been kept by his own team through this call.
+  const resignedByAi = PLAYERS_2026.filter(function (p) {
+    return p.teamId && p.teamId !== 'BOS' && p.contract.yearsRemaining > 0 &&
+      (p.careerHistory && p.careerHistory.contractHistory || []).some(function (c) { return c.type === 're_signing'; });
+  });
+  assert.ok(resignedByAi.length > 0,
+    'AI teams must have re-signed somebody — 437 contracts across 5 offseasons used to produce zero');
   assert.ok(PLAYERS_2026.filter(function (p) { return p.teamId; }).length < before,
     'somebody must have reached the market');
-  console.log('checkExpiryReleasesOnlyTheUndecided: OK (' + rights.length + ' deferred to BOS)');
+  console.log('checkExpiryReleasesOnlyTheUndecided: OK (' + rights.length + ' deferred to BOS, ' +
+    resignedByAi.length + ' re-signed by AI teams)');
 }
 
 checkContractLengthTracksQuality();
 checkIncumbentOfferScoresHigher();
 checkOverCapTeamCanRetainItsOwnStar();
+checkTeamsCanDeclineToRetain();
 checkUserTeamIsDeferred();
 checkAutoExerciseKeepsThem();
 checkExpiryReleasesOnlyTheUndecided();

@@ -305,6 +305,24 @@ function generateAIOffer(team, player, rng, roundsUnsigned) {
 // model's own asking price, so this is not a door back into "offer a billion".
 const RESIGN_MAX_PREMIUM = 1.5;   // the most a team may bid above the asking price
 
+// A team is allowed to walk away from its own declining veteran — first
+// refusal is a decision, not an obligation.
+//
+// NOT generateAIOffer's bar of 40, which was the first thing tried and is
+// near-dead here. That number is tuned for the FREE AGENT pool, which collects
+// washed-up players nobody has signed in years; among players actually on a
+// roster the value distribution sits far higher. Measured over 640 expiring
+// players across 4 offseasons: min 36, p05 58.4, p10 66.2, median 94.1.
+//
+//   bar 40 declines 0.3%   50 -> 1.6%   55 -> 3.0%
+//   bar 58 declines 4.8%   60 -> 5.9%   62 -> 6.6%
+//
+// 58, for a decline rate near 5% — often enough that a fading veteran being
+// let go is a thing that happens, rare enough that it is not how most players
+// leave. At 40 it fired for 2 players in 640, and deleting the check outright
+// changed no test result.
+const RESIGN_INTEREST_BAR = 58;
+
 function resignAsk(player, rng) {
   return {
     salary: estimateFairSalary(player, 0),
@@ -383,6 +401,10 @@ function applyResign(player, team, offer) {
 //
 // Best players first, so a team facing two expiring stars and one roster spot
 // keeps the better one — the same ordering runFreeAgencySilently uses.
+//
+// `lost` entries carry WHY: 'declined' (the team did not want him) or 'walked'
+// (he preferred the market). Collapsing the two into a bare list hid the
+// difference well enough that deleting the interest bar changed no test result.
 function runResigningWindow(expiring, rng, deferTeamId) {
   const resigned = [], lost = [], deferred = [];
   expiring.slice()
@@ -401,12 +423,12 @@ function runResigningWindow(expiring, rng, deferTeamId) {
       // Does the team even want him? Same bar the AI applies to any free
       // agent, so a declining veteran is allowed to be let go.
       const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
-      if (interest < 40 || _FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
-        lost.push(player);
+      if (interest < RESIGN_INTEREST_BAR || _FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
+        lost.push({ player: player, reason: 'declined' });
         return;
       }
       const verdict = evaluateResign(player, team, ask, rng);
-      if (!verdict.accepted) { lost.push(player); return; }
+      if (!verdict.accepted) { lost.push({ player: player, reason: 'walked' }); return; }
       applyResign(player, team, ask);
       resigned.push({ playerId: player.id, teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining });
     });
@@ -574,6 +596,7 @@ if (typeof module !== 'undefined' && module.exports) {
     contractYearsFor: contractYearsFor,
     MAX_CONTRACT_YEARS: MAX_CONTRACT_YEARS,
     RESIGN_TUNING: RESIGN_TUNING,
+    RESIGN_INTEREST_BAR: RESIGN_INTEREST_BAR,
     resignAsk: resignAsk,
     bestMarketAlternative: bestMarketAlternative,
     evaluateResign: evaluateResign,
