@@ -623,8 +623,17 @@ function createChoreographer(session) {
   function push(dt, pos, ball, period, quarter, clock, text, commentary, sfx, impact, dunk, cross, jump) {
     t += dt;
     // Every keyframe goes through the collision pass so sprites never stack;
-    // the current ball holder is the protected (immovable) body.
-    const resolved = separatePositions(pos, ball.holder);
+    // the protected (immovable) body is the ball holder — or, when the ball
+    // has already left his hands, whoever is mid-dunk.
+    //
+    // A man hanging on the rim is the immovable object in that picture, not
+    // the one who gives way. On the slam and the landing `ball.holder` is null
+    // (the ball is through the net), so nothing was protecting him: once the
+    // floor started HOLDING near the rim instead of scattering to rebound
+    // spots, the bodies around him overlapped and the resolver shoved him
+    // 8.1px off the hoop — far enough that validate-impactMoments caught the
+    // camera framing empty court.
+    const resolved = separatePositions(pos, ball.holder || (dunk && dunk.id) || null);
     keyframes.push({
       t: t, pos: resolved, ball: ball, score: score.slice(),
       period: period, quarter: quarter,
@@ -1251,7 +1260,13 @@ function createChoreographer(session) {
         let releasePos = shotPos;
         let relSpot = sp;
         if (ev.zone === 'inside' && shooterOn) {
-          const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -8 : 8), hoop.y + cutJitter(pi + ei, 6));
+          // He gathers a body-and-a-half out, not on top of the rim. At 8px the
+          // whole leap covered 6.2px -- less than the 10px sprite is wide -- so a
+          // dunk read as a man standing under the basket who briefly got taller.
+          // Measured travel by approach distance: 8px->6.2, 12px->9.7, 16px->13.5,
+          // 20px->17.4. 16 clears a full body width across the 150ms rise (90
+          // px/sec) without turning the drive into a slide.
+          const rimSpot = clampToCourt(hoop.x + (poss.team === 'home' ? -16 : 16), hoop.y + cutJitter(pi + ei, 6));
           releasePos = Object.assign({}, shotPos);
           releasePos[ev.playerId] = rimSpot;
           relSpot = rimSpot;
@@ -1296,8 +1311,29 @@ function createChoreographer(session) {
           const rimX = hoop.x + (poss.team === 'home' ? -3 : 3);
           const apexPos = Object.assign({}, releasePos);
           apexPos[ev.playerId] = clampToCourt(rimX, hoop.y);
-          const landPos = Object.assign({}, crashPos);
-          landPos[ev.playerId] = apexPos[ev.playerId];  // he stays at the rim, not crashing the glass
+          // THE FLOOR HOLDS. This used to be built from crashPos, the rebound
+          // formation — so on the slam, the one beat that is supposed to be
+          // the moment, all nine other players teleported into rebounding
+          // spots. Measured across 325 dunks: 18.8px mean and 29.3px max in a
+          // 90ms beat, 209 px/sec, against 30 px/sec on the rise. Two body
+          // widths, seven times faster than anything around it, pulling the
+          // eye off the rim exactly when it should be nailed to it. Then they
+          // stood perfectly still for the landing: 0.0px. Backwards on both
+          // beats.
+          //
+          // Nobody crashes the glass on a MADE dunk anyway. The next
+          // possession's transition beat is 580ms and moves everyone with room
+          // to spare, so holding here costs nothing and buys the whole moment.
+          const dunkBy = ev.playerId;
+          // The weak side keeps moving through the dunk. Without this the
+          // whole floor froze for the four beats of every finish at the rim,
+          // which got worse the moment transition started producing more of
+          // them — frozen player-beats went 12% to 24% on that change alone.
+          const dunkLock = [ev.playerId, ev.defenderId];
+          // Computed here rather than at the rise push, because the slam and
+          // the landing both HOLD this exact frame and need it in hand first.
+          const risePos = flowPositions(apexPos, dunkLock, pi * 23 + ei, defenderIds);
+          const landPos = Object.assign({}, risePos);
           // Posterized: the defender is driven back off the rim. Without this
           // the victim stands politely still and it reads as an uncontested
           // dunk — the defender's reaction IS the poster.
@@ -1309,21 +1345,15 @@ function createChoreographer(session) {
               landPos[victim][1] + ((pi + ei) % 2 ? 5 : -5)
             );
           }
-          const dunkBy = ev.playerId;
           // `zoomTo` rides the GATHER beat, not the rise. Keyframes sit at beat
           // ENDS, so the rise keyframe is the apex — arming there put the camera
           // in only after he was already up. On the gather it covers the whole
           // ascent, which is the part worth magnifying.
-          // The weak side keeps moving through the dunk. Without this the
-          // whole floor froze for the four beats of every finish at the rim,
-          // which got worse the moment transition started producing more of
-          // them — frozen player-beats went 12% to 24% on that change alone.
-          const dunkLock = [ev.playerId, ev.defenderId];
           push(BEAT.dunkGather, flowPositions(releasePos, dunkLock, pi * 19 + ei, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null,
             { phase: 'gather', id: dunkBy, zoomTo: impactKind === 'poster' ? impactAt : null });
-          push(BEAT.dunkRise, flowPositions(apexPos, dunkLock, pi * 23 + ei, defenderIds),
+          push(BEAT.dunkRise, risePos,
             { x: rimX, y: hoop.y, holder: ev.playerId },
             period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
           push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
