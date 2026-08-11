@@ -110,6 +110,38 @@ function checkOfferCannotExceedCapSpace() {
   console.log('checkOfferCannotExceedCapSpace: OK');
 }
 
+// The gap between bidding and signing is real: you can submit a legal offer,
+// go and make a trade that eats your cap space, and come back to a Sign Player
+// button that is still sitting there enabled. finalizeBidding re-checks for
+// exactly this, and without this case that re-check is unproven — a mutation
+// deleting it survived the rest of the suite.
+function checkCapSpaceLostBetweenBidAndSigning() {
+  const team = findUnderCapTeam();
+  withFreeAgent('sas-victor-wembanyama', function (star) {
+    const space = CAP - payrollOf(team.id);
+    const state = bidding.startBidding(star.id, team.id, makeRng(6));
+    const legal = bidding.evaluateBiddingRound(state, space - 2000000, 3);
+    assert.strictEqual(legal.offerAccepted, true, 'precondition: the bid must be legal when made');
+
+    // Now absorb salary the way a trade would, wiping out that space.
+    const fat = PLAYERS_2026.filter(function (p) { return p.teamId && p.teamId !== team.id; })
+      .sort(function (a, b) { return b.contract.salary - a.contract.salary; })[0];
+    const fatFrom = fat.teamId;
+    fat.teamId = team.id;
+    try {
+      assert.ok(CAP - payrollOf(team.id) < space - 2000000,
+        'precondition: the trade must actually have eaten the space');
+      const outcome = bidding.finalizeBidding(state, true);
+      assert.notStrictEqual(outcome.teamId, team.id,
+        'an offer that no longer fits must not be honoured at signing time');
+      assert.notStrictEqual(star.teamId, team.id);
+    } finally {
+      fat.teamId = fatFrom;
+    }
+  });
+  console.log('checkCapSpaceLostBetweenBidAndSigning: OK');
+}
+
 function checkBelowMinimumRejected() {
   const team = findUnderCapTeam();
   withFreeAgent('sas-victor-wembanyama', function (star) {
@@ -184,6 +216,7 @@ function checkAiOffersUnchanged() {
 
 checkOverCapTeamCannotSignAtAll();
 checkOfferCannotExceedCapSpace();
+checkCapSpaceLostBetweenBidAndSigning();
 checkBelowMinimumRejected();
 checkDisableCapStillWorks();
 checkFullRosterCannotSign();
