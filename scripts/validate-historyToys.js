@@ -112,24 +112,47 @@ function checkPoolIncludesActivePlayers() {
   console.log('checkPoolIncludesActivePlayers: OK (' + withRetiree.length + ')');
 }
 
+// The fixture deliberately carries TWO of everything that gets ranked. With one
+// bust in the list, biggestBusts returns the same answer sorted either way, and
+// a mutant that reversed the comparator survived; with one pick per slot,
+// bestPlayerAtEveryPick has no contest to resolve and a mutant that kept the
+// first row instead of the best survived too. A ranking test needs something to
+// rank.
 function checkDraftToysRankCorrectly() {
   history.LEAGUE_HISTORY.draftClasses.length = 0;
   history.LEAGUE_HISTORY.retiredPlayers.length = 0;
   history.ensureCareerData(PLAYERS_2026);
   const star = PLAYERS_2026[0], dud = PLAYERS_2026[1];
-  star.careerStats.points = 20000; star.careerStats.rebounds = 0; star.careerStats.assists = 0;
-  dud.careerStats.points = 10; dud.careerStats.rebounds = 0; dud.careerStats.assists = 0;
+  const okPick = PLAYERS_2026[2], mediumLate = PLAYERS_2026[3];
+  function stats(p, points) { p.careerStats.points = points; p.careerStats.rebounds = 0; p.careerStats.assists = 0; }
+  stats(star, 20000);        // pick 40 in 2026 — the great steal
+  stats(dud, 10);            // pick 1 in 2026 — the great bust
+  stats(okPick, 8000);       // pick 3 in 2026 — a fine top-10 career
+  stats(mediumLate, 12000);  // pick 1 in 2027 — beats dud at the same slot
+
   history.LEAGUE_HISTORY.draftClasses.push({
     leagueYear: 2026,
     picks: [
       { round: 1, pickNumber: 1, teamId: 'BOS', playerId: dud.id, playerName: dud.name },
+      { round: 1, pickNumber: 3, teamId: 'NYK', playerId: okPick.id, playerName: okPick.name },
       { round: 1, pickNumber: 40, teamId: 'LAL', playerId: star.id, playerName: star.name }
     ]
   });
+  history.LEAGUE_HISTORY.draftClasses.push({
+    leagueYear: 2027,
+    picks: [
+      { round: 1, pickNumber: 1, teamId: 'CHI', playerId: mediumLate.id, playerName: mediumLate.name }
+    ]
+  });
+
   const busts = toys.biggestBusts(5);
-  assert.ok(busts.length > 0, 'a top-10 pick with 10 career points must register as a bust');
-  assert.strictEqual(busts[0].playerId, dud.id, 'the worst top-10 career should rank first');
+  assert.strictEqual(busts.length, 3, 'three top-10 picks were made, got ' + busts.length);
+  assert.strictEqual(busts[0].playerId, dud.id, 'the WORST top-10 career should rank first');
+  assert.strictEqual(busts[busts.length - 1].playerId, mediumLate.id,
+    'the best top-10 career should rank last among busts');
+
   const steals = toys.biggestSteals(5);
+  assert.strictEqual(steals.length, 1, 'only one pick was made outside the top 10');
   assert.strictEqual(steals[0].playerId, star.id, 'the best late pick should rank first');
   assert.ok(!busts.some(function (b) { return b.playerId === star.id; }),
     'a pick outside the top 10 can never be a bust');
@@ -137,14 +160,18 @@ function checkDraftToysRankCorrectly() {
     'a top-10 pick can never be a steal');
 
   const atPick = toys.bestPlayerAtEveryPick();
-  assert.strictEqual(atPick.length, 2, 'one row per distinct pick number');
-  assert.strictEqual(atPick[0].pickNumber, 1, 'best-at-pick is ordered by pick number ascending');
-  assert.strictEqual(atPick[1].pickNumber, 40);
+  assert.strictEqual(atPick.length, 3, 'one row per DISTINCT pick number, got ' + atPick.length);
+  assert.deepStrictEqual(atPick.map(function (r) { return r.pickNumber; }), [1, 3, 40],
+    'best-at-pick is ordered by pick number ascending');
+  assert.strictEqual(atPick[0].playerId, mediumLate.id,
+    'pick 1 was used twice and the BETTER career must win it, not the earlier one');
 
   const classes = toys.draftClassRankings();
-  assert.strictEqual(classes.length, 1);
-  assert.strictEqual(classes[0].production, 20010, 'a class is worth the sum of its picks');
-  assert.strictEqual(classes[0].picks, 2);
+  assert.strictEqual(classes.length, 2);
+  assert.strictEqual(classes[0].leagueYear, 2026, 'the more productive class ranks first');
+  assert.strictEqual(classes[0].production, 28010, 'a class is worth the sum of its picks');
+  assert.strictEqual(classes[0].picks, 3);
+  assert.strictEqual(classes[1].production, 12000);
   console.log('checkDraftToysRankCorrectly: OK');
 }
 
