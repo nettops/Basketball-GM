@@ -107,6 +107,14 @@ function checkPoolIncludesActivePlayers() {
   const ghost = withRetiree.find(function (p) { return p.playerId === 'ghost-1'; });
   assert.ok(ghost, 'a retiree must be in the pool');
   assert.strictEqual(ghost.production, 10500, 'production is points + rebounds + assists');
+  // The components travel with the total. The Frivolities rows print these
+  // three real stats rather than the total under an invented unit, so a pool
+  // entry that carries only the sum silently renders every row as 0 pts.
+  assert.deepStrictEqual(ghost.parts, { points: 9000, rebounds: 1000, assists: 500 },
+    'the pool must carry the three stats the ranking is made of, not just their sum');
+  assert.strictEqual(
+    ghost.parts.points + ghost.parts.rebounds + ghost.parts.assists, ghost.production,
+    'the printed components must add up to the number the list is sorted on');
   assert.strictEqual(ghost.retired, true);
   assert.strictEqual(ghost.championships, 2);
   console.log('checkPoolIncludesActivePlayers: OK (' + withRetiree.length + ')');
@@ -149,6 +157,14 @@ function checkDraftToysRankCorrectly() {
 
   const busts = toys.biggestBusts(5);
   assert.strictEqual(busts.length, 3, 'three top-10 picks were made, got ' + busts.length);
+  // Draft rows print the components too, and they come from the pool via a
+  // join on player id — a pick whose player is missing from the pool must
+  // still render zeros rather than throw.
+  busts.forEach(function (b) {
+    assert.ok(b.parts && typeof b.parts.points === 'number',
+      'every pick row must carry the stats its line prints');
+    assert.strictEqual(b.parts.points + b.parts.rebounds + b.parts.assists, b.production);
+  });
   assert.strictEqual(busts[0].playerId, dud.id, 'the WORST top-10 career should rank first');
   assert.strictEqual(busts[busts.length - 1].playerId, mediumLate.id,
     'the best top-10 career should rank last among busts');

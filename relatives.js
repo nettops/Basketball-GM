@@ -15,10 +15,22 @@ var _RELATIVES_DATA = (typeof require !== 'undefined')
     };
 
 // A father must have entered the league at least this many seasons before his
-// son's draft, so the timeline is never absurd. It also means a fresh save
-// generates no sons at all for its first eighteen years — that is the expected
-// result, not a failure.
-const ELIGIBLE_FATHER_GAP = 18;
+// son's draft, so the timeline is never absurd.
+//
+// Lowered from 18 to 13 after measuring what 18 actually cost. The gap is
+// counted from the father's OWN arrival, and the first generated class does not
+// enter until 2028 — so 18 put the first father-son pair in 2049, season 24 of
+// a save. Measured, not estimated: scripts/probe-families.js over 25 seasons.
+// A feature nobody reaches is not a feature.
+//
+// 13 puts a father at roughly 32-35 when his son is drafted, which is still an
+// entirely ordinary age to have a nineteen-year-old. Below about 11 it starts
+// producing fathers who would have been in their teens, so this is close to the
+// floor rather than an arbitrary reduction.
+//
+// It still means a fresh save generates no sons for its first several years —
+// that is the expected result, not a failure.
+const ELIGIBLE_FATHER_GAP = 13;
 
 function ensureRelatives(player) {
   if (!player.relatives) player.relatives = [];

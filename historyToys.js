@@ -10,12 +10,27 @@ var _TOYS_DATA = (typeof require !== 'undefined')
       teams: { getTeamById: getTeamById, TEAMS: TEAMS }
     };
 
-// A plain counting proxy, chosen because it exists for every player including
-// retirees. It is NOT a claim about value — a rebound is not a point — and the
-// UI labels it "production" rather than implying otherwise.
+// The three counting stats every player has, including retirees, added
+// together. It is NOT a claim about value — a rebound is not a point — it is
+// just the fairest cheap way to rank a guard against a centre.
+//
+// The UI shows the three components rather than this total under an invented
+// unit. "24,645 production" tells a reader nothing and cannot be checked
+// against anything; "18,200 pts · 4,100 reb · 2,345 ast" says exactly what the
+// ranking is made of, so an order that looks odd can be understood on sight.
 function careerProduction(careerStats) {
   if (!careerStats) return 0;
   return (careerStats.points || 0) + (careerStats.rebounds || 0) + (careerStats.assists || 0);
+}
+
+// The components behind that total, carried alongside it so no caller has to go
+// back to the player to render a row.
+const PRODUCTION_PARTS = ['points', 'rebounds', 'assists'];
+
+function productionParts(careerStats) {
+  const out = {};
+  PRODUCTION_PARTS.forEach(function (k) { out[k] = (careerStats && careerStats[k]) || 0; });
+  return out;
 }
 
 const AWARD_MVP = 'mvp';
@@ -34,6 +49,7 @@ function candidatePool() {
       playerId: p.id,
       name: p.name,
       production: careerProduction(p.careerStats),
+      parts: productionParts(p.careerStats),
       championships: p.championshipsWon || 0,
       mvps: countMvps(p.awardsWon),
       hofScore: 0,
@@ -46,6 +62,7 @@ function candidatePool() {
       playerId: r.id,
       name: r.name,
       production: careerProduction(r.careerStats),
+      parts: productionParts(r.careerStats),
       championships: r.championshipsWon || 0,
       mvps: countMvps(r.awardsWon),
       hofScore: r.hofScore || 0,
@@ -75,7 +92,8 @@ function pickRows() {
         teamId: pick.teamId,
         playerId: pick.playerId,
         name: pick.playerName,
-        production: c ? c.production : 0
+        production: c ? c.production : 0,
+        parts: c ? c.parts : productionParts(null)
       });
     });
   });
@@ -314,6 +332,8 @@ function mostLopsidedTrades(limit, currentYear) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     careerProduction: careerProduction,
+    productionParts: productionParts,
+    PRODUCTION_PARTS: PRODUCTION_PARTS,
     teamSeasonRows: teamSeasonRows,
     bestTeams: bestTeams,
     worstTeams: worstTeams,

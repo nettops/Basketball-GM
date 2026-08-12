@@ -86,13 +86,35 @@ function toySeasonRow(r) {
   return r.leagueYear + ' ' + toyTeamName(r.teamId) + ' — ' + r.wins + '-' + r.losses;
 }
 
+// These lists are ranked on career points + rebounds + assists added together,
+// because it is the fairest cheap way to compare a guard with a centre. What
+// they used to PRINT was that total under the invented unit "production" —
+// "24,645 production" — which names no real statistic, cannot be checked
+// against anything on the player's own page, and leaves an order that looks
+// wrong impossible to understand.
+//
+// Now they print the three real stats the ranking is made of. The total is
+// still the sort key; the components are what a reader can actually use.
+//
+// For totals summed across many players — a whole draft class, both sides of a
+// trade — the three-way split is noise, but the unit still has to be named. One
+// constant so the page cannot end up calling the same number two things.
+const TOY_STAT_UNIT = 'pts+reb+ast';
+
+function toyStatLine(r) {
+  const p = r.parts || {};
+  return (p.points || 0).toLocaleString() + ' pts · ' +
+    (p.rebounds || 0).toLocaleString() + ' reb · ' +
+    (p.assists || 0).toLocaleString() + ' ast';
+}
+
 function toyProductionRow(r) {
-  return escapeHtml(r.name) + ' — ' + r.production.toLocaleString() + ' production';
+  return escapeHtml(r.name) + ' — ' + toyStatLine(r);
 }
 
 function toyPickRow(r) {
   return '#' + r.pickNumber + ' (' + r.leagueYear + ') ' + escapeHtml(r.name) +
-    ' — ' + r.production.toLocaleString() + ' production';
+    ' — ' + toyStatLine(r);
 }
 
 function toyTradeSides(r) {
@@ -115,18 +137,21 @@ function toyCurrentYear() {
 // Relatives, which folds two-way links into one row per family and has no
 // business in a module that knows nothing about rendering.
 const TOY_CATALOGUE = [
-  { id: 'busts', name: 'Biggest Busts', blurb: 'Top-10 picks with the worst careers.',
+  { id: 'busts', name: 'Biggest Busts', blurb: 'Top-10 picks with the fewest career pts+reb+ast.',
     run: function () { return biggestBusts(TOY_ROW_LIMIT); }, row: toyPickRow },
-  { id: 'steals', name: 'Biggest Steals', blurb: 'Picks outside the top 10 with the best careers.',
+  { id: 'steals', name: 'Biggest Steals', blurb: 'Picks outside the top 10 with the most career pts+reb+ast.',
     run: function () { return biggestSteals(TOY_ROW_LIMIT); }, row: toyPickRow },
-  { id: 'bestAtPick', name: 'Best at Every Pick', blurb: 'The best career ever taken at each slot.',
+  { id: 'bestAtPick', name: 'Best at Every Pick', blurb: 'The most career pts+reb+ast ever taken at each slot.',
     run: function () { return bestPlayerAtEveryPick(); }, row: toyPickRow },
-  { id: 'classes', name: 'Draft Class Rankings', blurb: 'Every class, best to worst.',
+  { id: 'classes', name: 'Draft Class Rankings', blurb: 'Every class, by the career pts+reb+ast its picks went on to record.',
     run: function () { return draftClassRankings(); },
-    row: function (r) { return r.leagueYear + ' — ' + r.production.toLocaleString() + ' from ' + r.picks + ' picks'; } },
-  { id: 'noRing', name: 'Best Without a Ring', blurb: 'Great careers, no championship.',
+    row: function (r) {
+      return r.leagueYear + ' — ' + r.production.toLocaleString() + ' ' + TOY_STAT_UNIT +
+        ' from ' + r.picks + ' picks';
+    } },
+  { id: 'noRing', name: 'Best Without a Ring', blurb: 'The most career pts+reb+ast without a championship.',
     run: function () { return bestWithoutARing(TOY_ROW_LIMIT); }, row: toyProductionRow },
-  { id: 'noMvp', name: 'Best Without an MVP', blurb: 'Great careers, never once the best.',
+  { id: 'noMvp', name: 'Best Without an MVP', blurb: 'The most career pts+reb+ast without ever winning MVP.',
     run: function () { return bestWithoutAnMvp(TOY_ROW_LIMIT); }, row: toyProductionRow },
   { id: 'loyal', name: 'Most Years With One Team', blurb: 'The one-club players.',
     run: function () { return mostYearsOneTeam(TOY_ROW_LIMIT); },
@@ -148,13 +173,19 @@ const TOY_CATALOGUE = [
     run: function () { return bestToMissThePlayoffs(TOY_ROW_LIMIT); }, row: toySeasonRow },
   { id: 'worstChamp', name: 'Worst Team to Win It All', blurb: 'Got hot at the right time.',
     run: function () { return worstToWinIt(TOY_ROW_LIMIT); }, row: toySeasonRow },
-  { id: 'bigTrades', name: 'Biggest Trades', blurb: 'The most production ever moved.',
+  { id: 'bigTrades', name: 'Biggest Trades', blurb: 'The most career pts+reb+ast ever moved in one deal.',
     run: function () { return biggestTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
-    row: function (r) { return r.leagueYear + ' — ' + r.combined.toLocaleString() + ' moved: ' + toyTradeSides(r); } },
-  { id: 'lopsided', name: 'Most Lopsided Trades', blurb: 'Judged on what happened next, and only after three seasons.',
+    row: function (r) {
+      return r.leagueYear + ' — ' + r.combined.toLocaleString() + ' ' + TOY_STAT_UNIT +
+        ' moved: ' + toyTradeSides(r);
+    } },
+  { id: 'lopsided', name: 'Most Lopsided Trades', blurb: 'Judged on what each side produced afterwards, and only after three seasons.',
     run: function () { return mostLopsidedTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
-    row: function (r) { return r.leagueYear + ' — ' + r.difference.toLocaleString() + ' apart: ' + toyTradeSides(r); } },
-  { id: 'relatives', name: 'Relatives', blurb: 'Families in the league. A fresh league takes about eighteen seasons to grow one.',
+    row: function (r) {
+      return r.leagueYear + ' — ' + r.difference.toLocaleString() + ' ' + TOY_STAT_UNIT +
+        ' apart: ' + toyTradeSides(r);
+    } },
+  { id: 'relatives', name: 'Relatives', blurb: 'Families in the league. Brothers arrive early; a son needs his father to have played thirteen seasons first, so the first one turns up around season fifteen.',
     // historyToys.families() reads retirees too. This used to walk PLAYERS_2026
     // alone, which showed one of the three families in a twenty-season league —
     // families take most of twenty seasons to appear, so by the time they exist
