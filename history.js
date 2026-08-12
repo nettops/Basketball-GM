@@ -68,6 +68,16 @@ function _commissionerDep() {
     : { checkAutoExpansion: checkAutoExpansion };
 }
 
+// Lazy for the same reason _commissionerDep() is: draft.js's <script> tag
+// loads well after history.js's in index.html, so naming playoffResultByTeam
+// in the browser-global fallback at file-load time would throw before it is
+// defined and abort the rest of this file.
+function _draftDep() {
+  return (typeof require !== 'undefined')
+    ? require('./draft.js')
+    : { playoffResultByTeam: playoffResultByTeam };
+}
+
 const LEAGUE_HISTORY = {
   retiredPlayers: [],
   trades: [],
@@ -421,6 +431,19 @@ function archiveDraftClass(leagueYear, draftResults) {
 // handleAdvanceToOffseason — BEFORE retirement runs, so archiveRetiree (Task
 // 5, wired into seasonTransition.js in Task 9) sees each retiree's fully
 // updated careerStats/awardsWon for the season that just finished.
+// Reuses draft.js's playoffResultByTeam — the same classifier the draft order
+// is built from — rather than a second reading of the bracket that could
+// disagree with it. Index 0 is "lost round 1" and 4 is "won it all"; a team
+// absent from the bracket never played a playoff game.
+const PLAYOFF_RESULT_LABELS = ['lostR1', 'lostCSF', 'lostCF', 'lostFinals', 'champion'];
+
+function playoffResultLabel(bracket, teamId) {
+  if (!bracket || !bracket.finals || !bracket.finals[0]) return 'missed';
+  const byTeam = _draftDep().playoffResultByTeam(bracket);
+  const r = byTeam[teamId];
+  return r === undefined ? 'missed' : PLAYOFF_RESULT_LABELS[r];
+}
+
 function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   const sink = feedSink || function () {};
   const seasonAwards = _HISTORY_DATA.awards.computeSeasonAwards(leagueYear);
@@ -443,6 +466,19 @@ function finalizeSeasonHistory(leagueYear, playoffBracket, feedSink) {
   // also runs standalone under Node in scripts/validate-*.js.
   const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : undefined;
   _HISTORY_DATA.teams.TEAMS.forEach(function (team) {
+    // Recorded here because team.record is about to be folded into allTime and
+    // then reset. Season snapshots are capped and roll off the front, so this
+    // is the only durable per-season team record in the game — all-time team
+    // superlatives have nothing else to stand on.
+    LEAGUE_HISTORY.teamSeasons.push({
+      leagueYear: leagueYear,
+      teamId: team.id,
+      wins: team.record.wins,
+      losses: team.record.losses,
+      playoffResult: playoffResultLabel(playoffBracket, team.id),
+      champion: !!(playoffBracket && playoffBracket.finals && playoffBracket.finals[0] &&
+        playoffBracket.finals[0].winner === team.id)
+    });
     team.allTimeWins = (team.allTimeWins || 0) + team.record.wins;
     team.allTimeLosses = (team.allTimeLosses || 0) + team.record.losses;
     team.lastSeasonWins = team.record.wins;
