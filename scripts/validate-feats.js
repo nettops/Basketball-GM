@@ -104,6 +104,12 @@ const TARGET_RATES = {
 // the call site, and recordFeats — in one assertion.
 const RATE_SEED = 20260812;
 
+// A save already carries megabytes of play-by-play. A hundred kilobytes a
+// season of feats would be a rounding error against that; a megabyte a season
+// would not, and would be nobody's intent. The ceiling exists so lowering a bar
+// fails here rather than in a save file six months from now.
+const FEAT_BYTES_PER_SEASON_CEILING = 100 * 1024;
+
 function checkRatesAreInBand() {
   const rq2 = function (f) { return require(path.join(ROOT, f)); };
   rq2('data.js'); rq2('rng.js');
@@ -149,8 +155,18 @@ function checkRatesAreInBand() {
       kind + ' fired ' + counts[kind] + ' times in one real season, outside the ' +
       band[0] + '-' + band[1] + ' target band');
   });
+  // Feats are kept for the life of the save and can never be pruned — unlike
+  // box scores, which is exactly why they exist. So the per-season cost has a
+  // ceiling. This is the assertion that stops the feat log quietly becoming a
+  // second play-by-play if a bar is ever lowered.
+  const bytes = JSON.stringify(history.LEAGUE_HISTORY.feats).length;
+  assert.ok(bytes < FEAT_BYTES_PER_SEASON_CEILING,
+    'one season of feats costs ' + bytes + ' bytes, over the ' +
+    FEAT_BYTES_PER_SEASON_CEILING + ' ceiling');
+
   console.log('checkRatesAreInBand: OK (one ' + games.length + '-game season: ' +
-    feats.FEAT_KINDS.map(function (k) { return k + ' ' + counts[k]; }).join(', ') + ')');
+    feats.FEAT_KINDS.map(function (k) { return k + ' ' + counts[k]; }).join(', ') +
+    '; ' + (bytes / 1024).toFixed(1) + 'KB)');
 }
 
 // Feats must be filed from EVERY finished game, and the three call sites of

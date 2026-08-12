@@ -73,6 +73,135 @@ function computeTotalRetiredNumbers() {
   return TEAMS.reduce(function (sum, t) { return sum + ((t.retiredNumbers && t.retiredNumbers.length) || 0); }, 0);
 }
 
+// The catalogue. Each entry names a toy, says what it is, and says how to
+// render one row — nothing else. Adding a toy is one entry, not a new branch in
+// a render function that already works.
+//
+// Every `run` is a pure query from historyToys.js; nothing here computes.
+const TOY_ROW_LIMIT = 15;
+
+function toyTeamName(teamId) {
+  const team = getTeamById(teamId);
+  return team ? escapeHtml(team.name) : escapeHtml(String(teamId));
+}
+
+function toySeasonRow(r) {
+  return r.leagueYear + ' ' + toyTeamName(r.teamId) + ' — ' + r.wins + '-' + r.losses;
+}
+
+function toyProductionRow(r) {
+  return escapeHtml(r.name) + ' — ' + r.production.toLocaleString() + ' production';
+}
+
+function toyPickRow(r) {
+  return '#' + r.pickNumber + ' (' + r.leagueYear + ') ' + escapeHtml(r.name) +
+    ' — ' + r.production.toLocaleString() + ' production';
+}
+
+function toyTradeSides(r) {
+  return (r.participants || []).map(function (id) {
+    return toyTeamName(id) + ' ' + (r.bySide[id] || 0).toLocaleString();
+  }).join(' vs ');
+}
+
+// currentYear for the trade toys. GameState is a browser global; the fallback
+// keeps this file loadable under Node without one.
+function toyCurrentYear() {
+  return (typeof GameState !== 'undefined' && GameState && GameState.leagueYear) || 2026;
+}
+
+const TOY_CATALOGUE = [
+  { id: 'busts', name: 'Biggest Busts', blurb: 'Top-10 picks with the worst careers.',
+    run: function () { return biggestBusts(TOY_ROW_LIMIT); }, row: toyPickRow },
+  { id: 'steals', name: 'Biggest Steals', blurb: 'Picks outside the top 10 with the best careers.',
+    run: function () { return biggestSteals(TOY_ROW_LIMIT); }, row: toyPickRow },
+  { id: 'bestAtPick', name: 'Best at Every Pick', blurb: 'The best career ever taken at each slot.',
+    run: function () { return bestPlayerAtEveryPick(); }, row: toyPickRow },
+  { id: 'classes', name: 'Draft Class Rankings', blurb: 'Every class, best to worst.',
+    run: function () { return draftClassRankings(); },
+    row: function (r) { return r.leagueYear + ' — ' + r.production.toLocaleString() + ' from ' + r.picks + ' picks'; } },
+  { id: 'noRing', name: 'Best Without a Ring', blurb: 'Great careers, no championship.',
+    run: function () { return bestWithoutARing(TOY_ROW_LIMIT); }, row: toyProductionRow },
+  { id: 'noMvp', name: 'Best Without an MVP', blurb: 'Great careers, never once the best.',
+    run: function () { return bestWithoutAnMvp(TOY_ROW_LIMIT); }, row: toyProductionRow },
+  { id: 'loyal', name: 'Most Years With One Team', blurb: 'The one-club players.',
+    run: function () { return mostYearsOneTeam(TOY_ROW_LIMIT); },
+    row: function (r) { return escapeHtml(r.name) + ' — ' + r.years + ' seasons' + (r.teamId ? ' with ' + toyTeamName(r.teamId) : ''); } },
+  { id: 'journeymen', name: 'Most Teams', blurb: 'The journeymen.',
+    run: function () { return mostTeams(TOY_ROW_LIMIT); },
+    row: function (r) { return escapeHtml(r.name) + ' — ' + r.teams + ' teams'; } },
+  { id: 'earnings', name: 'Career Earnings', blurb: 'Who got paid.',
+    run: function () { return careerEarnings(TOY_ROW_LIMIT); },
+    row: function (r) { return escapeHtml(r.name) + ' — $' + r.earnings.toLocaleString(); } },
+  { id: 'veryGood', name: 'Hall of Very Good', blurb: 'The nearly-men who fell short of induction.',
+    run: function () { return hallOfVeryGood(TOY_ROW_LIMIT); },
+    row: function (r) { return escapeHtml(r.name) + ' — ' + r.hofScore.toFixed(0) + ' Hall of Fame score'; } },
+  { id: 'bestTeams', name: 'Best Teams Ever', blurb: 'The greatest single seasons.',
+    run: function () { return bestTeams(TOY_ROW_LIMIT); }, row: toySeasonRow },
+  { id: 'worstTeams', name: 'Worst Teams Ever', blurb: 'The seasons nobody wants back.',
+    run: function () { return worstTeams(TOY_ROW_LIMIT); }, row: toySeasonRow },
+  { id: 'bestMiss', name: 'Best Team to Miss the Playoffs', blurb: 'Good, and not good enough.',
+    run: function () { return bestToMissThePlayoffs(TOY_ROW_LIMIT); }, row: toySeasonRow },
+  { id: 'worstChamp', name: 'Worst Team to Win It All', blurb: 'Got hot at the right time.',
+    run: function () { return worstToWinIt(TOY_ROW_LIMIT); }, row: toySeasonRow },
+  { id: 'bigTrades', name: 'Biggest Trades', blurb: 'The most production ever moved.',
+    run: function () { return biggestTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
+    row: function (r) { return r.leagueYear + ' — ' + r.combined.toLocaleString() + ' moved: ' + toyTradeSides(r); } },
+  { id: 'lopsided', name: 'Most Lopsided Trades', blurb: 'Judged on what happened next, and only after three seasons.',
+    run: function () { return mostLopsidedTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
+    row: function (r) { return r.leagueYear + ' — ' + r.difference.toLocaleString() + ' apart: ' + toyTradeSides(r); } },
+  { id: 'relatives', name: 'Relatives', blurb: 'Families in the league. A fresh league takes about eighteen seasons to grow one.',
+    run: function () {
+      // Links are stored on both players, so every family would otherwise be
+      // listed twice. Keyed on the sorted pair of ids.
+      const seen = {};
+      const out = [];
+      PLAYERS_2026.forEach(function (p) {
+        relativesOf(p).forEach(function (r) {
+          const key = [p.id, r.playerId].sort().join('|');
+          if (seen[key]) return;
+          seen[key] = true;
+          out.push({ a: p.name, b: r.name, type: r.type });
+        });
+      });
+      return out;
+    },
+    row: function (r) {
+      const verb = r.type === 'father' ? 'is the son of'
+        : r.type === 'son' ? 'is the father of'
+        : 'is the brother of';
+      return escapeHtml(r.a) + ' ' + verb + ' ' + escapeHtml(r.b);
+    } }
+];
+
+function renderToyIndex(selectedToyId) {
+  let html = '<div class="panel"><div class="panel-header">Toys</div><div class="panel-body">' +
+    '<div class="toolbar">' + TOY_CATALOGUE.map(function (t) {
+      return '<button data-toy="' + t.id + '" class="' +
+        (selectedToyId === t.id ? 'btn-primary' : 'btn-ghost') + '">' +
+        escapeHtml(t.name) + '</button>';
+    }).join(' ') + '</div>';
+
+  const toy = TOY_CATALOGUE.find(function (t) { return t.id === selectedToyId; });
+  if (toy) {
+    let rows;
+    try {
+      rows = toy.run();
+    } catch (e) {
+      // One broken toy must not take the page down with it.
+      return html + '<div class="empty-state">This one could not be worked out: ' +
+        escapeHtml(e.message) + '</div></div></div>';
+    }
+    html += '<div class="kpi-sub">' + escapeHtml(toy.blurb) + '</div>';
+    html += rows.length === 0
+      ? '<div class="empty-state">Nothing here yet — this fills in as the league plays.</div>'
+      : '<ol class="stack-list">' + rows.map(function (r) { return '<li>' + toy.row(r) + '</li>'; }).join('') + '</ol>';
+  }
+  return html + '</div></div>';
+}
+
+let _selectedToyId = TOY_CATALOGUE[0].id;
+
 function renderFrivolities(container) {
   const tradeFrequency = computeTradeFrequencyByTeam().slice(0, 10);
   const mostTraded = computeMostTradedPlayers(10);
@@ -81,6 +210,10 @@ function renderFrivolities(container) {
   const longestTenures = computeLongestCurrentTenures(10);
 
   let html = '<div class="view-header"><h2>Frivolities</h2><span class="view-sub">Fun, low-stakes stats built from the league\'s own history</span></div>';
+
+  // The toy index sits ABOVE the glance panels: it is the reason to open this
+  // page, and the six panels below are the league at a glance.
+  html += renderToyIndex(_selectedToyId);
 
   html += '<div class="kpi-grid">' +
     '<div class="kpi-tile"><div class="kpi-label">Total Trades</div><div class="kpi-value">' + LEAGUE_HISTORY.trades.length + '</div></div>' +
@@ -131,10 +264,19 @@ function renderFrivolities(container) {
   '</div></div>';
 
   container.innerHTML = html;
+
+  container.querySelectorAll('button[data-toy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      _selectedToyId = btn.getAttribute('data-toy');
+      renderFrivolities(container);
+    });
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    TOY_CATALOGUE: TOY_CATALOGUE,
+    renderToyIndex: renderToyIndex,
     computeTradeFrequencyByTeam: computeTradeFrequencyByTeam,
     computeMostTradedPlayers: computeMostTradedPlayers,
     computeDraftClassHitRates: computeDraftClassHitRates,

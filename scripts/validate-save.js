@@ -466,4 +466,102 @@ function checkAVersionTwoSaveStillLoads() {
 }
 checkAVersionTwoSaveStillLoads();
 
+// Feats, team seasons and family links are the three stores added for the
+// history features. None of them can be rebuilt from anything else: box scores
+// are pruned at save time, season snapshots roll off the front, and a family
+// link exists nowhere but on the two players. If they do not survive a
+// save/load they are gone for good, and nothing else in this file would notice
+// because they ride on LEAGUE_HISTORY and the player objects rather than on
+// their own payload keys.
+function checkNewHistoryStoresRoundTrip() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const history = require(path.join(__dirname, '..', 'history.js'));
+  const relatives = require(path.join(__dirname, '..', 'relatives.js'));
+  const PLAYERS = require(path.join(__dirname, '..', 'players-2026.js')).PLAYERS_2026;
+
+  history.LEAGUE_HISTORY.feats.length = 0;
+  history.LEAGUE_HISTORY.teamSeasons.length = 0;
+  history.LEAGUE_HISTORY.feats.push({
+    leagueYear: 2030, day: 5, playerId: 'p1', playerName: 'Test', teamId: 'BOS',
+    oppTeamId: 'LAL', kind: 'tripleDouble', points: 30, rebounds: 14, assists: 14, steals: 1, blocks: 1
+  });
+  history.LEAGUE_HISTORY.teamSeasons.push({
+    leagueYear: 2030, teamId: 'BOS', wins: 60, losses: 22, playoffResult: 'champion', champion: true
+  });
+  const dad = PLAYERS[0], kid = PLAYERS[1];
+  delete dad.relatives; delete kid.relatives;
+  relatives.link(dad, kid, 'father');
+
+  const payload = JSON.parse(JSON.stringify(
+    saveModule.serializeGameState(makeFakeGameState(), 'History Save')));
+
+  history.LEAGUE_HISTORY.feats.length = 0;
+  history.LEAGUE_HISTORY.teamSeasons.length = 0;
+  delete dad.relatives; delete kid.relatives;
+
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+
+  assert.strictEqual(history.LEAGUE_HISTORY.feats.length, 1, 'feats must survive a save/load');
+  assert.strictEqual(history.LEAGUE_HISTORY.feats[0].kind, 'tripleDouble');
+  assert.strictEqual(history.LEAGUE_HISTORY.feats[0].rebounds, 14,
+    'and must come back with the line intact, not just the kind');
+  assert.strictEqual(history.LEAGUE_HISTORY.teamSeasons.length, 1, 'team seasons must survive');
+  assert.strictEqual(history.LEAGUE_HISTORY.teamSeasons[0].champion, true);
+
+  // applySavedState rebuilds PLAYERS_2026 from the payload, so re-find them.
+  const loadedDad = PLAYERS.find(function (p) { return p.id === dad.id; });
+  const loadedKid = PLAYERS.find(function (p) { return p.id === kid.id; });
+  assert.ok(loadedDad && loadedKid, 'both players must come back');
+  assert.deepStrictEqual(relatives.relativesOf(loadedDad),
+    [{ type: 'son', playerId: loadedKid.id, name: loadedKid.name }],
+    'the father end of the link must survive');
+  assert.deepStrictEqual(relatives.relativesOf(loadedKid),
+    [{ type: 'father', playerId: loadedDad.id, name: loadedDad.name }],
+    'and so must the son end — a one-way link is a broken family');
+
+  delete loadedDad.relatives; delete loadedKid.relatives;
+  console.log('checkNewHistoryStoresRoundTrip: OK');
+}
+
+// A save written before these fields existed must still load, leaving the
+// defaults in place rather than undefined — every toy and the Feats page read
+// these arrays without guarding.
+function checkOldSaveWithoutNewFieldsLoads() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const history = require(path.join(__dirname, '..', 'history.js'));
+
+  const payload = JSON.parse(JSON.stringify(
+    saveModule.serializeGameState(makeFakeGameState(), 'Ancient Save')));
+  delete payload.leagueHistory.feats;
+  delete payload.leagueHistory.teamSeasons;
+
+  // Exactly the state a freshly loaded page is in: the defaults from the
+  // LEAGUE_HISTORY literal, untouched. Seeding them with junk first and then
+  // asserting "still an array" would assert nothing — the junk is an array.
+  history.LEAGUE_HISTORY.feats = [];
+  history.LEAGUE_HISTORY.teamSeasons = [];
+
+  const restored = {};
+  saveModule.applySavedState(payload, restored);
+
+  assert.ok(Array.isArray(history.LEAGUE_HISTORY.feats),
+    'an old save must leave feats an EMPTY ARRAY, not undefined — the Feats ' +
+    'page and every toy read it without guarding');
+  assert.strictEqual(history.LEAGUE_HISTORY.feats.length, 0);
+  assert.ok(Array.isArray(history.LEAGUE_HISTORY.teamSeasons),
+    'an old save must leave teamSeasons an empty array, not undefined');
+  assert.strictEqual(history.LEAGUE_HISTORY.teamSeasons.length, 0);
+
+  // And the pages that read them must actually render off that state rather
+  // than throwing on undefined, which is the failure this guards against.
+  const toys = require(path.join(__dirname, '..', 'historyToys.js'));
+  assert.deepStrictEqual(toys.bestTeams(5), [], 'the team toys must open on an old save');
+  assert.deepStrictEqual(toys.worstToWinIt(5), []);
+  console.log('checkOldSaveWithoutNewFieldsLoads: OK');
+}
+
+checkNewHistoryStoresRoundTrip();
+checkOldSaveWithoutNewFieldsLoads();
+
 console.log('All save/load validations passed');

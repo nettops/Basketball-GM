@@ -965,9 +965,62 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // Sixteen separate queries over league history, any one of which can be the
+  // one that throws on an empty league or a half-played season. Every toy is
+  // opened, not just the default.
+  function checkToys() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+
+    renderView('frivolities');
+    const view = document.getElementById('view-content');
+    const buttons = view.querySelectorAll('button[data-toy]');
+    results.push(ok('toys:index-renders', buttons.length >= 17, buttons.length + ' toys'));
+
+    // The glance panels this page had before the toys must still be here.
+    results.push(ok('toys:glance-panels-survive',
+      view.innerText.indexOf('Most Active Trade Partners') !== -1 &&
+      view.innerText.indexOf('Draft Class Hit Rates') !== -1, null));
+
+    // Re-query by index each iteration: clicking re-renders the page and
+    // detaches every button captured beforehand. A detached node still fires
+    // its listener, so a cached loop looks like it works while asserting
+    // against elements no longer on the page.
+    const count = buttons.length;
+    const broke = [];
+    const empties = [];
+    for (let i = 0; i < count; i++) {
+      const all = document.getElementById('view-content').querySelectorAll('button[data-toy]');
+      const id = all[i] && all[i].getAttribute('data-toy');
+      try {
+        all[i].click();
+        const body = document.getElementById('view-content');
+        const list = body.querySelector('.stack-list');
+        const empty = body.querySelector('.empty-state');
+        if (!list && !empty) broke.push(id + ': rendered neither a list nor an empty state');
+        if (!list && empty) empties.push(id);
+      } catch (e) {
+        broke.push(id + ': ' + e.message);
+      }
+    }
+    results.push(ok('toys:every-toy-opens', broke.length === 0, broke.join('; ') || null));
+    results.push(ok('toys:selected-toy-is-marked',
+      document.getElementById('view-content').querySelectorAll('button[data-toy].btn-primary').length === 1,
+      null));
+    // Not a failure — a young league legitimately has empty toys — but worth
+    // reporting so "everything is empty" is visible rather than silent.
+    results.push(ok('toys:some-toy-has-rows', empties.length < count,
+      empties.length + ' of ' + count + ' empty' + (empties.length ? ': ' + empties.join(', ') : '')));
+
+    renderView(startView);
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     feats: checkFeats,
+    toys: checkToys,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,

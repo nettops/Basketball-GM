@@ -317,6 +317,26 @@ function openPlayerProfile(playerId) {
 // thing nobody ever sees gets built.
 const PROFILE_FEAT_LIMIT = 12;
 
+const FAMILY_LABELS = { father: 'Son of', son: 'Father of', brother: 'Brother of' };
+
+// A relative may be an active player or a retiree — the link stores the name
+// alongside the id precisely so this never has to search the league to render.
+// The name is only a link when the player is still findable.
+function renderFamilyPanel(player) {
+  const kin = relativesOf(player);
+  if (!kin.length) return '';
+  return '<div class="panel"><div class="panel-header">Family</div>' +
+    '<div class="panel-body"><ul class="stack-list">' +
+    kin.map(function (r) {
+      const label = FAMILY_LABELS[r.type] || 'Related to';
+      const known = !!getPlayerById(r.playerId);
+      const name = known
+        ? '<button class="player-link" data-profile-id="' + r.playerId + '">' + escapeHtml(r.name) + '</button>'
+        : escapeHtml(r.name);
+      return '<li>' + label + ' ' + name + '</li>';
+    }).join('') + '</ul></div></div>';
+}
+
 function renderFeatsPanel(player) {
   const mine = featsForPlayer(player.id);
   if (!mine.length) return '';
@@ -364,10 +384,16 @@ function renderPlayerProfile(container) {
     else if (activeTab === 'teams') html += renderTeamHistoryTab(player);
     else if (activeTab === 'injuries') html += renderInjuryTimelineTab(player);
 
+    html += renderFamilyPanel(player);
     html += renderFeatsPanel(player);
 
     container.innerHTML = html;
 
+    // The family panel links to relatives; the delegated handler every other
+    // screen uses lives on its own render, so this one wires its own.
+    container.querySelectorAll('button[data-profile-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openPlayerProfile(btn.getAttribute('data-profile-id')); });
+    });
     container.querySelectorAll('.tab-btn').forEach(function (btn) {
       btn.addEventListener('click', function () { activeTab = btn.getAttribute('data-tab'); draw(); });
     });
