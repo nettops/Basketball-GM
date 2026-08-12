@@ -73,11 +73,8 @@ function computeTotalRetiredNumbers() {
   return TEAMS.reduce(function (sum, t) { return sum + ((t.retiredNumbers && t.retiredNumbers.length) || 0); }, 0);
 }
 
-// The catalogue. Each entry names a toy, says what it is, and says how to
-// render one row — nothing else. Adding a toy is one entry, not a new branch in
-// a render function that already works.
-//
-// Every `run` is a pure query from historyToys.js; nothing here computes.
+// How many rows a ranked toy shows. bestPlayerAtEveryPick ignores it on
+// purpose — "the best at each pick" is a complete list or it is nothing.
 const TOY_ROW_LIMIT = 15;
 
 function toyTeamName(teamId) {
@@ -110,6 +107,13 @@ function toyCurrentYear() {
   return (typeof GameState !== 'undefined' && GameState && GameState.leagueYear) || 2026;
 }
 
+// The catalogue. Each entry names a toy, says what it is, and says how to
+// render one row — nothing else. Adding a toy is one entry, not a new branch in
+// a render function that already works.
+//
+// Every `run` but one is a straight call into historyToys.js. The exception is
+// Relatives, which folds two-way links into one row per family and has no
+// business in a module that knows nothing about rendering.
 const TOY_CATALOGUE = [
   { id: 'busts', name: 'Biggest Busts', blurb: 'Top-10 picks with the worst careers.',
     run: function () { return biggestBusts(TOY_ROW_LIMIT); }, row: toyPickRow },
