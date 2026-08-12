@@ -80,6 +80,87 @@ function checkPlayoffResultsAreClassified() {
   console.log('checkPlayoffResultsAreClassified: OK');
 }
 
+const toys = rq('historyToys.js');
+
+// Reading only retiredPlayers would leave every toy empty for the first fifteen
+// seasons of a save — which is most of the time anyone will look at them. The
+// pool is active players PLUS retirees, keyed by id so nobody is double-counted.
+function checkPoolIncludesActivePlayers() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  history.ensureCareerData(PLAYERS_2026);
+  PLAYERS_2026[0].careerStats.points = 5000;
+  const pool = toys.candidatePool();
+  assert.ok(pool.length >= PLAYERS_2026.length,
+    'pool of ' + pool.length + ' is smaller than the ' + PLAYERS_2026.length + ' active players');
+  const ids = pool.map(function (p) { return p.playerId; });
+  assert.strictEqual(new Set(ids).size, ids.length, 'no player may appear twice in the pool');
+  const first = pool.find(function (p) { return p.playerId === PLAYERS_2026[0].id; });
+  assert.ok(first && first.production > 0, 'an active player with stats must carry production');
+
+  // A retiree must not be dropped, and must not be listed twice if he also
+  // still sits in PLAYERS_2026 under the same id.
+  history.LEAGUE_HISTORY.retiredPlayers.push({
+    id: 'ghost-1', name: 'Old Timer', careerStats: { points: 9000, rebounds: 1000, assists: 500 },
+    awardsWon: [], championshipsWon: 2, hofScore: 140, hallOfFame: true
+  });
+  const withRetiree = toys.candidatePool();
+  const ghost = withRetiree.find(function (p) { return p.playerId === 'ghost-1'; });
+  assert.ok(ghost, 'a retiree must be in the pool');
+  assert.strictEqual(ghost.production, 10500, 'production is points + rebounds + assists');
+  assert.strictEqual(ghost.retired, true);
+  assert.strictEqual(ghost.championships, 2);
+  console.log('checkPoolIncludesActivePlayers: OK (' + withRetiree.length + ')');
+}
+
+function checkDraftToysRankCorrectly() {
+  history.LEAGUE_HISTORY.draftClasses.length = 0;
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  history.ensureCareerData(PLAYERS_2026);
+  const star = PLAYERS_2026[0], dud = PLAYERS_2026[1];
+  star.careerStats.points = 20000; star.careerStats.rebounds = 0; star.careerStats.assists = 0;
+  dud.careerStats.points = 10; dud.careerStats.rebounds = 0; dud.careerStats.assists = 0;
+  history.LEAGUE_HISTORY.draftClasses.push({
+    leagueYear: 2026,
+    picks: [
+      { round: 1, pickNumber: 1, teamId: 'BOS', playerId: dud.id, playerName: dud.name },
+      { round: 1, pickNumber: 40, teamId: 'LAL', playerId: star.id, playerName: star.name }
+    ]
+  });
+  const busts = toys.biggestBusts(5);
+  assert.ok(busts.length > 0, 'a top-10 pick with 10 career points must register as a bust');
+  assert.strictEqual(busts[0].playerId, dud.id, 'the worst top-10 career should rank first');
+  const steals = toys.biggestSteals(5);
+  assert.strictEqual(steals[0].playerId, star.id, 'the best late pick should rank first');
+  assert.ok(!busts.some(function (b) { return b.playerId === star.id; }),
+    'a pick outside the top 10 can never be a bust');
+  assert.ok(!steals.some(function (s) { return s.playerId === dud.id; }),
+    'a top-10 pick can never be a steal');
+
+  const atPick = toys.bestPlayerAtEveryPick();
+  assert.strictEqual(atPick.length, 2, 'one row per distinct pick number');
+  assert.strictEqual(atPick[0].pickNumber, 1, 'best-at-pick is ordered by pick number ascending');
+  assert.strictEqual(atPick[1].pickNumber, 40);
+
+  const classes = toys.draftClassRankings();
+  assert.strictEqual(classes.length, 1);
+  assert.strictEqual(classes[0].production, 20010, 'a class is worth the sum of its picks');
+  assert.strictEqual(classes[0].picks, 2);
+  console.log('checkDraftToysRankCorrectly: OK');
+}
+
+// A brand new league opens these pages. They must be empty, not broken.
+function checkEmptyHistoryReturnsEmptyLists() {
+  history.LEAGUE_HISTORY.draftClasses.length = 0;
+  assert.deepStrictEqual(toys.biggestBusts(5), []);
+  assert.deepStrictEqual(toys.biggestSteals(5), []);
+  assert.deepStrictEqual(toys.draftClassRankings(), []);
+  assert.deepStrictEqual(toys.bestPlayerAtEveryPick(), []);
+  console.log('checkEmptyHistoryReturnsEmptyLists: OK');
+}
+
 checkTeamSeasonsAreRecorded();
 checkPlayoffResultsAreClassified();
+checkPoolIncludesActivePlayers();
+checkDraftToysRankCorrectly();
+checkEmptyHistoryReturnsEmptyLists();
 console.log('All history toy validations passed');
