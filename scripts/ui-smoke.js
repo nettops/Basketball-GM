@@ -951,7 +951,42 @@ const UI_SMOKE = (function () {
         const strays = shown.filter(function (tr) { return tr.getAttribute('data-feat-year') !== year; });
         results.push(ok('feats:season-filter-is-honest', strays.length === 0,
           strays.length ? strays.length + ' rows from another season survived the filter' : null));
+        select.value = '';
+        select.dispatchEvent(new Event('change'));
       }
+
+      // The spec asks for season, team and player. All three are asserted, so
+      // one of them quietly not being wired up is a failure and not a shrug.
+      const teamSel = document.getElementById('feat-team');
+      const teamId = teamSel.options[1] && teamSel.options[1].value;
+      if (teamId) {
+        teamSel.value = teamId;
+        teamSel.dispatchEvent(new Event('change'));
+        const shown = Array.from(view.querySelectorAll('#feat-rows tr'))
+          .filter(function (tr) { return tr.style.display !== 'none'; });
+        results.push(ok('feats:team-filter-narrows',
+          shown.length > 0 && shown.every(function (tr) { return tr.getAttribute('data-feat-team') === teamId; }),
+          shown.length + ' rows, all ' + teamId));
+        teamSel.value = '';
+        teamSel.dispatchEvent(new Event('change'));
+      }
+
+      const nameInput = document.getElementById('feat-player');
+      const someName = rows[0].getAttribute('data-feat-player');
+      nameInput.value = someName;
+      nameInput.dispatchEvent(new Event('input'));
+      const byName = Array.from(view.querySelectorAll('#feat-rows tr'))
+        .filter(function (tr) { return tr.style.display !== 'none'; });
+      results.push(ok('feats:player-filter-narrows',
+        byName.length > 0 && byName.every(function (tr) { return tr.getAttribute('data-feat-player') === someName; }),
+        byName.length + ' rows for "' + someName + '"'));
+      nameInput.value = '';
+      nameInput.dispatchEvent(new Event('input'));
+
+      const restored = Array.from(view.querySelectorAll('#feat-rows tr'))
+        .filter(function (tr) { return tr.style.display !== 'none'; });
+      results.push(ok('feats:clearing-filters-restores-every-row',
+        restored.length === rows.length, restored.length + ' of ' + rows.length));
 
       // Every feat must name a player who can actually be opened. A record
       // pointing at an id nobody holds renders a dead button.

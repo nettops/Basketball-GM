@@ -62,23 +62,34 @@ function renderFeats(container) {
   all.forEach(function (f) { if (years.indexOf(f.leagueYear) === -1) years.push(f.leagueYear); });
   const kinds = [];
   all.forEach(function (f) { if (kinds.indexOf(f.kind) === -1) kinds.push(f.kind); });
+  const teamIds = [];
+  all.forEach(function (f) { if (teamIds.indexOf(f.teamId) === -1) teamIds.push(f.teamId); });
+  teamIds.sort(function (a, b) { return teamLabel(a).localeCompare(teamLabel(b)); });
 
   html += '<div class="panel"><div class="panel-body"><div class="toolbar">' +
     '<label>Season <select id="feat-year"><option value="">All</option>' +
     years.map(function (y) { return '<option value="' + y + '">' + y + '</option>'; }).join('') +
+    '</select></label> ' +
+    '<label>Team <select id="feat-team"><option value="">All</option>' +
+    teamIds.map(function (t) {
+      return '<option value="' + escapeHtml(t) + '">' + escapeHtml(teamLabel(t)) + '</option>';
+    }).join('') +
     '</select></label> ' +
     '<label>Feat <select id="feat-kind"><option value="">All</option>' +
     kinds.map(function (k) {
       return '<option value="' + k + '">' + escapeHtml(featLabel(k)) + '</option>';
     }).join('') +
     '</select></label> ' +
+    '<label>Player <input id="feat-player" type="search" placeholder="name"></label> ' +
     '<span class="kpi-sub" id="feat-count">' + all.length + ' shown</span>' +
     '</div></div></div>';
 
   html += '<div class="panel"><table class="data-table"><thead><tr><th class="num">Season</th>' +
     '<th>Player</th><th>Team</th><th>Feat</th><th>Line</th></tr></thead><tbody id="feat-rows">';
   html += all.map(function (f) {
-    return '<tr data-feat-year="' + f.leagueYear + '" data-feat-kind="' + f.kind + '">' +
+    return '<tr data-feat-year="' + f.leagueYear + '" data-feat-kind="' + f.kind + '"' +
+      ' data-feat-team="' + escapeHtml(f.teamId) + '"' +
+      ' data-feat-player="' + escapeHtml(f.playerName.toLowerCase()) + '">' +
       '<td class="num">' + f.leagueYear + '</td>' +
       '<td class="col-name"><button class="player-link" data-profile-id="' + f.playerId + '">' +
       escapeHtml(f.playerName) + '</button></td>' +
@@ -93,11 +104,15 @@ function renderFeats(container) {
 
   function applyFilters() {
     const wantYear = document.getElementById('feat-year').value;
+    const wantTeam = document.getElementById('feat-team').value;
     const wantKind = document.getElementById('feat-kind').value;
+    const wantPlayer = document.getElementById('feat-player').value.trim().toLowerCase();
     let shown = 0;
     container.querySelectorAll('#feat-rows tr').forEach(function (tr) {
       const ok = (!wantYear || tr.getAttribute('data-feat-year') === wantYear) &&
-        (!wantKind || tr.getAttribute('data-feat-kind') === wantKind);
+        (!wantTeam || tr.getAttribute('data-feat-team') === wantTeam) &&
+        (!wantKind || tr.getAttribute('data-feat-kind') === wantKind) &&
+        (!wantPlayer || tr.getAttribute('data-feat-player').indexOf(wantPlayer) !== -1);
       tr.style.display = ok ? '' : 'none';
       if (ok) shown++;
     });
@@ -105,7 +120,9 @@ function renderFeats(container) {
   }
 
   document.getElementById('feat-year').addEventListener('change', applyFilters);
+  document.getElementById('feat-team').addEventListener('change', applyFilters);
   document.getElementById('feat-kind').addEventListener('change', applyFilters);
+  document.getElementById('feat-player').addEventListener('input', applyFilters);
   container.querySelectorAll('button[data-profile-id]').forEach(function (btn) {
     btn.addEventListener('click', function () { openPlayerProfile(btn.getAttribute('data-profile-id')); });
   });
