@@ -73,7 +73,14 @@ const LEAGUE_HISTORY = {
   trades: [],
   draftClasses: [],
   awardsHistory: [],
-  champions: []
+  champions: [],
+  // Single-game feats, league-wide, for the life of the save. They cannot be
+  // recovered later: save.js prunes box scores to the user's own games, so a
+  // 60-point night by another team is unrecoverable once written to disk.
+  feats: [],
+  // One row per team per completed season. Season snapshots are capped and
+  // roll off the front, so they cannot back all-time team records.
+  teamSeasons: []
 };
 
 const ZERO_AVERAGES = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0, fgPct: 0, tpPct: 0, ftPct: 0, mpg: 0 };
@@ -365,6 +372,14 @@ function archiveChampionAndAdjustPrestige(playoffBracket, leagueYear, feedSink) 
   sink(champTeam.name + ' wins the ' + leagueYear + ' championship!');
 }
 
+// Appends detected feats. Separate from detection so feats.js stays pure and
+// this file stays the only thing that owns LEAGUE_HISTORY.
+function recordFeats(featRecords) {
+  if (!featRecords || featRecords.length === 0) return [];
+  featRecords.forEach(function (f) { LEAGUE_HISTORY.feats.push(f); });
+  return featRecords;
+}
+
 function archiveTrade(proposal, leagueYear) {
   const record = {
     leagueYear: leagueYear,
@@ -532,6 +547,7 @@ if (typeof module !== 'undefined' && module.exports) {
     archiveChampionAndAdjustPrestige: archiveChampionAndAdjustPrestige,
     computeBestRecordByConference: computeBestRecordByConference,
     archiveTrade: archiveTrade,
+    recordFeats: recordFeats,
     archiveDraftClass: archiveDraftClass,
     finalizeSeasonHistory: finalizeSeasonHistory,
     careerLeaders: careerLeaders,

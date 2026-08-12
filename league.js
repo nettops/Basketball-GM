@@ -1,7 +1,15 @@
-// players.js/teams.js don't require league.js back, so these are safe to load eagerly.
+// players.js/teams.js don't require league.js back, so these are safe to load
+// eagerly. feats.js requires nothing at all, so it is safer still — it is a
+// pure leaf. history.js is NOT here for the opposite reason: it requires
+// league.js back at its first line, so an eager require would hand it this
+// file's still-empty exports. It lives in _historyDeps() below.
 var _LEAGUE_DATA = (typeof require !== 'undefined')
-  ? { players: require('./players-2026.js'), teams: require('./teams.js') }
-  : { players: { PLAYERS_2026: PLAYERS_2026 }, teams: { getTeamById: getTeamById, TEAMS: TEAMS } };
+  ? { players: require('./players-2026.js'), teams: require('./teams.js'), feats: require('./feats.js') }
+  : {
+      players: { PLAYERS_2026: PLAYERS_2026 },
+      teams: { getTeamById: getTeamById, TEAMS: TEAMS },
+      feats: { detectFeats: detectFeats }
+    };
 
 // simEngine.js/fatigue.js/injuries.js all require league.js back (for getTeamRoster),
 // so eagerly requiring them here at module-load time would deadlock on the cycle —
@@ -41,7 +49,10 @@ function getPlayerById(playerId) {
 // game — five defended shots is noise. Season totals are what make it readable.
 const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm'];
 
-function recordGameResult(game) {
+// context carries { leagueYear, day } — the two things a feat record needs and
+// the game object does not have. All three call sites pass it; the call-site
+// guard in scripts/validate-feats.js asserts they do.
+function recordGameResult(game, context) {
   const homeTeam = _LEAGUE_DATA.teams.getTeamById(game.homeTeamId);
   const awayTeam = _LEAGUE_DATA.teams.getTeamById(game.awayTeamId);
   homeTeam.record.pointsFor = (homeTeam.record.pointsFor || 0) + game.homeScore;
@@ -55,6 +66,29 @@ function recordGameResult(game) {
     awayTeam.record.wins += 1;
     homeTeam.record.losses += 1;
   }
+  recordGameFeats(game, context);
+}
+
+// Every finished game in the league passes through here — regular season,
+// playoff series, play-in, and the game the user watches live — which is why
+// detection hangs off this function rather than off any one caller.
+function recordGameFeats(game, context) {
+  if (!game.boxScore || !context) return;
+  const homeIds = getTeamRoster(game.homeTeamId).map(function (p) { return p.id; });
+  Object.keys(game.boxScore).forEach(function (playerId) {
+    const player = getPlayerById(playerId);
+    if (!player) return;
+    const onHome = homeIds.indexOf(playerId) !== -1;
+    const found = _LEAGUE_DATA.feats.detectFeats(game.boxScore[playerId], {
+      leagueYear: context.leagueYear,
+      day: context.day,
+      playerId: playerId,
+      playerName: player.name,
+      teamId: onHome ? game.homeTeamId : game.awayTeamId,
+      oppTeamId: onHome ? game.awayTeamId : game.homeTeamId
+    });
+    _historyDeps().history.recordFeats(found);
+  });
 }
 
 // Lazily required for the same reason _simDeps() is: careerHistory.js
@@ -62,13 +96,14 @@ function recordGameResult(game) {
 // eager require here would deadlock on the cycle at module-load time.
 function _historyDeps() {
   return (typeof require !== 'undefined')
-    ? { careerHistory: require('./careerHistory.js') }
+    ? { careerHistory: require('./careerHistory.js'), history: require('./history.js') }
     : {
         careerHistory: {
           checkAndUpdateCareerHighs: checkAndUpdateCareerHighs,
           recordInjuryInHistory: recordInjuryInHistory,
           recordInjuryReturn: recordInjuryReturn
-        }
+        },
+        history: { recordFeats: recordFeats }
       };
 }
 
@@ -130,7 +165,7 @@ function applyGameResult(game, result, deps, season, dayIndex, leagueYear, playi
   // and stays undefined — for games simmed under that engine).
   game.playByPlay = result.playByPlay || null;
 
-  recordGameResult(game);
+  recordGameResult(game, { leagueYear: leagueYear, day: dayIndex });
 
   const homeWon = game.homeScore > game.awayScore;
   deps.finances.tickFinancesForTeamGame(game.homeTeamId, homeWon, _LEAGUE_DATA.teams.getTeamById);

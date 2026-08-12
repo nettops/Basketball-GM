@@ -134,10 +134,81 @@ function checkRatesAreInBand() {
   }).join(', ') + ')');
 }
 
+// Feats must be filed from EVERY finished game, and the three call sites of
+// recordGameResult must all pass the context the record needs. A rule reaching
+// one call site and not its siblings is the single most repeated defect in this
+// codebase — see validate-userPathRules.js for the same guard on the offseason.
+function checkAllCallSitesPassContext() {
+  const fs = require('fs');
+  function callArgs(file, name) {
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const out = [];
+    let i = 0;
+    while ((i = src.indexOf(name + '(', i)) !== -1) {
+      const before = src.slice(Math.max(0, i - 9), i);
+      if (!/function\s*$/.test(before)) {
+        const open = src.indexOf('(', i + name.length - 1);
+        let depth = 0;
+        for (let j = open; j < src.length; j++) {
+          if (src[j] === '(') depth++;
+          else if (src[j] === ')') { depth--; if (depth === 0) { out.push(src.slice(open + 1, j)); break; } }
+        }
+      }
+      i += name.length;
+    }
+    return out;
+  }
+  const sites = callArgs('league.js', 'recordGameResult')
+    .concat(callArgs('playoffs.js', '_PLAYOFF_DATA.league.recordGameResult'));
+  assert.strictEqual(sites.length, 3,
+    'expected exactly 3 recordGameResult call sites, found ' + sites.length);
+  sites.forEach(function (args) {
+    assert.ok(args.split(',').length >= 2,
+      'recordGameResult called with one argument — feats need {leagueYear, day}: (' + args.trim() + ')');
+  });
+  console.log('checkAllCallSitesPassContext: OK (3 sites)');
+}
+
+function checkFeatsAreFiledFromRealGames() {
+  const rq3 = function (f) { return require(path.join(ROOT, f)); };
+  const history = rq3('history.js');
+  const league = rq3('league.js');
+  const TEAMS = rq3('teams.js').TEAMS;
+  const makeRng = rq3('rng.js').makeRng;
+  const gameSim = rq3('gameSim.js');
+
+  history.LEAGUE_HISTORY.feats.length = 0;
+  const rng = makeRng(7);
+  for (let i = 0; i < 120; i++) {
+    const home = TEAMS[i % TEAMS.length], away = TEAMS[(i + 5) % TEAMS.length];
+    if (home.id === away.id) continue;
+    const result = gameSim.simulateGame(home.id, away.id, rng, {});
+    const game = {
+      homeTeamId: home.id, awayTeamId: away.id,
+      homeScore: result.homeScore, awayScore: result.awayScore,
+      boxScore: result.boxScore
+    };
+    league.recordGameResult(game, { leagueYear: 2026, day: i });
+  }
+  const filed = history.LEAGUE_HISTORY.feats;
+  assert.ok(filed.length > 0, '120 games produced no feats at all — detection is not wired in');
+  filed.forEach(function (f) {
+    assert.strictEqual(f.leagueYear, 2026, 'every feat must carry the league year');
+    assert.ok(typeof f.day === 'number', 'every feat must carry the day');
+    assert.ok(f.playerId && f.playerName, 'every feat must name its player');
+    assert.ok(f.teamId && f.oppTeamId && f.teamId !== f.oppTeamId,
+      'a feat must name both teams and they must differ');
+    assert.ok(feats.FEAT_KINDS.indexOf(f.kind) !== -1, 'unknown feat kind ' + f.kind);
+  });
+  console.log('checkFeatsAreFiledFromRealGames: OK (' + filed.length + ' from 120 games)');
+}
+
 checkTripleDouble();
 checkFiveByFive();
 checkScoringBoundaries();
 checkRecordCarriesContext();
 checkEmptyLineProducesNothing();
+checkAllCallSitesPassContext();
+checkFeatsAreFiledFromRealGames();
 checkRatesAreInBand();
 console.log('All feat validations passed');

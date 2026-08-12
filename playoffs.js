@@ -72,7 +72,9 @@ function simulatePlayInGame(homeTeamId, awayTeamId, settings, rng) {
   const result = engine.simulateGame(homeTeamId, awayTeamId, rng);
   const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: result.boxScore, isPlayoff: true, isPlayIn: true, seriesId: null };
 
-  _PLAYOFF_DATA.league.recordGameResult(game);
+  _PLAYOFF_DATA.league.recordGameResult(game, {
+    leagueYear: (settings && settings.leagueYear) || 2026, day: null
+  });
   if (result.boxScore) {
     Object.keys(result.boxScore).forEach(function (playerId) {
       _PLAYOFF_DATA.league.accumulateSeasonStats(playerId, result.boxScore[playerId]);
@@ -201,7 +203,8 @@ function simulateSeriesGame(series, settings, rng, watchOptions) {
       finish: function () {
         if (finished) return false;
         finished = true;
-        recordSeriesGameResult(series, pending, sim.result(), homeIsHigher, rng);
+        recordSeriesGameResult(series, pending, sim.result(), homeIsHigher, rng,
+          (settings && settings.leagueYear) || 2026);
         return true;
       }
     };
@@ -215,21 +218,25 @@ function simulateSeriesGame(series, settings, rng, watchOptions) {
     ? engine.simulateGame(homeTeamId, awayTeamId, rng, { events: watchOptions.events })
     : engine.simulateGame(homeTeamId, awayTeamId, rng);
   const game = { homeTeamId: homeTeamId, awayTeamId: awayTeamId, isPlayoff: true, seriesId: series.id };
-  recordSeriesGameResult(series, game, result, homeIsHigher, rng);
+  recordSeriesGameResult(series, game, result, homeIsHigher, rng,
+    (settings && settings.leagueYear) || 2026);
   return game;
 }
 
 // Everything that turns a simulated result into a recorded playoff game.
 // Extracted so the live-watched path can run it later — after the user has
 // finished coaching the game — without duplicating any of it.
-function recordSeriesGameResult(series, game, result, homeIsHigher, rng) {
+function recordSeriesGameResult(series, game, result, homeIsHigher, rng, leagueYear) {
   _PLAYOFF_DATA.godMode.applyAutoWin(game.homeTeamId, game.awayTeamId, result, rng);
   game.homeScore = result.homeScore;
   game.awayScore = result.awayScore;
   game.boxScore = result.boxScore;
   game.playByPlay = result.playByPlay || null;
 
-  _PLAYOFF_DATA.league.recordGameResult(game);
+  // day is null on every playoff path: there is no schedule day index once the
+  // regular season is over, and inventing one would put a wrong number on a
+  // permanent record. The season year is what the Feats page reads.
+  _PLAYOFF_DATA.league.recordGameResult(game, { leagueYear: leagueYear || 2026, day: null });
   const homeWon = result.homeScore > result.awayScore;
   if (result.boxScore) {
     Object.keys(result.boxScore).forEach(function (playerId) {
