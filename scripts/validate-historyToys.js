@@ -326,6 +326,83 @@ function checkHallOfVeryGood() {
   console.log('checkHallOfVeryGood: OK');
 }
 
+function checkTeamSeasonToys() {
+  history.LEAGUE_HISTORY.teamSeasons.length = 0;
+  history.LEAGUE_HISTORY.teamSeasons.push(
+    { leagueYear: 2030, teamId: 'BOS', wins: 70, losses: 12, playoffResult: 'lostR1', champion: false },
+    { leagueYear: 2031, teamId: 'LAL', wins: 41, losses: 41, playoffResult: 'champion', champion: true },
+    { leagueYear: 2032, teamId: 'CHI', wins: 60, losses: 22, playoffResult: 'missed', champion: false },
+    { leagueYear: 2033, teamId: 'PHX', wins: 9, losses: 73, playoffResult: 'missed', champion: false },
+    { leagueYear: 2034, teamId: 'MIA', wins: 55, losses: 27, playoffResult: 'champion', champion: true },
+    { leagueYear: 2035, teamId: 'NYK', wins: 30, losses: 52, playoffResult: 'missed', champion: false }
+  );
+  assert.strictEqual(toys.bestTeams(1)[0].wins, 70);
+  assert.strictEqual(toys.bestTeams(2)[1].wins, 60, 'best teams descend by wins');
+  assert.strictEqual(toys.worstTeams(1)[0].wins, 9);
+  assert.strictEqual(toys.worstTeams(2)[1].wins, 30, 'worst teams ascend by wins');
+
+  const missed = toys.bestToMissThePlayoffs(5);
+  assert.strictEqual(missed[0].teamId, 'CHI', '60 wins and no playoffs is the best team to miss');
+  assert.ok(!missed.some(function (r) { return r.teamId === 'BOS'; }),
+    'a team that lost in round one did NOT miss the playoffs');
+  assert.deepStrictEqual(missed.map(function (r) { return r.teamId; }), ['CHI', 'NYK', 'PHX'],
+    'the list descends by wins: 60, 30, 9');
+
+  const worstChamps = toys.worstToWinIt(5);
+  assert.strictEqual(worstChamps.length, 2, 'only champions belong here');
+  assert.strictEqual(worstChamps[0].teamId, 'LAL', 'a 41-win champion is the worst team to win it');
+  assert.strictEqual(worstChamps[1].teamId, 'MIA');
+  assert.ok(!worstChamps.some(function (r) { return r.teamId === 'PHX'; }),
+    'a 9-win team that won nothing must never appear among champions');
+
+  // The toys must not hand out the array LEAGUE_HISTORY is holding: sorting a
+  // returned reference in place would silently reorder the stored history.
+  const before = history.LEAGUE_HISTORY.teamSeasons.map(function (r) { return r.teamId; });
+  toys.bestTeams(10);
+  assert.deepStrictEqual(history.LEAGUE_HISTORY.teamSeasons.map(function (r) { return r.teamId; }), before,
+    'ranking a toy must not reorder the stored history');
+  console.log('checkTeamSeasonToys: OK');
+}
+
+function checkLopsidedTradesNeedTime() {
+  history.LEAGUE_HISTORY.trades.length = 0;
+  const a = PLAYERS_2026[15], b = PLAYERS_2026[16];
+  [a, b].forEach(function (p) {
+    p.careerHistory = p.careerHistory || {};
+    p.careerHistory.seasonByYear = {};
+  });
+  // a explodes after the trade; b does nothing. The 2030 rows are the control:
+  // production BEFORE the trade year must not count toward the verdict.
+  a.careerHistory.seasonByYear[2030] = { season: 2030, points: 9000, rebounds: 0, assists: 0 };
+  b.careerHistory.seasonByYear[2030] = { season: 2030, points: 9000, rebounds: 0, assists: 0 };
+  a.careerHistory.seasonByYear[2031] = { season: 2031, points: 2000, rebounds: 500, assists: 500 };
+  b.careerHistory.seasonByYear[2031] = { season: 2031, points: 10, rebounds: 0, assists: 0 };
+
+  history.LEAGUE_HISTORY.trades.push({
+    leagueYear: 2030, participants: ['BOS', 'LAL'],
+    players: [
+      { playerId: a.id, playerName: a.name, fromTeamId: 'BOS', toTeamId: 'LAL' },
+      { playerId: b.id, playerName: b.name, fromTeamId: 'LAL', toTeamId: 'BOS' }
+    ],
+    picks: []
+  });
+  // Too recent to judge.
+  assert.deepStrictEqual(toys.mostLopsidedTrades(5, 2032), [],
+    'a trade less than ' + toys.LOPSIDED_MIN_SEASONS + ' seasons old must not be judged');
+  assert.deepStrictEqual(toys.biggestTrades(5, 2032), [],
+    'and the same rule applies to biggest trades');
+
+  const judged = toys.mostLopsidedTrades(5, 2035);
+  assert.strictEqual(judged.length, 1, 'an old enough trade must be judged');
+  assert.strictEqual(judged[0].difference, 2990,
+    'lopsidedness counts only the seasons AFTER the trade, got ' + judged[0].difference);
+  assert.strictEqual(judged[0].combined, 3010,
+    'and so does the combined total, got ' + judged[0].combined);
+  assert.strictEqual(judged[0].bySide.LAL, 3000, 'LAL received the player who exploded');
+  assert.strictEqual(judged[0].bySide.BOS, 10);
+  console.log('checkLopsidedTradesNeedTime: OK');
+}
+
 checkTeamSeasonsAreRecorded();
 checkPlayoffResultsAreClassified();
 checkPoolIncludesActivePlayers();
@@ -335,4 +412,6 @@ checkCareerToys();
 checkRetireesKeepTenureAndEarnings();
 checkMostTeams();
 checkHallOfVeryGood();
+checkTeamSeasonToys();
+checkLopsidedTradesNeedTime();
 console.log('All history toy validations passed');

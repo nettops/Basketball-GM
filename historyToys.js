@@ -206,9 +206,98 @@ function hallOfVeryGood(limit) {
     .slice(0, limit || 10);
 }
 
+// slice() every time: handing back the array LEAGUE_HISTORY holds would let a
+// caller's sort silently reorder the stored history.
+function teamSeasonRows() {
+  return _TOYS_DATA.history.LEAGUE_HISTORY.teamSeasons.slice();
+}
+
+function bestTeams(limit) {
+  return teamSeasonRows().sort(function (a, b) { return b.wins - a.wins; }).slice(0, limit || 10);
+}
+
+function worstTeams(limit) {
+  return teamSeasonRows().sort(function (a, b) { return a.wins - b.wins; }).slice(0, limit || 10);
+}
+
+function bestToMissThePlayoffs(limit) {
+  return teamSeasonRows()
+    .filter(function (r) { return r.playoffResult === 'missed'; })
+    .sort(function (a, b) { return b.wins - a.wins; })
+    .slice(0, limit || 10);
+}
+
+function worstToWinIt(limit) {
+  return teamSeasonRows()
+    .filter(function (r) { return r.champion; })
+    .sort(function (a, b) { return a.wins - b.wins; })
+    .slice(0, limit || 10);
+}
+
+// A verdict on a trade needs time. Anything younger than this is not judged at
+// all, rather than judged on partial evidence and then remembered wrongly.
+const LOPSIDED_MIN_SEASONS = 3;
+
+// Production a player recorded in seasons STRICTLY AFTER the trade year. What
+// he did before the trade belongs to whoever had him then, not to the trade.
+function productionAfter(playerId, afterYear) {
+  const player = _TOYS_DATA.players.PLAYERS_2026.find(function (p) { return p.id === playerId; });
+  const byYear = (player && player.careerHistory && player.careerHistory.seasonByYear) || {};
+  return Object.keys(byYear).reduce(function (sum, year) {
+    if (Number(year) <= afterYear) return sum;
+    const s = byYear[year];
+    return sum + (s.points || 0) + (s.rebounds || 0) + (s.assists || 0);
+  }, 0);
+}
+
+// currentYear is passed rather than read from a global so the rule is testable.
+function tradeVerdicts(currentYear) {
+  return _TOYS_DATA.history.LEAGUE_HISTORY.trades
+    .filter(function (t) { return currentYear - t.leagueYear >= LOPSIDED_MIN_SEASONS; })
+    .map(function (t) {
+      const bySide = {};
+      (t.participants || []).forEach(function (teamId) { bySide[teamId] = 0; });
+      (t.players || []).forEach(function (p) {
+        if (bySide[p.toTeamId] === undefined) bySide[p.toTeamId] = 0;
+        bySide[p.toTeamId] += productionAfter(p.playerId, t.leagueYear);
+      });
+      const totals = Object.keys(bySide).map(function (k) { return bySide[k]; });
+      const combined = totals.reduce(function (a, b) { return a + b; }, 0);
+      const difference = totals.length < 2
+        ? 0
+        : Math.abs(Math.max.apply(null, totals) - Math.min.apply(null, totals));
+      return {
+        trade: t, leagueYear: t.leagueYear, participants: (t.participants || []).slice(),
+        bySide: bySide, combined: combined, difference: difference
+      };
+    });
+}
+
+function biggestTrades(limit, currentYear) {
+  return tradeVerdicts(currentYear)
+    .sort(function (a, b) { return b.combined - a.combined; })
+    .slice(0, limit || 10);
+}
+
+function mostLopsidedTrades(limit, currentYear) {
+  return tradeVerdicts(currentYear)
+    .sort(function (a, b) { return b.difference - a.difference; })
+    .slice(0, limit || 10);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     careerProduction: careerProduction,
+    teamSeasonRows: teamSeasonRows,
+    bestTeams: bestTeams,
+    worstTeams: worstTeams,
+    bestToMissThePlayoffs: bestToMissThePlayoffs,
+    worstToWinIt: worstToWinIt,
+    productionAfter: productionAfter,
+    tradeVerdicts: tradeVerdicts,
+    biggestTrades: biggestTrades,
+    mostLopsidedTrades: mostLopsidedTrades,
+    LOPSIDED_MIN_SEASONS: LOPSIDED_MIN_SEASONS,
     longestSpell: longestSpell,
     totalEarnings: totalEarnings,
     bestWithoutARing: bestWithoutARing,
