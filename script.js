@@ -312,6 +312,7 @@ const BUILT_VIEWS = {
   commissioner: renderCommissioner,
   awards: renderAwards,
   history: renderHistory,
+  feats: renderFeats,
   gmCareer: renderGmCareer,
   seasonSummary: renderSeasonSummary,
   frivolities: renderFrivolities,

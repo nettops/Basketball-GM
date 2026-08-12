@@ -312,6 +312,26 @@ function openPlayerProfile(playerId) {
   renderView('playerProfile');
 }
 
+// Shown under every tab rather than inside one: a feat belongs to the player,
+// not to a category of his statistics, and burying it behind a tab is how a
+// thing nobody ever sees gets built.
+const PROFILE_FEAT_LIMIT = 12;
+
+function renderFeatsPanel(player) {
+  const mine = featsForPlayer(player.id);
+  if (!mine.length) return '';
+  const recent = mine.slice().reverse().slice(0, PROFILE_FEAT_LIMIT);
+  const more = mine.length - recent.length;
+  return '<div class="panel"><div class="panel-header">Feats (' + mine.length + ')</div>' +
+    '<div class="panel-body"><ul class="stack-list">' +
+    recent.map(function (f) {
+      return '<li><span class="pill pill-mute">' + f.leagueYear + '</span> ' +
+        escapeHtml(featShortLabel(f.kind)) + ' — ' + escapeHtml(featStatLine(f)) + '</li>';
+    }).join('') +
+    '</ul>' + (more > 0 ? '<div class="kpi-sub">and ' + more + ' more</div>' : '') +
+    '</div></div>';
+}
+
 function renderPlayerProfile(container) {
   const player = getPlayerById(GameState.profilePlayerId);
   if (!player) {
@@ -343,6 +363,8 @@ function renderPlayerProfile(container) {
     else if (activeTab === 'seasons') html += renderSeasonBreakdownTab(player, sortKey, sortDir);
     else if (activeTab === 'teams') html += renderTeamHistoryTab(player);
     else if (activeTab === 'injuries') html += renderInjuryTimelineTab(player);
+
+    html += renderFeatsPanel(player);
 
     container.innerHTML = html;
 

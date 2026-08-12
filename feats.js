@@ -6,39 +6,52 @@
 // every threshold be tested directly instead of by simulating games until one
 // happens to fire.
 //
-// Chosen by measured rate, not tradition. scripts/probe-feats.js over 4000
-// games (101,341 player-lines), scaled to a 1230-game season. Nights at or
-// above each points bar, league-wide per season:
+// Chosen by measured rate, not tradition.
 //
-//   40 -> 710.6    52 ->  88.3    57 -> 29.5    62 ->  8.0
-//   45 -> 343.5    54 ->  58.4    58 -> 22.4    63 ->  6.2
-//   48 -> 202.9    55 ->  48.0    59 -> 16.3    65 ->  4.0
-//   50 -> 136.2    56 ->  37.8    60 -> 12.3    70 ->  1.2
+// Measured on REAL SEASONS: scripts/probe-feats.js runs a full 1230-game season
+// through league.simulateDate, ten seeds, one season per process. That harness
+// choice is the whole story of this calibration. An earlier version called
+// gameSim.simulateGame in a loop and reported 29.9 big scoring nights a season;
+// the first real season played in the browser produced 42. The live path
+// applies fatigue, injuries, morale and rotation minutes, and those are exactly
+// what produce the outlier nights a feat IS. Numbers below are mean per season
+// over ten seasons, with the season-to-season range beside them:
 //
-// Three-category nights at each bar:  10 -> 596.5   12 -> 226.0   14 -> 72.9
-//                                     11 -> 381.3   13 -> 134.4   15 -> 34.1
+//   points bar     mean    range        points bar     mean    range
+//     50          140.0   124-171         60           14.4     7-22
+//     52           95.7    74-114         61           11.4     5-17
+//     54           61.1    49-80          62            9.3     5-15
+//     55           50.0    42-64          63            7.9     4-14
+//     56           40.2    33-53          64            6.2     2-9
+//     57           32.1    28-44          65            4.4     1-7
+//     58           24.9    17-35          66            3.3     1-6
+//     59           19.1    13-27          70            1.5     0-4
 //
-// All-five nights:  3+ -> 26.1     4+ -> 3.4     5+ -> 0.0 (0 in 101,341)
+//   three-category bar:  10 -> 570.9    13 -> 123.3    15 -> 32.8
+//                        12 -> 216.4    14 ->  69.0    16 -> 15.2
 //
-// Target bands: big 15-40 a season, huge 1-6, triple-double 40-120,
-// five-by-five 0-3. Each bar is the LOWEST measured value landing in its band.
-// Our league scores ~135 a team, so the traditional 50-point night fires 136
-// times a season here and the bar lands well above it; the same inflation is
-// why the three-category bar is 14 rather than basketball's 10.
+//   all-five bar:  3 -> 27.3      4 -> 2.8      5 -> 0.6
+//
+// Target bands, per season: big 15-40, huge 1-6, triple-double 40-120,
+// five-by-five 0-3. Each bar is the LOWEST measured value whose mean lands in
+// its band. Big is reported net of huge (a huge night is not also a big one),
+// so 57 measures 32.1 and reports 32.1 - 4.4 = 27.7.
+//
+// Our league scores ~135 a team, so the traditional 50-point night fires 140
+// times a season here — better than once a night — and the bar lands well above
+// it. The same inflation is why the three-category bar is 14 rather than
+// basketball's 10: at 10 it fires 571 times a season, twice every night.
 //
 // The five-by-five is the one bar left at its traditional value, and it is the
-// rarest thing in the game: 5 steals AND 5 blocks in the same night did not
-// occur once in the 4000-game sample above, but did occur once in a separate
-// 3000-game sample (validate-feats.js, seed 31337). One in ~7000 games is
-// roughly once every five or six seasons of league play — a genuine
-// once-a-save event, which is the point of keeping it. Its rate band floor is
-// 0, so the band cannot prove detection works; the hand-built boundary case in
-// scripts/validate-feats.js is what does.
+// rarest thing in the game at 0.6 a season — better than half the seasons
+// measured had none at all. Its band floor is 0, so the rate band cannot prove
+// detection works: it would pass with detection deleted. The hand-built
+// boundary case in scripts/validate-feats.js is what proves it.
 //
 // Mutable holder rather than bare consts so the calibration probe can move
 // them for one run without editing committed source — the same shape as
 // freeAgency.js's RESIGN_TUNING and seasonTransition.js's RETIREMENT_TUNING.
-var FEAT_TUNING = { bigScoring: 56, hugeScoring: 65, doubleAt: 14, fiveAt: 5 };
+var FEAT_TUNING = { bigScoring: 57, hugeScoring: 65, doubleAt: 14, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

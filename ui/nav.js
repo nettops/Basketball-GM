@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { id: 'awards', label: 'Awards' },
   { id: 'seasonSummary', label: 'Season Recap' },
   { id: 'history', label: 'History' },
+  { id: 'feats', label: 'Feats' },
   { id: 'gmCareer', label: 'My Career' },
   { id: 'frivolities', label: 'Frivolities' },
   { id: 'careerLedger', label: 'Career Ledger' },
@@ -61,7 +62,7 @@ const NAV_HUBS = [
   { id: 'hub-transactions', label: 'Transactions',
     views: ['trade', 'freeagency', 'draft', 'scouting', 'salarycap', 'finances', 'coaching'] },
   { id: 'hub-records', label: 'Records',
-    views: ['gmCareer', 'history', 'awards', 'seasonSummary', 'frivolities'] },
+    views: ['gmCareer', 'history', 'awards', 'feats', 'seasonSummary', 'frivolities'] },
   { id: 'hub-system', label: 'System',
     views: ['saveload', 'settings', 'godMode', 'commissioner'] }
 ];

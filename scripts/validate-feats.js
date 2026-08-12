@@ -82,15 +82,27 @@ const TARGET_RATES = {
   fiveByFive: [0, 3]
 };
 
-// 3000 games, not a few hundred. hugeScoring fires about 4 times per 1230-game
-// season, so a 200-game sample would expect 0.65 of them and report a rate of
-// 0.0 half the time — an assertion that fails for sampling reasons rather than
-// for the reason it was written. At 3000 games the expected count is ~10 and
-// the band has real resolution. The seed is fixed, so the result is the same
-// on every run; it is a regression tripwire, not a statistical estimate.
-const RATE_GAMES = 3000;
-const RATE_SEED = 31337;
-const GAMES_PER_SEASON = 1230;
+// Measured on a REAL SEASON, through league.simulateDate — not by calling
+// gameSim.simulateGame in a loop.
+//
+// This distinction cost a calibration. The isolated per-game harness reported
+// 29.9 big scoring nights a season; the first real season played in the browser
+// produced 42, and a ten-season sweep on the live path settled at 40.2 for the
+// same bar. The live path applies fatigue, injuries, morale and rotation
+// minutes, and those produce the outlier nights a feat IS. An isolated harness
+// reading low is a known trap in this codebase, and a band asserted against the
+// wrong distribution is worse than no band at all.
+//
+// One season, fixed seed. A season is a real draw with real variance — big
+// scoring has a standard deviation of about 5 across seasons — so this is a
+// deterministic regression tripwire, not an estimate of the mean. The mean
+// comes from scripts/probe-feats.js over ten seeds; the numbers are recorded in
+// feats.js.
+//
+// It counts what was actually FILED into LEAGUE_HISTORY rather than re-running
+// detection, so it exercises the whole chain — detection, the context passed at
+// the call site, and recordFeats — in one assertion.
+const RATE_SEED = 20260812;
 
 function checkRatesAreInBand() {
   const rq2 = function (f) { return require(path.join(ROOT, f)); };
@@ -102,36 +114,43 @@ function checkRatesAreInBand() {
   traits.ensureHiddenPlayerData(PLAYERS);
   const makeRng = rq2('rng.js').makeRng;
   rq2('simEngine.js'); rq2('simEngineBoxScore.js'); rq2('simEnginePossession.js');
-  rq2('gameCoach.js');
-  const gameSim = rq2('gameSim.js');
-  global.GameState = global.GameState ||
-    { settings: { capLevel: 1, capDisabled: false }, leagueYear: 2026 };
+  rq2('gameCoach.js'); rq2('gameSim.js');
+  const league = rq2('league.js');
+  const schedule = rq2('schedule.js');
+  const history = rq2('history.js');
 
   const rng = makeRng(RATE_SEED);
+  const games = schedule.generateSeasonGames(rng, TEAMS).map(function (g) {
+    return {
+      id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day,
+      played: false, homeScore: null, awayScore: null, boxScore: null,
+      isPlayoff: false, seriesId: null
+    };
+  });
+  const season = { games: games, currentDay: -1 };
+  const settings = { leagueYear: 2026 };
+  const lastDay = games.reduce(function (m, g) { return Math.max(m, g.day); }, 0);
+
+  history.LEAGUE_HISTORY.feats.length = 0;
+  for (let d = 0; d <= lastDay; d++) league.simulateDate(season, d, settings, rng, null, null);
+
+  const played = games.filter(function (g) { return g.played; }).length;
+  assert.strictEqual(played, games.length,
+    'only ' + played + ' of ' + games.length + ' games were played — this is not a full season');
+  assert.ok(games.length > 1000,
+    'a season of ' + games.length + ' games is too short for these bands to mean anything');
+
   const counts = { bigScoring: 0, hugeScoring: 0, tripleDouble: 0, fiveByFive: 0 };
-  let lines = 0;
-  for (let i = 0; i < RATE_GAMES; i++) {
-    const home = TEAMS[i % TEAMS.length], away = TEAMS[(i + 11) % TEAMS.length];
-    if (home.id === away.id) continue;
-    const r = gameSim.simulateGame(home.id, away.id, rng, {});
-    Object.keys(r.boxScore).forEach(function (id) {
-      lines++;
-      feats.detectFeats(r.boxScore[id], CTX).forEach(function (f) { counts[f.kind] += 1; });
-    });
-  }
-  const scale = GAMES_PER_SEASON / RATE_GAMES;
+  history.LEAGUE_HISTORY.feats.forEach(function (f) { counts[f.kind] += 1; });
+
   feats.FEAT_KINDS.forEach(function (kind) {
-    const rate = counts[kind] * scale;
     const band = TARGET_RATES[kind];
-    assert.ok(rate >= band[0] && rate <= band[1],
-      kind + ' fires ' + rate.toFixed(1) + ' times a season, outside the ' +
+    assert.ok(counts[kind] >= band[0] && counts[kind] <= band[1],
+      kind + ' fired ' + counts[kind] + ' times in one real season, outside the ' +
       band[0] + '-' + band[1] + ' target band');
   });
-  // The sample has to be big enough for the bands to mean anything.
-  assert.ok(lines > 50000, 'rate sample of ' + lines + ' player-lines is too small to resolve a rare feat');
-  console.log('checkRatesAreInBand: OK (' + feats.FEAT_KINDS.map(function (k) {
-    return k + ' ' + (counts[k] * scale).toFixed(1);
-  }).join(', ') + ')');
+  console.log('checkRatesAreInBand: OK (one ' + games.length + '-game season: ' +
+    feats.FEAT_KINDS.map(function (k) { return k + ' ' + counts[k]; }).join(', ') + ')');
 }
 
 // Feats must be filed from EVERY finished game, and the three call sites of

@@ -910,8 +910,64 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The Feats page is the only screen in the game whose contents cannot be
+  // rebuilt from a save: box scores are pruned at write time, so if a feat is
+  // not filed as the game finishes it is gone. That makes "the page rendered
+  // and the rows are on screen" worth asserting rather than assuming.
+  function checkFeats() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+
+    renderView('feats');
+    const view = document.getElementById('view-content');
+    results.push(ok('feats:renders', view.innerText.indexOf('Feats') !== -1, null));
+
+    const rows = view.querySelectorAll('#feat-rows tr');
+    const empty = view.querySelector('.empty-state');
+    // Detail is context, not an error message — it is printed whether the check
+    // passes or fails, so a sentence describing the failure reads as a failure
+    // on every successful run.
+    results.push(ok('feats:rows-or-empty-state', rows.length > 0 || !!empty,
+      rows.length + ' rows, ' + (empty ? 'empty state present' : 'no empty state')));
+
+    if (rows.length > 0) {
+      const r = rows[0].getBoundingClientRect();
+      results.push(ok('feats:first-row-visible', r.height > 0 && r.top < window.innerHeight,
+        'height ' + r.height.toFixed(0) + ', top ' + r.top.toFixed(0)));
+
+      // Filtering is the page's only interaction. A filter that hides
+      // everything, or hides nothing, is the failure worth catching.
+      const select = document.getElementById('feat-year');
+      const year = select.options[1] && select.options[1].value;
+      if (year) {
+        select.value = year;
+        select.dispatchEvent(new Event('change'));
+        const shown = Array.from(view.querySelectorAll('#feat-rows tr'))
+          .filter(function (tr) { return tr.style.display !== 'none'; });
+        results.push(ok('feats:season-filter-narrows',
+          shown.length > 0 && shown.length <= rows.length,
+          shown.length + ' of ' + rows.length + ' after filtering to ' + year));
+        const strays = shown.filter(function (tr) { return tr.getAttribute('data-feat-year') !== year; });
+        results.push(ok('feats:season-filter-is-honest', strays.length === 0,
+          strays.length ? strays.length + ' rows from another season survived the filter' : null));
+      }
+
+      // Every feat must name a player who can actually be opened. A record
+      // pointing at an id nobody holds renders a dead button.
+      const link = view.querySelector('#feat-rows button[data-profile-id]');
+      results.push(ok('feats:player-links-resolve',
+        !!link && !!PLAYERS_2026.find(function (p) { return p.id === link.getAttribute('data-profile-id'); }),
+        link ? link.getAttribute('data-profile-id') : 'no link'));
+    }
+
+    renderView(startView);
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
+    feats: checkFeats,
     injection: checkNoInjection,
     entities: checkNoEntityLeak,
     boxscore: checkScheduleBoxScore,

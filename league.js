@@ -88,6 +88,15 @@ function recordGameFeats(game, context) {
       oppTeamId: onHome ? game.awayTeamId : game.homeTeamId
     });
     _historyDeps().history.recordFeats(found);
+    // pushToFeed and featShortLabel are browser globals from script.js and
+    // ui/feats.js — guarded because league.js also runs standalone under Node
+    // in every validate script, where neither exists.
+    if (typeof pushToFeed === 'function' && typeof featShortLabel === 'function') {
+      found.forEach(function (f) {
+        pushToFeed(f.playerName + ' — ' + featShortLabel(f.kind).toLowerCase() + ': ' +
+          f.points + ' pts, ' + f.rebounds + ' reb, ' + f.assists + ' ast.', context.day);
+      });
+    }
   });
 }
 
