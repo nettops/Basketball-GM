@@ -138,13 +138,39 @@ function executeTrade(proposal, historySink, dayIndex) {
 // Note the commissioner's own Force Trade — an explicit cheat that skips value
 // and salary entirely — still validates roster sizes. This path was the only
 // one in the game that did not.
+// Every named player must still be where the offer says he is. An offer sits
+// in the inbox for days and names SPECIFIC players; executeTrade assigns them
+// unconditionally, so waiving the player they asked for and then accepting
+// handed him over anyway — from free agency — while their player still came to
+// you. A free man for nothing, reproduced through the real Accept button.
+//
+// Roster-size validation cannot catch this: the counts balance either way,
+// because the assignment list claims one out and one in regardless of who
+// actually owns whom.
+function staleAssignments(proposal) {
+  return proposal.assignments.filter(function (a) {
+    const player = _TRADE_DATA.league.getPlayerById(a.playerId);
+    return !player || player.teamId !== a.fromTeamId;
+  }).map(function (a) {
+    const player = _TRADE_DATA.league.getPlayerById(a.playerId);
+    const name = player ? player.name : a.playerId;
+    return !player
+      ? name + ' is no longer in the league'
+      : name + ' is no longer on ' + a.fromTeamId;
+  });
+}
+
 function acceptTradeOffer(proposal, historySink, dayIndex) {
+  const stale = staleAssignments(proposal);
+  if (stale.length > 0) {
+    return { executed: false, rosterErrors: [], staleAssignments: stale };
+  }
   const rosterErrors = validateRosterSizes(proposal);
   if (rosterErrors.length > 0) {
-    return { executed: false, rosterErrors: rosterErrors };
+    return { executed: false, rosterErrors: rosterErrors, staleAssignments: [] };
   }
   executeTrade(proposal, historySink, dayIndex);
-  return { executed: true, rosterErrors: [] };
+  return { executed: true, rosterErrors: [], staleAssignments: [] };
 }
 
 function proposeTrade(proposal, userTeamId, evaluateUserLeg, historySink) {
@@ -195,6 +221,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pruneExpiredTradeOffers: pruneExpiredTradeOffers,
     validateRosterSizes: validateRosterSizes,
     acceptTradeOffer: acceptTradeOffer,
+    staleAssignments: staleAssignments,
     evaluateTrade: evaluateTrade,
     executeTrade: executeTrade,
     proposeTrade: proposeTrade,

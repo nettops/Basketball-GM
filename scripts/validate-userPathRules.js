@@ -138,6 +138,49 @@ function checkEvenTheCheatValidatesRosters() {
   console.log('checkEvenTheCheatValidatesRosters: OK');
 }
 
+// An offer names SPECIFIC players and sits in the inbox for days. Waive the
+// player it asks you for, then accept: executeTrade assigned him to the other
+// team regardless of the fact that he was a free agent by then, and handed you
+// their player anyway. Reproduced through the real Accept button — Boston gave
+// away a man it no longer owned and still received Chicago's.
+//
+// Roster-size validation does NOT catch this: the counts still balance,
+// because the assignment list says one out and one in whatever the truth is.
+function checkStaleOfferIsRefused() {
+  const sizes = TEAMS.map(function (t) { return { id: t.id, n: league.getTeamRoster(t.id).length }; });
+  const a = sizes.slice().sort(function (x, y) { return y.n - x.n; })[0];
+  const b = sizes.filter(function (x) { return x.id !== a.id; })
+    .sort(function (x, y) { return y.n - x.n; })[0];
+  const mine = league.getTeamRoster(a.id)[0];
+  const theirs = league.getTeamRoster(b.id)[0];
+  const proposal = {
+    participants: [a.id, b.id],
+    assignments: [
+      { playerId: mine.id, fromTeamId: a.id, toTeamId: b.id },
+      { playerId: theirs.id, fromTeamId: b.id, toTeamId: a.id }
+    ],
+    pickAssignments: []
+  };
+  assert.strictEqual(trade.acceptTradeOffer(proposal, null).executed, true,
+    'precondition: the offer is legal while both players are where it says');
+  // put it back
+  mine.teamId = a.id; theirs.teamId = b.id;
+
+  // Now go stale: the player it asks for is waived before you accept.
+  mine.teamId = null;
+  const result = trade.acceptTradeOffer(proposal, null);
+  assert.strictEqual(result.executed, false,
+    'an offer naming a player you no longer own must be refused');
+  assert.ok((result.staleAssignments || []).length > 0, 'and must say which player is stale');
+  assert.strictEqual(theirs.teamId, b.id,
+    'you must NOT receive their player from a refused trade');
+  assert.strictEqual(mine.teamId, null,
+    'and the waived player must stay a free agent, not be handed over');
+  mine.teamId = a.id;
+  console.log('checkStaleOfferIsRefused: OK');
+}
+
+checkStaleOfferIsRefused();
 checkAcceptingAnOfferKeepsRostersLegal();
 checkFouledOutPlayerCannotBeFielded();
 checkEvenTheCheatValidatesRosters();

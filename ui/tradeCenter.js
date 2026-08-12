@@ -293,7 +293,8 @@ function renderTradeCenter(container, userTeamId) {
         const accept = acceptTradeOffer(GameState.tradeOffers[i].proposal,
           function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
         if (!accept.executed) {
-          state.resultMessage = '<p>Cannot accept: ' + escapeHtml(accept.rosterErrors.join('; ')) + '</p>';
+          const why = (accept.staleAssignments || []).concat(accept.rosterErrors || []);
+          state.resultMessage = '<p>Cannot accept: ' + escapeHtml(why.join('; ')) + '</p>';
           draw();
           return;
         }
