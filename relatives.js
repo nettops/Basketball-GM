@@ -4,8 +4,15 @@
 // have relatives" never requires scanning the league. A father gets a son entry
 // and the son gets a father entry, in the same call.
 var _RELATIVES_DATA = (typeof require !== 'undefined')
-  ? { players: require('./players-2026.js') }
-  : { players: { PLAYERS_2026: PLAYERS_2026 } };
+  ? { players: require('./players-2026.js'), names: require('./names.js') }
+  : {
+      players: { PLAYERS_2026: PLAYERS_2026 },
+      names: {
+        takenNameSet: takenNameSet, isNameTaken: isNameTaken, claimName: claimName,
+        normalizeName: normalizeName, firstNameOfName: firstNameOfName,
+        surnameOfName: surnameOfName, PLAYER_FIRST_NAMES: PLAYER_FIRST_NAMES
+      }
+    };
 
 // A father must have entered the league at least this many seasons before his
 // son's draft, so the timeline is never absurd. It also means a fresh save
@@ -61,14 +68,44 @@ function relativesOf(player) {
 // out. Mutable so a later sweep can move them without editing committed source.
 var RELATIVE_TUNING = { sonChance: 0.004, brotherChance: 0.0018, inheritance: 0.15 };
 
-function surnameOf(name) {
-  const parts = String(name).trim().split(/\s+/);
-  const last = parts[parts.length - 1];
-  // "Jr." is a suffix, not a surname.
-  return (last === 'Jr.' && parts.length > 2) ? parts[parts.length - 2] : last;
-}
+// Delegated to names.js so there is one definition of where a surname ends.
+// The version that used to live here only knew about "Jr."; now that a son who
+// shares his father's first name earns a Jr. and a third generation earns a
+// III, the suffix list has to be shared with the code that appends them.
+function surnameOf(name) { return _RELATIVES_DATA.names.surnameOfName(name); }
+function firstNameOf(name) { return _RELATIVES_DATA.names.firstNameOfName(name); }
 
-function firstNameOf(name) { return String(name).trim().split(/\s+/)[0]; }
+// Family names are the one place two players can legitimately want the same
+// name: a son taking his father's surname may land exactly on his father's full
+// name. That is what "Jr." is for. Anything else that collides gets a fresh
+// first name rather than a suffix, because a suffix would assert a relationship
+// that isn't there.
+const GENERATION_SUFFIXES = ['Jr.', 'III', 'IV', 'V'];
+
+function familyName(prospect, surname, taken, rng, relativeName) {
+  const names = _RELATIVES_DATA.names;
+  const base = firstNameOf(prospect.name) + ' ' + surname;
+  if (!names.isNameTaken(taken, base)) return names.claimName(taken, base);
+
+  // Collided with the relative himself — father and son share a first name.
+  if (relativeName && names.normalizeName(base) === names.normalizeName(relativeName)) {
+    for (let i = 0; i < GENERATION_SUFFIXES.length; i++) {
+      const suffixed = base + ' ' + GENERATION_SUFFIXES[i];
+      if (!names.isNameTaken(taken, suffixed)) return names.claimName(taken, suffixed);
+    }
+  }
+
+  // Collided with somebody unrelated. Keep the surname, change the first name.
+  const pool = names.PLAYER_FIRST_NAMES;
+  const start = Math.floor(rng() * pool.length);
+  for (let k = 0; k < pool.length; k++) {
+    const candidate = pool[(start + k) % pool.length] + ' ' + surname;
+    if (!names.isNameTaken(taken, candidate)) return names.claimName(taken, candidate);
+  }
+  // Every first name in the pool is already paired with this surname. Leave the
+  // prospect's own unique name alone rather than hand back a duplicate.
+  return prospect.name;
+}
 
 // A father has to have been in this league long enough to have a son old enough
 // to be drafted. Anyone without a firstLeagueYear — which is every real 2026
@@ -97,8 +134,14 @@ function inheritAttributes(son, father) {
 
 // Mutates prospects in place. Returns how many of each link were made, so the
 // caller can report and the rate can be measured.
-function assignFamilies(prospects, allPlayers, leagueYear, rng) {
+// `taken` is the class's name set, threaded in from generateProspectClass so a
+// rename cannot recreate the duplicate the unique-name generator just avoided.
+// Callers that don't have one (the tests) get a set built from the players and
+// prospects they passed.
+function assignFamilies(prospects, allPlayers, leagueYear, rng, taken) {
   const fathers = eligibleFathers(allPlayers, leagueYear);
+  const names = _RELATIVES_DATA.names;
+  const takenNames = taken || names.takenNameSet(allPlayers, prospects);
   let sons = 0, brothers = 0;
 
   prospects.forEach(function (prospect) {
@@ -106,7 +149,7 @@ function assignFamilies(prospects, allPlayers, leagueYear, rng) {
     if (rng() >= RELATIVE_TUNING.sonChance) return;
     const father = fathers[Math.floor(rng() * fathers.length)];
     if (!father) return;
-    prospect.name = firstNameOf(prospect.name) + ' ' + surnameOf(father.name);
+    prospect.name = familyName(prospect, surnameOf(father.name), takenNames, rng, father.name);
     inheritAttributes(prospect, father);
     link(father, prospect, 'father');
     sons++;
@@ -122,7 +165,9 @@ function assignFamilies(prospects, allPlayers, leagueYear, rng) {
     if (rng() >= RELATIVE_TUNING.brotherChance) continue;
     const a = prospects[i], b = prospects[i + 1];
     if (relativesOf(a).length || relativesOf(b).length) continue;
-    b.name = firstNameOf(b.name) + ' ' + surnameOf(a.name);
+    // No relativeName passed: brothers share a surname, never a full name, so a
+    // collision here is never a generational one and must not earn a "Jr.".
+    b.name = familyName(b, surnameOf(a.name), takenNames, rng, null);
     link(a, b, 'brother');
     brothers++;
     i++;

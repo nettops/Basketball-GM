@@ -1,5 +1,5 @@
 var _PROSPECT_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js'), players: require('./players-2026.js'), ratings: require('./ratings.js'), relatives: require('./relatives.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js'), players: require('./players-2026.js'), ratings: require('./ratings.js'), relatives: require('./relatives.js'), names: require('./names.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS },
       traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies },
@@ -7,8 +7,25 @@ var _PROSPECT_DATA = (typeof require !== 'undefined')
       progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo },
       players: { makeAttributes: makeAttributes, ANCHOR_SD_RATIO: ANCHOR_SD_RATIO, PLAYERS_2026: PLAYERS_2026 },
       ratings: { defineOverall: defineOverall, toRawRating: toRawRating },
-      relatives: { assignFamilies: assignFamilies }
+      relatives: { assignFamilies: assignFamilies },
+      names: { takenNameSet: takenNameSet, pickUniqueName: pickUniqueName }
     };
+
+// The retiree archive lives in history.js, which loads long after this file in
+// the browser and pulls in most of the league under Node — so it is resolved
+// lazily, only when a class is actually being generated. A prospect arriving
+// with a Hall of Famer's exact name is the same defect as two prospects sharing
+// one, just spread over more seasons.
+function _prospectHistoryDep() {
+  if (typeof require !== 'undefined') return require('./history.js');
+  return (typeof LEAGUE_HISTORY !== 'undefined') ? { LEAGUE_HISTORY: LEAGUE_HISTORY } : null;
+}
+
+function existingPlayerNames() {
+  const history = _prospectHistoryDep();
+  const retired = (history && history.LEAGUE_HISTORY && history.LEAGUE_HISTORY.retiredPlayers) || [];
+  return _PROSPECT_DATA.names.takenNameSet(_PROSPECT_DATA.players.PLAYERS_2026, retired);
+}
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
 // than shared — prospects and rostered players are authored independently and
@@ -170,8 +187,6 @@ const PROSPECT_DATA_MAP = {
 };
 
 const ARCHETYPE_NAMES = Object.keys(PROSPECT_ARCHETYPES);
-const FIRST_NAMES = ['Jaylen', 'Marcus', 'Devin', 'Isaiah', 'Elijah', 'Cameron', 'Xavier', 'Malik', 'Tyler', 'Andre', 'DeAndre', 'Josiah', 'Amari', 'Jalen', 'Caleb'];
-const LAST_NAMES = ['Turner', 'Brooks', 'Hayes', 'Coleman', 'Reid', 'Bryant', 'Foster', 'Simmons', 'Ward', 'Price', 'Bell', 'Owens', 'Hunt', 'Mercer', 'Dawson'];
 
 // Every draft after the real 2026 class uses this — procedurally generated,
 // same schema as a real prospect, but with a generic name. Overall is still
@@ -189,12 +204,20 @@ const LAST_NAMES = ['Turner', 'Brooks', 'Hayes', 'Coleman', 'Reid', 'Bryant', 'F
 // thing from generating a fictional lineage.
 function generateProspectClass(rng, count, leagueYear) {
   const prospects = [];
+  // One set for the whole class, seeded with everyone who already has a name —
+  // the active league and the retiree archive — and added to as each prospect
+  // is named, so no two members of a class collide either.
+  const takenNames = existingPlayerNames();
   for (let i = 0; i < count; i++) {
     const rankFactor = 1 - i / count; // 1.0 for pick 1, ->0 for the last pick
     const overall = Math.round(58 + rankFactor * 22 + (rng() - 0.5) * 8);
     const archetype = ARCHETYPE_NAMES[Math.floor(rng() * ARCHETYPE_NAMES.length)];
     const position = _PROSPECT_DATA.data.POSITIONS[Math.floor(rng() * _PROSPECT_DATA.data.POSITIONS.length)];
-    const name = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)] + ' ' + LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)] + ' Jr.'.slice(0, rng() < 0.15 ? 4 : 0);
+    // No random " Jr." any more. It used to be tacked on 15% of the time to a
+    // player with no father in the league, which invented a second near-copy of
+    // an existing name for no reason. A Jr. is now earned: relatives.js appends
+    // it when a generated son shares his father's first name.
+    const name = _PROSPECT_DATA.names.pickUniqueName(rng, takenNames);
     const age = 18 + Math.floor(rng() * 4);
     const heightIn = 74 + Math.floor(rng() * 10);
     const weightLb = 180 + Math.floor(rng() * 60);
@@ -238,7 +261,7 @@ function generateProspectClass(rng, count, leagueYear) {
   // leans toward his ratings — both of which have to happen before anyone
   // scouts him, and neither of which can be decided one prospect at a time.
   _PROSPECT_DATA.relatives.assignFamilies(
-    prospects, _PROSPECT_DATA.players.PLAYERS_2026, leagueYear, rng);
+    prospects, _PROSPECT_DATA.players.PLAYERS_2026, leagueYear, rng, takenNames);
 
   return prospects;
 }

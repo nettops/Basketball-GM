@@ -1,29 +1,43 @@
 var _COACH_DATA = (typeof require !== 'undefined')
-  ? { teams: require('./teams.js') }
-  : { teams: { TEAMS: TEAMS, getTeamById: getTeamById } };
+  ? { teams: require('./teams.js'), names: require('./names.js') }
+  : {
+      teams: { TEAMS: TEAMS, getTeamById: getTeamById },
+      names: {
+        takenNameSet: takenNameSet, pickUniqueName: pickUniqueName,
+        COACH_NAME_POOLS: COACH_NAME_POOLS
+      }
+    };
 
 const COACH_SPECIALTIES = ['offense', 'defense', 'development'];
-
-// Deliberately distinct from draftProspects.js's FIRST_NAMES/LAST_NAMES —
-// both load as plain global scripts in the browser, so reusing those names
-// here would shadow one or the other (see the clampRating collision this
-// project already hit in commissioner.js/progression.js).
-const COACH_FIRST_NAMES = ['Gregg', 'Erik', 'Steve', 'Nate', 'Monty', 'Chauncey', 'Ime', 'Mike', 'Joe', 'Will', 'Taylor', 'Charles', 'Quin', 'Frank', 'Dawn'];
-const COACH_LAST_NAMES = ['Sorensen', 'Whitfield', 'Mercer', 'Bradley', 'Holloway', 'Vance', 'Griggs', 'Donovan', 'Castillo', 'Reyes', 'Pierce', 'Lindgren', 'Okafor', 'Mathis', 'Sanborn'];
 
 function coachSlug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
-function generateCoachName(rng) {
-  return COACH_FIRST_NAMES[Math.floor(rng() * COACH_FIRST_NAMES.length)] + ' ' + COACH_LAST_NAMES[Math.floor(rng() * COACH_LAST_NAMES.length)];
+// The pools live in names.js now — they used to be a fifteen-by-fifteen list
+// here, drawn from without checking, which is 225 possible coaches for a league
+// that hires thirty at once and replaces them for decades.
+//
+// The caller may pass a `taken` set to share across a batch. Without one, each
+// call rebuilds it from the coaches currently on benches, which stops a new
+// coach from duplicating a sitting one but NOT from duplicating another coach
+// made in the same loop — so any code generating more than one at a time is
+// expected to pass a set and thread it through.
+function coachNamesTaken() {
+  return _COACH_DATA.names.takenNameSet(
+    _COACH_DATA.teams.TEAMS.map(function (t) { return t.coach; }));
+}
+
+function generateCoachName(rng, taken) {
+  return _COACH_DATA.names.pickUniqueName(
+    rng, taken || coachNamesTaken(), _COACH_DATA.names.COACH_NAME_POOLS);
 }
 
 // specialty determines both the progression coach-fit gating (see
 // progression.js's coachFitMultiplier) and the default playbook lean a newly
 // hired coach nudges their team's strategy dials toward.
-function generateCoach(rng) {
-  const name = generateCoachName(rng);
+function generateCoach(rng, taken) {
+  const name = generateCoachName(rng, taken);
   return {
     id: 'coach-' + coachSlug(name) + '-' + Math.floor(Math.random() * 1000000),
     name: name,
@@ -45,9 +59,13 @@ function ensureAllTeamsHaveCoaches(rng) {
   _COACH_DATA.teams.TEAMS.forEach(function (team) { ensureTeamCoach(team, rng); });
 }
 
+// One shared taken-set across the batch. Rebuilding it per coach would only
+// exclude the coaches already on benches, so a shortlist of five could offer
+// you the same man twice.
 function generateCoachCandidates(rng, count) {
+  const taken = coachNamesTaken();
   const candidates = [];
-  for (let i = 0; i < count; i++) candidates.push(generateCoach(rng));
+  for (let i = 0; i < count; i++) candidates.push(generateCoach(rng, taken));
   return candidates;
 }
 

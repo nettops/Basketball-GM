@@ -11,7 +11,9 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       coaches: require('./coaches.js'),
       rosterMoves: require('./rosterMoves.js'),
       faces: require('./faces.js'),
-      ratings: require('./ratings.js')
+      ratings: require('./ratings.js'),
+      names: require('./names.js'),
+      history: require('./history.js')
     }
   : {
       league: { getPlayerById: getPlayerById, getTeamRoster: getTeamRoster },
@@ -25,7 +27,9 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       coaches: { ensureTeamCoach: ensureTeamCoach },
       rosterMoves: { getFreeAgents: getFreeAgents },
       trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
-      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue }
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue },
+      names: { takenNameSet: takenNameSet, pickUniqueName: pickUniqueName },
+      history: { LEAGUE_HISTORY: LEAGUE_HISTORY }
     };
 
 // Named distinctly from progression.js's clampRating (not commissionerClampRating2
@@ -291,16 +295,19 @@ function createExpansionTeam(details, rng) {
   return team;
 }
 
-const FRINGE_FIRST_NAMES = ['Dane', 'Corbin', 'Rashad', 'Emory', 'Teodor', 'Malachi', 'Sven', 'Bo', 'Amari', 'Kwame', 'Rui', 'Deshawn'];
-const FRINGE_LAST_NAMES = ['Vasquez', 'Okonkwo', 'Bergstrom', 'Ferreira', 'Haddad', 'Lindqvist', 'Osei', 'Marchetti', 'Nakamura', 'Duval', 'Petrov', 'Ellington'];
+// Filler players used to draw from a twelve-by-twelve list of their own — 144
+// possible people for a mechanism that can fire dozens of times in one
+// offseason. They use the shared pool now, and check it.
 
 // Roster-filler player: fringe-NBA ratings, minimum money, short deal. Built
 // through mkProspect for the same reason createPlayer above uses it — it's the
 // one path that derives a full 20-attribute spread from an overall, so a filler
 // signing is a real player to every system rather than a stub.
 function generateFringePlayer(team, rng) {
-  const name = FRINGE_FIRST_NAMES[Math.floor(rng() * FRINGE_FIRST_NAMES.length)] + ' ' +
-    FRINGE_LAST_NAMES[Math.floor(rng() * FRINGE_LAST_NAMES.length)];
+  const taken = _COMMISSIONER_DATA.names.takenNameSet(
+    _COMMISSIONER_DATA.players.PLAYERS_2026,
+    (_COMMISSIONER_DATA.history.LEAGUE_HISTORY || {}).retiredPlayers);
+  const name = _COMMISSIONER_DATA.names.pickUniqueName(rng, taken);
   const overall = 48 + Math.round(rng() * 10);
   const position = _COMMISSIONER_DATA.data.POSITIONS[Math.floor(rng() * _COMMISSIONER_DATA.data.POSITIONS.length)];
   const archetype = CREATE_PLAYER_ARCHETYPES[Math.floor(rng() * CREATE_PLAYER_ARCHETYPES.length)];
