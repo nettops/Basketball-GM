@@ -179,6 +179,19 @@ function checkCoachesDoNotRepeat() {
 // guarantee evaporates silently. That mistake was made writing this very file —
 // a league year was passed where the set belongs — and the only symptom was
 // repeated names, which is the bug it was meant to catch.
+// Names arriving from outside the generators — a hand-edited save, an imported
+// career, a created player — do not come pre-tidied. Comparing them raw would
+// let "andre bell" and "Andre  Bell" both be handed out as different people,
+// which is the same repeated name with extra steps.
+function checkNamesCompareTidily() {
+  const taken = names.takenNameSet(['Andre  Bell']);
+  assert.ok(names.isNameTaken(taken, 'andre bell'), 'case and spacing must not hide a collision');
+  assert.ok(names.isNameTaken(taken, '  Andre Bell  '), 'surrounding space must not hide a collision');
+  assert.ok(!names.isNameTaken(taken, 'Andre Bells'), 'a different name must still be free');
+  assert.strictEqual(names.normalizeName('  Andre   BELL '), 'andre bell');
+  console.log('checkNamesCompareTidily: OK');
+}
+
 function checkABadTakenSetIsRefused() {
   assert.throws(function () { names.pickUniqueName(makeRng(1), 2030); }, /taken-name set/);
   assert.throws(function () { names.pickUniqueName(makeRng(1), null); }, /taken-name set/);
@@ -223,6 +236,7 @@ checkPoolsAreLargeEnough();
 checkPickUniqueNameNeverRepeats();
 checkExhaustedPoolStillProducesDistinctNames();
 checkSurnameIgnoresSuffixes();
+checkNamesCompareTidily();
 checkABadTakenSetIsRefused();
 checkOneDraftClassHasNoRepeats();
 checkTwentyClassesNeverRepeatAnyone();
