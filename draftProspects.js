@@ -1,12 +1,13 @@
 var _PROSPECT_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js'), players: require('./players-2026.js'), ratings: require('./ratings.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), faces: require('./faces.js'), progression: require('./progression.js'), players: require('./players-2026.js'), ratings: require('./ratings.js'), relatives: require('./relatives.js') }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX, POSITIONS: POSITIONS },
       traits: { generateHiddenTraits: generateHiddenTraits, generatePersonality: generatePersonality, generateTendencies: generateTendencies },
       faces: { generateFace: generateFace },
       progression: { estimatePotentialMonteCarlo: estimatePotentialMonteCarlo },
-      players: { makeAttributes: makeAttributes, ANCHOR_SD_RATIO: ANCHOR_SD_RATIO },
-      ratings: { defineOverall: defineOverall, toRawRating: toRawRating }
+      players: { makeAttributes: makeAttributes, ANCHOR_SD_RATIO: ANCHOR_SD_RATIO, PLAYERS_2026: PLAYERS_2026 },
+      ratings: { defineOverall: defineOverall, toRawRating: toRawRating },
+      relatives: { assignFamilies: assignFamilies }
     };
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
@@ -179,7 +180,14 @@ const LAST_NAMES = ['Turner', 'Brooks', 'Hayes', 'Coleman', 'Reid', 'Bryant', 'F
 // (progression.js): it actually simulates the prospect's likely career
 // forward and reports the 75th-percentile ceiling reached, which naturally
 // tracks age/attributes/personality instead of just draft slot.
-function generateProspectClass(rng, count) {
+// leagueYear is the season this class is generated during — the class is
+// drafted in the offseason that follows, so it is also the year every prospect
+// in it enters the league. It is stamped on each prospect as firstLeagueYear,
+// which is the ONLY thing that ever makes a player eligible to be someone's
+// father eighteen seasons later. The real 2026 players never get one, and so
+// can never be fathers: inventing a child for a real person is a different
+// thing from generating a fictional lineage.
+function generateProspectClass(rng, count, leagueYear) {
   const prospects = [];
   for (let i = 0; i < count; i++) {
     const rankFactor = 1 - i / count; // 1.0 for pick 1, ->0 for the last pick
@@ -221,8 +229,17 @@ function generateProspectClass(rng, count) {
     // it, so no part of the game ever sees the un-busted ceiling of a prospect
     // who busts. See applyBustRoll for why this existed but never ran.
     applyBustRoll(prospect, rng);
+    prospect.firstLeagueYear = leagueYear;
     prospects.push(prospect);
   }
+
+  // Only NEW generations get families. Names and attributes are settled here,
+  // after the whole class exists, because a son takes his father's surname and
+  // leans toward his ratings — both of which have to happen before anyone
+  // scouts him, and neither of which can be decided one prospect at a time.
+  _PROSPECT_DATA.relatives.assignFamilies(
+    prospects, _PROSPECT_DATA.players.PLAYERS_2026, leagueYear, rng);
+
   return prospects;
 }
 

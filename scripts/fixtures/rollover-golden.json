@@ -11,19 +11,19 @@
   {
     "season": 2,
     "leagueYear": 2028,
-    "teamChecksum": 44368,
-    "rosterChecksum": 3203324,
+    "teamChecksum": 44437,
+    "rosterChecksum": 3229019,
     "gamesCount": 1230,
     "draftPicks": 60,
-    "leaguePlayerCount": 482
+    "leaguePlayerCount": 484
   },
   {
     "season": 3,
     "leagueYear": 2029,
-    "teamChecksum": 44536,
-    "rosterChecksum": 3830429,
+    "teamChecksum": 44398,
+    "rosterChecksum": 3774955,
     "gamesCount": 1230,
     "draftPicks": 60,
-    "leaguePlayerCount": 532
+    "leaguePlayerCount": 528
   }
 ]

@@ -109,7 +109,8 @@ function runOffseasonRollover(gameState, deps) {
   let careerSceneShown = false;
   if (d.onCareerFollowup) careerSceneShown = !!d.onCareerFollowup();
 
-  const seasonResult = _ROLLOVER_DATA.seasonTransition.generateNewSeason(gameState.rng);
+  const seasonResult = _ROLLOVER_DATA.seasonTransition.generateNewSeason(
+    gameState.rng, gameState.leagueYear);
   gameState.season = { games: seasonResult.games, currentDay: -1 };
   gameState.upcomingDraftClass = seasonResult.nextDraftClass;
   gameState.playoffBracket = null;

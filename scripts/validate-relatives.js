@@ -51,7 +51,186 @@ function checkRelativesOfIsSafeOnAnyone() {
   console.log('checkRelativesOfIsSafeOnAnyone: OK');
 }
 
+function makeRngSeq(values) {
+  let i = 0;
+  return function () { const v = values[i % values.length]; i++; return v; };
+}
+
+function checkSonInheritsSurnameAndRespectsTheTimeline() {
+  const veteran = { id: 'v1', name: 'Marcus Threepwood', firstLeagueYear: 2026,
+    attributes: { threePoint: 90, insideScoring: 30 }, teamId: 'BOS' };
+  const tooNew = { id: 'v2', name: 'Kid Recent', firstLeagueYear: 2050,
+    attributes: { threePoint: 90, insideScoring: 30 }, teamId: 'LAL' };
+  const prospect = { id: 'q1', name: 'Andre Jones', attributes: { threePoint: 50, insideScoring: 50 } };
+
+  // rng always 0 -> every roll fires, first candidate chosen.
+  const out = relatives.assignFamilies([prospect], [veteran, tooNew], 2050, makeRngSeq([0]));
+  assert.strictEqual(out.sons, 1, 'a son should have been created');
+  assert.ok(/Threepwood$/.test(prospect.name),
+    'the son must inherit the surname, got ' + prospect.name);
+  assert.ok(/^Andre /.test(prospect.name),
+    'and keep his own first name, got ' + prospect.name);
+  const link = relatives.relativesOf(prospect).find(function (r) { return r.type === 'father'; });
+  assert.ok(link, 'the prospect must record his father');
+  assert.notStrictEqual(link.playerId, 'v2',
+    'a father who entered the league 0 seasons ago is not eligible');
+  assert.strictEqual(link.playerId, 'v1');
+  assert.ok(relatives.relativesOf(veteran).some(function (r) { return r.type === 'son' && r.playerId === 'q1'; }),
+    'and the father must record the son');
+  assert.ok(prospect.attributes.threePoint > 50,
+    'the son must lean toward his father, got ' + prospect.attributes.threePoint);
+  assert.ok(prospect.attributes.threePoint < 90,
+    'but must not simply become his father, got ' + prospect.attributes.threePoint);
+  assert.ok(prospect.attributes.insideScoring < 50,
+    'inheritance works downward too — his father was worse at this, got ' + prospect.attributes.insideScoring);
+  console.log('checkSonInheritsSurnameAndRespectsTheTimeline: OK');
+}
+
+function checkNoEligibleFatherIsNotAFailure() {
+  const prospect = { id: 'q2', name: 'Nobody Special', attributes: { threePoint: 50 } };
+  const out = relatives.assignFamilies([prospect], [], 2027, makeRngSeq([0]));
+  assert.strictEqual(out.sons, 0, 'no eligible father means no son, not a crash');
+  assert.deepStrictEqual(relatives.relativesOf(prospect), []);
+  assert.strictEqual(prospect.name, 'Nobody Special', 'and his name must be left alone');
+
+  // The real 2026 players carry no firstLeagueYear at all and must never be
+  // eligible: a fictional son writes a `son` entry onto his father, and that is
+  // inventing a relationship for a real person.
+  const real = { id: 'real-1', name: 'Actual Person', attributes: { threePoint: 80 } };
+  const p3 = { id: 'q3', name: 'Someone Else', attributes: { threePoint: 50 } };
+  const out2 = relatives.assignFamilies([p3], [real], 2099, makeRngSeq([0]));
+  assert.strictEqual(out2.sons, 0, 'a player with no firstLeagueYear can never be a father');
+  assert.deepStrictEqual(relatives.relativesOf(real), []);
+  console.log('checkNoEligibleFatherIsNotAFailure: OK');
+}
+
+function checkBrothersShareASurnameAndAreLinkedOnce() {
+  const prospects = [];
+  for (let i = 0; i < 6; i++) prospects.push({ id: 'b' + i, name: 'First Last' + i, attributes: { threePoint: 50 } });
+
+  // Drive the TUNING rather than counting rng draws. An earlier version of this
+  // test fed a hand-built sequence and assumed the son loop consumed one roll
+  // per prospect — it does not when there are no eligible fathers, it returns
+  // first — so every value landed one position out and the brother roll never
+  // fired. A test whose setup depends on how many times the code under test
+  // calls its rng is a test that breaks when the code is refactored correctly.
+  const saved = { son: relatives.RELATIVE_TUNING.sonChance, brother: relatives.RELATIVE_TUNING.brotherChance };
+  relatives.RELATIVE_TUNING.sonChance = 0;      // rng() >= 0 always, so never fires
+  relatives.RELATIVE_TUNING.brotherChance = 2;  // rng() >= 2 never, so always fires
+  let out;
+  try {
+    out = relatives.assignFamilies(prospects, [], 2050, makeRngSeq([0.5]));
+  } finally {
+    relatives.RELATIVE_TUNING.sonChance = saved.son;
+    relatives.RELATIVE_TUNING.brotherChance = saved.brother;
+  }
+  assert.strictEqual(out.sons, 0, 'the son chance was set to never fire');
+  assert.strictEqual(out.brothers, 3, 'six prospects, always firing, is three pairs — got ' + out.brothers);
+  const linked = prospects.filter(function (p) { return relatives.relativesOf(p).length > 0; });
+  linked.forEach(function (p) {
+    const kin = relatives.relativesOf(p);
+    assert.strictEqual(kin.length, 1, 'a player belongs to at most one brother pair');
+    assert.strictEqual(kin[0].type, 'brother');
+    const other = prospects.find(function (q) { return q.id === kin[0].playerId; });
+    assert.ok(other, 'the brother must be someone in the same class');
+    assert.notStrictEqual(other.id, p.id, 'and must not be himself');
+    const surname = function (n) { return n.split(' ').pop(); };
+    assert.strictEqual(surname(p.name), surname(other.name),
+      'brothers must share a surname: ' + p.name + ' / ' + other.name);
+  });
+  assert.strictEqual(linked.length, out.brothers * 2, 'every pair links exactly two players');
+  console.log('checkBrothersShareASurnameAndAreLinkedOnce: OK');
+}
+
+function checkGenerationRatesAreInBand() {
+  const veterans = [];
+  for (let i = 0; i < 40; i++) {
+    veterans.push({ id: 'vet' + i, name: 'Vet Surname' + i, firstLeagueYear: 2026,
+      attributes: { threePoint: 70 }, teamId: 'BOS' });
+  }
+  const makeRng = require(path.join(ROOT, 'rng.js')).makeRng;
+  const rng = makeRng(99);
+  let classesWithSon = 0, classesWithBrothers = 0;
+  const TRIALS = 400;
+  for (let c = 0; c < TRIALS; c++) {
+    const prospects = [];
+    for (let p = 0; p < 60; p++) {
+      prospects.push({ id: 'c' + c + 'p' + p, name: 'First Last' + p, attributes: { threePoint: 50 } });
+    }
+    const out = relatives.assignFamilies(prospects, veterans, 2050, rng);
+    if (out.sons > 0) classesWithSon++;
+    if (out.brothers > 0) classesWithBrothers++;
+  }
+  const sonRate = 100 * classesWithSon / TRIALS;
+  const brotherRate = 100 * classesWithBrothers / TRIALS;
+  assert.ok(sonRate >= 15 && sonRate <= 35,
+    'classes containing a son: ' + sonRate.toFixed(1) + '%, target 15-35%');
+  assert.ok(brotherRate >= 5 && brotherRate <= 15,
+    'classes containing brothers: ' + brotherRate.toFixed(1) + '%, target 5-15%');
+  console.log('checkGenerationRatesAreInBand: OK (sons ' + sonRate.toFixed(1) +
+    '%, brothers ' + brotherRate.toFixed(1) + '%)');
+}
+
+// The generated class must carry the year it belongs to, or nobody in it can
+// ever be a father and the whole feature is dead eighteen seasons from now with
+// nothing to show it went wrong.
+function checkProspectsCarryTheirEntryYear() {
+  const rq = function (f) { return require(path.join(ROOT, f)); };
+  rq('data.js'); rq('rng.js');
+  const traits = rq('traits.js');
+  rq('scouting.js');
+  const PLAYERS = rq('players-2026.js').PLAYERS_2026;
+  traits.ensureHiddenPlayerData(PLAYERS);
+  const prospects = rq('draftProspects.js');
+  const makeRng = rq('rng.js').makeRng;
+
+  const cls = prospects.generateProspectClass(makeRng(5), 60, 2044);
+  assert.strictEqual(cls.length, 60);
+  cls.forEach(function (p) {
+    assert.strictEqual(p.firstLeagueYear, 2044,
+      'every prospect must carry the year of the draft he is generated for');
+  });
+  assert.ok(PLAYERS.every(function (p) { return p.firstLeagueYear === undefined; }),
+    'the real 2026 players must carry no entry year, so they can never be fathers');
+  console.log('checkProspectsCarryTheirEntryYear: OK');
+}
+
+// There are TWO routes into a new season — script.js's manual advance and
+// seasonRollover.js's fast-forward — and a rule reaching one and not the other
+// is the defect this codebase keeps producing. If either drops the year, that
+// path's draft classes carry no entry year, nobody from them can ever be a
+// father, and nothing goes wrong for eighteen seasons.
+function checkBothSeasonRoutesPassTheYear() {
+  const fs = require('fs');
+  const sites = [
+    { file: 'script.js', call: 'generateNewSeason(' },
+    { file: 'seasonRollover.js', call: 'seasonTransition.generateNewSeason(' },
+    { file: 'seasonTransition.js', call: 'prospects.generateProspectClass(' }
+  ];
+  sites.forEach(function (s) {
+    const src = fs.readFileSync(path.join(ROOT, s.file), 'utf8');
+    const at = src.indexOf(s.call);
+    assert.notStrictEqual(at, -1, 'expected a ' + s.call + ' call in ' + s.file);
+    const open = at + s.call.length - 1;
+    let depth = 0, args = null;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === '(') depth++;
+      else if (src[j] === ')') { depth--; if (depth === 0) { args = src.slice(open + 1, j); break; } }
+    }
+    assert.ok(/leagueYear/.test(args),
+      s.file + ' calls ' + s.call + ' without a leagueYear — every prospect it ' +
+      'generates would carry no entry year: (' + String(args).replace(/\s+/g, ' ').trim() + ')');
+  });
+  console.log('checkBothSeasonRoutesPassTheYear: OK (' + sites.length + ' sites)');
+}
+
 checkLinksAreAlwaysBothWays();
 checkNoSelfLinksAndNoDuplicates();
+checkBothSeasonRoutesPassTheYear();
 checkRelativesOfIsSafeOnAnyone();
+checkSonInheritsSurnameAndRespectsTheTimeline();
+checkNoEligibleFatherIsNotAFailure();
+checkBrothersShareASurnameAndAreLinkedOnce();
+checkGenerationRatesAreInBand();
+checkProspectsCarryTheirEntryYear();
 console.log('All relatives validations passed');

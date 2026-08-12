@@ -165,7 +165,12 @@ function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass, leagueYear, 
   return { retireeCount: pre.retireeCount, secretBadges: pre.secretBadges, draftResults: draftResults };
 }
 
-function generateNewSeason(rng) {
+// leagueYear is the season being started. It reaches generateProspectClass so
+// the class it builds knows which draft it belongs to — without it no prospect
+// carries an entry year, nobody is ever eligible to be a father, and the whole
+// family feature is silently dead eighteen seasons from now with nothing to
+// show that it went wrong.
+function generateNewSeason(rng, leagueYear) {
   // Backstop for teams that joined the league after initSeason ran — that's
   // the only place ensureAllTeamsHaveCoaches was ever called, so an expansion
   // team created mid-save otherwise had no coach and no strategy dials for the
@@ -205,7 +210,8 @@ function generateNewSeason(rng) {
   // hardcoded 60 — an expansion team made the draft 62 picks deep against a
   // 60-prospect pool, which used to run selectAIPick off the end of the array.
   // The +4 cushion covers prospects pulled out of the pool early.
-  const nextDraftClass = _TRANSITION_DATA.prospects.generateProspectClass(rng, _TRANSITION_DATA.teams.TEAMS.length * 2 + 4);
+  const nextDraftClass = _TRANSITION_DATA.prospects.generateProspectClass(
+    rng, _TRANSITION_DATA.teams.TEAMS.length * 2 + 4, leagueYear);
 
   return { games: games, nextDraftClass: nextDraftClass };
 }

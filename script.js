@@ -571,7 +571,7 @@ function handleAdvanceToNewSeason() {
   // players 30-plus minutes a night in the box-score engine.
   enforceRosterFloors();
 
-  const result = generateNewSeason(GameState.rng);
+  const result = generateNewSeason(GameState.rng, GameState.leagueYear);
   GameState.season = { games: result.games, currentDay: -1 };
   GameState.upcomingDraftClass = result.nextDraftClass;
   GameState.playoffBracket = null;
