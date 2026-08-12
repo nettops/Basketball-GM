@@ -123,19 +123,21 @@ function checkDraftToysRankCorrectly() {
   history.LEAGUE_HISTORY.retiredPlayers.length = 0;
   history.ensureCareerData(PLAYERS_2026);
   const star = PLAYERS_2026[0], dud = PLAYERS_2026[1];
-  const okPick = PLAYERS_2026[2], mediumLate = PLAYERS_2026[3];
+  const okPick = PLAYERS_2026[2], mediumLate = PLAYERS_2026[3], scrub = PLAYERS_2026[4];
   function stats(p, points) { p.careerStats.points = points; p.careerStats.rebounds = 0; p.careerStats.assists = 0; }
   stats(star, 20000);        // pick 40 in 2026 — the great steal
   stats(dud, 10);            // pick 1 in 2026 — the great bust
   stats(okPick, 8000);       // pick 3 in 2026 — a fine top-10 career
   stats(mediumLate, 12000);  // pick 1 in 2027 — beats dud at the same slot
+  stats(scrub, 40);          // pick 55 in 2026 — a late pick who was NOT a steal
 
   history.LEAGUE_HISTORY.draftClasses.push({
     leagueYear: 2026,
     picks: [
       { round: 1, pickNumber: 1, teamId: 'BOS', playerId: dud.id, playerName: dud.name },
       { round: 1, pickNumber: 3, teamId: 'NYK', playerId: okPick.id, playerName: okPick.name },
-      { round: 1, pickNumber: 40, teamId: 'LAL', playerId: star.id, playerName: star.name }
+      { round: 1, pickNumber: 40, teamId: 'LAL', playerId: star.id, playerName: star.name },
+      { round: 2, pickNumber: 55, teamId: 'MIA', playerId: scrub.id, playerName: scrub.name }
     ]
   });
   history.LEAGUE_HISTORY.draftClasses.push({
@@ -152,16 +154,17 @@ function checkDraftToysRankCorrectly() {
     'the best top-10 career should rank last among busts');
 
   const steals = toys.biggestSteals(5);
-  assert.strictEqual(steals.length, 1, 'only one pick was made outside the top 10');
-  assert.strictEqual(steals[0].playerId, star.id, 'the best late pick should rank first');
+  assert.strictEqual(steals.length, 2, 'two picks were made outside the top 10');
+  assert.strictEqual(steals[0].playerId, star.id, 'the BEST late pick should rank first');
+  assert.strictEqual(steals[1].playerId, scrub.id, 'the worst late pick should rank last');
   assert.ok(!busts.some(function (b) { return b.playerId === star.id; }),
     'a pick outside the top 10 can never be a bust');
   assert.ok(!steals.some(function (s) { return s.playerId === dud.id; }),
     'a top-10 pick can never be a steal');
 
   const atPick = toys.bestPlayerAtEveryPick();
-  assert.strictEqual(atPick.length, 3, 'one row per DISTINCT pick number, got ' + atPick.length);
-  assert.deepStrictEqual(atPick.map(function (r) { return r.pickNumber; }), [1, 3, 40],
+  assert.strictEqual(atPick.length, 4, 'one row per DISTINCT pick number, got ' + atPick.length);
+  assert.deepStrictEqual(atPick.map(function (r) { return r.pickNumber; }), [1, 3, 40, 55],
     'best-at-pick is ordered by pick number ascending');
   assert.strictEqual(atPick[0].playerId, mediumLate.id,
     'pick 1 was used twice and the BETTER career must win it, not the earlier one');
@@ -169,8 +172,8 @@ function checkDraftToysRankCorrectly() {
   const classes = toys.draftClassRankings();
   assert.strictEqual(classes.length, 2);
   assert.strictEqual(classes[0].leagueYear, 2026, 'the more productive class ranks first');
-  assert.strictEqual(classes[0].production, 28010, 'a class is worth the sum of its picks');
-  assert.strictEqual(classes[0].picks, 3);
+  assert.strictEqual(classes[0].production, 28050, 'a class is worth the sum of its picks');
+  assert.strictEqual(classes[0].picks, 4);
   assert.strictEqual(classes[1].production, 12000);
   console.log('checkDraftToysRankCorrectly: OK');
 }
