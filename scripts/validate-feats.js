@@ -165,8 +165,18 @@ function checkAllCallSitesPassContext() {
   sites.forEach(function (args) {
     assert.ok(args.split(',').length >= 2,
       'recordGameResult called with one argument — feats need {leagueYear, day}: (' + args.trim() + ')');
+    // "At least two arguments" is not enough. A site that passed { day: null }
+    // and forgot the year satisfied the count and still filed every feat under
+    // season undefined — mutation testing caught exactly that. The context has
+    // to be checked for its contents, not its arity.
+    const context = args.slice(args.indexOf(',') + 1);
+    assert.ok(/leagueYear/.test(context),
+      'recordGameResult context carries no leagueYear — every feat filed here ' +
+      'would land in an undefined season: (' + context.trim().replace(/\s+/g, ' ') + ')');
+    assert.ok(/\bday\b/.test(context),
+      'recordGameResult context carries no day: (' + context.trim().replace(/\s+/g, ' ') + ')');
   });
-  console.log('checkAllCallSitesPassContext: OK (3 sites)');
+  console.log('checkAllCallSitesPassContext: OK (3 sites, each passing a year and a day)');
 }
 
 function checkFeatsAreFiledFromRealGames() {
