@@ -270,14 +270,27 @@ function checkRetireesKeepTenureAndEarnings() {
   assert.strictEqual(archived.careerEarnings, 5000000 * 4 + 30000000 * 4,
     'the archive must bank total earnings');
 
-  // Now that he is retired he must still appear in both lists.
-  p.teamId = null;
-  const tenure = toys.mostYearsOneTeam(400).find(function (r) { return r.playerId === p.id; });
-  assert.ok(tenure, 'a retiree must still appear in most-years-with-one-team');
-  assert.strictEqual(tenure.years, 8);
-  const paid = toys.careerEarnings(400).find(function (r) { return r.playerId === p.id; });
-  assert.ok(paid, 'a retiree must still appear in career earnings');
-  assert.strictEqual(paid.earnings, 140000000);
+  // Retirement SPLICES the player out of PLAYERS_2026 (seasonTransition.js),
+  // and the fixture has to do the same. Leaving him in the active array meant
+  // the active branch answered from his still-intact careerHistory and the
+  // retiree branch was never reached — mutants that dropped retirees from both
+  // lists entirely survived, because a retiree was never actually tested.
+  const idx = PLAYERS_2026.indexOf(p);
+  assert.notStrictEqual(idx, -1, 'fixture precondition: the player starts out active');
+  PLAYERS_2026.splice(idx, 1);
+  try {
+    assert.ok(!toys.candidatePool().some(function (c) { return c.playerId === p.id && !c.retired; }),
+      'precondition: he must no longer be reachable as an active player');
+    const tenure = toys.mostYearsOneTeam(400).find(function (r) { return r.playerId === p.id; });
+    assert.ok(tenure, 'a retiree must still appear in most-years-with-one-team');
+    assert.strictEqual(tenure.years, 8);
+    assert.strictEqual(tenure.teamId, 'BOS', 'and must name the team he spent them with');
+    const paid = toys.careerEarnings(400).find(function (r) { return r.playerId === p.id; });
+    assert.ok(paid, 'a retiree must still appear in career earnings');
+    assert.strictEqual(paid.earnings, 140000000);
+  } finally {
+    PLAYERS_2026.splice(idx, 0, p);
+  }
   console.log('checkRetireesKeepTenureAndEarnings: OK');
 }
 
