@@ -921,7 +921,13 @@ const UI_SMOKE = (function () {
 
     renderView('feats');
     const view = document.getElementById('view-content');
-    results.push(ok('feats:renders', view.innerText.indexOf('Feats') !== -1, null));
+    // textContent, not innerText. innerText reports only what is actually laid
+    // out, and returns almost nothing when the browser pane is not compositing
+    // — a page that renders perfectly then fails this check for a reason that
+    // has nothing to do with the page.
+    const heading = view.querySelector('.view-header h2');
+    results.push(ok('feats:renders', !!heading && heading.textContent.indexOf('Feats') !== -1,
+      heading ? heading.textContent : 'no view header'));
 
     const rows = view.querySelectorAll('#feat-rows tr');
     const empty = view.querySelector('.empty-state');
@@ -1014,9 +1020,17 @@ const UI_SMOKE = (function () {
     results.push(ok('toys:index-renders', buttons.length >= 17, buttons.length + ' toys'));
 
     // The glance panels this page had before the toys must still be here.
+    // Read off the DOM rather than innerText, for the reason given in
+    // checkFeats above.
+    const headers = Array.from(view.querySelectorAll('.panel-header'))
+      .map(function (h) { return h.textContent; });
+    const survives = function (name) {
+      return headers.some(function (h) { return h.indexOf(name) !== -1; });
+    };
     results.push(ok('toys:glance-panels-survive',
-      view.innerText.indexOf('Most Active Trade Partners') !== -1 &&
-      view.innerText.indexOf('Draft Class Hit Rates') !== -1, null));
+      survives('Most Active Trade Partners') && survives('Draft Class Hit Rates') &&
+      survives('Most-Traded Players') && survives('Longest Current Tenures'),
+      headers.join(' | ')));
 
     // Re-query by index each iteration: clicking re-renders the page and
     // detaches every button captured beforehand. A detached node still fires
