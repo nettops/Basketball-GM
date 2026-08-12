@@ -155,7 +155,10 @@ function checkDraftToysRankCorrectly() {
     ]
   });
 
-  const busts = toys.biggestBusts(5);
+  // 2031 is "now": both fixture classes (2026, 2027) are at least
+  // DRAFT_VERDICT_MIN_SEASONS old, so every pick in them is judgeable.
+  const NOW = 2031;
+  const busts = toys.biggestBusts(5, NOW);
   assert.strictEqual(busts.length, 3, 'three top-10 picks were made, got ' + busts.length);
   // Draft rows print the components too, and they come from the pool via a
   // join on player id — a pick whose player is missing from the pool must
@@ -169,7 +172,7 @@ function checkDraftToysRankCorrectly() {
   assert.strictEqual(busts[busts.length - 1].playerId, mediumLate.id,
     'the best top-10 career should rank last among busts');
 
-  const steals = toys.biggestSteals(5);
+  const steals = toys.biggestSteals(5, NOW);
   assert.strictEqual(steals.length, 2, 'two picks were made outside the top 10');
   assert.strictEqual(steals[0].playerId, star.id, 'the BEST late pick should rank first');
   assert.strictEqual(steals[1].playerId, scrub.id, 'the worst late pick should rank last');
@@ -178,14 +181,14 @@ function checkDraftToysRankCorrectly() {
   assert.ok(!steals.some(function (s) { return s.playerId === dud.id; }),
     'a top-10 pick can never be a steal');
 
-  const atPick = toys.bestPlayerAtEveryPick();
+  const atPick = toys.bestPlayerAtEveryPick(NOW);
   assert.strictEqual(atPick.length, 4, 'one row per DISTINCT pick number, got ' + atPick.length);
   assert.deepStrictEqual(atPick.map(function (r) { return r.pickNumber; }), [1, 3, 40, 55],
     'best-at-pick is ordered by pick number ascending');
   assert.strictEqual(atPick[0].playerId, mediumLate.id,
     'pick 1 was used twice and the BETTER career must win it, not the earlier one');
 
-  const classes = toys.draftClassRankings();
+  const classes = toys.draftClassRankings(NOW);
   assert.strictEqual(classes.length, 2);
   assert.strictEqual(classes[0].leagueYear, 2026, 'the more productive class ranks first');
   assert.strictEqual(classes[0].production, 28050, 'a class is worth the sum of its picks');
@@ -195,8 +198,52 @@ function checkDraftToysRankCorrectly() {
 }
 
 // A brand new league opens these pages. They must be empty, not broken.
+// A verdict on a draft pick needs time, exactly as a verdict on a trade does.
+// Without this rule "Biggest Busts" is topped by whoever was drafted last week:
+// on a real 25-season league, 11 of the 15 rows had a career of literally zero
+// because 10 of them had been drafted that summer and had never played a game.
+function checkRecentPicksAreNotJudged() {
+  history.LEAGUE_HISTORY.draftClasses.length = 0;
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  history.ensureCareerData(PLAYERS_2026);
+  const veteran = PLAYERS_2026[30], rookie = PLAYERS_2026[31];
+  veteran.careerStats.points = 9000; veteran.careerStats.rebounds = 0; veteran.careerStats.assists = 0;
+  rookie.careerStats.points = 0; rookie.careerStats.rebounds = 0; rookie.careerStats.assists = 0;
+
+  history.LEAGUE_HISTORY.draftClasses.push(
+    { leagueYear: 2040, picks: [{ round: 1, pickNumber: 2, teamId: 'BOS', playerId: veteran.id, playerName: veteran.name }] },
+    { leagueYear: 2046, picks: [{ round: 1, pickNumber: 1, teamId: 'LAL', playerId: rookie.id, playerName: rookie.name }] }
+  );
+
+  // 2046 is the newest class, so it is "now" and the rookie is 0 seasons old.
+  const busts = toys.biggestBusts(10);
+  assert.ok(!busts.some(function (b) { return b.playerId === rookie.id; }),
+    'a player drafted this year has not had a career yet and cannot be a bust');
+  assert.ok(busts.some(function (b) { return b.playerId === veteran.id; }),
+    'a pick six seasons old must still be judged');
+
+  // The boundary, asserted from both sides rather than assumed.
+  const gap = toys.DRAFT_VERDICT_MIN_SEASONS;
+  assert.strictEqual(toys.judgeablePickRows(2046 + gap - 1)
+    .filter(function (r) { return r.leagueYear === 2046; }).length, 0,
+    'one season short of the bar must not be judged');
+  assert.strictEqual(toys.judgeablePickRows(2046 + gap)
+    .filter(function (r) { return r.leagueYear === 2046; }).length, 1,
+    'exactly at the bar must be judged');
+
+  assert.strictEqual(toys.latestDraftYear(), 2046,
+    '"now" is derived from the newest class in the archive');
+  // A class too new to judge must not be RANKED either — it would sit at the
+  // bottom of the table looking like the worst class in history.
+  assert.ok(!toys.draftClassRankings().some(function (c) { return c.leagueYear === 2046; }),
+    'a class nobody has had time to judge must not be ranked at all');
+  console.log('checkRecentPicksAreNotJudged: OK (bar ' + gap + ' seasons)');
+}
+
 function checkEmptyHistoryReturnsEmptyLists() {
   history.LEAGUE_HISTORY.draftClasses.length = 0;
+  // No year passed: with no classes at all there is no "now" to derive, and
+  // every list must still come back empty rather than throwing on -Infinity.
   assert.deepStrictEqual(toys.biggestBusts(5), []);
   assert.deepStrictEqual(toys.biggestSteals(5), []);
   assert.deepStrictEqual(toys.draftClassRankings(), []);
@@ -458,6 +505,7 @@ checkTeamSeasonsAreRecorded();
 checkPlayoffResultsAreClassified();
 checkPoolIncludesActivePlayers();
 checkDraftToysRankCorrectly();
+checkRecentPicksAreNotJudged();
 checkEmptyHistoryReturnsEmptyLists();
 checkCareerToys();
 checkRetireesKeepTenureAndEarnings();

@@ -77,6 +77,34 @@ function candidatePool() {
 // rather than the lottery itself: being taken 11th is not an indictment.
 const BUST_PICK_CUTOFF = 10;
 
+// A verdict on a draft pick needs time, exactly as a verdict on a trade does
+// (see LOPSIDED_MIN_SEASONS below — same rule, same reason).
+//
+// Without it "Biggest Busts" is topped by whoever was drafted last week. On a
+// real 25-season league, 11 of the 15 names on that page had a career of
+// literally zero because 10 of them were drafted that summer and had not
+// played a game. That is not a bust, it is a rookie, and calling him the
+// biggest bust in league history is the page lying about what it knows.
+const DRAFT_VERDICT_MIN_SEASONS = 3;
+
+// "Now", for draft purposes, taken from the archive itself rather than from
+// GameState — this module knows nothing about the running game, and a caller
+// cannot forget to pass a year it derives for itself.
+function latestDraftYear() {
+  return _TOYS_DATA.history.LEAGUE_HISTORY.draftClasses.reduce(function (m, c) {
+    return Math.max(m, c.leagueYear);
+  }, -Infinity);
+}
+
+// Picks old enough to be judged. currentYear is overridable so the rule can be
+// tested directly instead of by constructing decades of history.
+function judgeablePickRows(currentYear) {
+  const now = currentYear === undefined ? latestDraftYear() : currentYear;
+  return pickRows().filter(function (r) {
+    return now - r.leagueYear >= DRAFT_VERDICT_MIN_SEASONS;
+  });
+}
+
 // Every pick ever made, joined to that player's career.
 function pickRows() {
   const pool = {};
@@ -100,23 +128,23 @@ function pickRows() {
   return rows;
 }
 
-function biggestBusts(limit) {
-  return pickRows()
+function biggestBusts(limit, currentYear) {
+  return judgeablePickRows(currentYear)
     .filter(function (r) { return r.pickNumber <= BUST_PICK_CUTOFF; })
     .sort(function (a, b) { return a.production - b.production; })
     .slice(0, limit || 10);
 }
 
-function biggestSteals(limit) {
-  return pickRows()
+function biggestSteals(limit, currentYear) {
+  return judgeablePickRows(currentYear)
     .filter(function (r) { return r.pickNumber > BUST_PICK_CUTOFF; })
     .sort(function (a, b) { return b.production - a.production; })
     .slice(0, limit || 10);
 }
 
-function bestPlayerAtEveryPick() {
+function bestPlayerAtEveryPick(currentYear) {
   const best = {};
-  pickRows().forEach(function (r) {
+  judgeablePickRows(currentYear).forEach(function (r) {
     if (!best[r.pickNumber] || r.production > best[r.pickNumber].production) best[r.pickNumber] = r;
   });
   return Object.keys(best)
@@ -124,9 +152,9 @@ function bestPlayerAtEveryPick() {
     .sort(function (a, b) { return a.pickNumber - b.pickNumber; });
 }
 
-function draftClassRankings() {
+function draftClassRankings(currentYear) {
   const byYear = {};
-  pickRows().forEach(function (r) {
+  judgeablePickRows(currentYear).forEach(function (r) {
     if (!byYear[r.leagueYear]) byYear[r.leagueYear] = { leagueYear: r.leagueYear, production: 0, picks: 0 };
     byYear[r.leagueYear].production += r.production;
     byYear[r.leagueYear].picks += 1;
@@ -359,6 +387,12 @@ if (typeof module !== 'undefined' && module.exports) {
     biggestSteals: biggestSteals,
     bestPlayerAtEveryPick: bestPlayerAtEveryPick,
     draftClassRankings: draftClassRankings,
-    BUST_PICK_CUTOFF: BUST_PICK_CUTOFF
+    BUST_PICK_CUTOFF: BUST_PICK_CUTOFF,
+    DRAFT_VERDICT_MIN_SEASONS: DRAFT_VERDICT_MIN_SEASONS,
+    latestDraftYear: latestDraftYear,
+    judgeablePickRows: judgeablePickRows,
+    DRAFT_VERDICT_MIN_SEASONS: DRAFT_VERDICT_MIN_SEASONS,
+    latestDraftYear: latestDraftYear,
+    judgeablePickRows: judgeablePickRows
   };
 }
