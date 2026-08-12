@@ -287,7 +287,16 @@ function renderTradeCenter(container, userTeamId) {
       btn.addEventListener('click', function () {
         const i = Number(btn.getAttribute('data-accept-offer'));
         pushUndoSnapshot(GameState);
-        executeTrade(GameState.tradeOffers[i].proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
+        // An offer can go stale in the inbox — legal when it arrived, illegal
+        // by the time you accept it. Left unchecked this was the one trade
+        // path in the game that could leave a roster outside 12-15.
+        const accept = acceptTradeOffer(GameState.tradeOffers[i].proposal,
+          function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
+        if (!accept.executed) {
+          state.resultMessage = '<p>Cannot accept: ' + escapeHtml(accept.rosterErrors.join('; ')) + '</p>';
+          draw();
+          return;
+        }
         GameState.tradeOffers.splice(i, 1);
         draw();
       });

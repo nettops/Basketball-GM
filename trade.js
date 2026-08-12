@@ -126,6 +126,27 @@ function executeTrade(proposal, historySink, dayIndex) {
   if (historySink) historySink(proposal);
 }
 
+// Accepting an offer out of the inbox is still a trade, and still has to leave
+// both rosters legal. Both accept paths — the Trade Center button and the
+// autoTrade auto-accept — called executeTrade RAW, so the 12-15 rule was
+// enforced when you BUILT a trade and skipped when you accepted one. An offer
+// is legal when autoGM generates it and can stop being legal while it sits
+// there: sign a free agent, accept another offer, let the offseason retire
+// somebody. Reproduced by hand — Boston left at 11 players against a stated
+// minimum of 12.
+//
+// Note the commissioner's own Force Trade — an explicit cheat that skips value
+// and salary entirely — still validates roster sizes. This path was the only
+// one in the game that did not.
+function acceptTradeOffer(proposal, historySink, dayIndex) {
+  const rosterErrors = validateRosterSizes(proposal);
+  if (rosterErrors.length > 0) {
+    return { executed: false, rosterErrors: rosterErrors };
+  }
+  executeTrade(proposal, historySink, dayIndex);
+  return { executed: true, rosterErrors: [] };
+}
+
 function proposeTrade(proposal, userTeamId, evaluateUserLeg, historySink) {
   const rosterErrors = validateRosterSizes(proposal);
   if (rosterErrors.length > 0) {
@@ -173,6 +194,7 @@ if (typeof module !== 'undefined' && module.exports) {
     TRADE_OFFER_EXPIRY_DAYS: TRADE_OFFER_EXPIRY_DAYS,
     pruneExpiredTradeOffers: pruneExpiredTradeOffers,
     validateRosterSizes: validateRosterSizes,
+    acceptTradeOffer: acceptTradeOffer,
     evaluateTrade: evaluateTrade,
     executeTrade: executeTrade,
     proposeTrade: proposeTrade,

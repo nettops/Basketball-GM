@@ -17,7 +17,7 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       composite: { computeTeamSynergy: computeTeamSynergy },
       teams: { getTeamById: getTeamById },
       box: { minutesWeight: minutesWeight },
-      coach: { decideSubstitutions: decideSubstitutions, decideTimeout: decideTimeout }
+      coach: { decideSubstitutions: decideSubstitutions, decideTimeout: decideTimeout, FOUL_OUT: FOUL_OUT }
     };
 
 const REGULATION_PERIODS = 4;
@@ -322,11 +322,20 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
 
   sim.applySubstitutions = function (team, swaps) {
     if (!swaps || swaps.length === 0) return;
+    const box = team === 'home' ? homeBox : awayBox;
     swaps.forEach(function (swap) {
       const idx = onCourt[team].indexOf(swap.out);
       if (idx === -1) return;                                  // not on the floor
       if (onCourt[team].indexOf(swap.in) !== -1) return;       // already on the floor
       if (!byId[swap.in]) return;                              // not on this roster
+      // Fouled out is fouled out. gameCoach.js has always refused to field
+      // these players and ui/pixelHud.js has always disabled their sub button
+      // with the title "Fouled out" — but the model itself never checked, so
+      // re-enabling that button put a disqualified player back on the floor.
+      // Measured: 23 minutes and 113 of 226 possessions by a six-foul player
+      // the game's own UI called FOULED OUT.
+      const line = box[swap.in];
+      if (line && line.fouls >= _GAMESIM_DATA.coach.FOUL_OUT) return;
       onCourt[team][idx] = swap.in;
     });
   };

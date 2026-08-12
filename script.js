@@ -193,7 +193,10 @@ function runWeeklyTradeGeneration(dayIndex) {
   const offer = generateTradeOffer(team, GameState.rng);
   if (!offer) return;
   if (GameState.automation.autoTrade) {
-    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
+    // Same rule as accepting by hand: an offer that would leave a roster
+    // outside 12-15 is refused rather than executed. Delegating trades must
+    // not do something you could not do yourself.
+    acceptTradeOffer(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
   } else {
     // Stamped so the offer can expire (trade.js) instead of sitting in the
     // inbox for the rest of the career.
