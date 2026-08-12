@@ -273,10 +273,36 @@ function computeHofScore(player) {
   );
 }
 
+// The two numbers the tenure and earnings toys need, banked as scalars rather
+// than by copying the whole careerHistory into the archive. The archive is
+// saved to disk for the life of the league, and seasonByYear alone would add a
+// row per season per retiree forever; two numbers is what the lists actually
+// read. Without them a career vanishes from both lists the moment it ends,
+// which is exactly backwards for a history toy.
+function longestTenureOf(player) {
+  const spells = (player.careerHistory && player.careerHistory.teamHistory) || [];
+  let years = 0, teamId = null;
+  spells.forEach(function (s) {
+    if ((s.seasons || 0) > years) { years = s.seasons || 0; teamId = s.teamId; }
+  });
+  return { years: years, teamId: teamId };
+}
+
+function careerEarningsOf(player) {
+  const contracts = (player.careerHistory && player.careerHistory.contractHistory) || [];
+  return contracts.reduce(function (sum, c) {
+    return sum + (c.salary || 0) * (c.yearsRemaining || 0);
+  }, 0);
+}
+
 function archiveRetiree(player, leagueYear) {
   ensureCareerData([player]);
   const hofScore = computeHofScore(player);
+  const tenure = longestTenureOf(player);
   const record = {
+    longestTenure: tenure.years,
+    longestTenureTeamId: tenure.teamId,
+    careerEarnings: careerEarningsOf(player),
     id: player.id,
     name: player.name,
     position: player.position,

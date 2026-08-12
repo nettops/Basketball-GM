@@ -118,9 +118,105 @@ function draftClassRankings() {
     .sort(function (a, b) { return b.production - a.production; });
 }
 
+function bestWithoutARing(limit) {
+  return candidatePool()
+    .filter(function (c) { return c.championships === 0; })
+    .sort(function (a, b) { return b.production - a.production; })
+    .slice(0, limit || 10);
+}
+
+function bestWithoutAnMvp(limit) {
+  return candidatePool()
+    .filter(function (c) { return c.mvps === 0; })
+    .sort(function (a, b) { return b.production - a.production; })
+    .slice(0, limit || 10);
+}
+
+// The longest unbroken spell with one franchise, and the money. Both read
+// careerHistory for an active player, and the two scalars archiveRetiree banks
+// for a retired one — the retiree archive does not keep careerHistory, and
+// without those scalars these two lists would forget a career the moment it
+// ended, which is exactly backwards for a history toy.
+function longestSpell(teamHistory) {
+  let best = 0, bestTeam = null;
+  (teamHistory || []).forEach(function (s) {
+    const years = s.seasons || 0;
+    if (years > best) { best = years; bestTeam = s.teamId; }
+  });
+  return { years: best, teamId: bestTeam };
+}
+
+function totalEarnings(contractHistory) {
+  return (contractHistory || []).reduce(function (sum, c) {
+    return sum + (c.salary || 0) * (c.yearsRemaining || 0);
+  }, 0);
+}
+
+function mostYearsOneTeam(limit) {
+  const byId = {};
+  _TOYS_DATA.players.PLAYERS_2026.forEach(function (p) {
+    const spell = longestSpell(p.careerHistory && p.careerHistory.teamHistory);
+    if (spell.years > 0) byId[p.id] = { playerId: p.id, name: p.name, years: spell.years, teamId: spell.teamId };
+  });
+  _TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers.forEach(function (r) {
+    if (!r.longestTenure) return;
+    byId[r.id] = { playerId: r.id, name: r.name, years: r.longestTenure, teamId: r.longestTenureTeamId || null };
+  });
+  return Object.keys(byId).map(function (id) { return byId[id]; })
+    .sort(function (a, b) { return b.years - a.years; }).slice(0, limit || 10);
+}
+
+function mostTeams(limit) {
+  const byId = {};
+  _TOYS_DATA.players.PLAYERS_2026.forEach(function (p) {
+    const n = (p.teamsPlayedFor || []).length;
+    if (n > 0) byId[p.id] = { playerId: p.id, name: p.name, teams: n };
+  });
+  _TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers.forEach(function (r) {
+    const n = (r.teamsPlayedFor || []).length;
+    if (n > 0) byId[r.id] = { playerId: r.id, name: r.name, teams: n };
+  });
+  return Object.keys(byId).map(function (id) { return byId[id]; })
+    .sort(function (a, b) { return b.teams - a.teams; }).slice(0, limit || 10);
+}
+
+// Salary times years for every contract ever signed. Reads contractHistory
+// rather than the current contract, so a career is summed and not a snapshot.
+function careerEarnings(limit) {
+  const byId = {};
+  _TOYS_DATA.players.PLAYERS_2026.forEach(function (p) {
+    const total = totalEarnings(p.careerHistory && p.careerHistory.contractHistory);
+    if (total > 0) byId[p.id] = { playerId: p.id, name: p.name, earnings: total };
+  });
+  _TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers.forEach(function (r) {
+    if (!r.careerEarnings) return;
+    byId[r.id] = { playerId: r.id, name: r.name, earnings: r.careerEarnings };
+  });
+  return Object.keys(byId).map(function (id) { return byId[id]; })
+    .sort(function (a, b) { return b.earnings - a.earnings; }).slice(0, limit || 10);
+}
+
+// The nearly-men: the highest Hall of Fame scores that fell short of induction.
+// Retirees only, and necessarily so — an active player has no verdict yet.
+function hallOfVeryGood(limit) {
+  return _TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers
+    .filter(function (r) { return !r.hallOfFame; })
+    .map(function (r) { return { playerId: r.id, name: r.name, hofScore: r.hofScore || 0 }; })
+    .sort(function (a, b) { return b.hofScore - a.hofScore; })
+    .slice(0, limit || 10);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     careerProduction: careerProduction,
+    longestSpell: longestSpell,
+    totalEarnings: totalEarnings,
+    bestWithoutARing: bestWithoutARing,
+    bestWithoutAnMvp: bestWithoutAnMvp,
+    mostYearsOneTeam: mostYearsOneTeam,
+    mostTeams: mostTeams,
+    careerEarnings: careerEarnings,
+    hallOfVeryGood: hallOfVeryGood,
     candidatePool: candidatePool,
     pickRows: pickRows,
     biggestBusts: biggestBusts,

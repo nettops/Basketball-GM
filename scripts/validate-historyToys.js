@@ -188,9 +188,138 @@ function checkEmptyHistoryReturnsEmptyLists() {
   console.log('checkEmptyHistoryReturnsEmptyLists: OK');
 }
 
+function checkCareerToys() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  history.ensureCareerData(PLAYERS_2026);
+  const ringless = PLAYERS_2026[6], champ = PLAYERS_2026[7];
+  ringless.careerStats.points = 30000; ringless.careerStats.rebounds = 0; ringless.careerStats.assists = 0;
+  ringless.championshipsWon = 0; ringless.awardsWon = [];
+  champ.careerStats.points = 31000; champ.careerStats.rebounds = 0; champ.careerStats.assists = 0;
+  champ.championshipsWon = 3; champ.awardsWon = [];
+
+  const noRing = toys.bestWithoutARing(5);
+  assert.strictEqual(noRing[0].playerId, ringless.id,
+    'the most productive ringless player should rank first');
+  assert.ok(!noRing.some(function (r) { return r.playerId === champ.id; }),
+    'a player with a ring must never appear');
+
+  champ.awardsWon = [{ award: 'mvp', leagueYear: 2030 }];
+  const noMvp = toys.bestWithoutAnMvp(5);
+  assert.ok(!noMvp.some(function (r) { return r.playerId === champ.id; }),
+    'an MVP winner must never appear in best-without-an-MVP');
+  assert.ok(noMvp.some(function (r) { return r.playerId === ringless.id; }),
+    'a player who never won MVP must appear');
+
+  // Earnings come from the contract history, not from the current salary.
+  const earner = PLAYERS_2026[8], pauper = PLAYERS_2026[9];
+  earner.careerHistory.contractHistory = [
+    { season: 2026, salary: 10000000, yearsRemaining: 2, teamId: 'BOS', type: 'free_agency' },
+    { season: 2028, salary: 20000000, yearsRemaining: 3, teamId: 'BOS', type: 're_signing' }
+  ];
+  pauper.careerHistory.contractHistory = [
+    { season: 2026, salary: 1200000, yearsRemaining: 1, teamId: 'MIA', type: 'free_agency' }
+  ];
+  const earnings = toys.careerEarnings(400);
+  const row = earnings.find(function (e) { return e.playerId === earner.id; });
+  assert.ok(row, 'a player with contracts must appear in career earnings');
+  assert.strictEqual(row.earnings, 10000000 * 2 + 20000000 * 3,
+    'earnings are salary times years for each contract signed');
+  const earnerAt = earnings.indexOf(row);
+  const pauperAt = earnings.findIndex(function (e) { return e.playerId === pauper.id; });
+  assert.ok(pauperAt > earnerAt, 'the bigger earner must rank above the smaller one');
+
+  // Longest unbroken spell with one franchise.
+  const loyal = PLAYERS_2026[10], journeyman = PLAYERS_2026[11];
+  loyal.careerHistory.teamHistory = [
+    { teamId: 'BOS', startSeason: 2026, endSeason: null, seasons: 14 }
+  ];
+  journeyman.careerHistory.teamHistory = [
+    { teamId: 'BOS', startSeason: 2026, endSeason: 2028, seasons: 3 },
+    { teamId: 'MIA', startSeason: 2029, endSeason: 2030, seasons: 2 }
+  ];
+  const loyalty = toys.mostYearsOneTeam(400);
+  const loyalRow = loyalty.find(function (r) { return r.playerId === loyal.id; });
+  assert.ok(loyalRow, 'a player with a team history must appear');
+  assert.strictEqual(loyalRow.years, 14);
+  assert.strictEqual(loyalRow.teamId, 'BOS');
+  const jRow = loyalty.find(function (r) { return r.playerId === journeyman.id; });
+  assert.strictEqual(jRow.years, 3, 'the LONGEST spell counts, not the total or the last');
+  assert.ok(loyalty.indexOf(loyalRow) < loyalty.indexOf(jRow), 'longer tenure ranks first');
+  console.log('checkCareerToys: OK');
+}
+
+// A retiree keeps no careerHistory in the archive, so tenure and earnings would
+// silently list only active players — every one of these lists would forget its
+// own history the moment a career ended, which is precisely backwards for a
+// history toy. archiveRetiree now banks the two scalars they need.
+function checkRetireesKeepTenureAndEarnings() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  const p = PLAYERS_2026[12];
+  history.ensureCareerData([p]);
+  p.careerStats.points = 25000; p.careerStats.rebounds = 0; p.careerStats.assists = 0;
+  p.careerHistory.teamHistory = [
+    { teamId: 'BOS', startSeason: 2026, endSeason: 2033, seasons: 8 },
+    { teamId: 'NYK', startSeason: 2034, endSeason: 2036, seasons: 3 }
+  ];
+  p.careerHistory.contractHistory = [
+    { season: 2026, salary: 5000000, yearsRemaining: 4, teamId: 'BOS', type: 'rookie' },
+    { season: 2030, salary: 30000000, yearsRemaining: 4, teamId: 'BOS', type: 're_signing' }
+  ];
+  const archived = history.archiveRetiree(p, 2037);
+  assert.strictEqual(archived.longestTenure, 8, 'the archive must bank the longest spell');
+  assert.strictEqual(archived.careerEarnings, 5000000 * 4 + 30000000 * 4,
+    'the archive must bank total earnings');
+
+  // Now that he is retired he must still appear in both lists.
+  p.teamId = null;
+  const tenure = toys.mostYearsOneTeam(400).find(function (r) { return r.playerId === p.id; });
+  assert.ok(tenure, 'a retiree must still appear in most-years-with-one-team');
+  assert.strictEqual(tenure.years, 8);
+  const paid = toys.careerEarnings(400).find(function (r) { return r.playerId === p.id; });
+  assert.ok(paid, 'a retiree must still appear in career earnings');
+  assert.strictEqual(paid.earnings, 140000000);
+  console.log('checkRetireesKeepTenureAndEarnings: OK');
+}
+
+function checkMostTeams() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  const wanderer = PLAYERS_2026[13], homebody = PLAYERS_2026[14];
+  wanderer.teamsPlayedFor = ['BOS', 'MIA', 'LAL', 'CHI', 'NYK', 'PHX'];
+  homebody.teamsPlayedFor = ['BOS'];
+  const list = toys.mostTeams(400);
+  const w = list.find(function (r) { return r.playerId === wanderer.id; });
+  const h = list.find(function (r) { return r.playerId === homebody.id; });
+  assert.strictEqual(w.teams, 6);
+  assert.strictEqual(h.teams, 1);
+  assert.ok(list.indexOf(w) < list.indexOf(h), 'more teams ranks first');
+  const ids = list.map(function (r) { return r.playerId; });
+  assert.strictEqual(new Set(ids).size, ids.length, 'no player may be listed twice');
+  console.log('checkMostTeams: OK');
+}
+
+function checkHallOfVeryGood() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  history.LEAGUE_HISTORY.retiredPlayers.push(
+    { id: 'r1', name: 'Just In', careerStats: {}, awardsWon: [], championshipsWon: 0, hofScore: 120, hallOfFame: true },
+    { id: 'r2', name: 'Just Out', careerStats: {}, awardsWon: [], championshipsWon: 0, hofScore: 95, hallOfFame: false },
+    { id: 'r3', name: 'Well Out', careerStats: {}, awardsWon: [], championshipsWon: 0, hofScore: 40, hallOfFame: false }
+  );
+  const list = toys.hallOfVeryGood(5);
+  assert.strictEqual(list.length, 2, 'only the non-inducted belong in the Hall of Very Good');
+  assert.strictEqual(list[0].playerId, 'r2', 'the highest score that fell short ranks first');
+  assert.strictEqual(list[1].playerId, 'r3');
+  assert.ok(!list.some(function (r) { return r.playerId === 'r1'; }),
+    'an inductee must never appear');
+  console.log('checkHallOfVeryGood: OK');
+}
+
 checkTeamSeasonsAreRecorded();
 checkPlayoffResultsAreClassified();
 checkPoolIncludesActivePlayers();
 checkDraftToysRankCorrectly();
 checkEmptyHistoryReturnsEmptyLists();
+checkCareerToys();
+checkRetireesKeepTenureAndEarnings();
+checkMostTeams();
+checkHallOfVeryGood();
 console.log('All history toy validations passed');
