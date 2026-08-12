@@ -112,6 +112,12 @@ function assignFamilies(prospects, allPlayers, leagueYear, rng) {
     sons++;
   });
 
+  // The already-linked check is what actually keeps a player to one family: it
+  // stops a son from also being made someone's brother, and it stops the
+  // second half of a pair from being re-used. The extra i++ is NOT the
+  // guarantee — deleting it changes no link, only how many rolls the loop
+  // makes, because the check catches the same case one step later. It stays
+  // because skipping a roll we know cannot fire is cheaper and clearer.
   for (let i = 0; i + 1 < prospects.length; i++) {
     if (rng() >= RELATIVE_TUNING.brotherChance) continue;
     const a = prospects[i], b = prospects[i + 1];
@@ -119,7 +125,7 @@ function assignFamilies(prospects, allPlayers, leagueYear, rng) {
     b.name = firstNameOf(b.name) + ' ' + surnameOf(a.name);
     link(a, b, 'brother');
     brothers++;
-    i++;   // a player is in at most one brother pair
+    i++;
   }
 
   return { sons: sons, brothers: brothers };
