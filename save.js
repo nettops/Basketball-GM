@@ -20,6 +20,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       rng: require('./rng.js'),
       history: require('./history.js'),
       gmCareer: require('./gmCareer.js'),
+      scouting: require('./scouting.js'),
       storage: _makeMemoryStorage()
     }
   : {
@@ -30,6 +31,7 @@ var _SAVE_DATA = (typeof require !== 'undefined')
       rng: { makeRng: makeRng },
       history: { LEAGUE_HISTORY: LEAGUE_HISTORY },
       gmCareer: { ensureGmCareer: ensureGmCareer },
+      scouting: { initScoutingState: initScoutingState },
       storage: localStorage
     };
 
@@ -262,7 +264,12 @@ function applySavedState(payload, gameState) {
   } : null;
   gameState.playoffBracket = payload.playoffBracket;
   gameState.upcomingDraftClass = payload.upcomingDraftClass;
-  gameState.scouting = payload.scouting;
+  // A payload without scouting state used to null out whatever the running
+  // game had, and the Scouting page then threw on pointsAvailable. Every save
+  // the game writes carries it, so this only bites a payload from before the
+  // feature existed — which is exactly the case the leagueYear guard below was
+  // added for.
+  gameState.scouting = payload.scouting || _SAVE_DATA.scouting.initScoutingState();
   gameState.userTeamId = payload.userTeamId;
   gameState.currentView = payload.currentView || 'dashboard';
   gameState.leagueYear = payload.leagueYear;
@@ -276,6 +283,11 @@ function applySavedState(payload, gameState) {
   // session falls back independently.
   if (!gameState.leagueYear) gameState.leagueYear = 2026;
   if (gameState.settings) gameState.settings.leagueYear = gameState.leagueYear;
+  // Same shape of guard, same reason: the Settings page reads pauseOn without
+  // checking, so a payload predating it broke that page on load. Deliberately
+  // all-off rather than the current defaults — a save from before the feature
+  // was played with nothing pausing it, and all-off reproduces that game.
+  if (gameState.settings && !gameState.settings.pauseOn) gameState.settings.pauseOn = {};
   // AFTER leagueYear and userTeamId above, never before: ensureGmCareer reads
   // both, and running it earlier opens the tenure on `undefined`. A v2 save has
   // no career at all — rather than fabricating one back to 2026, ensureGmCareer

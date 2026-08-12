@@ -196,6 +196,32 @@ function careerEarnings(limit) {
     .sort(function (a, b) { return b.earnings - a.earnings; }).slice(0, limit || 10);
 }
 
+// Every family in league history, one row per pair.
+//
+// Active players AND retirees, for the same reason every other toy here reads
+// both — and more sharply, because families take the better part of twenty
+// seasons to appear, by which time half of any pair has usually retired.
+// Reading only the active league showed one of the three families in a real
+// twenty-season save and silently dropped the other two.
+//
+// Links are written on both players, so a pair would otherwise be listed twice;
+// keyed on the sorted pair of ids.
+function families() {
+  const seen = {};
+  const out = [];
+  const all = _TOYS_DATA.players.PLAYERS_2026
+    .concat(_TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers);
+  all.forEach(function (p) {
+    ((p && p.relatives) || []).forEach(function (r) {
+      const key = [p.id, r.playerId].sort().join('|');
+      if (seen[key]) return;
+      seen[key] = true;
+      out.push({ a: p.name, aId: p.id, b: r.name, bId: r.playerId, type: r.type });
+    });
+  });
+  return out;
+}
+
 // The nearly-men: the highest Hall of Fame scores that fell short of induction.
 // Retirees only, and necessarily so — an active player has no verdict yet.
 function hallOfVeryGood(limit) {
@@ -305,6 +331,7 @@ if (typeof module !== 'undefined' && module.exports) {
     mostYearsOneTeam: mostYearsOneTeam,
     mostTeams: mostTeams,
     careerEarnings: careerEarnings,
+    families: families,
     hallOfVeryGood: hallOfVeryGood,
     candidatePool: candidatePool,
     pickRows: pickRows,

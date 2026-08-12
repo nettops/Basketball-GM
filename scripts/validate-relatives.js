@@ -5,6 +5,7 @@ const assert = require('assert');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const relatives = require(path.join(ROOT, 'relatives.js'));
+const rq = function (f) { return require(path.join(ROOT, f)); };
 
 function mk(id, name) { return { id: id, name: name }; }
 
@@ -306,6 +307,84 @@ function checkBothSeasonRoutesPassTheYear() {
   console.log('checkBothSeasonRoutesPassTheYear: OK (' + sites.length + ' sites)');
 }
 
+// Twenty seasons of a real league produced ONE family link and ZERO father-son
+// pairs. The cause was three omissions with one shape: the retiree archive is a
+// whitelist of fields, and everything families need was missing from it.
+//
+// A father needs eighteen seasons of league service before his son can be
+// drafted, and almost nobody plays eighteen seasons — so by the time anyone
+// qualifies he has usually retired. If retirees cannot be fathers, essentially
+// nobody can, and the feature is dead however correct its generation code is.
+function checkRetireesCanStillBeFathers() {
+  const history = rq('history.js');
+  // A synthetic player, not a real one. An earlier draft of this test set
+  // firstLeagueYear on PLAYERS_2026[0] and never put it back, which broke
+  // checkProspectsCarryTheirEntryYear three tests later — the real 2026 roster
+  // is shared mutable state and every test that touches it has to hand it back.
+  const p = {
+    id: 'retiring-father', name: 'Old Man Rivers', position: 'PG',
+    rawOverall: 60, teamId: 'BOS', jerseyNumber: 7,
+    firstLeagueYear: 2027,
+    relatives: [{ type: 'brother', playerId: 'someone', name: 'Some One' }]
+  };
+  const retiredBefore = history.LEAGUE_HISTORY.retiredPlayers.length;
+  const archived = history.archiveRetiree(p, 2045);
+  history.LEAGUE_HISTORY.retiredPlayers.length = retiredBefore;
+
+  assert.strictEqual(archived.firstLeagueYear, 2027,
+    'the archive must keep firstLeagueYear — it is the ONLY thing that makes a ' +
+    'player eligible to be a father, so dropping it retires him out of fatherhood');
+  assert.deepStrictEqual(archived.relatives, p.relatives,
+    'the archive must keep relatives — a retired brother who loses his side of ' +
+    'the link disappears from the Relatives toy while his brother still lists him');
+  assert.notStrictEqual(archived.relatives, p.relatives,
+    'relatives must be COPIED, not aliased, like every other array in the archive');
+
+  // And the eligibility filter must actually accept the archived record.
+  const eligible = relatives.eligibleFathers([archived], 2045);
+  assert.strictEqual(eligible.length, 1,
+    'a retiree who entered in 2027 must be an eligible father in 2045');
+  console.log('checkRetireesCanStillBeFathers: OK');
+}
+
+// The generator has to be GIVEN the retirees, not merely capable of using them.
+// This was the other half of the same defect: draftProspects.js passed only the
+// active league, so the eligibility filter never saw a retiree at all.
+function checkProspectClassConsidersRetiredFathers() {
+  const history = rq('history.js');
+  const prospects = rq('draftProspects.js');
+  const players = rq('players-2026.js').PLAYERS_2026;
+
+  // Nobody active is old enough; the only possible father is retired.
+  const activeBefore = players.map(function (p) { return p.firstLeagueYear; });
+  players.forEach(function (p) { p.firstLeagueYear = 2060; });
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  for (let i = 0; i < 30; i++) {
+    history.LEAGUE_HISTORY.retiredPlayers.push({
+      id: 'oldtimer-' + i, name: 'Ancient Legend' + i, firstLeagueYear: 2030,
+      attributes: { threePoint: 70 }, careerStats: {}, awardsWon: [], championshipsWon: 0
+    });
+  }
+
+  const mkRng = rq('rng.js').makeRng;
+  let sons = 0;
+  for (let c = 0; c < 60; c++) {
+    const cls = prospects.generateProspectClass(mkRng(500 + c), 60, 2060);
+    cls.forEach(function (p) {
+      if (relatives.relativesOf(p).some(function (r) { return r.type === 'father'; })) sons++;
+    });
+  }
+  players.forEach(function (p, i) { p.firstLeagueYear = activeBefore[i]; });
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+
+  assert.ok(sons > 0,
+    'sixty draft classes produced no sons at all when every eligible father was ' +
+    'retired — the generator is only being shown the active league');
+  console.log('checkProspectClassConsidersRetiredFathers: OK (' + sons + ' sons from retired fathers)');
+}
+
+checkRetireesCanStillBeFathers();
+checkProspectClassConsidersRetiredFathers();
 checkLinksAreAlwaysBothWays();
 checkNoSelfLinksAndNoDuplicates();
 checkBothSeasonRoutesPassTheYear();

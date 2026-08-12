@@ -303,6 +303,21 @@ function archiveRetiree(player, leagueYear) {
     longestTenure: tenure.years,
     longestTenureTeamId: tenure.teamId,
     careerEarnings: careerEarningsOf(player),
+    // Both of these are load-bearing for family trees and both were missing.
+    //
+    // firstLeagueYear is the ONLY thing that makes a player eligible to be
+    // someone's father, and the gap required is eighteen seasons — longer than
+    // almost anyone plays. So by the time a player qualifies he has usually
+    // retired, and dropping this field here retired him out of fatherhood too.
+    // Twenty seasons of a real league produced ZERO father-son pairs because
+    // this line did not exist.
+    //
+    // relatives matters for the same reason in the other direction: a retired
+    // brother who loses his side of the link vanishes from the Relatives toy
+    // while his brother's profile still lists him. Copied, not aliased, like
+    // every other array here.
+    firstLeagueYear: player.firstLeagueYear,
+    relatives: (player.relatives || []).slice(),
     id: player.id,
     name: player.name,
     position: player.position,

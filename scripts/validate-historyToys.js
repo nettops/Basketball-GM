@@ -310,6 +310,41 @@ function checkMostTeams() {
   console.log('checkMostTeams: OK');
 }
 
+// Families take the better part of twenty seasons to appear, by which time half
+// of any pair has usually retired — so a listing that reads only the active
+// league drops most of them. Measured: one of three families shown in a real
+// twenty-season save.
+function checkFamiliesIncludeRetirees() {
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  const active = PLAYERS_2026[20], gone = PLAYERS_2026[21];
+  active.relatives = [{ type: 'brother', playerId: 'ret-1', name: 'Retired Brother' }];
+  gone.relatives = [];
+  history.LEAGUE_HISTORY.retiredPlayers.push(
+    { id: 'ret-1', name: 'Retired Brother', careerStats: {}, awardsWon: [], championshipsWon: 0,
+      relatives: [{ type: 'brother', playerId: active.id, name: active.name }] },
+    { id: 'ret-2', name: 'Old Father', careerStats: {}, awardsWon: [], championshipsWon: 0,
+      relatives: [{ type: 'son', playerId: 'ret-3', name: 'Old Son' }] },
+    { id: 'ret-3', name: 'Old Son', careerStats: {}, awardsWon: [], championshipsWon: 0,
+      relatives: [{ type: 'father', playerId: 'ret-2', name: 'Old Father' }] }
+  );
+
+  const list = toys.families();
+  assert.strictEqual(list.length, 2,
+    'expected two families — one part-retired, one wholly retired — got ' + list.length);
+  assert.ok(list.some(function (f) { return f.a === active.name || f.b === active.name; }),
+    'the pair with one active member must appear');
+  assert.ok(list.some(function (f) { return f.a === 'Old Father' || f.b === 'Old Father'; }),
+    'a family where BOTH members have retired must still appear');
+
+  // Both ends carry a link, so a pair must not be listed from each end.
+  const keys = list.map(function (f) { return [f.aId, f.bId].sort().join('|'); });
+  assert.strictEqual(new Set(keys).size, keys.length, 'no family may be listed twice');
+
+  active.relatives = [];
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  console.log('checkFamiliesIncludeRetirees: OK');
+}
+
 function checkHallOfVeryGood() {
   history.LEAGUE_HISTORY.retiredPlayers.length = 0;
   history.LEAGUE_HISTORY.retiredPlayers.push(
@@ -411,6 +446,7 @@ checkEmptyHistoryReturnsEmptyLists();
 checkCareerToys();
 checkRetireesKeepTenureAndEarnings();
 checkMostTeams();
+checkFamiliesIncludeRetirees();
 checkHallOfVeryGood();
 checkTeamSeasonToys();
 checkLopsidedTradesNeedTime();

@@ -561,6 +561,34 @@ function checkOldSaveWithoutNewFieldsLoads() {
   console.log('checkOldSaveWithoutNewFieldsLoads: OK');
 }
 
+// A payload missing a whole subsystem's state must not null out the running
+// game's copy. Both of these threw on a real screen when a save built without
+// them was loaded: Scouting on scouting.pointsAvailable, Settings on
+// settings.pauseOn. Every save the game writes carries both, so this only bites
+// a payload from before those fields existed — the same case the leagueYear
+// guard beside them was added for.
+function checkAPayloadMissingSubsystemsStillLoads() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+
+  const payload = JSON.parse(JSON.stringify(
+    saveModule.serializeGameState(makeFakeGameState(), 'Ancient Save')));
+  delete payload.scouting;
+  delete payload.settings.pauseOn;
+
+  const gs = makeFakeGameState();
+  saveModule.applySavedState(payload, gs);
+
+  assert.ok(gs.scouting, 'a payload without scouting must not leave the game without it');
+  assert.strictEqual(typeof gs.scouting.pointsAvailable, 'number',
+    'the Scouting page reads pointsAvailable without checking, so it must be a number');
+  assert.ok(gs.scouting.targets && typeof gs.scouting.targets === 'object',
+    'scouting needs its targets map, not just a points count');
+  assert.ok(gs.settings.pauseOn && typeof gs.settings.pauseOn === 'object',
+    'a payload without pauseOn must not leave the Settings page reading undefined');
+  console.log('checkAPayloadMissingSubsystemsStillLoads: OK');
+}
+
+checkAPayloadMissingSubsystemsStillLoads();
 checkNewHistoryStoresRoundTrip();
 checkOldSaveWithoutNewFieldsLoads();
 

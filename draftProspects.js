@@ -21,10 +21,19 @@ function _prospectHistoryDep() {
   return (typeof LEAGUE_HISTORY !== 'undefined') ? { LEAGUE_HISTORY: LEAGUE_HISTORY } : null;
 }
 
-function existingPlayerNames() {
+function retiredPlayers() {
   const history = _prospectHistoryDep();
-  const retired = (history && history.LEAGUE_HISTORY && history.LEAGUE_HISTORY.retiredPlayers) || [];
-  return _PROSPECT_DATA.names.takenNameSet(_PROSPECT_DATA.players.PLAYERS_2026, retired);
+  return (history && history.LEAGUE_HISTORY && history.LEAGUE_HISTORY.retiredPlayers) || [];
+}
+
+function existingPlayerNames() {
+  return _PROSPECT_DATA.names.takenNameSet(_PROSPECT_DATA.players.PLAYERS_2026, retiredPlayers());
+}
+
+// Everyone who has ever played in this league. relatives.js decides who is
+// actually eligible; this only has to make sure it is shown all the candidates.
+function possibleFathers() {
+  return _PROSPECT_DATA.players.PLAYERS_2026.concat(retiredPlayers());
 }
 
 // Same archetype offsets as players-2026.js's ARCHETYPES, duplicated here rather
@@ -260,8 +269,13 @@ function generateProspectClass(rng, count, leagueYear) {
   // after the whole class exists, because a son takes his father's surname and
   // leans toward his ratings — both of which have to happen before anyone
   // scouts him, and neither of which can be decided one prospect at a time.
+  // Active players AND retirees. A father needs eighteen seasons of service
+  // before his son can be drafted, which is longer than almost anyone plays —
+  // so passing only the active league meant the eligible pool was nearly always
+  // empty and twenty seasons produced zero sons. The spec always said "retired
+  // or active"; this is the half that was missing.
   _PROSPECT_DATA.relatives.assignFamilies(
-    prospects, _PROSPECT_DATA.players.PLAYERS_2026, leagueYear, rng, takenNames);
+    prospects, possibleFathers(), leagueYear, rng, takenNames);
 
   return prospects;
 }

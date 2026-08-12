@@ -155,21 +155,11 @@ const TOY_CATALOGUE = [
     run: function () { return mostLopsidedTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
     row: function (r) { return r.leagueYear + ' — ' + r.difference.toLocaleString() + ' apart: ' + toyTradeSides(r); } },
   { id: 'relatives', name: 'Relatives', blurb: 'Families in the league. A fresh league takes about eighteen seasons to grow one.',
-    run: function () {
-      // Links are stored on both players, so every family would otherwise be
-      // listed twice. Keyed on the sorted pair of ids.
-      const seen = {};
-      const out = [];
-      PLAYERS_2026.forEach(function (p) {
-        relativesOf(p).forEach(function (r) {
-          const key = [p.id, r.playerId].sort().join('|');
-          if (seen[key]) return;
-          seen[key] = true;
-          out.push({ a: p.name, b: r.name, type: r.type });
-        });
-      });
-      return out;
-    },
+    // historyToys.families() reads retirees too. This used to walk PLAYERS_2026
+    // alone, which showed one of the three families in a twenty-season league —
+    // families take most of twenty seasons to appear, so by the time they exist
+    // half of any pair has usually retired.
+    run: function () { return families(); },
     row: function (r) {
       const verb = r.type === 'father' ? 'is the son of'
         : r.type === 'son' ? 'is the father of'
