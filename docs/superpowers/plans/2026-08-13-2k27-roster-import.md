@@ -102,4 +102,6 @@ defReb 89, not the quantile-mapped 87), tuning the engine as needed.
       147 and climbing)
 - [x] Goldens regenerated, all 56 validators green, probes green
       (invariants 10 seasons, feats, twenty-seasons, superstar rate)
-- [ ] Browser: Tatum defReb 89 on his profile, UI_SMOKE 182
+- [x] Browser: Tatum defReb 89 on his profile (fresh no-store load,
+      engine constants confirmed served), UI_SMOKE 182/182, only the
+      accepted MIA.png 404 in the console
