@@ -127,6 +127,40 @@ function generateSuggestion(team, outgoing, valueOk, salaryOk, leagueBaseline) {
   return null;
 }
 
+// The salary-matching LAW, separated from the value JUDGMENT above it so the
+// two can bind independently: an AI-decided leg gets both, while a hand-built
+// user trade keeps its freedom on value but is still subject to this (see
+// evaluateSalaryLeg below and trade.js's evaluateTrade). A team may take on
+// more salary than it sends only within the matching band (25% + $2M) or
+// within its cap space; Disable Salary Cap is the one way past it, same as
+// free agency.
+function salaryMatchOk(teamId, outgoingSalary, incomingSalary) {
+  const payroll = _EVAL_DATA.league.getTeamPayroll(teamId);
+  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
+  const capSpace = _EVAL_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
+  const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
+  const salaryIncrease = incomingSalary - outgoingSalary;
+  return capDisabled || salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;
+}
+
+// The user's leg of a hand-built trade: salary law only, no value judgment.
+// Shaped like evaluateTeamLeg's result so trade.js and the Trade Center can
+// treat every leg alike.
+function evaluateSalaryLeg(teamId, outgoingPlayerIds, incomingPlayerIds) {
+  const team = _EVAL_DATA.teams.getTeamById(teamId);
+  const outgoing = outgoingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
+  const incoming = incomingPlayerIds.map(_EVAL_DATA.league.getPlayerById);
+  const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);
+  const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
+  const salaryOk = salaryMatchOk(teamId, outgoingSalary, incomingSalary);
+  return {
+    accepted: salaryOk,
+    valueOk: true,
+    salaryOk: salaryOk,
+    suggestion: salaryOk ? null : generateSuggestion(team, outgoing, true, false, null)
+  };
+}
+
 function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingPickValue, incomingPickValue) {
   outgoingPickValue = outgoingPickValue || 0;
   incomingPickValue = incomingPickValue || 0;
@@ -143,12 +177,7 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
 
   const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);
   const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
-  const payroll = _EVAL_DATA.league.getTeamPayroll(teamId);
-  const capLevel = typeof GameState !== 'undefined' && GameState.settings ? GameState.settings.capLevel : 1;
-  const capSpace = _EVAL_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
-  const capDisabled = typeof GameState !== 'undefined' && GameState.settings && GameState.settings.capDisabled;
-  const salaryIncrease = incomingSalary - outgoingSalary;
-  const salaryOk = capDisabled || salaryIncrease <= outgoingSalary * 0.25 + 2000000 || salaryIncrease <= capSpace;
+  const salaryOk = salaryMatchOk(teamId, outgoingSalary, incomingSalary);
 
   const accepted = valueOk && salaryOk;
   return {
@@ -173,6 +202,8 @@ if (typeof module !== 'undefined' && module.exports) {
     currentLeagueAvgOverall: currentLeagueAvgOverall,
     needMultiplier: needMultiplier,
     adjustedPlayerValue: adjustedPlayerValue,
+    salaryMatchOk: salaryMatchOk,
+    evaluateSalaryLeg: evaluateSalaryLeg,
     evaluateTeamLeg: evaluateTeamLeg
   };
 }

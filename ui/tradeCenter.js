@@ -27,7 +27,10 @@ function handlePropose(state, userTeamId, redraw) {
     return;
   }
   pushUndoSnapshot(GameState); // before the (possibly irreversible) trade executes
-  const result = proposeTrade(state, userTeamId, false, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }); // the user always controls their own accept/reject when building a trade by hand
+  // evaluateUserLeg false: a hand-built trade is never second-guessed on
+  // VALUE — but the user's leg still runs the salary-matching law (see
+  // trade.js's evaluateTrade), so a rejection below can now be OURS.
+  const result = proposeTrade(state, userTeamId, false, function (p) { archiveTrade(p, GameState.leagueYear || 2026); });
   const resultEl = document.getElementById('trade-result');
 
   if (result.rosterErrors.length > 0) {
@@ -51,8 +54,11 @@ function handlePropose(state, userTeamId, redraw) {
   let html = '<h4>Trade rejected</h4><ul>';
   Object.keys(result.legs).forEach(function (teamId) {
     const leg = result.legs[teamId];
-    if (!leg.accepted && !leg.isUser) {
-      html += '<li>' + escapeHtml(getTeamById(teamId).name) + ': ' + (leg.suggestion || 'not enough value or salary mismatch') + '</li>';
+    // The user's own leg can refuse too now — on salary only — and hiding
+    // that reason would leave a "rejected" verdict with an empty list.
+    if (!leg.accepted) {
+      html += '<li>' + escapeHtml(getTeamById(teamId).name) + (leg.isUser ? ' (your side)' : '') + ': ' +
+        (leg.suggestion || 'not enough value or salary mismatch') + '</li>';
     }
   });
   html += '</ul><p>Adjust the proposal above and propose again.</p>';

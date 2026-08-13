@@ -180,9 +180,94 @@ function checkStaleOfferIsRefused() {
   console.log('checkStaleOfferIsRefused: OK');
 }
 
+// A hand-built trade was the last path where the salary-matching law never
+// ran against the user's own team: evaluateTrade stamped the user's leg
+// accepted unconditionally, so a team with no cap space could absorb any
+// salary at all. The VALUE judgment stays the user's own — a lopsided trade
+// they build by hand is theirs to make — but the salary rule is league law
+// and now binds both legs. The Disable Salary Cap setting remains the one
+// way past it, same as free agency.
+//
+// Mutates contracts and (in the passing cases) executes real trades, so it
+// restores what it touches and runs LAST.
+function checkUserTradeCannotAbsorbUnlimitedSalary() {
+  GameState.userTeamId = 'BOS';
+  const other = TEAMS.find(function (t) { return t.id !== 'BOS'; });
+  const mine = league.getTeamRoster('BOS')[0];
+  const theirs = league.getTeamRoster(other.id)[0];
+  const saved = [
+    { p: mine, teamId: mine.teamId, salary: mine.contract.salary, jersey: mine.jerseyNumber },
+    { p: theirs, teamId: theirs.teamId, salary: theirs.contract.salary, jersey: theirs.jerseyNumber }
+  ];
+  function restore() {
+    saved.forEach(function (s) { s.p.teamId = s.teamId; s.p.contract.salary = s.salary; s.p.jerseyNumber = s.jersey; });
+  }
+  function proposal() {
+    return {
+      participants: ['BOS', other.id],
+      assignments: [
+        { playerId: mine.id, fromTeamId: 'BOS', toTeamId: other.id },
+        { playerId: theirs.id, fromTeamId: other.id, toTeamId: 'BOS' }
+      ],
+      pickAssignments: []
+    };
+  }
+
+  try {
+    // The grab: send the minimum, take back $60M. The AI side accepts (its
+    // salary DROPS and the incoming value clears its 0.9 bar once the $60M
+    // contract's burden is priced in) — so only the user's leg stands
+    // between this and execution.
+    mine.contract.salary = 1200000;
+    theirs.contract.salary = 60000000;
+    const cap = rq('data.js').getEffectiveSalaryCap(1);
+    const space = cap - league.getTeamPayroll('BOS');
+    const increase = theirs.contract.salary - mine.contract.salary;
+    assert.ok(increase > mine.contract.salary * 0.25 + 2000000 && increase > space,
+      'precondition: the increase must bust both the matching band and cap space');
+
+    const grab = trade.proposeTrade(proposal(), 'BOS', false, null);
+    assert.ok(grab.legs[other.id] && grab.legs[other.id].accepted,
+      'precondition: the AI side must accept, so the user leg is what decides — got ' +
+      JSON.stringify(grab.legs[other.id]));
+    assert.strictEqual(grab.accepted, false,
+      'a hand-built trade must not absorb salary past both the band and cap space');
+    assert.strictEqual(grab.legs.BOS.salaryOk, false, 'the refusal must sit on the user leg');
+    assert.ok(typeof grab.legs.BOS.suggestion === 'string' && grab.legs.BOS.suggestion.length > 0,
+      'and must carry a reason the Trade Center can show');
+    assert.strictEqual(mine.teamId, 'BOS', 'no player may move on a refused trade');
+    assert.strictEqual(theirs.teamId, other.id);
+
+    // The user's freedom on VALUE survives: same players at equal salaries is
+    // a terrible-value trade for whoever gives up the better man, and it must
+    // still execute — the salary law is the ONLY new bar on the user's leg.
+    mine.contract.salary = 20000000;
+    theirs.contract.salary = 20000000;
+    const lopsided = trade.proposeTrade(proposal(), 'BOS', false, null);
+    assert.strictEqual(lopsided.accepted, true,
+      'equal salaries must pass regardless of value: the user leg judges salary only — legs: ' +
+      JSON.stringify(lopsided.legs));
+    assert.strictEqual(mine.teamId, other.id, 'and the trade must actually execute');
+    restore();
+
+    // The setting keeps its promise: cap disabled, the $60M grab goes through.
+    mine.contract.salary = 1200000;
+    theirs.contract.salary = 60000000;
+    GameState.settings.capDisabled = true;
+    const uncapped = trade.proposeTrade(proposal(), 'BOS', false, null);
+    assert.strictEqual(uncapped.accepted, true,
+      'with the cap disabled the same trade must go through — that is what the setting is for');
+  } finally {
+    GameState.settings.capDisabled = false;
+    restore();
+  }
+  console.log('checkUserTradeCannotAbsorbUnlimitedSalary: OK');
+}
+
 checkStaleOfferIsRefused();
 checkAcceptingAnOfferKeepsRostersLegal();
 checkFouledOutPlayerCannotBeFielded();
 checkEvenTheCheatValidatesRosters();
+checkUserTradeCannotAbsorbUnlimitedSalary();
 
 console.log('All user-path rule validations passed');

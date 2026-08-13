@@ -2,7 +2,7 @@ var _TRADE_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), tradeEvaluator: require('./tradeEvaluator.js'), teams: require('./teams.js'), draftPickValue: require('./draftPickValue.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById },
-      tradeEvaluator: { evaluateTeamLeg: evaluateTeamLeg },
+      tradeEvaluator: { evaluateTeamLeg: evaluateTeamLeg, evaluateSalaryLeg: evaluateSalaryLeg },
       teams: { getTeamById: getTeamById },
       draftPickValue: { estimateFuturePickValue: estimateFuturePickValue }
     };
@@ -43,18 +43,28 @@ function validateRosterSizes(proposal) {
   return errors;
 }
 
-// evaluateUserLeg: false (default) preserves today's behavior — the user's
-// own leg of a trade they built by hand is never second-guessed by the AI.
+// evaluateUserLeg: false (default) — the user's own leg of a trade they
+// built by hand is never second-guessed on VALUE; a lopsided trade is theirs
+// to make. The salary-matching rule is different: it is league LAW, the same
+// one every AI leg answers to, and skipping it entirely let a team with no
+// cap space absorb any salary at all (a $60M star for a minimum contract,
+// through the real Propose button). The user's leg now runs the salary check
+// alone — evaluateSalaryLeg — with Disable Salary Cap still the one way past
+// it, same as free agency.
 // true is used by auto-generated proposals (autoGM.js's generateTradeOffer)
 // where the user's team is being decided FOR by the same logic every AI
-// team already uses, so its leg needs the same value/salary check as anyone
-// else's.
+// team already uses, so its leg needs the full value/salary check like
+// anyone else's.
 function evaluateTrade(proposal, userTeamId, evaluateUserLeg) {
   const pickAssignments = proposal.pickAssignments || [];
   const legs = {};
   proposal.participants.forEach(function (teamId) {
     if (teamId === userTeamId && !evaluateUserLeg) {
-      legs[teamId] = { accepted: true, isUser: true };
+      const userOutgoing = proposal.assignments.filter(function (a) { return a.fromTeamId === teamId; }).map(function (a) { return a.playerId; });
+      const userIncoming = proposal.assignments.filter(function (a) { return a.toTeamId === teamId; }).map(function (a) { return a.playerId; });
+      legs[teamId] = Object.assign(
+        { isUser: true },
+        _TRADE_DATA.tradeEvaluator.evaluateSalaryLeg(teamId, userOutgoing, userIncoming));
       return;
     }
     const outgoing = proposal.assignments.filter(function (a) { return a.fromTeamId === teamId; }).map(function (a) { return a.playerId; });
