@@ -177,12 +177,120 @@ function checkNoUltimateDominates() {
     (100 * share).toFixed(0) + '%)');
 }
 
+const CT = ult.CHARGE_TUNING;
+
+function checkGainsAndDrains() {
+  const flat = 1;   // neutral situation, so this tests the play values alone
+  ult.PLAY_KINDS.forEach(function (kind) {
+    const v = ult.chargeGain('heatCheck', kind, flat);
+    assert.strictEqual(typeof v, 'number', kind + ' must produce a number');
+    assert.ok(!isNaN(v), kind + ' produced NaN');
+  });
+  assert.ok(ult.chargeGain('heatCheck', 'madeThree', flat) > 0, 'a made three fills');
+  assert.ok(ult.chargeGain('heatCheck', 'turnover', flat) < 0, 'a turnover drains');
+  assert.ok(ult.chargeGain('heatCheck', 'missedShot', flat) < 0, 'a miss drains');
+  assert.ok(ult.chargeGain('heatCheck', 'foul', flat) < 0, 'a foul drains');
+  assert.ok(ult.chargeGain('heatCheck', 'madeThree', flat) > ult.chargeGain('heatCheck', 'madeTwo', flat),
+    'a made three is worth more than a made two');
+  assert.strictEqual(ult.chargeGain('heatCheck', 'notAPlayKind', flat), 0,
+    'an unknown play kind earns nothing rather than throwing');
+  console.log('checkGainsAndDrains: OK');
+}
+
+// A drain must not shrink in a blowout. If the situation scaled both sides, a
+// star could pad his meter in garbage time at no risk, which is the opposite of
+// what the multiplier is for.
+function checkDrainsIgnoreTheSituation() {
+  const close = ult.situationMultiplier('heatCheck', 0, 4);
+  const blowout = ult.situationMultiplier('heatCheck', 30, 1);
+  assert.ok(close > blowout, 'fixture is wrong: a close fourth must out-multiply a blowout');
+  assert.strictEqual(ult.chargeGain('heatCheck', 'turnover', close),
+    ult.chargeGain('heatCheck', 'turnover', blowout),
+    'a turnover costs the same whatever the score');
+  assert.ok(ult.chargeGain('heatCheck', 'madeThree', close) >
+    ult.chargeGain('heatCheck', 'madeThree', blowout),
+    'but a made three is worth more in a close fourth');
+  console.log('checkDrainsIgnoreTheSituation: OK');
+}
+
+function checkAffinity() {
+  // The same play is worth more to the ultimate it belongs to. This is what
+  // makes Glass Wrecker charge off boards instead of off scoring.
+  assert.ok(ult.chargeGain('heatCheck', 'madeThree', 1) > ult.chargeGain('glassWrecker', 'madeThree', 1),
+    'a three charges Heat Check faster than Glass Wrecker');
+  assert.ok(ult.chargeGain('glassWrecker', 'rebound', 1) > ult.chargeGain('heatCheck', 'rebound', 1),
+    'a board charges Glass Wrecker faster than Heat Check');
+  // Every ultimate needs a currency, or it charges at the same flat rate as a
+  // player with no ultimate at all.
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    const aff = ult.CHARGE_AFFINITY[u.key];
+    assert.ok(aff && aff.length, u.key + ' has no charge affinity — it would fill generically');
+    aff.forEach(function (k) {
+      assert.ok(ult.PLAY_KINDS.indexOf(k) !== -1, u.key + ' charges on unknown play kind ' + k);
+      assert.ok(CT.gains[k] > 0, u.key + ' charges on ' + k + ', which is a DRAIN');
+    });
+  });
+  console.log('checkAffinity: OK');
+}
+
+function checkSituation() {
+  const level = ult.situationMultiplier('heatCheck', 0, 1);
+  assert.ok(ult.situationMultiplier('heatCheck', 0, 4) > level, 'the fourth quarter is worth more');
+  assert.ok(ult.situationMultiplier('heatCheck', 0, 5) > ult.situationMultiplier('heatCheck', 0, 4),
+    'overtime is worth more than the fourth');
+  // Compared at the SAME margin, so this tests trailing and not closeness.
+  assert.ok(ult.situationMultiplier('heatCheck', -6, 1) > ult.situationMultiplier('heatCheck', 6, 1),
+    'trailing by six is worth more than leading by six');
+  assert.ok(ult.situationMultiplier('heatCheck', 30, 1) < level, 'a blowout is worth less');
+  console.log('checkSituation: OK');
+}
+
+// Cold Blooded is the whole reason the situation multiplier takes the ultimate
+// as an argument rather than just the game state.
+function checkColdBloodedIgnoresEarlyGame() {
+  assert.strictEqual(ult.situationMultiplier('coldBlooded', 0, 1), 0, 'Q1 earns nothing');
+  assert.strictEqual(ult.situationMultiplier('coldBlooded', 0, 3), 0, 'Q3 earns nothing');
+  assert.ok(ult.situationMultiplier('coldBlooded', 0, 4) > 0, 'the fourth earns');
+  assert.ok(ult.situationMultiplier('coldBlooded', 25, 4) < ult.situationMultiplier('coldBlooded', 0, 4),
+    'and only really when the game is close');
+  // No other ultimate may be late-game-only by accident.
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    if (u.key === 'coldBlooded') return;
+    assert.ok(ult.situationMultiplier(u.key, 0, 1) > 0, u.key + ' must charge in the first quarter');
+  });
+  console.log('checkColdBloodedIgnoresEarlyGame: OK');
+}
+
+function checkThresholdRises() {
+  const first = ult.chargeThreshold(0);
+  const second = ult.chargeThreshold(1);
+  assert.strictEqual(first, CT.full, 'the first takeover costs a full meter');
+  assert.ok(second > first, 'a second takeover must cost more than the first');
+  assert.ok(ult.chargeThreshold(2) > second, 'and a third more than the second');
+  console.log('checkThresholdRises: OK (' + first + ' then ' + second.toFixed(0) + ')');
+}
+
+function checkTakeoverLength() {
+  const normal = ult.takeoverLength('heatCheck');
+  assert.strictEqual(normal, CT.takeoverPossessions);
+  assert.ok(ult.takeoverLength('motorNeverStops') > normal * 2,
+    'Motor Never Stops runs at least twice as long — attrition is its whole idea');
+  console.log('checkTakeoverLength: OK');
+}
+
 checkGate();
 checkGateUsesDisplayOverall();
 checkEveryUltimateIsReachable();
 checkDerivationIsDeterministic();
 checkBadgeBoost();
 checkTaxonomyShape();
+checkGainsAndDrains();
+checkDrainsIgnoreTheSituation();
+checkAffinity();
+checkSituation();
+checkColdBloodedIgnoresEarlyGame();
+checkThresholdRises();
+checkTakeoverLength();
 checkHolderCountBand();
 checkEveryUltimateIsHeldInTheLeague();
 checkNoUltimateDominates();

@@ -135,6 +135,103 @@ ULTIMATE_TAXONOMY.forEach(function (u) { ULTIMATE_BY_KEY[u.key] = u; });
 // mean nothing.
 const BOOSTING_TIERS = { legendary: true, secret: true };
 
+// The closed set of plays the engine may report. A kind not on this list earns
+// nothing rather than throwing — but validate-ultimates.js asserts statically
+// that the engine only ever reports kinds that ARE on it, so a typo in the
+// engine fails loudly in the test rather than silently zeroing a player's meter
+// for the rest of the game.
+const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
+  'block', 'rebound', 'offRebound', 'missedShot', 'turnover', 'foul'];
+
+// Values are relative to a 100-point meter. Calibrated against the measured
+// takeover rate; the sweep lives above `full` below.
+//
+// Drains are what make a takeover EARNED rather than scheduled: a star shooting
+// 4-for-15 moves backwards and never reaches one regardless of minutes played.
+const CHARGE_TUNING = {
+  full: 100,
+  // A second takeover in one game should be the night people remember, not a
+  // routine second helping.
+  secondFullMultiplier: 1.6,
+  takeoverPossessions: 20,
+  longTakeoverPossessions: 50,
+  gains: {
+    madeThree: 9, madeTwo: 6, freeThrow: 2, assist: 5, steal: 8,
+    block: 8, rebound: 3, offRebound: 5,
+    missedShot: -4, turnover: -9, foul: -3
+  },
+  // A play in the ultimate's own currency is worth more to it. This is what
+  // makes Glass Wrecker charge off boards while Heat Check charges off threes,
+  // rather than all twelve filling identically.
+  affinityMultiplier: 1.6,
+  situation: {
+    // Closeness bands, tightest first. `within` is the absolute score margin.
+    closeness: [{ within: 5, mult: 1.5 }, { within: 10, mult: 1.2 },
+                { within: 20, mult: 1.0 }, { within: Infinity, mult: 0.4 }],
+    periodMult: { fourth: 1.5, overtime: 2.0 },
+    trailingMult: 1.2
+  }
+};
+
+// Which play kinds are each ultimate's own currency.
+const CHARGE_AFFINITY = {
+  heatCheck: ['madeThree'],
+  silky: ['madeTwo'],
+  paintBeast: ['madeTwo', 'freeThrow'],
+  downhill: ['madeTwo', 'assist'],
+  aboveTheRim: ['madeTwo', 'block', 'offRebound'],
+  andOne: ['freeThrow', 'madeTwo'],
+  glassWrecker: ['rebound', 'offRebound'],
+  coldBlooded: ['madeThree', 'madeTwo'],
+  clamps: ['steal'],
+  motorNeverStops: ['rebound', 'assist'],
+  floorGeneral: ['assist'],
+  theWall: ['block']
+};
+
+// Cold Blooded's meter is dead until the fourth quarter. Not a special case —
+// it is the same situation rule as everyone else with the first three periods
+// multiplied to zero, which is what makes it the rarest thing in the game and
+// guarantees it always arrives at the worst possible moment for the opponent.
+const LATE_GAME_ONLY = { coldBlooded: true };
+
+function situationMultiplier(ultimateKey, scoreDiff, period) {
+  if (LATE_GAME_ONLY[ultimateKey] && period < 4) return 0;
+  const s = CHARGE_TUNING.situation;
+  const diff = scoreDiff || 0;
+  const margin = Math.abs(diff);
+  let mult = 1;
+  for (let i = 0; i < s.closeness.length; i++) {
+    if (margin <= s.closeness[i].within) { mult = s.closeness[i].mult; break; }
+  }
+  if (period >= 5) mult *= s.periodMult.overtime;
+  else if (period === 4) mult *= s.periodMult.fourth;
+  if (diff < 0) mult *= s.trailingMult;
+  return mult;
+}
+
+function chargeGain(ultimateKey, playKind, situationMult) {
+  const base = CHARGE_TUNING.gains[playKind];
+  if (base === undefined) return 0;
+  // Drains are NOT scaled by the situation: a turnover in a blowout still costs
+  // what a turnover costs. Only the earning side responds to the moment,
+  // because it is the earning side the design wants pushed into the fourth.
+  if (base < 0) return base;
+  const affinity = CHARGE_AFFINITY[ultimateKey] || [];
+  const affinityMult = affinity.indexOf(playKind) !== -1 ? CHARGE_TUNING.affinityMultiplier : 1;
+  return base * affinityMult * (situationMult === undefined ? 1 : situationMult);
+}
+
+function chargeThreshold(takeoversUsed) {
+  return CHARGE_TUNING.full * Math.pow(CHARGE_TUNING.secondFullMultiplier, takeoversUsed || 0);
+}
+
+function takeoverLength(ultimateKey) {
+  return ultimateKey === 'motorNeverStops'
+    ? CHARGE_TUNING.longTakeoverPossessions
+    : CHARGE_TUNING.takeoverPossessions;
+}
+
 function hasUltimate(player) {
   return !!player && (player.overall || 0) >= ULTIMATE_TUNING.gateOverall;
 }
@@ -208,8 +305,16 @@ if (typeof module !== 'undefined' && module.exports) {
     ULTIMATE_TUNING: ULTIMATE_TUNING,
     ULTIMATE_TAXONOMY: ULTIMATE_TAXONOMY,
     ULTIMATE_BY_KEY: ULTIMATE_BY_KEY,
+    PLAY_KINDS: PLAY_KINDS,
+    CHARGE_TUNING: CHARGE_TUNING,
+    CHARGE_AFFINITY: CHARGE_AFFINITY,
     hasUltimate: hasUltimate,
     ultimateFor: ultimateFor,
-    badgeBoostFor: badgeBoostFor
+    badgeBoostFor: badgeBoostFor,
+    percentileIn: percentileIn,
+    situationMultiplier: situationMultiplier,
+    chargeGain: chargeGain,
+    chargeThreshold: chargeThreshold,
+    takeoverLength: takeoverLength
   };
 }
