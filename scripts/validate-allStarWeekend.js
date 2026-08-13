@@ -58,8 +58,14 @@ function checkSimulateAllStarGame() {
 checkSimulateAllStarGame();
 
 function checkThreePointContest() {
-  const sharpshooter = Object.assign({}, leagueModule.getPlayerById('bos-jayson-tatum'), { attributes: Object.assign({}, leagueModule.getPlayerById('bos-jayson-tatum').attributes, { threePoint: 95 }) });
-  const bricklayer = Object.assign({}, leagueModule.getPlayerById('lal-lebron-james'), { attributes: Object.assign({}, leagueModule.getPlayerById('lal-lebron-james').attributes, { threePoint: 20 }) });
+  // Any two real players will do — the contest reads threePoint, which the
+  // test overrides on both. Taken from live rosters rather than by id: the
+  // 2K27 import moves players between teams every time it reruns, and a
+  // hardcoded id ('lal-lebron-james') died exactly that way.
+  const base1 = leagueModule.getTeamRoster('BOS')[0];
+  const base2 = leagueModule.getTeamRoster('LAL')[0];
+  const sharpshooter = Object.assign({}, base1, { attributes: Object.assign({}, base1.attributes, { threePoint: 95 }) });
+  const bricklayer = Object.assign({}, base2, { attributes: Object.assign({}, base2.attributes, { threePoint: 20 }) });
 
   const rng = makeRng(60);
   const result = aswModule.simulateThreePointContest([sharpshooter, bricklayer], rng);

@@ -342,11 +342,26 @@ function checkSilentFreeAgencyResolution() {
   }
 
   const before = rosterMovesModule.getFreeAgents().length;
+  // The ceiling sweep (enforceRosterCeilings, freeAgency.js) legitimately
+  // GROWS the pool when teams enter the market over 15 — the draft two
+  // checks up hands every team two rookies, so several are. "Never grows"
+  // was true only while nothing enforced the ceiling; the honest invariant
+  // is: growth is bounded by exactly the over-ceiling surplus, and no team
+  // is left over the ceiling afterwards.
+  const surplus = teamsModule.TEAMS.reduce(function (s, t) {
+    return s + Math.max(0, leagueModule.getTeamRoster(t.id).length - 15);
+  }, 0);
   const results = freeAgencyModule.runFreeAgencySilently(rng);
   const after = rosterMovesModule.getFreeAgents().length;
 
   assert.ok(results.length >= 0, 'should return an array of signings (possibly empty if no team had room)');
-  assert.ok(after <= before, 'free agent pool should shrink or stay the same, never grow, after resolution');
+  assert.ok(after <= before + surplus,
+    'free agent pool may grow only by the over-ceiling surplus (' + surplus + '), got ' +
+    before + ' -> ' + after);
+  teamsModule.TEAMS.forEach(function (t) {
+    assert.ok(leagueModule.getTeamRoster(t.id).length <= 15,
+      t.id + ' must not be over the 15-man ceiling after the silent market');
+  });
   results.forEach(function (r) {
     const player = leagueModule.getPlayerById(r.playerId);
     assert.strictEqual(player.teamId, r.teamId, 'a resolved signing must actually be reflected on the player record');

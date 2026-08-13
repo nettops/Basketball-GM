@@ -136,6 +136,11 @@ function leaguePlayers() {
 }
 
 function holdingsByUltimate() {
+  // The snapshot is part of the contract now: the game takes one at init,
+  // load, and rollover, and the diversity pass that keeps every ultimate
+  // held lives inside it. Checking without one checks a state the game is
+  // never in.
+  ult.setLeagueGate(leaguePlayers());
   const by = {};
   leaguePlayers().forEach(function (p) {
     if (!ult.hasUltimate(p)) return;
@@ -882,10 +887,18 @@ function checkEveryTakeoverIsRecorded() {
   // still live when the buzzer goes every single time.
   const savedRun = ult.CHARGE_TUNING.takeoverPossessions;
   const savedMin = ult.CHARGE_TUNING.minRunPossessions;
+  const savedFull = ult.CHARGE_TUNING.full;
   let forcedStarted = 0, forcedLogged = 0, forcedCut = 0;
   try {
     ult.CHARGE_TUNING.takeoverPossessions = 500;
     ult.CHARGE_TUNING.minRunPossessions = 0;
+    // Force the FIRE too, not just the length: whether anyone reaches a full
+    // meter in these 40 fixture games depends on who is on the fixture
+    // rosters, and the 2K27 import proved that dependency — the imported
+    // teams' charge profiles left the meter short and this path silently
+    // went unreached again. A near-empty meter requirement guarantees a
+    // takeover fires, and 500 possessions guarantees the buzzer cuts it.
+    ult.CHARGE_TUNING.full = 40;
     for (let s = 0; s < 40; s++) {
       const r = f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(5000 + s));
       Object.keys(r.boxScore).forEach(function (id) {
@@ -897,6 +910,7 @@ function checkEveryTakeoverIsRecorded() {
   } finally {
     ult.CHARGE_TUNING.takeoverPossessions = savedRun;
     ult.CHARGE_TUNING.minRunPossessions = savedMin;
+    ult.CHARGE_TUNING.full = savedFull;
   }
   assert.ok(forcedCut > 0,
     'a 500-possession takeover was not cut short by the buzzer — this test can no ' +

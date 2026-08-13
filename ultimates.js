@@ -41,7 +41,12 @@ var _ULT_DATA = (typeof require !== 'undefined')
 // drifted about two points high and the best scorer's peak season went from
 // roughly 51 points a game to 62. Season one looked perfect the whole time.
 const ULTIMATE_TUNING = {
-  gateOverall: 85,
+  // 83, remeasured for the 2K27 import's display curve (knots moved, the
+  // whole middle of the scale compressed): the 36th-best display overall in
+  // the imported league is 83, and the old floor of 85 was OVERRIDING the
+  // rank-based gate — 22 holders against the 30-60 band, with the rank
+  // machinery working perfectly underneath.
+  gateOverall: 83,
   gateCount: 36,
   badgeTieBreak: 0.02,
   badgeBoost: 1.35
@@ -51,15 +56,56 @@ const ULTIMATE_TUNING = {
 // Null until then, which makes hasUltimate fall back to gateOverall.
 var _leagueGate = null;
 
+// League-aware assignment overrides (player id -> taxonomy entry), rebuilt by
+// setLeagueGate's diversity pass below. Null until a snapshot exists, which
+// leaves ultimateFor on its pure per-player argmax.
+var _assignmentOverrides = null;
+
 // The gateCount-th highest overall in the league, floored at gateOverall so a
 // depleted or expansion league cannot hand ultimates to ordinary players.
+//
+// ALSO the diversity pass. Pure argmax alone left ultimates unheld league-wide
+// on the 2K27 roster — measured: Embiid TIED 1.000/1.000 between And-One and
+// Paint Beast and lost on list order, Tatum lost Motor Never Stops by 0.008,
+// Giannis lost Glass Wrecker by 0.016 — every gap inside badgeTieBreak, the
+// design's own definition of a near-tie. So when an ultimate would be held by
+// NOBODY, it may claim the near-tied holder with the smallest gap, provided
+// that holder's argmax family keeps at least one other holder. Deterministic,
+// draws no rng, and rebuilt at every league snapshot like the gate itself.
 function setLeagueGate(players) {
-  if (!players || !players.length) { _leagueGate = null; return null; }
+  if (!players || !players.length) { _leagueGate = null; _assignmentOverrides = null; return null; }
   const overalls = players
     .map(function (p) { return p.overall || 0; })
     .sort(function (a, b) { return b - a; });
   const nth = overalls[Math.min(overalls.length, ULTIMATE_TUNING.gateCount) - 1];
   _leagueGate = Math.max(ULTIMATE_TUNING.gateOverall, nth);
+
+  _assignmentOverrides = null;   // ultimateFor below must run pure argmax here
+  const holders = players.filter(function (p) { return hasUltimate(p); });
+  const byKey = {};   // ultimate key -> holder entries assigned by argmax
+  const entries = holders.map(function (p) {
+    const own = ultimateFor(p);
+    const e = { player: p, own: own, ownScore: deriveScore(p, own) };
+    (byKey[own.key] = byKey[own.key] || []).push(e);
+    return e;
+  });
+  const overrides = {};
+  ULTIMATE_TAXONOMY.forEach(function (u) {
+    if (byKey[u.key] && byKey[u.key].length > 0) return;   // already held
+    let best = null, bestGap = Infinity;
+    entries.forEach(function (e) {
+      if (overrides[e.player.id]) return;                   // already claimed
+      if ((byKey[e.own.key] || []).length < 2) return;      // would orphan its family
+      const gap = e.ownScore - deriveScore(e.player, u);
+      if (gap <= ULTIMATE_TUNING.badgeTieBreak && gap < bestGap) { bestGap = gap; best = e; }
+    });
+    if (best) {
+      overrides[best.player.id] = u;
+      byKey[best.own.key] = byKey[best.own.key].filter(function (e) { return e !== best; });
+      (byKey[u.key] = byKey[u.key] || []).push(best);
+    }
+  });
+  _assignmentOverrides = overrides;
   return _leagueGate;
 }
 
@@ -70,7 +116,8 @@ function currentGate() {
 // `derive` is how a player's fitness for this ultimate is scored: either one
 // compositeRatings key, or a list of raw attributes averaged. `badges` are the
 // badge keys whose legendary/secret form boosts it. `norm` is the measured
-// DECILE TABLE of that score across all 2026 players — eleven values, from the
+// DECILE TABLE of that score across the league (re-measured for the 2K27
+// import by the inline regenerator in the import commit) — eleven values, from the
 // league minimum to the league maximum.
 //
 // TWO separate things had to be fixed here, and it is worth keeping them
@@ -111,51 +158,51 @@ function currentGate() {
 const ULTIMATE_TAXONOMY = [
   { key: 'heatCheck', name: 'Heat Check', kind: 'solo', side: 'offense',
     derive: { composite: 'shootingThree' },
-    norm: [9, 24.3, 30, 40.8, 48, 53.3, 58.3, 63, 67, 72.8, 97.3],
+    norm: [6.5, 24.5, 32.7, 41.3, 47.8, 54.5, 58.9, 63.2, 66.8, 71.4, 91.5],
     badges: ['sharpshooter'] },
   { key: 'silky', name: 'Silky', kind: 'solo', side: 'offense',
     derive: { attributes: ['midRange'] },
-    norm: [4, 25, 32, 38, 43, 48, 52, 56, 62, 73, 97],
+    norm: [4, 25, 32, 38, 42, 49, 52, 56, 62, 72.8, 97],
     badges: ['offBallMover'] },
   { key: 'paintBeast', name: 'Paint Beast', kind: 'solo', side: 'offense',
     derive: { attributes: ['postScoring', 'strength'] },
-    norm: [13, 29, 33.5, 36.5, 39.5, 45, 49, 54, 59, 65, 95],
+    norm: [12, 28, 33, 37.5, 41, 44, 50, 53.5, 59, 67, 96],
     badges: ['postThreat', 'unstoppableForce'] },
   { key: 'downhill', name: 'Downhill', kind: 'solo', side: 'offense',
     derive: { attributes: ['ballHandling', 'speed'] },
-    norm: [13, 27.5, 34.5, 40.5, 43.5, 48, 53.5, 59, 64.5, 72, 90],
+    norm: [9.5, 28, 34, 40, 44, 49, 54, 58.4, 63.5, 70.5, 93.5],
     badges: ['pickRollMaestro', 'eliteSpeed'] },
   { key: 'aboveTheRim', name: 'Above the Rim', kind: 'solo', side: 'offense',
     derive: { attributes: ['vertical', 'acceleration'] },
-    norm: [14.5, 39, 43, 45.5, 48.5, 51.5, 55.5, 59, 63.5, 69, 97],
+    norm: [16.5, 35.5, 44, 47.5, 50.5, 53.5, 56.5, 59, 63.5, 68.5, 96],
     badges: ['explosiveVertical', 'humanHighlightReel'] },
   { key: 'andOne', name: 'And-One', kind: 'solo', side: 'offense',
     derive: { attributes: ['strength', 'freeThrow'] },
-    norm: [20, 35.5, 40, 44, 46.5, 50, 53, 56.5, 59, 67, 92],
+    norm: [27.5, 38.7, 42.5, 45, 48, 50, 53, 55.5, 58, 62.8, 79.5],
     badges: ['finisher', 'freeThrowAce'] },
   { key: 'glassWrecker', name: 'Glass Wrecker', kind: 'solo', side: 'offense',
     derive: { composite: 'rebounding' },
-    norm: [17.3, 35.3, 38.8, 42.8, 45.5, 49, 51.8, 55.8, 60.8, 66.8, 93.5],
+    norm: [22.3, 37.5, 41.3, 43.8, 46.2, 49.5, 52.1, 54.5, 58.5, 63.8, 81],
     badges: ['glassCleaner', 'springyRebounder'] },
   { key: 'coldBlooded', name: 'Cold Blooded', kind: 'solo', side: 'offense',
     derive: { attributes: ['basketballIQ'] },
-    norm: [9, 36, 42, 47, 50, 53, 56, 60, 63, 70, 99],
+    norm: [9, 35.4, 42, 47, 50, 53, 56, 60, 63, 69, 99],
     badges: ['clutchGene', 'iceInVeins'] },
   { key: 'clamps', name: 'Clamps', kind: 'solo', side: 'defense',
     derive: { composite: 'defensePerimeter' },
-    norm: [28.3, 36.7, 40.9, 44.6, 47.9, 51.8, 55.7, 58.6, 62.2, 66.4, 86.6],
+    norm: [26, 37.6, 42.3, 45.7, 48.7, 51.8, 54.6, 57.7, 61.1, 66.6, 90.4],
     badges: ['lockdownDefender', 'pointOfAttackMenace'] },
   { key: 'motorNeverStops', name: 'Motor Never Stops', kind: 'solo', side: 'offense',
     derive: { attributes: ['workEthic'] },
-    norm: [24, 39, 44, 46, 50, 52, 54, 58, 62, 66, 89],
+    norm: [24, 37, 41, 46, 53, 53, 53, 61, 61, 69, 89],
     badges: ['highMotor'] },
   { key: 'floorGeneral', name: 'Floor General', kind: 'team', side: 'offense',
     derive: { attributes: ['passing'] },
-    norm: [10, 28, 32, 36, 40, 45, 48, 53, 61, 73, 100],
+    norm: [10, 27.4, 32, 36, 40, 45, 48, 53, 61, 73, 100],
     badges: ['playmaker', 'floorGeneral'] },
   { key: 'theWall', name: 'The Wall', kind: 'team', side: 'defense',
     derive: { composite: 'defenseInterior' },
-    norm: [12.1, 29.9, 34.6, 38, 41.4, 43.5, 47, 51.1, 59.4, 68.1, 96.8],
+    norm: [13.4, 31.4, 34.9, 38.5, 41.5, 45.2, 48, 51.8, 57.5, 66, 83.9],
     badges: ['rimProtector', 'dpoyCaliber'] }
 ];
 
@@ -240,7 +287,11 @@ const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
 // nice-sounding number that deleted a feature. 1.08 is a small extra cost that
 // still produces the rare "he went nuclear" night.
 const CHARGE_TUNING = {
-  full: 255,
+  // 200, re-measured for the 2K27 import: the imported holders' charge
+  // profiles fill the meter slower (0.644 takeovers/game at the old 255,
+  // against the 0.7-1.4 band). Swept 255/235/215/200 over 90 real games:
+  // 200 -> 0.989/game, back on the ~1-per-game the design aims at.
+  full: 200,
   secondFullMultiplier: 1.08,
   takeoverPossessions: 26,
   // The shortest run that is still a takeover. Below this the meter holds
@@ -508,6 +559,9 @@ function badgeBoostFor(player, ultimate) {
 // anything being stored on him.
 function ultimateFor(player) {
   if (!hasUltimate(player)) return null;
+  // The league snapshot may have handed this player to an otherwise-unheld
+  // ultimate they near-tied on — see setLeagueGate's diversity pass.
+  if (_assignmentOverrides && _assignmentOverrides[player.id]) return _assignmentOverrides[player.id];
   const held = (player.hiddenTraits) || [];
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < ULTIMATE_TAXONOMY.length; i++) {

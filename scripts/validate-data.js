@@ -117,7 +117,11 @@ function checkSignatureAttributesAllResolve() {
   const playersMod = require(path.join(__dirname, '..', 'players-2026.js'));
   const dataMod = require(path.join(__dirname, '..', 'data.js'));
   const sig = playersMod.SIGNATURE_ATTRIBUTES;
-  assert.ok(sig && Object.keys(sig).length > 0, 'expected a signature table to check');
+  // Empty is legitimate since the 2K27 import: the authored roster carries
+  // explicit attribute sheets, so signatures patch nothing today. The table
+  // must still EXIST (the mechanism stays for future authored players), and
+  // any entry that does appear must still resolve.
+  assert.ok(sig, 'expected a signature table (even an empty one)');
 
   const byId = {};
   playersMod.PLAYERS_2026.forEach(function (p) { byId[p.id] = p; });

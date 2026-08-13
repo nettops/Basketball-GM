@@ -19,8 +19,11 @@ function checkTickMoraleForTeamGame() {
   const league = require(path.join(__dirname, '..', 'league.js'));
   const morale = require(path.join(__dirname, '..', 'morale.js'));
 
-  const starter = league.getPlayerById('bos-jayson-tatum');
-  const bench = league.getPlayerById('bos-jd-davison');
+  // By role off the live roster, not by id — the 2K27 import reshuffles
+  // rosters whenever it reruns, and hardcoded ids die with every shuffle.
+  const bosRoster = league.getTeamRoster('BOS');
+  const starter = bosRoster[0];
+  const bench = bosRoster[bosRoster.length - 1];
   starter.status.morale = 50;
   bench.status.morale = 50;
 

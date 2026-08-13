@@ -120,12 +120,13 @@ checkHiddenMilestonesAreNeverTheNearestHint();
 
 function checkTheScaleTrap() {
   // peakOverall is RAW; the 90 in "a player you drafted reaches 90" is DISPLAY.
-  // On this curve DISPLAY RUNS HIGHER THAN RAW — raw 75 displays as 90, raw 78
-  // as 92, raw 90 as 97. So the failure mode of comparing raw against a display
-  // threshold is that the milestone SILENTLY UNDER-FIRES: it would demand raw
-  // 90, which is really a display-97 all-time great, and genuine 90-rated stars
-  // would never trip it. That is the quiet version of this bug and the reason
-  // it has survived four times in this codebase.
+  // On this curve DISPLAY RUNS HIGHER THAN RAW, so the failure mode of
+  // comparing raw against a display threshold is that the milestone SILENTLY
+  // UNDER-FIRES: it would demand raw 90, which is a display all-time great,
+  // and genuine 90-rated stars would never trip it. That is the quiet version
+  // of this bug and the reason it has survived four times in this codebase.
+  // The fixture raws are DERIVED from the live curve rather than hardcoded —
+  // the 2K27 import re-anchored the knots and killed the old literals.
   const R = gmCareer.SEASON_RESULT;
   const c = careerWith([{ leagueYear: 2027, teamId: 'BOS', wins: 50, losses: 32, result: R.FIRST_ROUND }]);
   const leagueHistory = {
@@ -134,20 +135,25 @@ function checkTheScaleTrap() {
   };
   const drafted = gmMilestones.MILESTONES.find(function (m) { return m.id === 'drafted_a_star'; });
 
-  assert.strictEqual(ratings.toDisplayRating(78) >= 90, true,
-    'precondition: raw 78 IS a display-90 player on this curve');
-  assert.strictEqual(78 >= 90, false,
+  let starRaw = 23;
+  while (ratings.toDisplayRating(starRaw) < 90) starRaw++;
+  const nonStarRaw = starRaw - 5;
+  assert.strictEqual(ratings.toDisplayRating(starRaw) >= 90, true,
+    'precondition: raw ' + starRaw + ' IS a display-90 player on this curve');
+  assert.strictEqual(starRaw >= 90, false,
     'precondition: ...and a naive raw comparison would miss him entirely');
+  assert.strictEqual(ratings.toDisplayRating(nonStarRaw) < 90, true,
+    'precondition: raw ' + nonStarRaw + ' displays below 90');
 
-  const realStar = { id: 'p1', name: 'The Kid', peakOverall: 78 };
+  const realStar = { id: 'p1', name: 'The Kid', peakOverall: starRaw };
   assert.strictEqual(drafted.achieved(
     gmMilestones.buildContext(c, leagueHistory, [realStar], [], ratings.toDisplayRating)), true,
-    'a raw-78 player displays as 92 and MUST satisfy a display-90 threshold');
+    'a raw-' + starRaw + ' player displays at 90+ and MUST satisfy a display-90 threshold');
 
-  const notAStar = { id: 'p1', name: 'The Kid', peakOverall: 70 };
+  const notAStar = { id: 'p1', name: 'The Kid', peakOverall: nonStarRaw };
   assert.strictEqual(drafted.achieved(
     gmMilestones.buildContext(c, leagueHistory, [notAStar], [], ratings.toDisplayRating)), false,
-    'raw 70 displays as 87 and must not qualify');
+    'raw ' + nonStarRaw + ' displays below 90 and must not qualify');
   console.log('checkTheScaleTrap: OK');
 }
 checkTheScaleTrap();

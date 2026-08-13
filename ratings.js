@@ -25,29 +25,34 @@ var _RATINGS_DATA = (typeof require !== 'undefined')
   ? { data: require('./data.js') }
   : { data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS } };
 
-// Fitted by scripts/fit-overall.js against 1800 games and 324 players (ridge 1, in-sample r 0.789).
+// Fitted by scripts/fit-overall.js against 3000 games and 345 players (ridge 1, in-sample r 0.705).
 // Re-run that script to regenerate after a deliberate sim change.
+// Refitted for the 2K27 import: the authored roster's attribute sheets are
+// now real 2K sheets (quantile-mapped), which are less one-dimensional than
+// the archetype-generated ones the 0.789 fit learned on — richer sheets,
+// honestly lower r. 1200 games was noise-limited (r 0.552); 3000 stabilised
+// both the r and the coefficient pattern (defense non-zero again).
 const OVERALL_COEFFICIENTS = {
-  insideScoring: { coef: 0.00000, mean: 49.3 },
-  midRange: { coef: 0.07418, mean: 50.2 },
-  threePoint: { coef: 0.06433, mean: 52.7 },
-  freeThrow: { coef: 0.00000, mean: 51.3 },
-  passing: { coef: 0.00000, mean: 48.1 },
-  ballHandling: { coef: 0.06206, mean: 48.0 },
-  postScoring: { coef: 0.13306, mean: 41.6 },
-  perimeterDefense: { coef: 0.12438, mean: 54.3 },
-  interiorDefense: { coef: 0.09130, mean: 44.9 },
-  steal: { coef: 0.22677, mean: 53.7 },
-  block: { coef: 0.07306, mean: 45.3 },
-  offReb: { coef: 0.00000, mean: 45.4 },
-  defReb: { coef: 0.08022, mean: 53.1 },
-  speed: { coef: 0.05299, mean: 53.6 },
-  acceleration: { coef: 0.00000, mean: 54.0 },
-  strength: { coef: 0.03838, mean: 54.2 },
-  vertical: { coef: 0.00000, mean: 55.0 },
-  basketballIQ: { coef: 0.14167, mean: 55.7 },
-  leadership: { coef: 0.00000, mean: 54.0 },
-  workEthic: { coef: 0.00262, mean: 54.7 },
+  insideScoring: { coef: 0.06206, mean: 50.3 },
+  midRange: { coef: 0.05852, mean: 49.4 },
+  threePoint: { coef: 0.02075, mean: 51.1 },
+  freeThrow: { coef: 0.09092, mean: 49.1 },
+  passing: { coef: 0.05967, mean: 48.6 },
+  ballHandling: { coef: 0.23145, mean: 48.3 },
+  postScoring: { coef: 0.09905, mean: 42.3 },
+  perimeterDefense: { coef: 0.00000, mean: 54.1 },
+  interiorDefense: { coef: 0.11135, mean: 45.4 },
+  steal: { coef: 0.32691, mean: 54.3 },
+  block: { coef: 0.21508, mean: 45.1 },
+  offReb: { coef: 0.00000, mean: 44.3 },
+  defReb: { coef: 0.00000, mean: 52.1 },
+  speed: { coef: 0.00000, mean: 52.9 },
+  acceleration: { coef: 0.00000, mean: 54.2 },
+  strength: { coef: 0.00000, mean: 53.3 },
+  vertical: { coef: 0.00000, mean: 54.3 },
+  basketballIQ: { coef: 0.18216, mean: 56.6 },
+  leadership: { coef: 0.00000, mean: 51.9 },
+  workEthic: { coef: 0.02466, mean: 53.7 },
 };
 const OVERALL_INTERCEPT = 50.0000;
 
@@ -71,7 +76,12 @@ const OVERALL_INTERCEPT = 50.0000;
 // re-measured whenever the attributes or the fit change — leaving them stale
 // silently compresses or clips the ends of the display scale, and
 // checkTheKnotsAreCalibratedToTheLeague fails loudly when they are.
-const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 84, dispHi: 95 };
+// Re-measured for the 2K27 import + 3000-game refit. The knots anchor on
+// the POSITIONAL raw extremes (computePositionalOverall — the value the
+// display getter actually feeds through this curve), which run 23-91 over
+// the imported 435. First cut anchored on the position-blind extremes
+// (20-83) and put the best player at 97 instead of on the top knot.
+const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 91, dispHi: 95 };
 const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
 const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
 
@@ -102,18 +112,22 @@ function toRawRating(display) {
 // site to a literal must fail, which is the only way to prove a site reads the
 // table rather than carrying its own private copy.
 const RATING_BANDS = {
-  superstar: 90,           // the genuine elite — gates the 8 superstar traits
-  // ...or the potential to become one. Set by measurement, not taste: at 92 the
-  // arm admitted exactly ONE player, who already all but qualified on overall
-  // alone, while the high-upside rookies it exists for were shut out. An arm
-  // that only fires for players who nearly qualify anyway is not an arm.
-  // Re-derived to 88 under position weighting: it is the only value where the
-  // holder share stays inside 1-4% AND the arm still reaches genuine upside
-  // cases (8 players the overall arm misses, the lowest at 77).
-  superstarPotential: 88,
-  star: 87,                // stars: trade premium, worth pausing the sim for
+  // Re-anchored for the 2K27 import (the third re-derivation — every one of
+  // these is a measurement against the CURRENT league, not a taste):
+  // 2K rates more players 90+ than the old authored roster did (14 vs 9), so
+  // the elite gate moved up to hold the holder share inside 1-4%.
+  superstar: 94,           // the genuine elite — gates the 8 superstar traits
+  // ...or the potential to become one. Measured over the imported league:
+  // (94, 94) is the pair where holder share is 3.2% AND the arm still
+  // reaches genuine upside the overall gate misses — 11 players, the lowest
+  // a 19-year-old at 84, a full 10 points below the gate. The import
+  // age-discounts 2K's pedigree-flavored potential grades (LeBron carries an
+  // A+ at 41) or this arm fills with veterans; see GRADE_HEADROOM in
+  // scripts/import-2k-rosters.js.
+  superstarPotential: 94,
+  star: 86,                // stars: trade premium, worth pausing the sim for (3.7% of the league)
   rotation: 79,            // good enough that a bench role is worth complaining about
-  fringe: 70               // fringe: likelier to retire
+  fringe: 71               // fringe: likelier to retire (re-measured: 28.7% of the league)
 };
 
 // POSITION WEIGHTING, in the 2K sense: a point guard is not judged on boxing

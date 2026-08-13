@@ -76,7 +76,15 @@
 // The 1-6 band is the specification and 9 is outside it, so the bar moves. At
 // 74 the same five seasons give 2 / 5 / 4 / 5 / 4, mean 4.0 — the rarity the 70
 // bar used to buy. bigScoring at 62 went 28 -> 33, still mid-band, so it stays.
-var FEAT_TUNING = { bigScoring: 62, hugeScoring: 74, doubleAt: 14, fiveAt: 5 };
+// Re-measured for the 2K27 import (probe-feats seed 1 + the validator's own
+// season): doubleAt 14 -> 12, because the triple-double count fell to 22
+// against the 40-120 band — the imported sheets spread rebounds/assists
+// across more specialists — and 13 still read 33 on the validator's seed;
+// 12 measures 95 on the probe's and holds the band on both. bigScoring
+// 62 -> 60 for the same straddle (16 on one seed, 11 on the other; 60
+// measures 28). hugeScoring 74 -> 2 nights, the rare headline it is meant
+// to be.
+var FEAT_TUNING = { bigScoring: 60, hugeScoring: 74, doubleAt: 12, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

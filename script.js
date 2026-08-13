@@ -129,6 +129,11 @@ function initSeason() {
   ensureAllTeamsHaveCoaches(GameState.rng);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
   GameState.scouting = initScoutingState();
+  // The league snapshot the ultimate gate needs. Rollover takes one every
+  // season (seasonRollover.js), but season ONE never did — it ran on the
+  // fallback gate with no diversity pass, which left three ultimates unheld
+  // until the first offseason. Same call a loaded save gets in loadGame.
+  setLeagueGate(PLAYERS_2026);
 }
 
 // Ticked once per real day advanced (see league.js's onDayComplete hook,
@@ -684,6 +689,9 @@ function loadGame(slotId) {
     alert(result.reason);
     return;
   }
+  // The loaded league is a different population than whatever snapshot the
+  // ultimate gate last took — same reason init takes one for season one.
+  setLeagueGate(PLAYERS_2026);
   document.getElementById('team-select-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'block';
   renderView(GameState.currentView || 'dashboard');
