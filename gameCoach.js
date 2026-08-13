@@ -138,6 +138,18 @@ function decideSubstitutions(sim, team) {
   const swappedOut = {};
   swaps.forEach(function (s) { swappedOut[s.out] = true; });
 
+  // A man mid-takeover stays on the floor. Every ordinary reason to sit him —
+  // foul trouble, garbage time, gassed, past his minutes budget — is suspended
+  // for the duration, because a coach pulling a star in the middle of his
+  // takeover is maddening to watch AND silently truncates the takeover's
+  // measured value, which is the number the calibration is aimed at.
+  //
+  // Marked here rather than checked in each rule below so there is ONE place
+  // this exemption lives. Deliberately AFTER rule 1: a foul-out is not a reason
+  // to rest, it is a rule, so it has already run and this cannot override it.
+  const takingOver = sim.takeovers && sim.takeovers[team] ? sim.takeovers[team].playerId : null;
+  if (takingOver) swappedOut[takingOver] = true;
+
   // 2. Foul trouble before the fourth quarter — protective.
   onFloor.forEach(function (id) {
     if (swappedOut[id]) return;

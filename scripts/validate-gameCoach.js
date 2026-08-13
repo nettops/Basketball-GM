@@ -127,4 +127,44 @@ function checkCoachTimeoutOnRun() {
 }
 checkCoachTimeoutOnRun();
 
+// A coach pulling a star mid-takeover would be maddening to watch, and would
+// silently cap the takeover's measured value — which is the number the whole
+// calibration is aimed at.
+function checkNoSubDuringTakeover() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(63));
+  const star = sim.onCourt.home[0];
+  // Give him every ordinary reason to sit: gassed, and well past his minutes.
+  sim.homeBox[star].energy = 0.10;
+  Object.keys(sim.homeBox).forEach(function (id) {
+    if (sim.onCourt.home.indexOf(id) === -1) sim.homeBox[id].energy = 1.0;
+  });
+  sim.secondsPlayed[star] = 42 * 60;
+
+  sim.takeovers = { home: null, away: null };
+  const without = coach.decideSubstitutions(sim, 'home');
+  assert.ok(without.some(function (s) { return s.out === star; }),
+    'fixture is wrong: an exhausted, over-minutes player should normally be subbed');
+
+  sim.takeovers = { home: { playerId: star, ultimateKey: 'heatCheck', side: 'offense', kind: 'solo', left: 9 }, away: null };
+  const during = coach.decideSubstitutions(sim, 'home');
+  assert.ok(!during.some(function (s) { return s.out === star; }),
+    'a player mid-takeover must not be benched');
+
+  // But a foul-out is not negotiable.
+  sim.homeBox[star].fouls = 6;
+  const fouledOut = coach.decideSubstitutions(sim, 'home');
+  assert.ok(fouledOut.some(function (s) { return s.out === star; }),
+    'a fouled-out player leaves the floor regardless of his takeover');
+
+  // And the exemption must not protect his TEAM-MATES.
+  sim.homeBox[star].fouls = 0;
+  const mate = sim.onCourt.home[1];
+  sim.homeBox[mate].energy = 0.10;
+  const others = coach.decideSubstitutions(sim, 'home');
+  assert.ok(others.some(function (s) { return s.out === mate; }),
+    'the exemption covers the takeover holder only, not the whole lineup');
+  console.log('checkNoSubDuringTakeover: OK');
+}
+checkNoSubDuringTakeover();
+
 console.log('All coach validations passed');
