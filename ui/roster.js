@@ -3,6 +3,7 @@ const ROSTER_COLUMNS = [
   { key: 'position', label: 'Pos' },
   { key: 'age', label: 'Age' },
   { key: 'college', label: 'College' },
+  { key: 'archetype', label: 'Archetype' },
   { key: 'status', label: 'Status' },
   { key: 'morale', label: 'Morale' },
   { key: 'overall', label: 'OVR' },
@@ -16,6 +17,8 @@ const ROSTER_COLUMNS = [
 ];
 
 function rosterCellValue(player, key) {
+  // The DERIVED label, not player.archetype (the internal generation id).
+  if (key === 'archetype') { return archetypeLabel(player); }
   if (key === 'salary') { return player.contract.salary; }
   if (key === 'yearsRemaining') { return player.contract.yearsRemaining; }
   if (key === 'status') { return player.status.injury ? player.status.injury.gamesRemaining : 0; }
@@ -115,6 +118,7 @@ function renderRoster(container, teamId) {
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
         '<td>' + (p.college || '—') + '</td>' +
+        '<td>' + archetypeLabel(p) + '</td>' +
         '<td>' + injuryStatusHtml(p) + '</td>' +
         '<td>' + moraleStatusHtml(p) + '</td>' +
         '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +

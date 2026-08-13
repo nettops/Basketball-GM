@@ -31,6 +31,9 @@
   <!-- ratings.js derives `overall` from the attributes; it must load before
        players-2026.js, which installs the getter on every player it builds. -->
   <script src="ratings.js"></script>
+  <!-- archetypeLabel derives the display archetype from the attributes; it
+       reads nothing but the player object, so anywhere after ratings works. -->
+  <script src="archetypeLabel.js"></script>
   <script src="faceSvgs.js"></script>
   <script src="faces.js"></script>
   <script src="teams.js"></script>

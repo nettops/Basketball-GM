@@ -381,7 +381,8 @@ function renderPlayerProfile(container) {
     let html = '<div class="view-header" style="display:flex;align-items:center;gap:16px;">' +
       playerSpriteHtml(player, team, 100) +
       '<div><h2>' + escapeHtml(player.name) + '</h2><span class="view-sub">' +
-      player.position + ' · Age ' + player.age + (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') +
+      player.position + ' · ' + archetypeLabel(player) + ' · Age ' + player.age +
+      (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') +
       (physicals ? ' · ' + physicals : '') + '</span></div></div>';
     html += renderCurrentSeasonPanel(player);
     html += '<div class="tab-bar">';
