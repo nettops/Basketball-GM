@@ -46,7 +46,7 @@ const ULTIMATE_TUNING = {
   // the imported league is 83, and the old floor of 85 was OVERRIDING the
   // rank-based gate — 22 holders against the 30-60 band, with the rank
   // machinery working perfectly underneath.
-  gateOverall: 83,
+  gateOverall: 87,
   gateCount: 36,
   badgeTieBreak: 0.02,
   badgeBoost: 1.35
@@ -384,7 +384,11 @@ const CHARGE_TUNING = {
 // scripts/validate-ultimates.js: every ultimate must actually fire in a season.
 const CHARGE_RATE = {
   heatCheck: 1.29, silky: 1.00, paintBeast: 0.79, downhill: 0.95,
-  aboveTheRim: 0.96, andOne: 0.86, glassWrecker: 0.89, coldBlooded: 4.00,
+  // andOne 0.86 -> 1.50 after the 2K-display re-anchor changed WHO holds it:
+  // its single holder charged 0.125 takeovers a game against a league mean
+  // near 1 (rate span 14.2x, over the 13x ceiling). Measured over 240 games:
+  // 1.50 -> 0.94/game, span 5.1x. (2.20 overshot to 1.69.)
+  aboveTheRim: 0.96, andOne: 1.50, glassWrecker: 0.89, coldBlooded: 4.00,
   clamps: 1.46, motorNeverStops: 1.79, floorGeneral: 0.96, theWall: 1.03
 };
 

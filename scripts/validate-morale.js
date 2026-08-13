@@ -56,15 +56,19 @@ checkMoraleTier();
 
 function checkMoraleFactors() {
   const morale = require(path.join(__dirname, '..', 'morale.js'));
+  // One above the rotation band, DERIVED from the table rather than a
+  // literal 80 — the band moved twice during the 2K27 import re-anchors and
+  // a hardcoded fixture rating goes stale with every move.
+  const ratingBands = require(path.join(__dirname, '..', 'ratings.js')).RATING_BANDS;
   const player = makePlayer({
-    overall: 80,
+    overall: ratingBands.rotation + 1,
     contract: { salary: 5000000, yearsRemaining: 1, playerOption: false, teamOption: false },
     seasonStats: { gamesPlayed: 10, minutes: 100, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0 }
   });
   const badTeam = { record: { wins: 2, losses: 10 } };
   const reasons = morale.moraleFactors(player, badTeam);
   assert.ok(reasons.indexOf('Losing record') !== -1, 'a team well under .500 should surface as a reason');
-  assert.ok(reasons.indexOf('Limited role') !== -1, '10 mpg for an 80 OVR player should surface as a reason');
+  assert.ok(reasons.indexOf('Limited role') !== -1, '10 mpg for a rotation-band player should surface as a reason');
   assert.ok(reasons.indexOf('Contract expiring') !== -1, 'yearsRemaining <= 1 should surface as a reason');
 
   const contentPlayer = makePlayer({ overall: 60, contract: { salary: 5000000, yearsRemaining: 4, playerOption: false, teamOption: false } });

@@ -85,7 +85,10 @@ function checkTheSuperstarPotentialArmIsLoadBearing() {
     'the potential arm admits only ' + armOnly.length + ' players the overall arm misses — ' +
     'it is a second way of saying "already a star", not an upside gate');
   const lowest = Math.min.apply(null, armOnly.map(function (p) { return p.overall; }));
-  assert.ok(lowest <= B.superstar - 10,
+  // 8, down from 10 with the 2K-grading display: the scale compressed
+  // (sd 5.45 vs ~9 before), so 8 points here is a WIDER gulf than 10 was.
+  // The claim is unchanged — the arm reaches players the gate clearly misses.
+  assert.ok(lowest <= B.superstar - 8,
     'the potential arm should reach genuine upside cases; its lowest overall is ' +
     lowest + ', only ' + (B.superstar - lowest) + ' below the overall band');
   console.log('checkTheSuperstarPotentialArmIsLoadBearing: OK (' + armOnly.length +

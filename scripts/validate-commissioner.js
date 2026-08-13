@@ -63,7 +63,13 @@ function checkEditPlayerRatings() {
   // that precedence is the thing worth pinning, and it is checked below.
   const overallOnly = commissionerModule.editPlayerRatings(player.id, { overall: 500, potential: -50 });
   assert.strictEqual(overallOnly.success, true, 'edit should report success for a real player');
-  assert.strictEqual(player.overall, RMAX, 'an out-of-range overall should drive the attributes to RATING_MAX');
+  // The display CAPS AT 99 since the 2K-grading fit (2K has no 100s), and it
+  // saturates before the attributes pin — a 99 no longer requires a maxed
+  // sheet, so the old "every attribute at RATING_MAX" expectation was
+  // geometry, not the property. The property: an absurd request lands the
+  // player exactly on the ceiling the user can see.
+  assert.strictEqual(player.overall, 99,
+    'an out-of-range overall should land on the 99 display ceiling');
   assert.strictEqual(player.potential, RMIN, 'potential should clamp to RATING_MIN');
 
   const attrEdit = commissionerModule.editPlayerRatings(player.id, { attributes: { threePoint: 999, block: -999 } });

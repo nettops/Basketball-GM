@@ -767,14 +767,17 @@ function checkRawAndDisplayAreBothPresent() {
   const p = PLAYERS_2026[0];
   assert.ok(typeof p.rawOverall === 'number', 'rawOverall must exist');
   assert.ok(typeof p.overall === 'number', 'overall must exist');
-  // overall is the display of the POSITION-WEIGHTED value, not of rawOverall.
-  // rawOverall stays position-blind because the sim consumes it; the two agree
-  // only for players at a position with no discounts.
-  assert.strictEqual(p.overall, ratings.toDisplayRating(ratings.computePositionalOverall(p)),
-    'overall must be the display of the position-weighted value');
+  // overall is the 2K-GRADING fit (computeDisplayOverall), not the knot curve
+  // over the position-weighted value — the user asked the displayed rating to
+  // track 2K's numbers. rawOverall stays position-blind because the sim
+  // consumes it.
+  assert.strictEqual(p.overall, ratings.computeDisplayOverall(p),
+    'overall must be the 2K-grading display fit');
   assert.ok(typeof p.potentialDisplay === 'number', 'potentialDisplay must exist');
-  assert.strictEqual(p.potentialDisplay, ratings.toDisplayRating(p.potential),
-    'potentialDisplay must be the display of the stored raw potential');
+  assert.strictEqual(p.potentialDisplay,
+    Math.min(99, p.overall + Math.round(Math.max(0, p.potential - p.rawOverall) * 0.528)),
+    'potentialDisplay must be overall plus the sd-rescaled raw headroom');
+  assert.ok(p.potentialDisplay >= p.overall, 'potential can never read below overall');
   assert.notStrictEqual(p.overall, p.rawOverall,
     'display and raw must actually differ, or the split is decorative');
   console.log('checkRawAndDisplayAreBothPresent: OK (raw ' + p.rawOverall + ' -> ' + p.overall + ')');
@@ -800,8 +803,8 @@ function checkOldShapePlayersGainTheNewGetters() {
   ratings.defineOverall(legacy);
   assert.ok(typeof legacy.rawOverall === 'number',
     'a player carrying the old single-getter shape must still gain rawOverall');
-  assert.strictEqual(legacy.overall, ratings.toDisplayRating(ratings.computePositionalOverall(legacy)),
-    'and its overall must be upgraded to the position-weighted display value');
+  assert.strictEqual(legacy.overall, ratings.computeDisplayOverall(legacy),
+    'and its overall must be upgraded to the 2K-grading display value');
   console.log('checkOldShapePlayersGainTheNewGetters: OK');
 }
 

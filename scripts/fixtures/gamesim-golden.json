@@ -3,19 +3,19 @@
     "seed": 1,
     "home": "BOS",
     "away": "LAL",
-    "homeScore": 139,
-    "awayScore": 145,
-    "boxChecksum": 163375,
-    "playByPlayLength": 392
+    "homeScore": 147,
+    "awayScore": 150,
+    "boxChecksum": 157262,
+    "playByPlayLength": 381
   },
   {
     "seed": 2,
     "home": "DEN",
     "away": "MIA",
-    "homeScore": 139,
-    "awayScore": 140,
-    "boxChecksum": 127760,
-    "playByPlayLength": 388
+    "homeScore": 141,
+    "awayScore": 139,
+    "boxChecksum": 124374,
+    "playByPlayLength": 382
   },
   {
     "seed": 3,
@@ -31,44 +31,44 @@
     "home": "MIL",
     "away": "PHI",
     "homeScore": 132,
-    "awayScore": 145,
-    "boxChecksum": 173034,
-    "playByPlayLength": 410
+    "awayScore": 109,
+    "boxChecksum": 154333,
+    "playByPlayLength": 373
   },
   {
     "seed": 5,
     "home": "GSW",
     "away": "DAL",
-    "homeScore": 138,
-    "awayScore": 103,
-    "boxChecksum": 135116,
-    "playByPlayLength": 360
+    "homeScore": 129,
+    "awayScore": 126,
+    "boxChecksum": 134273,
+    "playByPlayLength": 337
   },
   {
     "seed": 6,
     "home": "CLE",
     "away": "MEM",
-    "homeScore": 125,
-    "awayScore": 129,
-    "boxChecksum": 146837,
-    "playByPlayLength": 394
+    "homeScore": 132,
+    "awayScore": 138,
+    "boxChecksum": 145661,
+    "playByPlayLength": 362
   },
   {
     "seed": 7,
     "home": "SAS",
     "away": "HOU",
-    "homeScore": 118,
-    "awayScore": 121,
-    "boxChecksum": 134039,
-    "playByPlayLength": 379
+    "homeScore": 124,
+    "awayScore": 120,
+    "boxChecksum": 139258,
+    "playByPlayLength": 380
   },
   {
     "seed": 8,
     "home": "ORL",
     "away": "IND",
-    "homeScore": 131,
-    "awayScore": 128,
-    "boxChecksum": 141232,
-    "playByPlayLength": 366
+    "homeScore": 119,
+    "awayScore": 121,
+    "boxChecksum": 132527,
+    "playByPlayLength": 359
   }
 ]

@@ -84,7 +84,7 @@
 // 62 -> 60 for the same straddle (16 on one seed, 11 on the other; 60
 // measures 28). hugeScoring 74 -> 2 nights, the rare headline it is meant
 // to be.
-var FEAT_TUNING = { bigScoring: 60, hugeScoring: 74, doubleAt: 12, fiveAt: 5 };
+var FEAT_TUNING = { bigScoring: 64, hugeScoring: 76, doubleAt: 12, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

@@ -81,7 +81,7 @@ const OVERALL_INTERCEPT = 50.0000;
 // display getter actually feeds through this curve), which run 23-91 over
 // the imported 435. First cut anchored on the position-blind extremes
 // (20-83) and put the best player at 97 instead of on the top knot.
-const DISPLAY_KNOT = { rawLo: 23, dispLo: 60, rawHi: 91, dispHi: 95 };
+const DISPLAY_KNOT = { rawLo: 20, dispLo: 64, rawHi: 83, dispHi: 98 };
 const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
 const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
 
@@ -116,18 +116,19 @@ const RATING_BANDS = {
   // these is a measurement against the CURRENT league, not a taste):
   // 2K rates more players 90+ than the old authored roster did (14 vs 9), so
   // the elite gate moved up to hold the holder share inside 1-4%.
-  superstar: 94,           // the genuine elite — gates the 8 superstar traits
-  // ...or the potential to become one. Measured over the imported league:
-  // (94, 94) is the pair where holder share is 3.2% AND the arm still
-  // reaches genuine upside the overall gate misses — 11 players, the lowest
-  // a 19-year-old at 84, a full 10 points below the gate. The import
-  // age-discounts 2K's pedigree-flavored potential grades (LeBron carries an
-  // A+ at 41) or this arm fills with veterans; see GRADE_HEADROOM in
-  // scripts/import-2k-rosters.js.
-  superstarPotential: 94,
-  star: 86,                // stars: trade premium, worth pausing the sim for (3.7% of the league)
-  rotation: 79,            // good enough that a bench role is worth complaining about
-  fringe: 71               // fringe: likelier to retire (re-measured: 28.7% of the league)
+  // Re-anchored AGAIN when display switched to the 2K-grading fit (fourth
+  // re-derivation): on 2K's scale a 95 IS the superstar tier — exactly the
+  // eight players 2K itself rates 95+. (95, 98) measures 3.2% holders with
+  // the arm reaching 6 genuine upside cases the gate misses, the lowest 8
+  // points below it — and 8 points on this scale (sd 5.45) is a wider gulf
+  // than the old 10 was on the old one. The import age-discounts 2K's
+  // pedigree-flavored potential grades (LeBron carries an A+ at 41) or the
+  // arm fills with veterans; see GRADE_HEADROOM in scripts/import-2k-rosters.js.
+  superstar: 95,           // the genuine elite — gates the 8 superstar traits
+  superstarPotential: 98,  // ...or the potential to become one
+  star: 87,                // stars: trade premium, worth pausing the sim for (3.7% of the league)
+  rotation: 81,            // good enough that a bench role is worth complaining about
+  fringe: 75               // fringe: likelier to retire (re-measured: 28.7% of the league)
 };
 
 // POSITION WEIGHTING, in the 2K sense: a point guard is not judged on boxing
@@ -239,6 +240,130 @@ function computePositionalOverall(player) {
   return Math.max(0, Math.min(100, Math.round(v)));
 }
 
+// WHAT WOULD 2K RATE THIS SHEET? The display overall is fitted directly to
+// the 435 imported players' actual NBA 2K27 overalls (in-sample r 0.965,
+// mean miss 1.16 points), per position, over the 20 attributes plus two
+// monotone peak features — 2K credits an elite signature skill more than
+// linearly, and without the peak terms Curry graded 86 against his 2K 95.
+// Derived and never stored, so progression moves it and every generated
+// player is graded exactly as 2K would grade their sheet. The SIM still
+// consumes rawOverall (the plus/minus fit above); this number is only what
+// the player reads. Regenerate with scripts/fit-display-overall.js.
+const DISPLAY_OVERALL_FIT = {
+  PG: { intercept: 79.816, terms: {
+    insideScoring: { coef: 0.05921, mean: 34.6 },
+    midRange: { coef: 0.05241, mean: 57.2 },
+    threePoint: { coef: 0.06251, mean: 56.5 },
+    freeThrow: { coef: 0.03511, mean: 58.4 },
+    passing: { coef: 0.08539, mean: 68.2 },
+    ballHandling: { coef: 0.10935, mean: 71.5 },
+    postScoring: { coef: 0.03562, mean: 26.8 },
+    steal: { coef: 0.00839, mean: 57.5 },
+    defReb: { coef: 0.01270, mean: 40.5 },
+    acceleration: { coef: 0.00570, mean: 63.0 },
+    strength: { coef: 0.01830, mean: 39.9 },
+    basketballIQ: { coef: 0.16055, mean: 59.5 },
+    leadership: { coef: 0.05646, mean: 54.8 },
+    workEthic: { coef: 0.00504, mean: 53.4 },
+    topThreeMean: { coef: 0.01000, mean: 76.1 },
+  } },
+  SG: { intercept: 78.744, terms: {
+    insideScoring: { coef: 0.10195, mean: 42.3 },
+    midRange: { coef: 0.02852, mean: 52.7 },
+    threePoint: { coef: 0.07194, mean: 60.8 },
+    freeThrow: { coef: 0.03770, mean: 60.4 },
+    passing: { coef: 0.03444, mean: 50.7 },
+    ballHandling: { coef: 0.08928, mean: 57.5 },
+    perimeterDefense: { coef: 0.00460, mean: 56.1 },
+    interiorDefense: { coef: 0.02992, mean: 32.8 },
+    steal: { coef: 0.02389, mean: 49.7 },
+    block: { coef: 0.03195, mean: 31.9 },
+    defReb: { coef: 0.00645, mean: 39.8 },
+    basketballIQ: { coef: 0.15590, mean: 54.5 },
+    leadership: { coef: 0.07720, mean: 53.2 },
+  } },
+  SF: { intercept: 78.273, terms: {
+    insideScoring: { coef: 0.06652, mean: 45.1 },
+    midRange: { coef: 0.04889, mean: 47.9 },
+    threePoint: { coef: 0.03269, mean: 53.8 },
+    freeThrow: { coef: 0.00061, mean: 51.4 },
+    passing: { coef: 0.03673, mean: 42.5 },
+    ballHandling: { coef: 0.00337, mean: 46.4 },
+    postScoring: { coef: 0.02044, mean: 38.0 },
+    interiorDefense: { coef: 0.03803, mean: 42.5 },
+    block: { coef: 0.00450, mean: 37.0 },
+    defReb: { coef: 0.01396, mean: 46.3 },
+    speed: { coef: 0.00276, mean: 53.9 },
+    strength: { coef: 0.00784, mean: 48.6 },
+    vertical: { coef: 0.01691, mean: 55.3 },
+    basketballIQ: { coef: 0.15065, mean: 52.3 },
+    leadership: { coef: 0.05417, mean: 46.6 },
+    peakSkill: { coef: 0.04035, mean: 73.3 },
+    topThreeMean: { coef: 0.10248, mean: 68.5 },
+  } },
+  PF: { intercept: 78.349, terms: {
+    insideScoring: { coef: 0.02862, mean: 56.7 },
+    midRange: { coef: 0.03019, mean: 42.5 },
+    threePoint: { coef: 0.00425, mean: 47.8 },
+    freeThrow: { coef: 0.02047, mean: 41.5 },
+    passing: { coef: 0.00378, mean: 41.4 },
+    ballHandling: { coef: 0.02350, mean: 39.6 },
+    postScoring: { coef: 0.06881, mean: 49.8 },
+    perimeterDefense: { coef: 0.00213, mean: 53.9 },
+    interiorDefense: { coef: 0.01073, mean: 51.5 },
+    offReb: { coef: 0.00475, mean: 47.4 },
+    defReb: { coef: 0.06146, mean: 55.5 },
+    speed: { coef: 0.01198, mean: 48.3 },
+    acceleration: { coef: 0.02618, mean: 50.3 },
+    strength: { coef: 0.02201, mean: 57.6 },
+    vertical: { coef: 0.01159, mean: 54.8 },
+    basketballIQ: { coef: 0.15574, mean: 51.0 },
+    leadership: { coef: 0.05512, mean: 52.7 },
+    topThreeMean: { coef: 0.13678, mean: 70.3 },
+  } },
+  C: { intercept: 78.260, terms: {
+    insideScoring: { coef: 0.04387, mean: 60.8 },
+    midRange: { coef: 0.02065, mean: 41.4 },
+    threePoint: { coef: 0.00285, mean: 31.8 },
+    freeThrow: { coef: 0.01432, mean: 37.1 },
+    passing: { coef: 0.01000, mean: 34.0 },
+    postScoring: { coef: 0.14965, mean: 55.6 },
+    perimeterDefense: { coef: 0.00284, mean: 37.1 },
+    interiorDefense: { coef: 0.01162, mean: 59.3 },
+    block: { coef: 0.00983, mean: 65.6 },
+    offReb: { coef: 0.04750, mean: 63.8 },
+    defReb: { coef: 0.05602, mean: 68.6 },
+    speed: { coef: 0.03444, mean: 37.3 },
+    acceleration: { coef: 0.03857, mean: 35.1 },
+    strength: { coef: 0.00264, mean: 66.8 },
+    vertical: { coef: 0.02043, mean: 47.7 },
+    basketballIQ: { coef: 0.10588, mean: 47.5 },
+    leadership: { coef: 0.07579, mean: 48.3 },
+    workEthic: { coef: 0.04076, mean: 54.1 },
+    peakSkill: { coef: 0.04780, mean: 81.7 },
+    topThreeMean: { coef: 0.02917, mean: 75.6 },
+  } },
+};
+
+function computeDisplayOverall(player) {
+  const attrs = player && player.attributes;
+  if (!attrs) return 0;
+  const fit = DISPLAY_OVERALL_FIT[player.position] || DISPLAY_OVERALL_FIT.SF;
+  const vals = _RATINGS_DATA.data.ATTRIBUTE_KEYS.map(function (k) { return attrs[k] || 0; })
+    .sort(function (a, b) { return b - a; });
+  const feature = {
+    peakSkill: vals[0],
+    topThreeMean: (vals[0] + vals[1] + vals[2]) / 3
+  };
+  let v = fit.intercept;
+  Object.keys(fit.terms).forEach(function (k) {
+    const t = fit.terms[k];
+    const val = feature[k] !== undefined ? feature[k] : (attrs[k] || 0);
+    v += t.coef * (val - t.mean);
+  });
+  return Math.max(25, Math.min(99, Math.round(v)));
+}
+
 // TWO GETTERS, TWO MEANINGS.
 //
 //   rawOverall  - the fitted value, ~23-85. What the SIM consumes, as a
@@ -287,13 +412,25 @@ function defineOverall(player) {
   // actually helps the team — it just stops counting toward whether he is good
   // at being a guard.
   derived('rawOverall', function () { return computeOverall(this); });
-  derived('overall', function () { return toDisplayRating(computePositionalOverall(this)); });
+  // The 2K-grading fit, not the knot curve: the user asked the displayed
+  // rating to track 2K's numbers, and this is the derived way to do it.
+  derived('overall', function () { return computeDisplayOverall(this); });
   // `potential` stays STORED and RAW, because progression pulls players by
   // `potential - rawOverall` and every existing save already holds the raw
   // value. That asymmetry is a trap — raw potential rendered beside display
   // overall reads as potential BELOW overall for every player in the league —
   // so the UI must read this instead, and a validator enforces it.
-  derived('potentialDisplay', function () { return toDisplayRating(this.potential); });
+  //
+  // The display gap is the RAW gap rescaled by the measured sd ratio (display
+  // 5.45 / raw 10.33 = 0.528). It used to route the potential scalar through
+  // the knot curve, but with the 2K-grading display the top knot sits 2 points
+  // under 99 and every young star's ceiling clamped into the same 98-99 —
+  // the superstar-potential arm could not tell Cooper Flagg from a veteran.
+  // potential >= overall holds by construction here.
+  derived('potentialDisplay', function () {
+    const gap = Math.max(0, this.potential - this.rawOverall);
+    return Math.min(99, this.overall + Math.round(gap * 0.528));
+  });
   return player;
 }
 
@@ -316,21 +453,25 @@ function scaleAttributesToOverall(player, target) {
     if (OVERALL_COEFFICIENTS[k]) totalCoef += OVERALL_COEFFICIENTS[k].coef;
   });
   if (!totalCoef) return player;
-  const rawTarget = toRawRating(target);
-  // Solved against the POSITION-WEIGHTED value, because that is what `overall`
-  // is. Converging on the global fit instead overshot every target by exactly
-  // one: the solver was landing on a different quantity from the one the caller
-  // reads. Renormalisation means totalCoef is identical for every position, so
-  // the shift arithmetic above needs no per-position variant.
-  const positional = function () { return computePositionalOverall(player); };
+  // Solved against computeDisplayOverall, because that is what `overall` IS
+  // since the 2K-grading switch — the caller means "make this player read 90"
+  // on the number the user sees. The fit is monotone in a uniform shift
+  // (every coefficient non-negative, and the peak features move with any
+  // shift), so the estimate below always steps toward the target. The shift
+  // estimate divides by the display fit's coefficient sum for this position
+  // (features included: a uniform +d moves them by +d too).
+  const fit = DISPLAY_OVERALL_FIT[player.position] || DISPLAY_OVERALL_FIT.SF;
+  let displayCoefSum = 0;
+  Object.keys(fit.terms).forEach(function (k) { displayCoefSum += fit.terms[k].coef; });
+  if (!displayCoefSum) return player;
   // Iterates rather than solving once, because clamping at the scale bounds
   // shrinks the effective slope: as attributes pin at 100 a further uniform
   // shift moves only the ones still free, so one pass undershoots an extreme
-  // target. Runs until it stops making progress — six passes was not enough to
-  // drive a mid-league player to 100.
+  // target.
   for (let pass = 0; pass < 40; pass++) {
-    if (toDisplayRating(positional()) === target) break;
-    const shift = (rawTarget - positional()) / totalCoef;
+    const current = computeDisplayOverall(player);
+    if (current === target) break;
+    const shift = (target - current) / displayCoefSum;
     let moved = false;
     keys.forEach(function (k) {
       const next = Math.max(0, Math.min(100, Math.round(player.attributes[k] + shift)));
@@ -348,14 +489,13 @@ function scaleAttributesToOverall(player, target) {
   // the next when one pins at a bound, so an extreme target still lands.
   // Ranked by the coefficient for THIS position, so the lever chosen is the
   // one with the most leverage on the number actually being solved for.
-  const posCoef = coefficientsFor(player.position);
-  const weightOf = function (k) {
-    return posCoef ? posCoef[k] : (OVERALL_COEFFICIENTS[k] ? OVERALL_COEFFICIENTS[k].coef : 0);
-  };
+  // Ranked by the DISPLAY fit's coefficients for this position, so the lever
+  // chosen has the most leverage on the number actually being solved for.
+  const weightOf = function (k) { return fit.terms[k] ? fit.terms[k].coef : 0; };
   const levers = keys.filter(function (k) { return weightOf(k) > 0; })
     .sort(function (a, b) { return weightOf(b) - weightOf(a); });
   for (let step = 0; step < 400; step++) {
-    const current = toDisplayRating(positional());
+    const current = computeDisplayOverall(player);
     if (current === target) break;
     const dir = current < target ? 1 : -1;
     let moved = false;
@@ -377,6 +517,8 @@ if (typeof module !== 'undefined' && module.exports) {
     RATING_BANDS: RATING_BANDS,
     POSITION_WEIGHTS: POSITION_WEIGHTS,
     POSITION_COEFFICIENTS: POSITION_COEFFICIENTS,
+    DISPLAY_OVERALL_FIT: DISPLAY_OVERALL_FIT,
+    computeDisplayOverall: computeDisplayOverall,
     toDisplayRating: toDisplayRating,
     toRawRating: toRawRating,
     computeOverall: computeOverall,
