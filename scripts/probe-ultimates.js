@@ -56,13 +56,22 @@ const byUltimate = {};
 let teamPoints = 0, teamGames = 0, played = 0;
 
 const cutPts = [];
+const fullRunPts = [], shortRunPts = [];
+const byStartPeriod = {};
 games.forEach(function (g) {
   if (!g.played || !g.boxScore) return;
   played += 1;
   (g.takeovers || []).forEach(function (t) {
     const k = holderIds[t.playerId];
-    if (t.cutShort) { cutPts.push(t.points); }
-    else { added.push(t.points); if (k) { byUltimate[k] = byUltimate[k] || { n: 0, pts: 0 }; byUltimate[k].n += 1; byUltimate[k].pts += t.points; } }
+    added.push(t.points);
+    if (t.cutShort) cutPts.push(t.points);
+    // A takeover the clock forced to be short is not the same thing as one the
+    // buzzer amputated, and averaging them was what hid the defect the runway
+    // rule fixed. Reported apart, always.
+    if ((t.run || 0) >= 26) fullRunPts.push(t.points); else shortRunPts.push(t.points);
+    const sp = t.startPeriod >= 5 ? 'OT' : 'Q' + t.startPeriod;
+    byStartPeriod[sp] = (byStartPeriod[sp] || 0) + 1;
+    if (k) { byUltimate[k] = byUltimate[k] || { n: 0, pts: 0 }; byUltimate[k].n += 1; byUltimate[k].pts += t.points; }
   });
   teamPoints += g.homeScore + g.awayScore;
   teamGames += 2;
@@ -98,11 +107,17 @@ if (QUIET) {
   console.log('star-games with one       ' + (100 * starShare).toFixed(1) + '%   (target ~50%)');
   console.log('two in one game           1 in ' + (doubles ? (played / doubles).toFixed(1) : '∞') +
     ' games   (target ~15)');
-  const cutMean = cutPts.length ? cutPts.reduce(function (a, b) { return a + b; }, 0) / cutPts.length : 0;
-  const allMean = (added.concat(cutPts)).reduce(function (a, b) { return a + b; }, 0) / Math.max(1, added.length + cutPts.length);
-  console.log('points added, ran its course  ' + mean.toFixed(1) + '   (target 10-15)');
-  console.log('points added, cut by buzzer   ' + cutMean.toFixed(1) + '   (' + (100 * cutPts.length / Math.max(1, cutPts.length + added.length)).toFixed(0) + '% of takeovers)');
-  console.log('points added, all takeovers   ' + allMean.toFixed(1));
+  const avg = function (a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : 0; };
+  console.log('points, EVERY takeover    ' + mean.toFixed(1) + '   (target 10-15)');
+  console.log('  full-length run         ' + avg(fullRunPts).toFixed(1) +
+    '   (' + (100 * fullRunPts.length / Math.max(1, added.length)).toFixed(0) + '% of takeovers)');
+  console.log('  short run, clock-capped ' + avg(shortRunPts).toFixed(1) +
+    '   (' + (100 * shortRunPts.length / Math.max(1, added.length)).toFixed(0) + '%)');
+  console.log('cut short by the buzzer   ' + (100 * cutPts.length / Math.max(1, added.length)).toFixed(1) +
+    '%   (must stay near zero — the runway rule is what holds it there)');
+  console.log('starts by period          ' + ['Q1', 'Q2', 'Q3', 'Q4', 'OT'].map(function (p) {
+    return p + ' ' + (byStartPeriod[p] || 0);
+  }).join('   '));
   console.log('league pts per team-game  ' + scoring.toFixed(2) + '   (baseline 134.86, must not move)');
   console.log('');
   console.log('by ultimate (count, mean points added):');

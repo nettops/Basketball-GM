@@ -117,6 +117,18 @@ function serializeGameState(gameState, name, includeSnapshots) {
         // (~90 lines/team/game) would dwarf the save otherwise. Everyone
         // else's games save as null/absent, same as their box scores.
         out.playByPlay = g.playByPlay || null;
+        // Without this the takeover panel in the box score is a live-session
+        // illusion: it renders all evening and is gone the moment you reload,
+        // because game.takeovers was never in this list. LEAGUE_HISTORY keeps
+        // every takeover league-wide and round-trips fine, which is exactly why
+        // the gap survived — verifying the history array proves nothing about
+        // what renderBoxScoreDetail reads.
+        //
+        // Kept only for games whose box score is kept, for the same reason the
+        // box score is: the league-wide record already lives in history, so
+        // duplicating all 1350 of a season's rows onto games nobody can open
+        // would be paying twice for one fact.
+        out.takeovers = g.takeovers || [];
       }
       return out;
     }),
@@ -258,7 +270,10 @@ function applySavedState(payload, gameState) {
       // boxScore/playByPlay are present only for the user's own games (see
       // serializeGameState); null for everyone else's, which
       // renderBoxScoreDetail renders as a note rather than treating as data.
-      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: g.boxScore || null, playByPlay: g.playByPlay || null, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      // takeovers, like boxScore, is present only for the user's own games.
+      // An empty array rather than null: ui/schedule.js reads .length on it and
+      // renders nothing for an empty one, so there is no case to guard.
+      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: g.boxScore || null, playByPlay: g.playByPlay || null, takeovers: g.takeovers || [], isPlayoff: g.isPlayoff, seriesId: g.seriesId };
     }),
     currentDay: payload.season.currentDay
   } : null;

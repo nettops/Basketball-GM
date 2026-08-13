@@ -204,8 +204,16 @@ const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
 //   100        2.836              84.4%              1.2             12.2        136.53
 //   160        1.780              70.7%              5.8             13.1        136.01
 //   200        1.326              55.5%             35.1             13.2        135.13
-//   240        1.006              42.4%            615.0             13.4        135.21   <- shipped
+//   240        1.006              42.4%            615.0             13.4        135.21
 //   280        0.713              30.1%              never           13.9        134.94
+//
+// Re-measured after the runway rule and the third-quarter peak (see periodMult
+// below), which between them changed how many meters get to spend themselves:
+//
+//   full   takeovers/game   pts, every takeover   league scoring
+//   240        1.102                10.8             135.02
+//   255        0.958                10.9             135.23   <- shipped
+//   280        0.769                10.1             134.63
 //
 // TWO OF THE DESIGN'S TARGETS CANNOT BOTH BE MET, and it is worth writing down
 // why rather than quietly missing one. The spec asks for ~1.0 takeovers per
@@ -232,10 +240,12 @@ const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
 // nice-sounding number that deleted a feature. 1.08 is a small extra cost that
 // still produces the rare "he went nuclear" night.
 const CHARGE_TUNING = {
-  full: 240,
+  full: 255,
   secondFullMultiplier: 1.08,
   takeoverPossessions: 26,
-  longTakeoverPossessions: 65,
+  // The shortest run that is still a takeover. Below this the meter holds
+  // rather than firing — see takeoverRun.
+  minRunPossessions: 10,
   gains: {
     madeThree: 9, madeTwo: 6, freeThrow: 2, assist: 5, steal: 8,
     block: 8, rebound: 3, offRebound: 5,
@@ -249,7 +259,26 @@ const CHARGE_TUNING = {
     // Closeness bands, tightest first. `within` is the absolute score margin.
     closeness: [{ within: 5, mult: 1.5 }, { within: 10, mult: 1.2 },
                 { within: 20, mult: 1.0 }, { within: Infinity, mult: 0.4 }],
-    periodMult: { fourth: 1.5, overtime: 2.0 },
+    // The meter runs hottest in the THIRD, not the fourth, and that is the
+    // correction rather than the compromise it looks like.
+    //
+    // A takeover is 26 possessions; a quarter holds about 29 a side. Peaking in
+    // the fourth therefore fired two thirds of all takeovers into a window too
+    // short to contain one — measured, 68% started in the fourth and 85% of
+    // those were amputated by the buzzer for six points against the 12.6 a
+    // third-quarter takeover was worth. Peaking in the third does not move the
+    // takeover out of crunch time; it moves the START out, so the run COVERS
+    // the fourth instead of being cut off inside it.
+    //
+    // Measured (runway rule on, full season, seed 4242):
+    //
+    //   third  fourth   per game   cut short   pts, every takeover   scoring
+    //    1.0     1.5      0.746        1.7%           9.8            134.12
+    //    1.4     1.5      0.971        1.0%          10.4            135.14
+    //    1.8     1.2      1.072        0.7%          10.6            134.91   <- shipped
+    //    2.2     1.2      1.238        1.0%          10.8            135.15
+    //    2.2     1.5      1.410        0.7%          10.7            135.86
+    periodMult: { third: 1.8, fourth: 1.2, overtime: 2.0 },
     trailingMult: 1.2
   }
 };
@@ -304,9 +333,26 @@ const CHARGE_TUNING = {
 // scripts/validate-ultimates.js: every ultimate must actually fire in a season.
 const CHARGE_RATE = {
   heatCheck: 1.29, silky: 1.00, paintBeast: 0.79, downhill: 0.95,
-  aboveTheRim: 0.96, andOne: 0.86, glassWrecker: 0.89, coldBlooded: 1.54,
+  aboveTheRim: 0.96, andOne: 0.86, glassWrecker: 0.89, coldBlooded: 4.00,
   clamps: 1.46, motorNeverStops: 1.79, floorGeneral: 0.96, theWall: 1.03
 };
+
+// Cold Blooded's 4.00 is the one rate the damped rounds above could not reach,
+// and it is worth saying why so it is not "corrected" back into line. Everyone
+// else fills a meter across four quarters. Cold Blooded earns in one, so a rate
+// near 1 is not rarity — it is roughly a quarter of the earning everyone else
+// gets, on top of a threshold built for four quarters of it. Measured over 47
+// games of its single holder:
+//
+//   rate   fires   mean points
+//   1.54     0         -          <- shipped; the ultimate did not exist
+//   2.50     3        6.3
+//   3.50     9        9.3
+//   4.00    11        8.9         <- once every four or five games
+//   4.50    21       10.0
+//
+// The damped correction could never find this because it square-roots each
+// round toward a measured rate that was already near zero.
 
 // Which play kinds are each ultimate's own currency.
 const CHARGE_AFFINITY = {
@@ -341,6 +387,7 @@ function situationMultiplier(ultimateKey, scoreDiff, period) {
   }
   if (period >= 5) mult *= s.periodMult.overtime;
   else if (period === 4) mult *= s.periodMult.fourth;
+  else if (period === 3) mult *= s.periodMult.third;
   if (diff < 0) mult *= s.trailingMult;
   return mult;
 }
@@ -362,10 +409,48 @@ function chargeThreshold(takeoversUsed) {
   return CHARGE_TUNING.full * Math.pow(CHARGE_TUNING.secondFullMultiplier, takeoversUsed || 0);
 }
 
+// One ultimate is not a quarter long. Motor Never Stops is the endurance one;
+// its whole claim is that it does not end when everyone else's does.
+//
+// Cold Blooded was given a short 12-possession run here too, on the reasoning
+// that its meter is dead until the fourth (LATE_GAME_ONLY) so it cannot both
+// fill and run inside one quarter. That reasoning was right about the problem
+// and wrong about the fix: measured, the runway rule alone already gives it
+// ~19 takeovers a season averaging a 14-possession run and 10 points, against
+// 9-22 takeovers averaging 11 possessions and 8 points with the special case.
+// The special case made it slightly worse AND less stable, so it is not here.
+// It was found by mutation testing — removing it changed nothing any guard
+// could see, which is what a redundant fix looks like.
+const TAKEOVER_LENGTH = { motorNeverStops: 65 };
+
 function takeoverLength(ultimateKey) {
-  return ultimateKey === 'motorNeverStops'
-    ? CHARGE_TUNING.longTakeoverPossessions
-    : CHARGE_TUNING.takeoverPossessions;
+  return TAKEOVER_LENGTH[ultimateKey] === undefined
+    ? CHARGE_TUNING.takeoverPossessions
+    : TAKEOVER_LENGTH[ultimateKey];
+}
+
+// How long a takeover starting NOW can actually run, or 0 for "not now".
+//
+// A takeover is 26 possessions and a quarter holds about 29 per side, so one
+// that begins more than a minute into the fourth cannot finish. That is not an
+// edge case: measured over a full season, 68% of all takeovers began in the
+// fourth and 85% of THOSE were amputated by the buzzer, averaging six points
+// against the 12.6 a third-quarter takeover was worth. Two thirds of the
+// feature was firing into a window too short to hold it.
+//
+// So the run is declared against the game left rather than assumed:
+//
+//   room for the whole thing  -> the whole thing
+//   room for a shorter run    -> that shorter run, and it is a real takeover
+//   less than minRun          -> it does not start; the meter stays full
+//
+// The last line is the one that removes the two-point fizzle. A star whose
+// meter fills with ninety seconds on the clock does not get a hollow takeover
+// tacked onto the box score — he stays loaded, and if the game goes to
+// overtime he erupts on the first possession of it.
+function takeoverRun(ultimateKey, possessionsLeft) {
+  const run = Math.min(takeoverLength(ultimateKey), possessionsLeft);
+  return run >= CHARGE_TUNING.minRunPossessions ? run : 0;
 }
 
 function hasUltimate(player) {
@@ -550,7 +635,9 @@ if (typeof module !== 'undefined' && module.exports) {
     situationMultiplier: situationMultiplier,
     chargeGain: chargeGain,
     chargeThreshold: chargeThreshold,
+    TAKEOVER_LENGTH: TAKEOVER_LENGTH,
     takeoverLength: takeoverLength,
+    takeoverRun: takeoverRun,
     DIAL_NAMES: DIAL_NAMES,
     TAKEOVER_EFFECTS: TAKEOVER_EFFECTS,
     takeoverEffect: takeoverEffect

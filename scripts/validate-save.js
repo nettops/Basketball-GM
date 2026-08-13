@@ -76,6 +76,44 @@ function checkSerializeKeepsUserBoxScoresOnly() {
 
 checkSerializeKeepsUserBoxScoresOnly();
 
+// The box score's takeover panel reads game.takeovers, and game.takeovers was
+// not in the serializer's field list — so the panel rendered all session and
+// was gone the moment you reloaded. It survived review because LEAGUE_HISTORY
+// keeps every takeover league-wide and round-trips perfectly, which is a
+// different array proving a different thing. Asserted here at the level the
+// user experiences: open a saved game, see the takeover.
+function checkTakeoversSurviveTheSaveOnTheGame() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const row = { playerId: 'bos-jayson-tatum', playerName: 'Jayson Tatum', teamId: 'BOS',
+                ultimateKey: 'silky', points: 18, run: 26, startPeriod: 3, period: 4 };
+  const gs = makeFakeGameState({
+    season: {
+      games: [
+        { id: 'g1', homeTeamId: 'BOS', awayTeamId: 'MIA', day: 0, played: true, homeScore: 110, awayScore: 100, boxScore: { 'bos-jayson-tatum': { points: 30 } }, isPlayoff: false, seriesId: null, takeovers: [row] },
+        { id: 'g2', homeTeamId: 'LAL', awayTeamId: 'GSW', day: 0, played: true, homeScore: 105, awayScore: 99, boxScore: { 'lal-luka-doncic': { points: 40 } }, isPlayoff: false, seriesId: null, takeovers: [row] }
+      ],
+      currentDay: 5
+    }
+  });
+  const restored = {};
+  saveModule.applySavedState(
+    JSON.parse(JSON.stringify(saveModule.serializeGameState(gs, 'Test'))), restored);
+  const byId = {};
+  restored.season.games.forEach(function (g) { byId[g.id] = g; });
+
+  assert.ok(byId.g1.takeovers && byId.g1.takeovers.length === 1,
+    "the user's own game must keep its takeovers, or the box-score panel is empty after a reload");
+  assert.deepStrictEqual(byId.g1.takeovers[0], row,
+    'the whole takeover row must survive, including the period it started in');
+  // Everyone else's are in LEAGUE_HISTORY already; carrying them here too would
+  // be paying twice for one fact.
+  assert.ok(!byId.g2.takeovers || !byId.g2.takeovers.length,
+    "another team's takeovers must not be duplicated onto the game");
+  console.log('checkTakeoversSurviveTheSaveOnTheGame: OK');
+}
+
+checkTakeoversSurviveTheSaveOnTheGame();
+
 function checkApplyRestoresTeamsAndPlayers() {
   const saveModule = require(path.join(__dirname, '..', 'save.js'));
   const teamsModule = require(path.join(__dirname, '..', 'teams.js'));

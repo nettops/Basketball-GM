@@ -17,7 +17,7 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
         ultimateFor: ultimateFor, badgeBoostFor: badgeBoostFor,
         chargeGain: chargeGain, situationMultiplier: situationMultiplier,
         chargeThreshold: chargeThreshold, takeoverLength: takeoverLength,
-        takeoverEffect: takeoverEffect
+        takeoverRun: takeoverRun, takeoverEffect: takeoverEffect
       },
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
@@ -58,6 +58,24 @@ const TIMEOUT_ENERGY_RESTORE = 0.12;
 function possessionSeconds(rng) {
   const jitter = (rng() * 2 - 1) * POSSESSION_VARIANCE_SECONDS;
   return Math.max(4, POSSESSION_BASE_SECONDS + jitter);
+}
+
+// Roughly how many more possessions ONE side gets before the buzzer. Used only
+// to decide how long a takeover starting now can run (ultimates.js takeoverRun).
+//
+// An estimate, deliberately: the real count depends on jitter that has not been
+// rolled yet, and reading it exactly would mean drawing from the rng, which
+// would move the seeded stream and both golden masters. The jitter is symmetric
+// around POSSESSION_BASE_SECONDS and averages out across a run of twenty-odd
+// possessions to well under one, so one possession of margin covers it.
+//
+// Overtime counts only the overtime on the clock — whether there will be
+// another one is not knowable, and assuming one would hand out runs the game
+// may never deliver.
+function possessionsLeftForSide(period, clock) {
+  let seconds = clock;
+  if (period < REGULATION_PERIODS) seconds += (REGULATION_PERIODS - period) * PERIOD_SECONDS;
+  return Math.floor(seconds / POSSESSION_BASE_SECONDS / 2) - 1;
 }
 
 // The game-level state machine. step() advances exactly one possession pair
@@ -344,6 +362,8 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
         teamId: side === 'home' ? homeTeamId : awayTeamId,
         ultimateKey: active.ultimateKey,
         points: line ? line.takeoverPoints : 0,
+        run: active.declared,
+        startPeriod: active.startPeriod,
         period: sim.period
       });
       // Deliberately NOT called `points`. On every other event that field means
@@ -372,14 +392,20 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       // 8.4x for this rule. The change is defensible on its own terms and fixes
       // nothing measurable, so do not credit it with the rate spread; that came
       // from CHARGE_RATE (see ultimates.js).
-      let bestId = null, bestOver = 0, bestEntry = null, bestLine = null;
+      let bestId = null, bestOver = 0, bestEntry = null, bestLine = null, bestRun = 0;
+      const left = possessionsLeftForSide(sim.period, sim.clock);
       for (let i = 0; i < ids.length; i++) {
         const entry = ultimateIndex[side][ids[i]];
         const line = box[ids[i]];
         if (!entry || !line) continue;
         const over = line.charge / ults.chargeThreshold(line.takeoversUsed);
         if (over < 1 || over <= bestOver) continue;
-        bestId = ids[i]; bestOver = over; bestEntry = entry; bestLine = line;
+        // Not enough game left for this to be a takeover. He stays loaded
+        // rather than spending a full meter on four possessions — and if the
+        // game goes to overtime, the clock resets and he goes off immediately.
+        const run = ults.takeoverRun(entry.ultimate.key, left);
+        if (run <= 0) continue;
+        bestId = ids[i]; bestOver = over; bestEntry = entry; bestLine = line; bestRun = run;
       }
       if (!bestId) return;
       bestLine.charge = 0;
@@ -392,7 +418,17 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
         side: bestEntry.ultimate.side,
         kind: bestEntry.ultimate.kind,
         effect: ults.takeoverEffect(bestEntry.ultimate.key, bestEntry.boost),
-        left: ults.takeoverLength(bestEntry.ultimate.key)
+        left: bestRun,
+        // What a full run of this ultimate would have been, so the log can tell
+        // a takeover that was declared short from one the buzzer amputated.
+        declared: bestRun,
+        fullRun: ults.takeoverLength(bestEntry.ultimate.key),
+        // When it began, so the log can tell "took over from the third" from
+        // "took over with two minutes left". Without this the only recorded
+        // period is the one it ENDED in, which for a buzzer-cut takeover is
+        // always the last one and says nothing about how much run it got.
+        startPeriod: sim.period,
+        startClock: Math.round(sim.clock)
       };
       pushSimEvent(ctx, side, { type: 'takeover-start', playerId: bestId,
         ultimateKey: bestEntry.ultimate.key, ultimateName: bestEntry.ultimate.name });
@@ -493,10 +529,15 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
         teamId: side === 'home' ? homeTeamId : awayTeamId,
         ultimateKey: active.ultimateKey,
         points: line ? line.takeoverPoints : 0,
+        run: active.declared,
+        startPeriod: active.startPeriod,
         period: sim.period,
         // The one thing that distinguishes these from a takeover that ran its
         // course: the game ended underneath it.
-        cutShort: true
+        cutShort: true,
+        // How much of its run it never got. Zero would mean the buzzer caught
+        // it on its final possession, which is not really cut short at all.
+        possessionsLost: active.left
       });
       sim.takeovers[side] = null;
     });

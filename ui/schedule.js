@@ -212,7 +212,14 @@ function takeoverSummaryHtml(game) {
   const items = rows.map(function (t) {
     const def = typeof ULTIMATE_BY_KEY !== 'undefined' ? ULTIMATE_BY_KEY[t.ultimateKey] : null;
     const label = def ? def.name : t.ultimateKey;
-    const when = t.period > 4 ? 'OT' + (t.period - 4) : 'Q' + t.period;
+    // A takeover now usually spans two periods — it starts late in the third
+    // and closes the fourth — so showing only where it ENDED loses the part
+    // that reads like a story. Rows saved before takeovers recorded their start
+    // have no startPeriod, so they fall back to the single period.
+    const label1 = function (p) { return p > 4 ? 'OT' + (p - 4) : 'Q' + p; };
+    const when = t.startPeriod && t.startPeriod !== t.period
+      ? label1(t.startPeriod) + '–' + label1(t.period)
+      : label1(t.period);
     return '<li><strong>' + escapeHtml(t.playerName) + '</strong> — ' +
       escapeHtml(label) + ' · ' + when + ' · ' +
       (t.points > 0 ? t.points + ' pts during it' : 'no points, but it changed the floor') +

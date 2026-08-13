@@ -63,7 +63,20 @@
 //   60 ->  47    66 -> 13    72 -> 3
 // bigScoring counts nights at-or-above `big` but below `huge`, so 62/70 gives
 // 23 big and 5 huge — both mid-band.
-var FEAT_TUNING = { bigScoring: 62, hugeScoring: 70, doubleAt: 14, fiveAt: 5 };
+//
+// AND RE-MEASURED AGAIN once takeovers stopped being cut short by the buzzer.
+// That fix does not raise a star's scoring rate; it lets a takeover run all
+// twenty-six of its possessions instead of the ten the buzzer used to leave it,
+// and a career night is exactly where that lands. Measured across five seeds
+// (20260812 / 4242 / 555 / 8888 / 7), nights at or above 70 a season:
+//
+//   before the runway rule   4  4  6  5  4     mean 4.6
+//   after                    7 11  8 10  9     mean 9.0
+//
+// The 1-6 band is the specification and 9 is outside it, so the bar moves. At
+// 74 the same five seasons give 2 / 5 / 4 / 5 / 4, mean 4.0 — the rarity the 70
+// bar used to buy. bigScoring at 62 went 28 -> 33, still mid-band, so it stays.
+var FEAT_TUNING = { bigScoring: 62, hugeScoring: 74, doubleAt: 14, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

@@ -87,7 +87,8 @@ function renderUltimatesReference(container) {
 
   let html = '<div class="view-header"><h2>Ultimates</h2>' +
     '<span class="view-sub">A star who is playing well builds a meter. When it fills he takes the game over ' +
-    'for about a quarter. Only the league’s best ' + ULTIMATE_TUNING.gateCount +
+    'for about a quarter — or for whatever is left of the game, if there is less than that. ' +
+    'Only the league’s best ' + ULTIMATE_TUNING.gateCount +
     ' players have one — currently everyone at ' + gate + ' overall and above.</span></div>';
 
   ['solo', 'team'].forEach(function (kind) {

@@ -61,7 +61,12 @@ function categoriesAtLeast(bar, need) {
   return lines.filter(function (l) { return feats.featCategoryCount(l, bar) >= need; }).length;
 }
 
-const POINT_BARS = [50, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 68, 70];
+// Runs to 80 because the table has to span the range a bar might land in, not
+// just the range it currently sits in. It stopped at 70, so when takeovers
+// started running their full length and 70-point nights doubled, the table had
+// nothing to say about where the huge-scoring bar should move to.
+const POINT_BARS = [50, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 68, 70,
+                    72, 74, 76, 78, 80];
 const DOUBLE_BARS = [10, 12, 13, 14, 15, 16, 17];
 const FIVE_BARS = [3, 4, 5];
 

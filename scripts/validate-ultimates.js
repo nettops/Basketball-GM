@@ -312,7 +312,8 @@ function simulatedSeason() {
   });
   const stat = { played: 0, takeovers: 0, points: [], byUltimate: {}, teamPts: 0, teamGames: 0,
                  holderGames: {}, pointsByUltimate: {},
-                 seasonPts: {}, seasonGp: {}, bestGame: 0, cutShortPoints: [] };
+                 seasonPts: {}, seasonGp: {}, bestGame: 0, eightyPointGames: 0,
+                 cutShortPoints: [], runLengths: [] };
   games.forEach(function (g) {
     if (!g.played || !g.boxScore) return;
     stat.played += 1;
@@ -324,6 +325,7 @@ function simulatedSeason() {
     (g.takeovers || []).forEach(function (t) {
       if (t.cutShort) stat.cutShortPoints.push(t.points);
       else stat.points.push(t.points);
+      stat.runLengths.push({ run: t.run, points: t.points, key: holderKey[t.playerId] });
     });
     Object.keys(g.boxScore).forEach(function (pid) {
       // Every player, not just holders — the scoring-leader guard has to see
@@ -332,6 +334,7 @@ function simulatedSeason() {
       stat.seasonPts[pid] = (stat.seasonPts[pid] || 0) + pts;
       stat.seasonGp[pid] = (stat.seasonGp[pid] || 0) + 1;
       if (pts > stat.bestGame) stat.bestGame = pts;
+      if (pts >= 80) stat.eightyPointGames += 1;
       const k = holderKey[pid];
       const line = g.boxScore[pid];
       if (!k || !line || line.takeoversUsed === undefined) return;
@@ -343,9 +346,13 @@ function simulatedSeason() {
       }
     });
   });
-  stat.leaderPpg = Object.keys(stat.seasonPts)
+  const ppgs = Object.keys(stat.seasonPts)
     .filter(function (id) { return stat.seasonGp[id] >= 40; })
-    .reduce(function (m, id) { return Math.max(m, stat.seasonPts[id] / stat.seasonGp[id]); }, 0);
+    .map(function (id) { return stat.seasonPts[id] / stat.seasonGp[id]; })
+    .sort(function (a, b) { return b - a; });
+  stat.leaderPpg = ppgs[0] || 0;
+  stat.top5MeanPpg = ppgs.slice(0, 5).reduce(function (a, b) { return a + b; }, 0) /
+    Math.max(1, Math.min(5, ppgs.length));
   _season = stat;
   return _season;
 }
@@ -394,22 +401,53 @@ function checkLeagueScoringHeldFlat() {
 // caps any player at 50% of his team's shot weight specifically to stop
 // 40-point seasons, and lifting that cap for a takeover undid it.
 //
-// Measured on the shipped build: leader 44.5, best game 75, against 43.4 and 69
-// with ultimates switched off. The bands are set above those and well below
-// what the usage-led build produced.
-const MAX_SEASON_LEADER_PPG = 47;
-const MAX_SINGLE_GAME_POINTS = 82;
+// THE FIRST VERSION OF THESE BARS WAS FITTED TO ONE SEED AND WAS ALREADY WRONG
+// when it was written. It read "leader 44.5, best game 75" and set 47 and 82.
+// Re-measured across four seeds, the very build those numbers came from
+// produced a 46.8 ppg leader and an 86-point game — it would have failed its
+// own guard on seed 7. A maximum over twenty-five thousand player-games is
+// nearly all tail noise, and pinning a bar just above one sample of it
+// guarantees a flaky test and an argument about whether the code regressed.
+//
+// Measured across seeds 4242 / 7 / 99 / 1234:
+//
+//                    leader ppg     top-5 mean ppg     games >= 80 points
+//   ultimates off    41.2 - 43.4    39.6 - 40.1               0
+//   before runway    44.7 - 46.8    42.6 - 43.8             0 - 1
+//   after runway     44.8 - 46.8    42.6 - 43.8             0 - 1
+//
+// The two builds are indistinguishable at the top end, which is the point: the
+// runway rule gives takeovers their full run without giving anyone a bigger
+// night. The usage-led build these bars exist to catch produced a 51.4 leader
+// and a 90-point game, and is still caught by all three.
+//
+// Note how much steadier the top-5 mean is than the leader — 1.2 points of
+// spread against 2.1 — and the same for a count of 80-point games against the
+// single best game. Both primary bars are therefore set on the steady
+// statistic, with the noisy one kept only as a far-away backstop. A bar pinned
+// just above one sample of a maximum is a coin flip wearing a lab coat.
+const MAX_TOP5_MEAN_PPG = 46;
+const MAX_EIGHTY_POINT_GAMES = 4;
+const HARD_MAX_LEADER_PPG = 50;
+const HARD_MAX_SINGLE_GAME = 95;
 
 function checkScoringLeadersInBand() {
   const s = simulatedSeason();
-  assert.ok(s.leaderPpg <= MAX_SEASON_LEADER_PPG,
-    'season scoring leader is ' + s.leaderPpg.toFixed(1) + ' ppg, over the ' +
-    MAX_SEASON_LEADER_PPG + ' ceiling — league TOTAL scoring cannot see this');
-  assert.ok(s.bestGame <= MAX_SINGLE_GAME_POINTS,
-    'best single game is ' + s.bestGame + ' points, over the ' +
-    MAX_SINGLE_GAME_POINTS + ' ceiling');
-  console.log('checkScoringLeadersInBand: OK (leader ' + s.leaderPpg.toFixed(1) +
-    ' ppg, best game ' + s.bestGame + ')');
+  assert.ok(s.top5MeanPpg <= MAX_TOP5_MEAN_PPG,
+    'the top five scorers average ' + s.top5MeanPpg.toFixed(1) + ' ppg, over the ' +
+    MAX_TOP5_MEAN_PPG + ' ceiling — league TOTAL scoring cannot see this');
+  assert.ok(s.eightyPointGames <= MAX_EIGHTY_POINT_GAMES,
+    s.eightyPointGames + ' games of 80+ points in one season, over the ' +
+    MAX_EIGHTY_POINT_GAMES + ' ceiling — a career night has stopped being rare');
+  assert.ok(s.leaderPpg <= HARD_MAX_LEADER_PPG,
+    'season scoring leader is ' + s.leaderPpg.toFixed(1) + ' ppg, past the ' +
+    HARD_MAX_LEADER_PPG + ' point of no return');
+  assert.ok(s.bestGame <= HARD_MAX_SINGLE_GAME,
+    'best single game is ' + s.bestGame + ' points, past the ' +
+    HARD_MAX_SINGLE_GAME + ' point of no return');
+  console.log('checkScoringLeadersInBand: OK (top five average ' + s.top5MeanPpg.toFixed(1) +
+    ' ppg, leader ' + s.leaderPpg.toFixed(1) + ', best game ' + s.bestGame +
+    ', ' + s.eightyPointGames + ' games of 80+)');
 }
 
 function checkTakeoverRateBand() {
@@ -432,31 +470,43 @@ function checkTakeoverRateBand() {
 function checkPointsAddedBand() {
   const s = simulatedSeason();
   const mean = function (a) { return a.reduce(function (x, y) { return x + y; }, 0) / a.length; };
-  const full = mean(s.points);
-  const cut = mean(s.cutShortPoints);
-  const all = mean(s.points.concat(s.cutShortPoints));
-  assert.ok(full >= 10 && full <= 15,
-    'a takeover that ran its course adds ' + full.toFixed(1) + ', outside the 10-15 band');
-  assert.ok(cut >= 4,
-    'takeovers cut short add only ' + cut.toFixed(1) + ' — they are firing too late to do anything');
-  // 63% measured league-wide, and this ceiling sits just above it rather than
-  // comfortably above it, ON PURPOSE — it is a high number and it should fail
-  // if it climbs further.
-  //
-  // OPEN DESIGN QUESTION, deliberately not resolved by quietly retuning: nearly
-  // two thirds of takeovers never finish their stretch, because the situation
-  // multiplier makes charge accrue fastest in the fourth quarter and overtime,
-  // so they pile up in the last minutes. That is the multiplier doing its job —
-  // takeovers arrive when the game is on the line — but the design also
-  // promised a quarter-long run. Softening the late-game bias would trade
-  // dramatic timing for completed stretches, and that is a call about how the
-  // game should FEEL, not a bug to fix silently.
-  const cutShare = s.cutShortPoints.length / (s.points.length + s.cutShortPoints.length);
-  assert.ok(cutShare <= 0.70,
-    (100 * cutShare).toFixed(0) + '% of takeovers are cut short by the buzzer, which is too many');
-  console.log('checkPointsAddedBand: OK (' + full.toFixed(1) + ' full, ' +
-    cut.toFixed(1) + ' cut short, ' + all.toFixed(1) + ' overall; ' +
-    (100 * cutShare).toFixed(0) + '% cut short)');
+  // EVERY takeover, not just the ones that survived. Averaging only the
+  // survivors is what let this feature report 12.9 points while two thirds of
+  // its takeovers were quietly worth six.
+  const everyOne = s.points.concat(s.cutShortPoints);
+  const all = mean(everyOne);
+  assert.ok(all >= 10 && all <= 15,
+    'the average takeover is worth ' + all.toFixed(1) + ' points, outside the 10-15 band');
+
+  // The buzzer share is now the guard on the runway rule, and it is set near
+  // zero because the runway rule is what holds it there. It was 63% before:
+  // a takeover is 26 possessions, a quarter holds about 29 a side, so anything
+  // firing inside the fourth was amputated by arithmetic. gameSim.js now
+  // declares the run against the game remaining and refuses to start one that
+  // has no room, so a takeover ending early means that rule has stopped working
+  // — not that the timing drifted.
+  const cutShare = s.cutShortPoints.length / everyOne.length;
+  assert.ok(cutShare <= 0.05,
+    (100 * cutShare).toFixed(0) + '% of takeovers are cut short by the buzzer — the ' +
+    'runway rule in gameSim.js should be holding this near zero');
+
+  // And a short run must still be a real one, or refusing to fire has just
+  // moved the fizzle rather than removed it.
+  // Against the ultimate's OWN full length, not the default 26 — Cold Blooded's
+  // whole run is 12, and calling that clock-capped would mean every one of its
+  // takeovers gets counted as a shortfall it never had.
+  const shortRuns = s.runLengths.filter(function (r) {
+    return r.key && r.run < ult.takeoverLength(r.key);
+  });
+  if (shortRuns.length) {
+    const shortMean = mean(shortRuns.map(function (r) { return r.points; }));
+    assert.ok(shortMean >= 5,
+      'a clock-capped takeover is worth only ' + shortMean.toFixed(1) +
+      ' points — minRunPossessions is too low to be worth firing');
+  }
+  console.log('checkPointsAddedBand: OK (' + all.toFixed(1) + ' points per takeover, ' +
+    (100 * cutShare).toFixed(1) + '% cut short, ' +
+    (100 * shortRuns.length / everyOne.length).toFixed(0) + '% clock-capped)');
 }
 
 // An ultimate that exists, is held, and never fires is as dead as one nobody
@@ -823,10 +873,40 @@ function checkEveryTakeoverIsRecorded() {
   assert.strictEqual(logged, started,
     'takeovers started ' + started + ' but only ' + logged + ' were recorded — ' +
     (started - logged) + ' vanished at the final buzzer');
-  assert.ok(cutShort > 0,
-    'no takeover was cut short in 40 games, which means this test is not exercising the case it exists for');
+
+  // The half of this test that matters is the buzzer path, and it can no longer
+  // be reached by accident. Before the runway rule, 63% of takeovers were cut
+  // short and any sample hit it; now it is under 1%, and a test that waits for
+  // one to turn up is a test that quietly stops running. So force it: a
+  // takeover longer than a whole game, with no minimum run to refuse it, is
+  // still live when the buzzer goes every single time.
+  const savedRun = ult.CHARGE_TUNING.takeoverPossessions;
+  const savedMin = ult.CHARGE_TUNING.minRunPossessions;
+  let forcedStarted = 0, forcedLogged = 0, forcedCut = 0;
+  try {
+    ult.CHARGE_TUNING.takeoverPossessions = 500;
+    ult.CHARGE_TUNING.minRunPossessions = 0;
+    for (let s = 0; s < 40; s++) {
+      const r = f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(5000 + s));
+      Object.keys(r.boxScore).forEach(function (id) {
+        forcedStarted += (r.boxScore[id].takeoversUsed || 0);
+      });
+      forcedLogged += (r.takeovers || []).length;
+      forcedCut += (r.takeovers || []).filter(function (t) { return t.cutShort; }).length;
+    }
+  } finally {
+    ult.CHARGE_TUNING.takeoverPossessions = savedRun;
+    ult.CHARGE_TUNING.minRunPossessions = savedMin;
+  }
+  assert.ok(forcedCut > 0,
+    'a 500-possession takeover was not cut short by the buzzer — this test can no ' +
+    'longer reach the flush path it exists to protect');
+  assert.strictEqual(forcedLogged, forcedStarted,
+    'with every takeover live at the buzzer, ' + forcedStarted + ' started but ' +
+    forcedLogged + ' were recorded — the flush path is dropping them');
   console.log('checkEveryTakeoverIsRecorded: OK (' + logged + ' of ' + started +
-    ', ' + cutShort + ' cut short)');
+    ' normally, ' + cutShort + ' cut short; ' + forcedLogged + ' of ' + forcedStarted +
+    ' with the buzzer forced)');
 }
 
 function checkEngineReportsOnlyKnownPlayKinds() {
