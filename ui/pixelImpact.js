@@ -47,10 +47,13 @@ const IMPACT_ZOOM_LEAD_MAX_MS = 900;
 // camera push), so they drop out first. At 8x only a poster qualifies: ~2 a
 // game, which is the "rip through the possessions and stop dead on the dunk"
 // experience this exists to buy.
+// 'takeover' is in every band. It is rarer than a poster — about one a game
+// across both teams against roughly two posters — so if anything earns the stop
+// at 8x, it does.
 const IMPACT_SPEED_BAR = [
-  { maxSpeed: 2, kinds: ['poster', 'ankle', 'block'] },
-  { maxSpeed: 4, kinds: ['poster', 'ankle'] },
-  { maxSpeed: Infinity, kinds: ['poster'] }
+  { maxSpeed: 2, kinds: ['takeover', 'poster', 'ankle', 'block'] },
+  { maxSpeed: 4, kinds: ['takeover', 'poster', 'ankle'] },
+  { maxSpeed: Infinity, kinds: ['takeover', 'poster'] }
 ];
 
 function impactQualifies(kind, speed) {

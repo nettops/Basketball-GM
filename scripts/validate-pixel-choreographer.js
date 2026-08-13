@@ -33,6 +33,40 @@ function buildSession(seed) {
   };
 }
 
+// Takeovers are STATE, not beats — they carry no positions, so the
+// choreographer consumes them into running state rather than choreographing
+// them as plays. This asserts the state actually reaches the keyframes, which
+// is the only way the view can draw either the banner or the marker.
+function checkTakeoversReachTheKeyframes() {
+  let starts = 0, stamped = 0, markerFrames = 0, seen = 0;
+  for (let seed = 40; seed < 52; seed++) {
+    const built = buildSession(seed);
+    starts += built.session.events.filter(function (e) { return e.type === 'takeover-start'; }).length;
+    const tl = choreo.buildTimeline(built.session);
+    tl.keyframes.forEach(function (kf) {
+      seen += 1;
+      if (kf.takeoverStart) {
+        stamped += 1;
+        assert.ok(kf.takeoverStart.playerId, 'a takeoverStart keyframe must name the player');
+        assert.ok(kf.takeoverStart.ultimateName, 'and the ultimate, for the banner');
+      }
+      assert.ok(kf.takeovers, 'every keyframe must carry the takeover state, even when empty');
+      if (kf.takeovers.home || kf.takeovers.away) markerFrames += 1;
+    });
+  }
+  assert.ok(starts > 0, 'no takeover fired across twelve games — nothing to choreograph');
+  assert.strictEqual(stamped, starts,
+    'every takeover-start must be stamped on exactly one keyframe (' + stamped + ' of ' + starts + ')');
+  assert.ok(markerFrames > 0, 'no keyframe carries a live holder — the on-court marker would never draw');
+  // A takeover runs ~20 possessions, so it must mark a real stretch of the
+  // game, not one frame. Guards against the state being cleared immediately.
+  assert.ok(markerFrames > stamped * 5,
+    'holders appear on only ' + markerFrames + ' keyframes for ' + stamped +
+    ' takeovers — the marker is not persisting across the stretch');
+  console.log('checkTakeoversReachTheKeyframes: OK (' + starts + ' takeovers, ' +
+    markerFrames + ' marked keyframes of ' + seen + ')');
+}
+
 function checkTimelineShape() {
   const built = buildSession(3);
   const tl = choreo.buildTimeline(built.session);
@@ -512,4 +546,5 @@ function checkDribbleRoll() {
 }
 checkDribbleRoll();
 
+checkTakeoversReachTheKeyframes();
 console.log('All pixel choreographer validations passed');

@@ -336,6 +336,24 @@ function renderPixelGame(container) {
   let lastEffectKfT = -1;
   let lastQuarterSeen = 1;
   let quarterCard = null;       // { text, scoreLine } while a break card shows
+  // The takeover announcement. Held for a beat after the freeze clears so the
+  // name is readable, then dropped — endings are quiet, only beginnings get a
+  // card, or neither would read as the moment.
+  let takeoverBanner = null;    // { name, playerId }
+  let takeoverBannerUntil = -Infinity;
+  const TAKEOVER_BANNER_MS = 2200;
+
+  // A TEAM ultimate lifts all five, so all five get the marker. Which of the
+  // twelve are team ultimates is read from ULTIMATE_BY_KEY rather than
+  // hard-coded here — the taxonomy is the one place that knows, and a list
+  // copied into the view would silently rot the first time one changed.
+  function isTeamTakeoverMate(pid, tkSide, teamOf) {
+    const side = teamOf[pid];
+    const tk = side && tkSide[side];
+    if (!tk || tk.playerId === pid) return false;
+    const def = typeof ULTIMATE_BY_KEY !== 'undefined' ? ULTIMATE_BY_KEY[tk.ultimateKey] : null;
+    return !!(def && def.kind === 'team');
+  }
   let lastScoreShown = ['', ''];
   const scorePopAt = [-Infinity, -Infinity]; // playbackMs of the last change
 
@@ -480,6 +498,27 @@ function renderPixelGame(container) {
         startImpact(fr.a.impact, impactRealMs, impactOpts);
         hitchMs = Math.max(hitchMs, impactFreezeMs(fr.a.impact, impactOpts));
         if (!reduceMotion && speed < 8) shakeStartMs = playbackMs;
+      }
+      // A takeover begins. Reuses the comic-panel treatment posters already get
+      // — freeze, snap zoom, flash, speed lines — centred on the holder, plus a
+      // banner naming the ultimate. A new effect here would fight the visual
+      // language the game has already established for "this mattered".
+      //
+      // The freeze is taken from impactFreezeMs like any other kind, so
+      // prefers-reduced-motion (which returns 0) degrades this to the banner
+      // alone for free.
+      if (fr.a.takeoverStart) {
+        const tk = fr.a.takeoverStart;
+        const at = fr.a.pos && fr.a.pos[tk.playerId]
+          ? { x: fr.a.pos[tk.playerId][0], y: fr.a.pos[tk.playerId][1] }
+          : { x: PIXEL_STAGE.w / 2, y: PIXEL_STAGE.h / 2 };
+        const takeoverOpts = { reduceMotion: reduceMotion, speed: speed };
+        const marker = { kind: 'takeover', at: at, byId: tk.playerId };
+        startImpact(marker, impactRealMs, takeoverOpts);
+        hitchMs = Math.max(hitchMs, impactFreezeMs(marker, takeoverOpts));
+        takeoverBanner = { name: tk.ultimateName, playerId: tk.playerId };
+        takeoverBannerUntil = playbackMs + TAKEOVER_BANNER_MS;
+        playPixelSfx('buzzer');
       }
       // Event audio. Above 4x the beats blur together into a machine-gun
       // rattle, so the one-shots drop out and only the crowd bed remains.
@@ -685,6 +724,21 @@ function renderPixelGame(container) {
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
       const p = playerById[pid];
+      // Mid-takeover marker: a ring under the man, drawn beneath the sprite so
+      // it reads as court, not costume. A team ultimate marks all five of that
+      // side, which is what makes a team run visible as a team run.
+      const tkSide = fr.a.takeovers || {};
+      const tkHere = (tkSide.home && tkSide.home.playerId === pid) ||
+                     (tkSide.away && tkSide.away.playerId === pid) ||
+                     isTeamTakeoverMate(pid, tkSide, teamById);
+      if (tkHere) {
+        const pulse = 0.45 + 0.25 * Math.sin(playbackMs / 180);
+        ctx.strokeStyle = 'rgba(255, 208, 92, ' + pulse.toFixed(2) + ')';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(Math.round(x), Math.round(y), 7, 3, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
         heightIn: p ? p.heightIn : null,
         frame: Math.floor((playbackMs + phase) / stride) % 2,
@@ -974,6 +1028,22 @@ function renderPixelGame(container) {
     }
 
     // quarter-break card, drawn unshaken over everything
+    // Takeover banner, over everything, for a couple of seconds after it fires.
+    if (takeoverBanner && playbackMs < takeoverBannerUntil) {
+      const label = takeoverBanner.name.toUpperCase();
+      const who = (playerById[takeoverBanner.playerId] || {}).name || '';
+      const w = Math.max(pixelTextWidth(label, 2), pixelTextWidth(who, 1)) + 24;
+      const bx = Math.round((PIXEL_STAGE.w - w) / 2);
+      ctx.fillStyle = 'rgba(12, 10, 6, 0.82)';
+      ctx.fillRect(bx, 30, w, 34);
+      ctx.strokeStyle = '#ffd05c';
+      ctx.strokeRect(bx + 0.5, 30.5, w - 1, 33);
+      drawPixelText(ctx, bx + (w - pixelTextWidth(label, 2)) / 2, 38, label, '#ffd05c', 2);
+      drawPixelText(ctx, bx + (w - pixelTextWidth(who, 1)) / 2, 54, who, '#f4ead8', 1);
+    } else if (takeoverBanner && playbackMs >= takeoverBannerUntil) {
+      takeoverBanner = null;
+    }
+
     if (quarterCard && hitchMs > 0) {
       ctx.fillStyle = 'rgba(10, 12, 16, 0.72)';
       ctx.fillRect(90, 100, PIXEL_STAGE.w - 180, 66);

@@ -626,6 +626,16 @@ function createChoreographer(session) {
 
   snapshot(); // index 0: empty board at tip-off
 
+  // Running takeover state, threaded through the whole timeline. Survives
+  // across possessions by design: a takeover lasts about twenty of them.
+  const takeoverHolders = { home: null, away: null };
+  let pendingTakeover = null;
+  function consumePendingTakeover() {
+    const p = pendingTakeover;
+    pendingTakeover = null;
+    return p;
+  }
+
   // `sfx` names the sound this beat should trigger (see ui/pixelAudio.js's
   // synth). Naming it here rather than sniffing the display text keeps the
   // audio honest: a miss and a make are different events even though both
@@ -664,6 +674,13 @@ function createChoreographer(session) {
       // Structured highlight marker, or null. ui/pixelGameView.js reads this
       // field rather than matching on `text` — see classifyImpact above.
       impact: impact || null,
+      // Who is mid-takeover on each side as of this beat, and — on the one beat
+      // where a takeover begins — the announcement. Both are stamped here
+      // rather than passed in, because push already takes thirteen positional
+      // parameters and these are running state, not per-beat arguments (the
+      // same reasoning as the dribble count below).
+      takeovers: { home: takeoverHolders.home, away: takeoverHolders.away },
+      takeoverStart: consumePendingTakeover(),
       // index into timeline.snapshots (running leaders / foul trouble) and
       // which possession this beat belongs to, used to derive a shot clock
       snap: snapshots.length - 1,
@@ -829,7 +846,25 @@ function createChoreographer(session) {
     possCounter = pi;
     const firstKf = keyframes.length;
 
-    const plays = events.slice(1);
+    // Takeover events are STATE, not beats. They carry no positions and nothing
+    // happens on the floor at the instant one fires, so they are consumed here
+    // and stamped onto every keyframe by push() rather than being choreographed
+    // as plays of their own. Kept off `plays` for the same reason: the play loop
+    // below would have no idea what to draw for one.
+    const plays = [];
+    events.slice(1).forEach(function (ev) {
+      if (ev.type === 'takeover-start') {
+        takeoverHolders[ev.team] = { playerId: ev.playerId, ultimateKey: ev.ultimateKey };
+        // Consumed by the next pushed beat, which is where the view fires the
+        // comic-panel treatment and the banner.
+        pendingTakeover = { playerId: ev.playerId, ultimateKey: ev.ultimateKey,
+                            ultimateName: ev.ultimateName, team: ev.team };
+      } else if (ev.type === 'takeover-end') {
+        takeoverHolders[ev.team] = null;
+      } else {
+        plays.push(ev);
+      }
+    });
     const period = head.period;
     const quarter = head.quarter;
     const clock = head.clock;
