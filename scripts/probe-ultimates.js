@@ -55,9 +55,15 @@ const added = [];
 const byUltimate = {};
 let teamPoints = 0, teamGames = 0, played = 0;
 
+const cutPts = [];
 games.forEach(function (g) {
   if (!g.played || !g.boxScore) return;
   played += 1;
+  (g.takeovers || []).forEach(function (t) {
+    const k = holderIds[t.playerId];
+    if (t.cutShort) { cutPts.push(t.points); }
+    else { added.push(t.points); if (k) { byUltimate[k] = byUltimate[k] || { n: 0, pts: 0 }; byUltimate[k].n += 1; byUltimate[k].pts += t.points; } }
+  });
   teamPoints += g.homeScore + g.awayScore;
   teamGames += 2;
   Object.keys(g.boxScore).forEach(function (pid) {
@@ -67,13 +73,8 @@ games.forEach(function (g) {
     starGames += 1;
     if (line.takeoversUsed >= 1) { starGamesWithOne += 1; takeovers += line.takeoversUsed; }
     if (line.takeoversUsed >= 2) doubles += 1;
-    if (line.takeoverPoints > 0) {
-      added.push(line.takeoverPoints);
-      const k = holderIds[pid];
-      byUltimate[k] = byUltimate[k] || { n: 0, pts: 0 };
-      byUltimate[k].n += 1;
-      byUltimate[k].pts += line.takeoverPoints;
-    }
+    // Points come from the takeover LOG, not the box line: a line holds only
+    // the most recent takeover, and only the log knows which the buzzer cut short.
   });
 });
 
@@ -97,7 +98,11 @@ if (QUIET) {
   console.log('star-games with one       ' + (100 * starShare).toFixed(1) + '%   (target ~50%)');
   console.log('two in one game           1 in ' + (doubles ? (played / doubles).toFixed(1) : '∞') +
     ' games   (target ~15)');
-  console.log('points added, mean        ' + mean.toFixed(1) + '   (target 10-15)');
+  const cutMean = cutPts.length ? cutPts.reduce(function (a, b) { return a + b; }, 0) / cutPts.length : 0;
+  const allMean = (added.concat(cutPts)).reduce(function (a, b) { return a + b; }, 0) / Math.max(1, added.length + cutPts.length);
+  console.log('points added, ran its course  ' + mean.toFixed(1) + '   (target 10-15)');
+  console.log('points added, cut by buzzer   ' + cutMean.toFixed(1) + '   (' + (100 * cutPts.length / Math.max(1, cutPts.length + added.length)).toFixed(0) + '% of takeovers)');
+  console.log('points added, all takeovers   ' + allMean.toFixed(1));
   console.log('league pts per team-game  ' + scoring.toFixed(2) + '   (baseline 134.86, must not move)');
   console.log('');
   console.log('by ultimate (count, mean points added):');
