@@ -159,6 +159,25 @@ const ULTIMATE_TAXONOMY = [
     badges: ['rimProtector', 'dpoyCaliber'] }
 ];
 
+// One sentence per ultimate, in the player's words. ui/ultimates.js reads these
+// rather than restating what an ultimate does, so an ultimate whose dials are
+// retuned can never end up described as doing something it no longer does —
+// the same rule the badge reference already follows.
+const ULTIMATE_DESCRIPTIONS = {
+  heatCheck: 'Starts hunting threes, and they start dropping.',
+  silky: 'Pull-ups from everywhere inside the arc begin to fall.',
+  paintBeast: 'Bullies the rim — shots inside, and trips to the line.',
+  downhill: 'Gets to the basket at will, and stops coughing the ball up.',
+  aboveTheRim: 'Dunks, put-backs and chase-down blocks.',
+  andOne: 'Stops settling and goes through people. The free throws pile up.',
+  glassWrecker: 'Owns the boards, and cleans up his own team’s misses.',
+  coldBlooded: 'The fourth quarter arrives and everything goes in.',
+  clamps: 'Takes the other team’s ball-handler out of the game.',
+  motorNeverStops: 'He stops getting tired. The man guarding him does not.',
+  floorGeneral: 'All five on the floor shoot better and stop turning it over.',
+  theWall: 'The other team’s shots stop falling.'
+};
+
 const ULTIMATE_BY_KEY = {};
 ULTIMATE_TAXONOMY.forEach(function (u) { ULTIMATE_BY_KEY[u.key] = u; });
 
@@ -517,6 +536,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ULTIMATE_TUNING: ULTIMATE_TUNING,
     ULTIMATE_TAXONOMY: ULTIMATE_TAXONOMY,
     ULTIMATE_BY_KEY: ULTIMATE_BY_KEY,
+    ULTIMATE_DESCRIPTIONS: ULTIMATE_DESCRIPTIONS,
     PLAY_KINDS: PLAY_KINDS,
     CHARGE_TUNING: CHARGE_TUNING,
     CHARGE_AFFINITY: CHARGE_AFFINITY,

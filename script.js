@@ -319,6 +319,7 @@ const BUILT_VIEWS = {
   playerProfile: renderPlayerProfile,
   careerLedger: renderCareerLedger,
   badges: renderBadges,
+  ultimates: renderUltimatesReference,
   playerComparison: renderPlayerComparison,
   news: renderLeagueNews,
   salarycap: renderSalaryCap,

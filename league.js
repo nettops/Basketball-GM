@@ -126,7 +126,7 @@ function _historyDeps() {
           recordInjuryInHistory: recordInjuryInHistory,
           recordInjuryReturn: recordInjuryReturn
         },
-        history: { recordFeats: recordFeats }
+        history: { recordFeats: recordFeats, recordTakeovers: recordTakeovers }
       };
 }
 

@@ -131,6 +131,71 @@ files.forEach(function (file) {
   }
 });
 
+// The SECOND bridge shape, and the one that let a real crash through.
+//
+// Some files resolve dependencies lazily through an accessor —
+// `function _historyDeps() { return require ? {...} : {...}; }` — to break a
+// require cycle or a browser load-order problem. Those carry exactly the same
+// hand-written browser list as _X_DATA, and drift exactly the same way, but the
+// scan above only knows the `var _X_DATA =` shape and skipped them entirely.
+//
+// This happened for real: recordTakeovers was added to history.js and called as
+// `_historyDeps().history.recordTakeovers(...)`. The Node branch hands over the
+// whole module, so all 61 validators passed. In the browser the accessor's list
+// named only recordFeats, and EVERY finished game threw — the game was
+// unplayable while the suite was green.
+function lazyBranches(src) {
+  const out = [];
+  const re = /function\s+(_\w*Deps)\s*\(\s*\)\s*\{/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    const bodyOpen = src.indexOf('{', m.index + m[0].length - 1);
+    const qIdx = src.indexOf('?', bodyOpen);
+    if (qIdx < 0) continue;
+    const nodeOpen = src.indexOf('{', qIdx);
+    if (nodeOpen < 0) continue;
+    const nodeClose = matchBrace(src, nodeOpen);
+    if (nodeClose < 0) continue;
+    const colon = src.indexOf(':', nodeClose);
+    if (colon < 0) continue;
+    const browserOpen = src.indexOf('{', colon);
+    if (browserOpen < 0) continue;
+    const browserClose = matchBrace(src, browserOpen);
+    if (browserClose < 0) continue;
+    out.push({ name: m[1], text: src.slice(browserOpen, browserClose + 1) });
+  }
+  return out;
+}
+
+let checkedLazy = 0, checkedLazyRefs = 0;
+files.forEach(function (file) {
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  lazyBranches(src).forEach(function (branch) {
+    checkedLazy += 1;
+    const provided = providedKeys(branch.text);
+    // `_historyDeps().history.recordFeats` — the call parens sit between the
+    // accessor name and the namespace, which is the whole difference from the
+    // eager shape above.
+    const re = new RegExp(branch.name + '\\(\\)\\.(\\w+)\\.(\\w+)', 'g');
+    let use;
+    while ((use = re.exec(src)) !== null) {
+      const ns = use[1], member = use[2];
+      checkedLazyRefs += 1;
+      if (!(ns in provided)) {
+        failures.push(file + ': uses ' + branch.name + '().' + ns + '.' + member +
+          ' but its browser branch has no "' + ns + '" namespace');
+        continue;
+      }
+      if (provided[ns] === null) continue;
+      if (!provided[ns].has(member)) {
+        failures.push(file + ': uses ' + branch.name + '().' + ns + '.' + member +
+          ' but the browser branch only provides ' + ns + ': {' +
+          Array.from(provided[ns]).join(', ') + '}');
+      }
+    }
+  });
+});
+
 if (failures.length) {
   console.error('Browser bridge is missing members the code actually calls.');
   console.error('Node takes the other branch, so the suite passes and the GAME breaks.\n');
@@ -138,5 +203,6 @@ if (failures.length) {
   assert.fail(failures.length + ' missing browser-bridge member(s)');
 }
 
-console.log('checkBrowserBridges: OK (' + checkedFiles + ' bridges, ' + checkedRefs + ' references)');
+console.log('checkBrowserBridges: OK (' + checkedFiles + ' eager bridges, ' + checkedRefs + ' references)');
+console.log('checkLazyBridges: OK (' + checkedLazy + ' lazy accessors, ' + checkedLazyRefs + ' references)');
 console.log('All browser bridge validations passed');

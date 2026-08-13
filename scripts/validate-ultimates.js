@@ -737,6 +737,77 @@ function checkDefensiveTakeoversSuppressTheOpponent() {
 // because the situation multiplier makes takeovers cluster late and one that
 // begins with three minutes left never finishes its twenty-six possessions.
 // Half the feature was invisible to history, the box score and the feed.
+// The reference page must READ the taxonomy, never restate it. That is why a
+// retuned ultimate updates its own documentation, and why one can never be
+// described as doing something it does not do — the rule ui/badges.js follows.
+function checkReferencePageRestatesNothing() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(ROOT, 'ui', 'ultimates.js'), 'utf8');
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    assert.ok(src.indexOf("'" + u.name + "'") === -1 && src.indexOf('"' + u.name + '"') === -1,
+      'ui/ultimates.js hard-codes the name "' + u.name + '" instead of reading the taxonomy');
+    assert.ok(src.indexOf(ult.ULTIMATE_DESCRIPTIONS[u.key]) === -1,
+      'ui/ultimates.js hard-codes ' + u.key + '’s description instead of reading it');
+  });
+  assert.ok(/ULTIMATE_TAXONOMY/.test(src), 'ui/ultimates.js must read ULTIMATE_TAXONOMY');
+  assert.ok(/ULTIMATE_DESCRIPTIONS/.test(src), 'and ULTIMATE_DESCRIPTIONS');
+  console.log('checkReferencePageRestatesNothing: OK');
+}
+
+// Every ultimate needs a sentence a player can read. A missing one must fail
+// here rather than render a blank row on the reference page.
+function checkEveryUltimateHasADescription() {
+  const desc = ult.ULTIMATE_DESCRIPTIONS;
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    assert.ok(desc[u.key] && desc[u.key].length > 10,
+      u.key + ' has no description — the reference page would render a blank row');
+  });
+  assert.strictEqual(Object.keys(desc).length, ult.ULTIMATE_TAXONOMY.length,
+    'there is a description for an ultimate that does not exist');
+  console.log('checkEveryUltimateHasADescription: OK');
+}
+
+// Every dial an ultimate turns must have a player-facing label, or the
+// reference page silently omits part of what the ultimate does. shotCeiling and
+// zoneBias are deliberately unlabelled — one is the mechanical companion to
+// shotShare and the other is covered by the make lines — so they are allowed
+// null, but a dial that is simply MISSING from the table is not.
+// Read STATICALLY rather than by requiring the module. ui/ files are
+// browser-only — they reach for PLAYERS_2026, escapeHtml and the ultimates
+// globals directly, with no dual bridge, so Node cannot load them. Parsing the
+// DIAL_LABELS table out of the source is what lets this check exist at all.
+function checkEveryDialHasALabelOrIsDeliberatelySilent() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(ROOT, 'ui', 'ultimates.js'), 'utf8');
+  const block = src.match(/const DIAL_LABELS = \{([\s\S]*?)\n\};/);
+  assert.ok(block, 'ui/ultimates.js has no DIAL_LABELS table');
+  const labelled = {};
+  (block[1].match(/^\s*([a-zA-Z]+)\s*:/gm) || []).forEach(function (m) {
+    labelled[m.replace(/[\s:]/g, '')] = true;
+  });
+
+  const turned = {};
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    Object.keys(ult.takeoverEffect(u.key, 1)).forEach(function (d) { turned[d] = u.key; });
+  });
+  Object.keys(turned).forEach(function (dial) {
+    assert.ok(labelled[dial],
+      turned[dial] + ' turns "' + dial + '", which the reference page has no label for');
+  });
+
+  // And every ultimate must have at least one dial that produces a readable
+  // line — otherwise its panel renders a name and nothing else.
+  const silent = ['shotCeiling', 'zoneBias'];
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    const speaking = Object.keys(ult.takeoverEffect(u.key, 1))
+      .filter(function (d) { return silent.indexOf(d) === -1; });
+    assert.ok(speaking.length > 0,
+      u.key + ' turns only unlabelled dials — its panel would say nothing');
+  });
+  console.log('checkEveryDialHasALabelOrIsDeliberatelySilent: OK (' +
+    Object.keys(turned).length + ' dials labelled)');
+}
+
 function checkEveryTakeoverIsRecorded() {
   const f = gameFixture();
   let started = 0, logged = 0, cutShort = 0;
@@ -886,6 +957,9 @@ checkTakeoverLength();
 checkEveryDialIsReadByTheEngine();
 checkATakeoverMovesTheBoxScore();
 checkDefensiveTakeoversSuppressTheOpponent();
+checkReferencePageRestatesNothing();
+checkEveryUltimateHasADescription();
+checkEveryDialHasALabelOrIsDeliberatelySilent();
 checkEveryTakeoverIsRecorded();
 checkEngineReportsOnlyKnownPlayKinds();
 checkBoxLineCarriesMeterState();

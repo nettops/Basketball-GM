@@ -21,6 +21,11 @@ function renderCurrentSeasonPanel(player) {
 
 function renderCareerStatsTab(player) {
   ensureCareerData([player]);
+  // Sits at the top of the first tab a reader lands on. It was originally put
+  // beside the badges, which is thematically right and practically wrong: that
+  // is a different tab, so the panel rendered only for someone who had already
+  // gone looking for it.
+  const ultimateHtml = ultimatePanelHtml(player);
   // Includes the season in progress — careerStats alone only gains a year at
   // the top of the offseason, so mid-season this panel read Games 0 / PPG 0.0
   // directly beneath a Current Season panel reporting real production.
@@ -29,7 +34,7 @@ function renderCareerStatsTab(player) {
   // singleGame highs update per game and are already live; singleSeason waits
   // for the offseason, which is why Best Season read 0 next to a real pace.
   const highs = { singleGame: player.careerHistory.careerHighs.singleGame, singleSeason: seasonHighsToDate(player) };
-  let html = '<div class="panel"><div class="panel-header">Career Totals</div><div class="panel-body kpi-grid">';
+  let html = ultimateHtml + '<div class="panel"><div class="panel-header">Career Totals</div><div class="panel-body kpi-grid">';
   html += '<div class="kpi-tile"><div class="kpi-label">Seasons</div><div class="kpi-value">' + cs.seasonsPlayed + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">Games</div><div class="kpi-value">' + cs.gamesPlayed + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">PPG</div><div class="kpi-value">' + (cs.points / gp).toFixed(1) + '</div></div>';
@@ -416,4 +421,36 @@ if (typeof module !== 'undefined' && module.exports) {
     renderPlayerProfile: renderPlayerProfile,
     openPlayerProfile: openPlayerProfile
   };
+}
+
+// The player's ultimate, if he has one. Answers the question you actually have
+// when you are looking at a trade target: does this guy take games over?
+//
+// Renders NOTHING for a player without one. An empty "no ultimate" box on the
+// 400-odd players who do not qualify is noise, and the absence is already the
+// answer.
+function ultimatePanelHtml(player) {
+  if (typeof hasUltimate !== 'function' || !hasUltimate(player)) return '';
+  const u = ultimateFor(player);
+  if (!u) return '';
+
+  const rows = (typeof LEAGUE_HISTORY !== 'undefined' && LEAGUE_HISTORY.takeovers) || [];
+  const mine = rows.filter(function (r) { return r.playerId === player.id; });
+  const best = mine.reduce(function (m, r) { return r.points > m ? r.points : m; }, 0);
+  const boost = badgeBoostFor(player, u);
+
+  let body = '<div class="ult-profile-name"><strong>' + escapeHtml(u.name) + '</strong>' +
+    '<span class="pill pill-mute">' + (u.kind === 'team' ? 'Lifts the team' : 'Solo') + '</span>' +
+    (boost > 1 ? '<span class="pill">Badge-boosted</span>' : '') + '</div>' +
+    '<p class="kpi-sub">' + escapeHtml(ULTIMATE_DESCRIPTIONS[u.key]) + '</p>';
+
+  if (mine.length === 0) {
+    body += '<p class="trait-lock-note">Hasn’t taken a game over yet.</p>';
+  } else {
+    body += '<div class="ult-profile-stats">' +
+      '<span><strong>' + mine.length + '</strong> takeover' + (mine.length === 1 ? '' : 's') + '</span>' +
+      '<span>best: <strong>' + best + '</strong> pts</span></div>';
+  }
+  return '<div class="panel"><div class="panel-header">Ultimate</div>' +
+    '<div class="panel-body">' + body + '</div></div>';
 }
