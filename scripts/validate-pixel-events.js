@@ -16,7 +16,11 @@ const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'))
 const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 
-const EVENT_TYPES = ['possession', 'turnover', 'block', 'shot', 'rebound', 'foul-ft'];
+// takeover-start/end carry no `points` field ON PURPOSE — see gameSim.js. Every
+// other type's `points` is summed against the final score below, so a takeover
+// reporting its total there would double-count it.
+const EVENT_TYPES = ['possession', 'turnover', 'block', 'shot', 'rebound', 'foul-ft',
+  'takeover-start', 'takeover-end'];
 
 function checkNoRngDrift() {
   // Same seed, capture on vs off: identical results.
@@ -69,6 +73,13 @@ function checkEventIntegrity() {
       if (ev.type === 'foul-ft') {
         assert.strictEqual(ev.points, ev.made, 'foul-ft points must equal made');
         assert.ok(ev.made >= 0 && ev.made <= ev.attempts, 'made within attempts');
+      }
+      // A takeover event must never carry a scoring `points` field. This is the
+      // assertion, not a courtesy: without it, naming the takeover's total
+      // `points` would inflate the summed score and the failure would look like
+      // a scoring bug rather than a field-name collision.
+      if (ev.type === 'takeover-start' || ev.type === 'takeover-end') {
+        assert.strictEqual(ev.points, undefined, ev.type + ' must not carry a scoring points field');
       }
       const pts = ev.points || 0;
       if (ev.team === 'home') homePts += pts; else awayPts += pts;

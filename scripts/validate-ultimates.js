@@ -289,6 +289,95 @@ checkTaxonomyShape();
 // stops filling for the rest of the game — so the two lists are asserted to
 // agree STATICALLY, by reading the engine's source, rather than by hoping a
 // simulated game happens to hit every branch.
+// Drives real games and asserts the meter machinery ran. Needs the whole engine
+// stack, so it is loaded lazily — the pure tests above must keep working
+// without a league.
+let _fixture = null;
+function gameFixture() {
+  if (_fixture) return _fixture;
+  require(path.join(ROOT, 'teams.js'));
+  const traits = require(path.join(ROOT, 'traits.js'));
+  require(path.join(ROOT, 'scouting.js'));
+  const players = require(path.join(ROOT, 'players-2026.js'));
+  traits.ensureHiddenPlayerData(players.PLAYERS_2026);
+  require(path.join(ROOT, 'simEngine.js'));
+  require(path.join(ROOT, 'simEngineBoxScore.js'));
+  require(path.join(ROOT, 'simEnginePossession.js'));
+  require(path.join(ROOT, 'gameCoach.js'));
+  _fixture = {
+    gameSim: require(path.join(ROOT, 'gameSim.js')),
+    makeRng: require(path.join(ROOT, 'rng.js')).makeRng,
+    players: players.PLAYERS_2026
+  };
+  return _fixture;
+}
+
+// A matchup with a genuine star on each side, so a test never fails merely
+// because it drew two teams with nobody who qualifies.
+const FIXTURE_HOME = 'DEN', FIXTURE_AWAY = 'MIL';
+
+function checkTakeoversFireInARealGame() {
+  const f = gameFixture();
+  let starts = 0, ends = 0;
+  for (let s = 0; s < 12; s++) {
+    const events = [];
+    f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(1000 + s), { events: events });
+    events.forEach(function (e) {
+      if (e.type === 'takeover-start') {
+        starts += 1;
+        assert.ok(e.playerId, 'a takeover-start must name the player');
+        assert.ok(ult.ULTIMATE_BY_KEY[e.ultimateKey],
+          'a takeover-start must name a real ultimate, got ' + e.ultimateKey);
+        assert.ok(e.period >= 1, 'and must be stamped with the period it happened in');
+      }
+      if (e.type === 'takeover-end') ends += 1;
+    });
+  }
+  assert.ok(starts > 0, 'no takeover fired in twelve games — the meter never reaches its threshold');
+  // At most one can still be running per side when the buzzer goes.
+  assert.ok(ends >= starts - 24, 'takeovers must end rather than leak past the final buzzer');
+  console.log('checkTakeoversFireInARealGame: OK (' + starts + ' starts, ' + ends + ' ends)');
+}
+
+// A non-star must never charge, or the "top 30-60 players" gate is a lie the
+// box score would eventually expose.
+function checkOnlyStarsTakeOver() {
+  const f = gameFixture();
+  const byId = {};
+  f.players.forEach(function (p) { byId[p.id] = p; });
+  let checked = 0;
+  for (let s = 0; s < 6; s++) {
+    const events = [];
+    f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(300 + s), { events: events });
+    events.filter(function (e) { return e.type === 'takeover-start'; }).forEach(function (e) {
+      checked += 1;
+      assert.ok(ult.hasUltimate(byId[e.playerId]),
+        (byId[e.playerId] || {}).name + ' took over without qualifying for an ultimate');
+    });
+  }
+  assert.ok(checked > 0, 'no takeovers to check');
+  console.log('checkOnlyStarsTakeOver: OK (' + checked + ' checked)');
+}
+
+// One side may not run two takeovers at once — their dials would stack on the
+// same five players.
+function checkOneTakeoverPerSideAtATime() {
+  const f = gameFixture();
+  for (let s = 0; s < 6; s++) {
+    const events = [];
+    f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(700 + s), { events: events });
+    const live = { home: 0, away: 0 };
+    events.forEach(function (e) {
+      if (e.type === 'takeover-start') {
+        live[e.team] += 1;
+        assert.ok(live[e.team] <= 1, 'two takeovers running at once on ' + e.team);
+      }
+      if (e.type === 'takeover-end') live[e.team] -= 1;
+    });
+  }
+  console.log('checkOneTakeoverPerSideAtATime: OK');
+}
+
 function checkEngineReportsOnlyKnownPlayKinds() {
   const fs = require('fs');
   const src = fs.readFileSync(path.join(ROOT, 'simEnginePossession.js'), 'utf8');
@@ -416,6 +505,9 @@ checkThresholdRises();
 checkTakeoverLength();
 checkEngineReportsOnlyKnownPlayKinds();
 checkBoxLineCarriesMeterState();
+checkTakeoversFireInARealGame();
+checkOnlyStarsTakeOver();
+checkOneTakeoverPerSideAtATime();
 checkEveryUltimateTurnsSomething();
 checkBadgeBoostScalesTheEffect();
 checkTeamEffectsAreSmallerPerPlayer();

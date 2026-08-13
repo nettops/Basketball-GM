@@ -5,13 +5,19 @@
 // behaviour-identical, so it had room to grow without turning
 // simEnginePossession.js into a grab bag.
 var _GAMESIM_DATA = (typeof require !== 'undefined')
-  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./gameCoach.js'), teams: require('./teams.js') }
+  ? { poss: require('./simEnginePossession.js'), simEngine: require('./simEngine.js'), composite: require('./compositeRatings.js'), box: require('./simEngineBoxScore.js'), coach: require('./gameCoach.js'), teams: require('./teams.js'), ultimates: require('./ultimates.js') }
   : {
       poss: {
         POSSESSIONS_PER_TEAM: POSSESSIONS_PER_TEAM,
         simulatePossession: simulatePossession,
         eligibleRoster: eligibleRoster,
         initBoxLine: initBoxLine
+      },
+      ultimates: {
+        ultimateFor: ultimateFor, badgeBoostFor: badgeBoostFor,
+        chargeGain: chargeGain, situationMultiplier: situationMultiplier,
+        chargeThreshold: chargeThreshold, takeoverLength: takeoverLength,
+        takeoverEffect: takeoverEffect
       },
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
@@ -59,6 +65,41 @@ function possessionSeconds(rng) {
 // consumption order is unchanged. simulatePossessionGame below is now just a
 // loop over it, which means batch sims and (later) live-stepped watched games
 // run through ONE code path and cannot drift apart.
+// Which ultimate each qualifying player on a roster holds, and how much a
+// matching legendary badge boosts it. Cached per game: deriving an ultimate
+// walks twelve percentile tables, and redoing that for ten players on every
+// possession would dominate the sim's cost for no benefit — a player's ultimate
+// cannot change mid-game.
+function buildUltimateIndex(roster) {
+  const index = {};
+  roster.forEach(function (p) {
+    const u = _GAMESIM_DATA.ultimates.ultimateFor(p);
+    if (u) index[p.id] = { ultimate: u, boost: _GAMESIM_DATA.ultimates.badgeBoostFor(p, u) };
+  });
+  return index;
+}
+
+// A takeover event belongs to the HOLDER's team, not to whoever has the ball —
+// a defensive ultimate fires while the other side is on offense. Derived by
+// copy-and-override from the live context so it keeps every stamped field
+// (period, clock, quarter) rather than being rebuilt field by field; a
+// hand-listed copy is exactly how rebound events once lost their clock.
+function pushSimEvent(ctx, side, ev) {
+  if (!ctx) return;
+  const sideCtx = ctx.team === side ? ctx : Object.assign({}, ctx, { team: side });
+  ev.team = sideCtx.team;
+  ev.quarter = sideCtx.quarter;
+  ev.period = sideCtx.period;
+  ev.clock = sideCtx.clock;
+  ctx.events.push(ev);
+}
+
+// The live takeover on a side, or null. Read by gameCoach.js so a coach does
+// not bench a man mid-takeover, and by the pixel view for the on-court marker.
+function activeTakeoverFor(sim, team) {
+  return (sim.takeovers && sim.takeovers[team]) || null;
+}
+
 function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const homeRoster = _GAMESIM_DATA.poss.eligibleRoster(homeTeamId);
   const awayRoster = _GAMESIM_DATA.poss.eligibleRoster(awayTeamId);
@@ -84,6 +125,10 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   homeRoster.concat(awayRoster).forEach(function (p) { secondsPlayed[p.id] = 0; });
 
   const onCourt = { home: pickStarters(homeRoster), away: pickStarters(awayRoster) };
+  const ultimateIndex = {
+    home: buildUltimateIndex(homeRoster),
+    away: buildUltimateIndex(awayRoster)
+  };
   const byId = {};
   homeRoster.concat(awayRoster).forEach(function (p) { byId[p.id] = p; });
 
@@ -118,6 +163,12 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     quarter: 1,
     timeoutsLeft: { home: TIMEOUTS_PER_GAME, away: TIMEOUTS_PER_GAME },
     run: { team: null, points: 0 },
+    // The live takeover on each side, or null. See activeTakeoverFor.
+    takeovers: { home: null, away: null },
+    // Every completed takeover this game, for league.js to file into history —
+    // box scores are pruned at save time, so a takeover that lived only in one
+    // would vanish for the other 29 teams.
+    takeoverLog: [],
     // Set by a watching view to the side the human is coaching. Null for
     // every unwatched game, which is what keeps batch sims unchanged.
     userTeam: null,
@@ -234,6 +285,96 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     sim.inTransition = !!outcome.liveBallToDefense;
 
     if (team === 'home') sim.homeScore += points; else sim.awayScore += points;
+
+    // --- The ultimate meter (ultimates.js) --------------------------------
+    // Applied AFTER the possession resolves, from what the engine reported,
+    // and consuming no randomness. A takeover therefore fires because of a
+    // night already going well, never because of a roll — which is also what
+    // keeps the seeded stream, and both golden masters, untouched.
+    const ults = _GAMESIM_DATA.ultimates;
+    const plays = outcome.plays || [];
+    for (let pi = 0; pi < plays.length; pi++) {
+      const play = plays[pi];
+      // A play's charge belongs to whoever made it, on whichever side he plays.
+      const side = ultimateIndex.home[play.playerId] ? 'home'
+                 : (ultimateIndex.away[play.playerId] ? 'away' : null);
+      if (!side) continue;
+      const box = side === 'home' ? homeBox : awayBox;
+      const line = box[play.playerId];
+      // Frozen on the bench: neither fills nor drains while off the floor.
+      // Losing charge to a substitution would punish the player for a decision
+      // he did not make.
+      if (!line || onCourt[side].indexOf(play.playerId) === -1) continue;
+      const key = ultimateIndex[side][play.playerId].ultimate.key;
+      const diff = side === 'home' ? (sim.homeScore - sim.awayScore)
+                                   : (sim.awayScore - sim.homeScore);
+      const mult = ults.situationMultiplier(key, diff, sim.period);
+      line.charge = Math.max(0, line.charge + ults.chargeGain(key, play.kind, mult));
+    }
+    outcome.plays = null;
+
+    // Expire a running takeover. Counted in possessions of the side the
+    // ultimate ACTS ON: a defensive ultimate ticks down on the other team's
+    // possessions, which is where it does its work.
+    ['home', 'away'].forEach(function (side) {
+      const active = sim.takeovers[side];
+      if (!active) return;
+      const actsOn = active.side === 'defense' ? (side === 'home' ? 'away' : 'home') : side;
+      if (actsOn !== team) return;
+      active.left -= 1;
+      const stillOn = onCourt[side].indexOf(active.playerId) !== -1;
+      if (active.left > 0 && stillOn) return;
+      const box = side === 'home' ? homeBox : awayBox;
+      const line = box[active.playerId];
+      // Snapshot-and-diff rather than accumulating per possession: the box line
+      // already counts his points, so the difference is exact and cannot drift.
+      if (line) line.takeoverPoints = line.points - (line.takeoverPointsAt || 0);
+      sim.takeoverLog.push({
+        playerId: active.playerId,
+        playerName: (byId[active.playerId] || {}).name || active.playerId,
+        teamId: side === 'home' ? homeTeamId : awayTeamId,
+        ultimateKey: active.ultimateKey,
+        points: line ? line.takeoverPoints : 0,
+        period: sim.period
+      });
+      // Deliberately NOT called `points`. On every other event that field means
+      // "points scored on this play" and validate-pixel-events.js sums it
+      // against the final score — reusing the name here would silently
+      // double-count the whole takeover.
+      pushSimEvent(ctx, side, { type: 'takeover-end', playerId: active.playerId,
+        ultimateKey: active.ultimateKey, takeoverPoints: line ? line.takeoverPoints : 0 });
+      sim.takeovers[side] = null;
+    });
+
+    // Fire a new one. Only for a player actually on the floor, and only one per
+    // side at a time — two simultaneous takeovers on one team would stack their
+    // dials on the same five players.
+    ['home', 'away'].forEach(function (side) {
+      if (sim.takeovers[side]) return;
+      const box = side === 'home' ? homeBox : awayBox;
+      const ids = onCourt[side];
+      for (let i = 0; i < ids.length; i++) {
+        const entry = ultimateIndex[side][ids[i]];
+        const line = box[ids[i]];
+        if (!entry || !line) continue;
+        if (line.charge < ults.chargeThreshold(line.takeoversUsed)) continue;
+        line.charge = 0;
+        line.takeoversUsed += 1;
+        line.takeoverPointsAt = line.points;
+        sim.takeovers[side] = {
+          playerId: ids[i],
+          ultimateKey: entry.ultimate.key,
+          ultimateName: entry.ultimate.name,
+          side: entry.ultimate.side,
+          kind: entry.ultimate.kind,
+          effect: ults.takeoverEffect(entry.ultimate.key, entry.boost),
+          left: ults.takeoverLength(entry.ultimate.key)
+        };
+        pushSimEvent(ctx, side, { type: 'takeover-start', playerId: ids[i],
+          ultimateKey: entry.ultimate.key, ultimateName: entry.ultimate.name });
+        break;
+      }
+    });
 
     // Plus/minus, credited to the ten players who were actually on the floor
     // for THIS possession — before applySubstitutions runs below, or the
@@ -353,7 +494,9 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       homeScore: sim.homeScore,
       awayScore: sim.awayScore,
       boxScore: Object.assign({}, homeBox, awayBox),
-      playByPlay: playByPlay
+      playByPlay: playByPlay,
+      // Every completed takeover, for league.js to file into league history.
+      takeovers: sim.takeoverLog
     };
   };
 
@@ -377,6 +520,7 @@ _GAMESIM_DATA.simEngine.registerEngine('possession', { simulateGame: simulatePos
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     createGameSim: createGameSim,
+    activeTakeoverFor: activeTakeoverFor,
     simulateGame: simulatePossessionGame
   };
 }
