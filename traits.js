@@ -505,11 +505,18 @@ function generatePersonality(player, rng) {
 // with the league's identity. Exactly the mistake the transition shot-mix
 // calibration already made once, paying for the rim out of threes.
 //
-// Measured raw share distribution over the 380 rostered players:
-//   p05 0.100   p25 0.217   p50 0.300   p75 0.372   p95 0.447   mean 0.291
-// so PIVOT is set at that median and mapped to itself.
-const SHARE_LOW = 0.20, SHARE_PIVOT = 0.30, SHARE_HIGH = 0.40;
-const SHARE_LOW_OUT = 0.08, SHARE_PIVOT_OUT = 0.30, SHARE_HIGH_OUT = 0.56;
+// Measured raw share distribution — re-anchored for the 2K27 face-value
+// roster, whose compressed attribute scale halves the raw-share span
+// (435 players):
+//   p05 0.200   p25 0.289   p50 0.310   p75 0.327   p95 0.351   mean 0.302
+// (the old mean-50 league ran p05 0.100 / p50 0.300 / p95 0.447). PIVOT sits
+// at that median and maps to itself; LOW and HIGH keep their old percentile
+// positions (just below p25, ~p85) so the same share of the league lands in
+// each band. The middle band is steeper in absolute slope only because the
+// input span shrank — the output geometry (0.08 floor, 0.56 shoulder) is
+// unchanged.
+const SHARE_LOW = 0.27, SHARE_PIVOT = 0.31, SHARE_HIGH = 0.335;
+const SHARE_LOW_OUT = 0.08, SHARE_PIVOT_OUT = 0.31, SHARE_HIGH_OUT = 0.56;
 const SHARE_TAIL_SLOPE = 0.6;
 
 function amplifyShare(share) {

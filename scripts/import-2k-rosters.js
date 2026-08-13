@@ -197,13 +197,35 @@ function main() {
   });
   console.log('importing ' + all.length + ' players across 30 teams');
 
-  // Quantile-map each attribute onto the outgoing league's distribution.
-  const mappers = {};
-  ATTRIBUTE_KEYS.forEach(k => { mappers[k] = quantileMapper(all.map(e => e.blended[k])); });
+  // FACE VALUE, since the user asked for it (2026-08-13): the blended 2K
+  // numbers are stored directly, so a single-source attribute (threePoint,
+  // defReb...) reads exactly what 2kratings.com shows. The engine is tuned
+  // to this scale rather than the values bent to the engine's old scale —
+  // the quantile mapper above is retired but kept for reference.
   all.forEach(e => {
     e.attrs = {};
-    ATTRIBUTE_KEYS.forEach(k => { e.attrs[k] = mappers[k](e.blended[k], k); });
+    ATTRIBUTE_KEYS.forEach(k => { e.attrs[k] = Math.round(e.blended[k]); });
   });
+
+  // The affine bridge for GENERATED players: makeAttributes was calibrated
+  // to produce the OLD league's per-attribute distributions, so generated
+  // players need `new = old * scale + shift` per attribute or every draft
+  // class arrives on the wrong scale and the league decays. Printed here,
+  // pasted into players-2026.js (GENERATION_AFFINE).
+  console.log('const GENERATION_AFFINE = {');
+  ATTRIBUTE_KEYS.forEach(k => {
+    const oldVals = OLD_PLAYERS.map(p => p.attributes[k]);
+    const newVals = all.map(e => e.attrs[k]);
+    const stat = v => {
+      const m = v.reduce((a, b) => a + b, 0) / v.length;
+      return { m: m, sd: Math.sqrt(v.reduce((s, x) => s + (x - m) * (x - m), 0) / v.length) };
+    };
+    const o = stat(oldVals), n = stat(newVals);
+    const scale = o.sd > 0 ? n.sd / o.sd : 1;
+    const shift = n.m - o.m * scale;
+    console.log('  ' + k + ': { scale: ' + scale.toFixed(4) + ', shift: ' + shift.toFixed(2) + ' },');
+  });
+  console.log('};');
 
   // Emit the table.
   const lines = [];

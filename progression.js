@@ -1,11 +1,15 @@
 var _PROGRESSION_DATA = (typeof require !== 'undefined')
-  ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js') }
+  ? { data: require('./data.js'), traits: require('./traits.js'), teams: require('./teams.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js'),
+      affine: require('./players-2026.js').GENERATION_AFFINE }
   : {
       data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS, RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX },
       traits: { getTraitBonus: getTraitBonus, rollSecretBadgeEvolution: rollSecretBadgeEvolution },
       teams: { getTeamById: getTeamById },
       coaches: { coachFitMultiplier: coachFitMultiplier },
-      ratings: { computeOverall: computeOverall, defineOverall: defineOverall }
+      ratings: { computeOverall: computeOverall, defineOverall: defineOverall },
+      // players-2026.js loads before this file in index.html, so the const is
+      // already a page global here.
+      affine: GENERATION_AFFINE
     };
 
 function clampRating(v) {
@@ -126,11 +130,16 @@ var RATING_PROFILES = {
 //
 // Only the young brackets moved; the veteran decline curve is untouched, so the
 // hand-authored 2026 roster ages exactly as it did before any of this.
+// Re-swept for the 2K27 face-value league (the affine scaling below preserves
+// attribute-space geometry, but the 2K display curve and the superstar bar at
+// 95 both moved what a growth year is worth in display terms): young base
+// 0.75/0.25 -> 0.5/0.15 and the under-25 noise upside clipped 5 -> 4, measured
+// against probe-superstar-rate.js alongside the pull change above.
 var GROWTH_TUNING = {
   // Deterministic part of the yearly change, by age bracket.
-  base: [[21, 0.75], [25, 0.25], [27, 0], [29, -1], [31, -2], [34, -3], [40, -4], [43, -5], [Infinity, -6]],
+  base: [[21, 0.5], [25, 0.15], [27, 0], [29, -1], [31, -2], [34, -3], [40, -4], [43, -5], [Infinity, -6]],
   // Random part: [maxAge, sd, clipLow, clipHigh].
-  noise: [[23, 2.5, -5, 5], [25, 2.5, -5, 5], [Infinity, 3, -2, 4]]
+  noise: [[23, 2.2, -5, 4], [25, 2.2, -5, 4], [Infinity, 3, -2, 4]]
 };
 
 function calcBaseChange(age, rng) {
@@ -162,11 +171,20 @@ function progressPlayer(player, rng, teammates, options) {
   // pulling toward it while estimating it would be circular.
   if (!options.suppressPotentialPull) {
     // `potential` is stored RAW, so it can only be differenced against rawOverall.
+    //
+    // Pull weakened 0.15/0.05 -> 0.05/0.017 for the 2K27 face-value league.
+    // The stored potential is the 75th percentile of NO-PULL simulated
+    // futures (estimatePotentialMonteCarlo below), so a strong pull toward it
+    // guarantees the median player his optimistic scenario — measured at 0.15
+    // the fast harness minted 7.55 superstars per 60-man class against the
+    // 2-4 target, and with the pull off entirely it still made 4.50. 0.05
+    // keeps potential meaning something on scouting reports without turning
+    // the p75 estimate into a promise.
     var potentialGap = player.potential - player.rawOverall;
     if (player.age <= 25) {
-      baseChange += potentialGap * 0.15;
-    } else if (player.age <= 29) {
       baseChange += potentialGap * 0.05;
+    } else if (player.age <= 29) {
+      baseChange += potentialGap * 0.017;
     }
   }
 
@@ -205,6 +223,16 @@ function progressPlayer(player, rng, teammates, options) {
       (baseChange + ageMod) * (0.4 + rng() * 1.0),
       limits[0], limits[1]
     );
+    // Every delta above — base growth, age curves, changeLimits, breakouts —
+    // is sized in OLD-scale attribute points. The 2K27 face-value attributes
+    // are far more compressed (GENERATION_AFFINE scales run 0.47-1.29, most
+    // well under 1), so applying old-scale deltas raw inflated the league:
+    // measured over twenty seasons, median overall drifted 78 -> 85, the 90+
+    // population went 22 -> ~190 and league scoring 135.5 -> ~147. Crossing
+    // each delta through the same per-attribute affine that generation uses
+    // makes a year of growth the same RELATIVE move it was on the old scale.
+    var aff = _PROGRESSION_DATA.affine[key];
+    if (aff) ratingChange *= aff.scale;
     player.attributes[key] = clampRating(player.attributes[key] + ratingChange);
   });
 

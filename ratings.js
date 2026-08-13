@@ -25,36 +25,33 @@ var _RATINGS_DATA = (typeof require !== 'undefined')
   ? { data: require('./data.js') }
   : { data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS } };
 
-// Fitted by scripts/fit-overall.js against 3000 games and 345 players (ridge 1, in-sample r 0.705).
+// Fitted by scripts/fit-overall.js against 3000 games and 344 players (ridge 1, in-sample r 0.526).
 // Re-run that script to regenerate after a deliberate sim change.
-// Refitted for the 2K27 import: the authored roster's attribute sheets are
-// now real 2K sheets (quantile-mapped), which are less one-dimensional than
-// the archetype-generated ones the 0.789 fit learned on — richer sheets,
-// honestly lower r. 1200 games was noise-limited (r 0.552); 3000 stabilised
-// both the r and the coefficient pattern (defense non-zero again).
 const OVERALL_COEFFICIENTS = {
-  insideScoring: { coef: 0.06206, mean: 50.3 },
-  midRange: { coef: 0.05852, mean: 49.4 },
-  threePoint: { coef: 0.02075, mean: 51.1 },
-  freeThrow: { coef: 0.09092, mean: 49.1 },
-  passing: { coef: 0.05967, mean: 48.6 },
-  ballHandling: { coef: 0.23145, mean: 48.3 },
-  postScoring: { coef: 0.09905, mean: 42.3 },
-  perimeterDefense: { coef: 0.00000, mean: 54.1 },
-  interiorDefense: { coef: 0.11135, mean: 45.4 },
-  steal: { coef: 0.32691, mean: 54.3 },
-  block: { coef: 0.21508, mean: 45.1 },
-  offReb: { coef: 0.00000, mean: 44.3 },
-  defReb: { coef: 0.00000, mean: 52.1 },
-  speed: { coef: 0.00000, mean: 52.9 },
-  acceleration: { coef: 0.00000, mean: 54.2 },
-  strength: { coef: 0.00000, mean: 53.3 },
-  vertical: { coef: 0.00000, mean: 54.3 },
-  basketballIQ: { coef: 0.18216, mean: 56.6 },
-  leadership: { coef: 0.00000, mean: 51.9 },
-  workEthic: { coef: 0.02466, mean: 53.7 },
+  insideScoring: { coef: 0.00000, mean: 72.2 },
+  midRange: { coef: 0.11570, mean: 75.5 },
+  threePoint: { coef: 0.14162, mean: 76.8 },
+  freeThrow: { coef: 0.33616, mean: 76.9 },
+  passing: { coef: 0.00000, mean: 63.9 },
+  ballHandling: { coef: 0.20099, mean: 70.5 },
+  postScoring: { coef: 0.03844, mean: 54.8 },
+  perimeterDefense: { coef: 0.16521, mean: 68.5 },
+  interiorDefense: { coef: 0.00000, mean: 60.9 },
+  steal: { coef: 0.38262, mean: 56.0 },
+  block: { coef: 0.34777, mean: 57.8 },
+  offReb: { coef: 0.00000, mean: 51.3 },
+  defReb: { coef: 0.35503, mean: 62.2 },
+  speed: { coef: 0.00000, mean: 75.2 },
+  acceleration: { coef: 0.02777, mean: 76.7 },
+  strength: { coef: 0.00000, mean: 62.0 },
+  vertical: { coef: 0.04411, mean: 76.8 },
+  basketballIQ: { coef: 0.00000, mean: 69.6 },
+  leadership: { coef: 0.00000, mean: 70.8 },
+  workEthic: { coef: 0.00000, mean: 84.3 },
 };
 const OVERALL_INTERCEPT = 50.0000;
+// (Refit for the 2K FACE-VALUE scale: attributes now read exactly as the
+// site shows them; the quantile-mapped fit no longer matched the inputs.)
 
 // THE DISPLAY CURVE. The fit above targets mean 50 / SD 9, which puts a 90 at
 // +4.4 standard deviations — unreachable in a 380-player league, where the
@@ -81,7 +78,7 @@ const OVERALL_INTERCEPT = 50.0000;
 // display getter actually feeds through this curve), which run 23-91 over
 // the imported 435. First cut anchored on the position-blind extremes
 // (20-83) and put the best player at 97 instead of on the top knot.
-const DISPLAY_KNOT = { rawLo: 20, dispLo: 64, rawHi: 83, dispHi: 98 };
+const DISPLAY_KNOT = { rawLo: 16, dispLo: 64, rawHi: 83, dispHi: 97 };
 const DISPLAY_SLOPE_LO = (DISPLAY_KNOT.dispHi - DISPLAY_KNOT.dispLo) / (DISPLAY_KNOT.rawHi - DISPLAY_KNOT.rawLo);
 const DISPLAY_SLOPE_HI = (100 - DISPLAY_KNOT.dispHi) / (100 - DISPLAY_KNOT.rawHi);
 
@@ -118,14 +115,16 @@ const RATING_BANDS = {
   // the elite gate moved up to hold the holder share inside 1-4%.
   // Re-anchored AGAIN when display switched to the 2K-grading fit (fourth
   // re-derivation): on 2K's scale a 95 IS the superstar tier — exactly the
-  // eight players 2K itself rates 95+. (95, 98) measures 3.2% holders with
-  // the arm reaching 6 genuine upside cases the gate misses, the lowest 8
-  // points below it — and 8 points on this scale (sd 5.45) is a wider gulf
-  // than the old 10 was on the old one. The import age-discounts 2K's
-  // pedigree-flavored potential grades (LeBron carries an A+ at 41) or the
-  // arm fills with veterans; see GRADE_HEADROOM in scripts/import-2k-rosters.js.
+  // eight players 2K itself rates 95+. The potential arm re-measured at 97
+  // for the face-value scale: 15 qualifiers (3.4%), 10 of them upside cases
+  // the overall gate misses, the lowest at 87 — a full 8 below the gate,
+  // which on this compressed scale (sd 5.45) is a wider gulf than the old 10
+  // was. At 98 the arm's lowest was 88 and it read as a second way of saying
+  // "already a star". The import age-discounts 2K's pedigree-flavored
+  // potential grades (LeBron carries an A+ at 41) or the arm fills with
+  // veterans; see GRADE_HEADROOM in scripts/import-2k-rosters.js.
   superstar: 95,           // the genuine elite — gates the 8 superstar traits
-  superstarPotential: 98,  // ...or the potential to become one
+  superstarPotential: 97,  // ...or the potential to become one
   star: 87,                // stars: trade premium, worth pausing the sim for (3.7% of the league)
   rotation: 81,            // good enough that a bench role is worth complaining about
   fringe: 75               // fringe: likelier to retire (re-measured: 28.7% of the league)
@@ -251,97 +250,89 @@ function computePositionalOverall(player) {
 // the player reads. Regenerate with scripts/fit-display-overall.js.
 const DISPLAY_OVERALL_FIT = {
   PG: { intercept: 79.816, terms: {
-    insideScoring: { coef: 0.05921, mean: 34.6 },
-    midRange: { coef: 0.05241, mean: 57.2 },
-    threePoint: { coef: 0.06251, mean: 56.5 },
-    freeThrow: { coef: 0.03511, mean: 58.4 },
-    passing: { coef: 0.08539, mean: 68.2 },
-    ballHandling: { coef: 0.10935, mean: 71.5 },
-    postScoring: { coef: 0.03562, mean: 26.8 },
-    steal: { coef: 0.00839, mean: 57.5 },
-    defReb: { coef: 0.01270, mean: 40.5 },
-    acceleration: { coef: 0.00570, mean: 63.0 },
-    strength: { coef: 0.01830, mean: 39.9 },
-    basketballIQ: { coef: 0.16055, mean: 59.5 },
-    leadership: { coef: 0.05646, mean: 54.8 },
-    workEthic: { coef: 0.00504, mean: 53.4 },
-    topThreeMean: { coef: 0.01000, mean: 76.1 },
+    insideScoring: { coef: 0.07750, mean: 64.4 },
+    midRange: { coef: 0.06801, mean: 80.4 },
+    threePoint: { coef: 0.20694, mean: 79.9 },
+    freeThrow: { coef: 0.05442, mean: 81.2 },
+    passing: { coef: 0.16272, mean: 77.8 },
+    ballHandling: { coef: 0.26795, mean: 82.8 },
+    postScoring: { coef: 0.06656, mean: 42.6 },
+    defReb: { coef: 0.00352, mean: 52.7 },
+    basketballIQ: { coef: 0.27192, mean: 72.3 },
+    leadership: { coef: 0.04850, mean: 75.5 },
+    workEthic: { coef: 0.00196, mean: 84.1 },
+    topThreeMean: { coef: 0.08822, mean: 88.7 },
   } },
   SG: { intercept: 78.744, terms: {
-    insideScoring: { coef: 0.10195, mean: 42.3 },
-    midRange: { coef: 0.02852, mean: 52.7 },
-    threePoint: { coef: 0.07194, mean: 60.8 },
-    freeThrow: { coef: 0.03770, mean: 60.4 },
-    passing: { coef: 0.03444, mean: 50.7 },
-    ballHandling: { coef: 0.08928, mean: 57.5 },
-    perimeterDefense: { coef: 0.00460, mean: 56.1 },
-    interiorDefense: { coef: 0.02992, mean: 32.8 },
-    steal: { coef: 0.02389, mean: 49.7 },
-    block: { coef: 0.03195, mean: 31.9 },
-    defReb: { coef: 0.00645, mean: 39.8 },
-    basketballIQ: { coef: 0.15590, mean: 54.5 },
-    leadership: { coef: 0.07720, mean: 53.2 },
+    insideScoring: { coef: 0.22461, mean: 69.2 },
+    midRange: { coef: 0.05280, mean: 78.2 },
+    threePoint: { coef: 0.20540, mean: 80.8 },
+    freeThrow: { coef: 0.09469, mean: 82.0 },
+    passing: { coef: 0.03286, mean: 66.5 },
+    ballHandling: { coef: 0.22433, mean: 76.9 },
+    perimeterDefense: { coef: 0.01352, mean: 71.0 },
+    interiorDefense: { coef: 0.03475, mean: 49.8 },
+    steal: { coef: 0.01911, mean: 50.4 },
+    block: { coef: 0.03101, mean: 46.5 },
+    defReb: { coef: 0.01101, mean: 52.3 },
+    basketballIQ: { coef: 0.24818, mean: 69.0 },
+    leadership: { coef: 0.06571, mean: 73.7 },
+    topThreeMean: { coef: 0.00810, mean: 87.5 },
   } },
   SF: { intercept: 78.273, terms: {
-    insideScoring: { coef: 0.06652, mean: 45.1 },
-    midRange: { coef: 0.04889, mean: 47.9 },
-    threePoint: { coef: 0.03269, mean: 53.8 },
-    freeThrow: { coef: 0.00061, mean: 51.4 },
-    passing: { coef: 0.03673, mean: 42.5 },
-    ballHandling: { coef: 0.00337, mean: 46.4 },
-    postScoring: { coef: 0.02044, mean: 38.0 },
-    interiorDefense: { coef: 0.03803, mean: 42.5 },
-    block: { coef: 0.00450, mean: 37.0 },
-    defReb: { coef: 0.01396, mean: 46.3 },
-    speed: { coef: 0.00276, mean: 53.9 },
-    strength: { coef: 0.00784, mean: 48.6 },
-    vertical: { coef: 0.01691, mean: 55.3 },
-    basketballIQ: { coef: 0.15065, mean: 52.3 },
-    leadership: { coef: 0.05417, mean: 46.6 },
-    peakSkill: { coef: 0.04035, mean: 73.3 },
-    topThreeMean: { coef: 0.10248, mean: 68.5 },
+    insideScoring: { coef: 0.15848, mean: 71.0 },
+    midRange: { coef: 0.06030, mean: 75.2 },
+    threePoint: { coef: 0.10673, mean: 78.7 },
+    freeThrow: { coef: 0.02713, mean: 77.6 },
+    passing: { coef: 0.03703, mean: 59.5 },
+    ballHandling: { coef: 0.04114, mean: 71.5 },
+    postScoring: { coef: 0.02137, mean: 52.1 },
+    interiorDefense: { coef: 0.04610, mean: 60.0 },
+    block: { coef: 0.01521, mean: 50.9 },
+    defReb: { coef: 0.03111, mean: 57.9 },
+    strength: { coef: 0.00485, mean: 58.7 },
+    vertical: { coef: 0.01458, mean: 77.3 },
+    basketballIQ: { coef: 0.26010, mean: 67.6 },
+    leadership: { coef: 0.03112, mean: 65.0 },
+    topThreeMean: { coef: 0.27793, mean: 85.5 },
   } },
   PF: { intercept: 78.349, terms: {
-    insideScoring: { coef: 0.02862, mean: 56.7 },
-    midRange: { coef: 0.03019, mean: 42.5 },
-    threePoint: { coef: 0.00425, mean: 47.8 },
-    freeThrow: { coef: 0.02047, mean: 41.5 },
-    passing: { coef: 0.00378, mean: 41.4 },
-    ballHandling: { coef: 0.02350, mean: 39.6 },
-    postScoring: { coef: 0.06881, mean: 49.8 },
-    perimeterDefense: { coef: 0.00213, mean: 53.9 },
-    interiorDefense: { coef: 0.01073, mean: 51.5 },
-    offReb: { coef: 0.00475, mean: 47.4 },
-    defReb: { coef: 0.06146, mean: 55.5 },
-    speed: { coef: 0.01198, mean: 48.3 },
-    acceleration: { coef: 0.02618, mean: 50.3 },
-    strength: { coef: 0.02201, mean: 57.6 },
-    vertical: { coef: 0.01159, mean: 54.8 },
-    basketballIQ: { coef: 0.15574, mean: 51.0 },
-    leadership: { coef: 0.05512, mean: 52.7 },
-    topThreeMean: { coef: 0.13678, mean: 70.3 },
+    insideScoring: { coef: 0.10284, mean: 75.5 },
+    midRange: { coef: 0.03357, mean: 71.6 },
+    threePoint: { coef: 0.03006, mean: 76.6 },
+    freeThrow: { coef: 0.02766, mean: 72.4 },
+    ballHandling: { coef: 0.04245, mean: 66.5 },
+    postScoring: { coef: 0.09233, mean: 62.2 },
+    perimeterDefense: { coef: 0.00435, mean: 68.3 },
+    steal: { coef: 0.01339, mean: 50.7 },
+    block: { coef: 0.00577, mean: 60.6 },
+    offReb: { coef: 0.00458, mean: 54.8 },
+    defReb: { coef: 0.06981, mean: 66.5 },
+    speed: { coef: 0.00974, mean: 71.9 },
+    acceleration: { coef: 0.04439, mean: 74.4 },
+    strength: { coef: 0.04835, mean: 66.8 },
+    vertical: { coef: 0.01798, mean: 76.7 },
+    basketballIQ: { coef: 0.29123, mean: 67.1 },
+    leadership: { coef: 0.03348, mean: 73.3 },
+    peakSkill: { coef: 0.03643, mean: 89.1 },
+    topThreeMean: { coef: 0.12473, mean: 85.4 },
   } },
   C: { intercept: 78.260, terms: {
-    insideScoring: { coef: 0.04387, mean: 60.8 },
-    midRange: { coef: 0.02065, mean: 41.4 },
-    threePoint: { coef: 0.00285, mean: 31.8 },
-    freeThrow: { coef: 0.01432, mean: 37.1 },
-    passing: { coef: 0.01000, mean: 34.0 },
-    postScoring: { coef: 0.14965, mean: 55.6 },
-    perimeterDefense: { coef: 0.00284, mean: 37.1 },
-    interiorDefense: { coef: 0.01162, mean: 59.3 },
-    block: { coef: 0.00983, mean: 65.6 },
-    offReb: { coef: 0.04750, mean: 63.8 },
-    defReb: { coef: 0.05602, mean: 68.6 },
-    speed: { coef: 0.03444, mean: 37.3 },
-    acceleration: { coef: 0.03857, mean: 35.1 },
-    strength: { coef: 0.00264, mean: 66.8 },
-    vertical: { coef: 0.02043, mean: 47.7 },
-    basketballIQ: { coef: 0.10588, mean: 47.5 },
-    leadership: { coef: 0.07579, mean: 48.3 },
-    workEthic: { coef: 0.04076, mean: 54.1 },
-    peakSkill: { coef: 0.04780, mean: 81.7 },
-    topThreeMean: { coef: 0.02917, mean: 75.6 },
+    insideScoring: { coef: 0.11191, mean: 77.5 },
+    freeThrow: { coef: 0.01806, mean: 69.1 },
+    passing: { coef: 0.00064, mean: 51.5 },
+    ballHandling: { coef: 0.01072, mean: 47.3 },
+    postScoring: { coef: 0.15236, mean: 67.7 },
+    perimeterDefense: { coef: 0.00254, mean: 50.7 },
+    block: { coef: 0.01679, mean: 74.6 },
+    offReb: { coef: 0.03045, mean: 74.3 },
+    defReb: { coef: 0.07199, mean: 77.8 },
+    speed: { coef: 0.02820, mean: 61.0 },
+    acceleration: { coef: 0.04034, mean: 60.1 },
+    basketballIQ: { coef: 0.24704, mean: 65.1 },
+    leadership: { coef: 0.05088, mean: 67.1 },
+    workEthic: { coef: 0.00245, mean: 84.7 },
+    topThreeMean: { coef: 0.18725, mean: 87.4 },
   } },
 };
 
@@ -422,14 +413,14 @@ function defineOverall(player) {
   // so the UI must read this instead, and a validator enforces it.
   //
   // The display gap is the RAW gap rescaled by the measured sd ratio (display
-  // 5.45 / raw 10.33 = 0.528). It used to route the potential scalar through
+  // over raw = 0.513 on the face-value scale). It used to route the potential scalar through
   // the knot curve, but with the 2K-grading display the top knot sits 2 points
   // under 99 and every young star's ceiling clamped into the same 98-99 —
   // the superstar-potential arm could not tell Cooper Flagg from a veteran.
   // potential >= overall holds by construction here.
   derived('potentialDisplay', function () {
     const gap = Math.max(0, this.potential - this.rawOverall);
-    return Math.min(99, this.overall + Math.round(gap * 0.528));
+    return Math.min(99, this.overall + Math.round(gap * 0.513));
   });
   return player;
 }

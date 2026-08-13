@@ -48,7 +48,14 @@ const ULTIMATE_TUNING = {
   // machinery working perfectly underneath.
   gateOverall: 87,
   gateCount: 36,
-  badgeTieBreak: 0.02,
+  // 0.03, widened from 0.02 when the norm decile tables were regenerated for
+  // the 2K27 face-value scale: the diversity pass's own motivating example —
+  // Giannis near-tied on Glass Wrecker — measured 0.016 on the old tables and
+  // 0.0252 on the new ones. Same physical near-tie, coarser ruler (the tables
+  // are 11-point step-linear percentiles), so the definition of "near" moves
+  // with it. Every other unheld ultimate's best claimant sits at 0.018 or
+  // less; the next gap beyond Giannis is 0.033, a genuine strength.
+  badgeTieBreak: 0.03,
   badgeBoost: 1.35
 };
 
@@ -158,51 +165,51 @@ function currentGate() {
 const ULTIMATE_TAXONOMY = [
   { key: 'heatCheck', name: 'Heat Check', kind: 'solo', side: 'offense',
     derive: { composite: 'shootingThree' },
-    norm: [6.5, 24.5, 32.7, 41.3, 47.8, 54.5, 58.9, 63.2, 66.8, 71.4, 91.5],
+    norm: [31.5, 63.6, 69.5, 72.3, 74.3, 76, 77.5, 78.8, 80.5, 82.3, 94.3],
     badges: ['sharpshooter'] },
   { key: 'silky', name: 'Silky', kind: 'solo', side: 'offense',
     derive: { attributes: ['midRange'] },
-    norm: [4, 25, 32, 38, 42, 49, 52, 56, 62, 72.8, 97],
+    norm: [25, 60, 68, 70, 72, 75, 78, 80, 85, 90.6, 99],
     badges: ['offBallMover'] },
   { key: 'paintBeast', name: 'Paint Beast', kind: 'solo', side: 'offense',
     derive: { attributes: ['postScoring', 'strength'] },
-    norm: [12, 28, 33, 37.5, 41, 44, 50, 53.5, 59, 67, 96],
+    norm: [29.5, 42, 46.5, 49.5, 53.5, 56, 60.5, 64.4, 69, 76.8, 96],
     badges: ['postThreat', 'unstoppableForce'] },
   { key: 'downhill', name: 'Downhill', kind: 'solo', side: 'offense',
     derive: { attributes: ['ballHandling', 'speed'] },
-    norm: [9.5, 28, 34, 40, 44, 49, 54, 58.4, 63.5, 70.5, 93.5],
+    norm: [27.5, 52.5, 60.5, 67.5, 71, 74, 76.5, 79, 81.5, 84.5, 94.5],
     badges: ['pickRollMaestro', 'eliteSpeed'] },
   { key: 'aboveTheRim', name: 'Above the Rim', kind: 'solo', side: 'offense',
     derive: { attributes: ['vertical', 'acceleration'] },
-    norm: [16.5, 35.5, 44, 47.5, 50.5, 53.5, 56.5, 59, 63.5, 68.5, 96],
+    norm: [36.5, 62.2, 69.5, 72.5, 75, 77, 79, 80.5, 83, 86, 97],
     badges: ['explosiveVertical', 'humanHighlightReel'] },
   { key: 'andOne', name: 'And-One', kind: 'solo', side: 'offense',
     derive: { attributes: ['strength', 'freeThrow'] },
-    norm: [27.5, 38.7, 42.5, 45, 48, 50, 53, 55.5, 58, 62.8, 79.5],
+    norm: [51.5, 60.5, 63.4, 65.1, 67, 69, 70.5, 72.5, 74.5, 77.5, 90.5],
     badges: ['finisher', 'freeThrowAce'] },
   { key: 'glassWrecker', name: 'Glass Wrecker', kind: 'solo', side: 'offense',
     derive: { composite: 'rebounding' },
-    norm: [22.3, 37.5, 41.3, 43.8, 46.2, 49.5, 52.1, 54.5, 58.5, 63.8, 81],
+    norm: [40.8, 51.8, 54.2, 56.5, 58.7, 61.3, 64.3, 66.5, 71.3, 76.7, 90.8],
     badges: ['glassCleaner', 'springyRebounder'] },
   { key: 'coldBlooded', name: 'Cold Blooded', kind: 'solo', side: 'offense',
     derive: { attributes: ['basketballIQ'] },
-    norm: [9, 35.4, 42, 47, 50, 53, 56, 60, 63, 69, 99],
+    norm: [44, 57, 61, 63, 65, 68, 70, 72, 76, 80, 94],
     badges: ['clutchGene', 'iceInVeins'] },
   { key: 'clamps', name: 'Clamps', kind: 'solo', side: 'defense',
     derive: { composite: 'defensePerimeter' },
-    norm: [26, 37.6, 42.3, 45.7, 48.7, 51.8, 54.6, 57.7, 61.1, 66.6, 90.4],
+    norm: [33.3, 49.2, 55.1, 58, 60.6, 63.2, 66, 69.3, 72.9, 79, 96.6],
     badges: ['lockdownDefender', 'pointOfAttackMenace'] },
   { key: 'motorNeverStops', name: 'Motor Never Stops', kind: 'solo', side: 'offense',
     derive: { attributes: ['workEthic'] },
-    norm: [24, 37, 41, 46, 53, 53, 53, 61, 61, 69, 89],
+    norm: [50, 70, 75, 80, 85, 85, 85, 90, 90, 95, 99],
     badges: ['highMotor'] },
   { key: 'floorGeneral', name: 'Floor General', kind: 'team', side: 'offense',
     derive: { attributes: ['passing'] },
-    norm: [10, 27.4, 32, 36, 40, 45, 48, 53, 61, 73, 100],
+    norm: [33, 44.4, 50.8, 54, 58, 61, 66, 71, 75, 79, 97],
     badges: ['playmaker', 'floorGeneral'] },
   { key: 'theWall', name: 'The Wall', kind: 'team', side: 'defense',
     derive: { composite: 'defenseInterior' },
-    norm: [13.4, 31.4, 34.9, 38.5, 41.5, 45.2, 48, 51.8, 57.5, 66, 83.9],
+    norm: [32.9, 46.6, 50.4, 53.8, 57.7, 61.6, 64.3, 67.3, 71, 77.8, 88.6],
     badges: ['rimProtector', 'dpoyCaliber'] }
 ];
 

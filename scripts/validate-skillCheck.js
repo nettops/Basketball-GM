@@ -160,8 +160,10 @@ function checkTurnoverSpecMatchesTheOriginal() {
 }
 
 // Original: BLOCK_BASE + (block - 50) / BLOCK_DIV, clamped to [BLOCK_MIN, BLOCK_MAX].
+// Mirrored BY HAND when BLOCK_BASE was re-based 0.020 -> 0.0055 for the 2K27
+// face-value roster, whose block mean is 56.1 rather than 50.
 function referenceBlock(blockAttr) {
-  return Math.max(0.004, Math.min(0.20, 0.020 + (blockAttr - 50) / 420));
+  return Math.max(0.004, Math.min(0.20, 0.0055 + (blockAttr - 50) / 420));
 }
 
 function checkBlockSpecMatchesTheOriginal() {
@@ -204,7 +206,12 @@ function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defender
 }
 
 function checkShotSpecMatchesTheOriginal() {
-  const zones = [['three', 0.3453], ['mid', 0.4353], ['inside', 0.5753]];
+  // Mirrored BY HAND when the bases were trimmed 0.019 for the 2K27 face-value
+  // roster (raw 2K attributes score hotter than the old mean-50 league; A/B on
+  // identical seeds read 140.54 vs the 134.86 target before the trim), and a
+  // further 0.0064 when PICK_POWER.shooter was re-anchored and star volume
+  // concentration lifted league scoring ~1.9 above the baseline.
+  const zones = [['three', 0.3199], ['mid', 0.4099], ['inside', 0.5499]];
   let worst = 0;
   zones.forEach(function (z) {
     for (let s = 0; s <= 100; s += 10) {

@@ -247,7 +247,12 @@ function generateProspectClass(rng, count, leagueYear) {
   const takenNames = existingPlayerNames();
   for (let i = 0; i < count; i++) {
     const rankFactor = 1 - i / count; // 1.0 for pick 1, ->0 for the last pick
-    const overall = Math.round(58 + rankFactor * 22 + (rng() - 0.5) * 8);
+    // 55 + 20, down from 58 + 22 for the 2K27 face-value league: the target
+    // here is a DISPLAY overall, and on the 2K grading curve the old band let
+    // a top pick enter at 84-88 — an All-NBA rookie, where real 2K rookies
+    // top out around 79-81. Entering that high, seven growth years minted
+    // four 99s in a single measured class. The trimmed band tops out at 79.
+    const overall = Math.round(55 + rankFactor * 20 + (rng() - 0.5) * 8);
     const archetype = ARCHETYPE_NAMES[Math.floor(rng() * ARCHETYPE_NAMES.length)];
     const position = _PROSPECT_DATA.data.POSITIONS[Math.floor(rng() * _PROSPECT_DATA.data.POSITIONS.length)];
     // No random " Jr." any more. It used to be tacked on 15% of the time to a
@@ -260,7 +265,7 @@ function generateProspectClass(rng, count, leagueYear) {
     const heightIn = phys.heightIn;
     const weightLb = phys.weightLb;
     const bustChance = Math.round((0.15 + (1 - rankFactor) * 0.35) * 100) / 100;
-    const clampedOverall = Math.max(40, Math.min(90, overall));
+    const clampedOverall = Math.max(40, Math.min(80, overall));
     const prospect = mkProspect(name.trim(), age, heightIn, weightLb, position, clampedOverall, clampedOverall, archetype, bustChance, 'Unproven', { rng: rng });
     prospect.wingspanIn = phys.wingspanIn;
     prospect.hiddenTraits = _PROSPECT_DATA.traits.generateHiddenTraits(prospect, rng);

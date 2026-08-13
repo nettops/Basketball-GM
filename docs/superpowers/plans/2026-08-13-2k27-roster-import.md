@@ -68,3 +68,38 @@ with derived archetype labels, and the calibrated engine's balance intact.
       sim a week; watch a live game; save/load round-trip; UI_SMOKE 182+
 - [ ] Old-save compatibility: load a pre-import save, its league intact
 - [ ] Memory files updated; commits per task
+
+---
+
+### Task 8 (follow-up, user 2026-08-13): attributes at 2K face value
+User wants attribute FACE VALUES to equal 2kratings.com numbers (Tatum
+defReb 89, not the quantile-mapped 87), tuning the engine as needed.
+- [x] Importer: drop quantile mapping — emit blended 2K values directly
+      (single-source attributes = exact site numbers); print per-attribute
+      affine (mean/sd: mapped-league -> raw-2K-league) for generation
+- [x] makeAttributes: apply that affine per attribute so GENERATED players
+      land on the same scale as the raw-2K league (else draft classes are
+      systematically off and the league decays)
+- [x] Re-import; measure league scoring over ~600 real games; tune the
+      make-probability constants back to ~135±1.5 (FT center 76, base
+      -0.019 then -0.0064 after the shooter re-anchor; ultimates check
+      measures 135.42)
+- [x] Refit rawOverall (fit-overall 3000, r 0.526 vs the retuned engine) +
+      display fit (per-position, r 0.965); re-anchored: RATING_BANDS
+      superstarPotential 97, ultimates norm tables + badgeTieBreak 0.03,
+      synergy thresholds 83/78/71, archetypeLabel thresholds (p75/p90 of
+      face-value families), PICK_POWER.shooter 2.5 (usage 2.86x),
+      SHARE_LOW/PIVOT/HIGH .27/.31/.335 (3PA identity spread 51),
+      BLOCK_BASE 0.0055 (block mean 56.1), trade-block bonus 0.9,
+      minutes-spread band to 6.0 (bench still gets 6.0 min)
+- [x] League-decay fix (twenty-seasons probe exposed it): progression
+      deltas cross GENERATION_AFFINE like generation does; potential pull
+      0.15/0.05 -> 0.05/0.017 (the p75 Monte Carlo ceiling is an estimate,
+      not a promise); GROWTH_TUNING young base 0.5/0.15, noise clip +4;
+      prospect entry band 55+20 capped at display 80. Fullsim superstar
+      rate 3.83/class (target 2-4, was 13.83); median OVR flat over 20
+      seasons (78 -> 76, was 78 -> 85); scoring bends back to ~140 (was
+      147 and climbing)
+- [x] Goldens regenerated, all 56 validators green, probes green
+      (invariants 10 seasons, feats, twenty-seasons, superstar rate)
+- [ ] Browser: Tatum defReb 89 on his profile, UI_SMOKE 182

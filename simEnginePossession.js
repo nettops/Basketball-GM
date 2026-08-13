@@ -107,12 +107,17 @@ const SHOT_TRAIT_DIV = 300;
 // One number per event, calibrated by the measured spread each produces — the
 // sweep is in this task's commit message. ZenGM's equivalents: usage 1.25,
 // turnovers 2, defensive rebounds 3, steals 4, offensive rebounds 5, assists 10,
-// blocks 10. Ours run lower on the shooter because our scoringWeight already
-// spans p95/p05 = 2.54x, against ZenGM's usage composite at 1.85x — the same
-// exponent bites harder on a wider input.
+// blocks 10.
+//
+// Re-anchored for the 2K27 face-value roster: raw 2K attributes are far more
+// compressed than the old mean-50 league (scoringWeight p95:p05 fell from
+// 2.54x to 1.38x), so the same exponent produces far less concentration.
+// shooter calibrated against the validate-possession per-36 FGA measurement
+// (target 2.9x, the real-NBA usage spread): 1.4 measured 1.81x, 4.0 measured
+// 5.42x, and 2.5 — the log-space interpolation between them — landed in band.
 const PICK_POWER = {
   handler: 3,
-  shooter: 1.4,
+  shooter: 2.5,
   passer: 6,
   onBallDefender: 2,
   shotDefender: 2,
@@ -355,7 +360,12 @@ function turnoverSpec(defenderSteal, handlerBallHandling, defSynergyDefense, off
 // the sweep already measured:
 //   0.020 -> 1.78/team   0.030 -> 2.20   0.055 -> 3.28
 //   0.070 -> 4.38        0.085 -> 4.73 (NBA-realistic)
-const BLOCK_BASE = 0.020, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
+//
+// Re-based for the 2K27 face-value roster: the league block mean is 56.1, not
+// 50, so the old 0.020 base effectively became 0.0345 and blocks hit 8.03 per
+// game. 0.0055 cancels the mean shift exactly (0.020 - 6.1/420) and measured
+// back inside the impact-moment band.
+const BLOCK_BASE = 0.0055, BLOCK_DIV = 420, BLOCK_MIN = 0.004, BLOCK_MAX = 0.20;
 const BLOCK_THREE_CHANCE = 0.008;
 
 // Block badges divide by the same BLOCK_DIV the block rating uses, so a
@@ -422,7 +432,19 @@ function blockSpec(defenderBlock, zone, blockTraitBonus) {
 //
 // Bases re-solved against the locked 2026 rates by scripts/sweep-shot-balance.js.
 var SHOT_TUNING = {
-  base: { three: 0.3453, mid: 0.4353, inside: 0.5753 },
+  // Bases trimmed -0.019 for the 2K face-value import (attributes now read
+  // exactly as 2kratings.com shows them, so the whole offense/defense scale
+  // moved). Measured over 200 games, seed 555, against the quantile league's
+  // 135.21 on identical seeds: raw sheets ran 140.54 (FT re-centering fixed
+  // +1.2 of it, see FT_BASE), and -0.019 lands 134.88 with FG% 47.3 / 3P%
+  // 36.7 / FT% 78.4.
+  //
+  // Trimmed a further -0.0064 when PICK_POWER.shooter was re-anchored for the
+  // face-value scale: concentrating volume back on stars put better shooters
+  // on more shots and league scoring rose to ~136.8 against the 134.86
+  // baseline. Sized from the measured sensitivity above (-0.019 base moved
+  // scoring -5.66, so ~298 points per unit of base).
+  base: { three: 0.3199, mid: 0.4099, inside: 0.5499 },
   // skillDiv was 292 and defDiv 292. Both moved for reasons that are NOT the
   // same, which is why they are no longer equal:
   //
@@ -987,13 +1009,16 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     // Was `freeThrow / 105`, which centred a 78% free-throw shooter at a rating
     // of 82 — fine when every rating lived in 48-99, but on a true 0-100 scale
     // the league-average shooter computed to 0.486 and the 0.55 floor did all
-    // the work, flattening every player onto the same number. Now centred on 50
-    // with a spread wide enough to separate a 60% shooter from a 90% one.
+    // the work, flattening every player onto the same number. Centred on 50
+    // for that scale; RE-CENTRED ON 76 for the 2K face-value import — 2K's
+    // free-throw ratings average 76.2 league-wide, and leaving the centre at
+    // 50 handed every shooter +5pp (league FT% measured 83.7 against the 78
+    // the base encodes). The spread term is unchanged.
     // Free Throw Ace's affinity is `freeThrow`, so shotQualityBonus routes it
     // to the 'ft' zone — it belongs here rather than on any field-goal zone.
     const ftBoost = (shooterIsHolder && offDial.makeFt) ? offDial.makeFt : 0;
     const ftPct = Math.max(0.45, Math.min(0.95,
-      FT_BASE + (shooter.attributes.freeThrow - 50) / FT_DIV +
+      FT_BASE + (shooter.attributes.freeThrow - 76) / FT_DIV +
       _POSS_DATA.traits.shotQualityBonus(shooter, 'ft') / SHOT_TRAIT_DIV + ftBoost));
     let made2 = 0;
     for (let i = 0; i < ftAttempts; i++) { if (rng() < ftPct) made2 += 1; }

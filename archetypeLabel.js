@@ -10,11 +10,16 @@
 // one is a sentence about who they turned out to be.
 //
 // Thresholds are absolute, not league-relative, and that is safe by
-// construction: the 2K27 import quantile-mapped every attribute onto the
-// engine's calibrated distributions, and generated players are built against
-// the same anchors — the meaning of "70 three-point" does not drift.
-// Measured on the imported league: family medians sit at 44-52 and the 75th
-// percentiles at 56-66, so 62 reads "clearly good at this" and 72 "elite".
+// construction: attributes are the site's own 2K face values, and generated
+// players are built through GENERATION_AFFINE onto the same scale — the
+// meaning of "80 three-point" does not drift.
+// Re-anchored when the import switched from quantile mapping (medians 44-52)
+// to face values. Measured on the face-value league: family medians run
+// 53-78 and 90th percentiles 77-86, so the bars below sit at roughly each
+// family's p75 for "clearly good" and p90 for "elite". Calibrated against
+// the measured label distribution: every label is populated, no bucket
+// exceeds 13% of the league, and the Two-Way labels are scarce (4.1%)
+// because elite-both-ways should be rare.
 
 function _fam(a, keys) {
   let s = 0;
@@ -41,21 +46,21 @@ function archetypeLabel(player) {
   const defense = Math.max(perD, rimD);
 
   // Ordered most-specific first; the first sentence that fits is the label.
-  if (offense >= 68 && defense >= 62) return big ? 'Two-Way Big' : (guard ? 'Two-Way Guard' : 'Two-Way Wing');
-  if (big && play >= 62) return 'Point Center';
-  if (big && three >= 62) return 'Stretch Big';
-  if (big && rimD >= 66) return 'Rim Protector';
-  if (big && board >= 64) return 'Glass Cleaner';
-  if (big && post >= 60) return 'Post Scorer';
-  if (play >= 66 && !big) return guard ? 'Floor General' : 'Point Forward';
-  if (three >= 66 && perD >= 58) return '3-and-D';
-  if (three >= 68) return 'Sharpshooter';
-  if (create >= 66 && athletic >= 60) return 'Slasher';
-  if (create >= 66) return 'Shot Creator';
-  if (perD >= 64) return 'Lockdown Defender';
-  if (athletic >= 64 && post >= 52) return 'Athletic Finisher';
-  if (shoot >= 58) return 'Scoring Threat';
-  if (defense >= 56 || board >= 56) return 'Defensive Specialist';
+  if (offense >= 84 && defense >= 76) return big ? 'Two-Way Big' : (guard ? 'Two-Way Guard' : 'Two-Way Wing');
+  if (big && play >= 74) return 'Point Center';
+  if (big && three >= 80) return 'Stretch Big';
+  if (big && rimD >= 78) return 'Rim Protector';
+  if (big && board >= 77) return 'Glass Cleaner';
+  if (big && post >= 74) return 'Post Scorer';
+  if (play >= 81 && !big) return guard ? 'Floor General' : 'Point Forward';
+  if (three >= 83 && perD >= 66) return '3-and-D';
+  if (three >= 85) return 'Sharpshooter';
+  if (create >= 77 && athletic >= 82) return 'Slasher';
+  if (create >= 77) return 'Shot Creator';
+  if (perD >= 74) return 'Lockdown Defender';
+  if (athletic >= 83 && post >= 62) return 'Athletic Finisher';
+  if (shoot >= 78) return 'Scoring Threat';
+  if (defense >= 64 || board >= 64) return 'Defensive Specialist';
   return 'Role Player';
 }
 

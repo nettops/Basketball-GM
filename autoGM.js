@@ -94,8 +94,13 @@ function selectSurplusCandidate(team, roster) {
     if (need > 1.0) return; // this position is a real need — don't trade it away
     let surplus = (1 - need) - _AUTOGM_DATA.tradeEvaluator.adjustedPlayerValue(p, team) / 200;
     // A player the team has explicitly shopped (ui/tradeCenter.js's Trading
-    // Block toggle) is strongly preferred as the outgoing piece.
-    if (p.onTradeBlock) surplus += 0.5;
+    // Block toggle) is strongly preferred as the outgoing piece. The bonus
+    // must dominate any ordinary surplus difference, or flagging a valuable
+    // player does nothing. 0.5 covered the old value scale; on the 2K27
+    // face-value scale roster value spreads widened and the worst eligible
+    // surplus gap measured across all 30 rosters is 0.719 (SAS), so 0.9
+    // clears every roster with margin.
+    if (p.onTradeBlock) surplus += 0.9;
     if (surplus > candidateSurplus) { candidate = p; candidateSurplus = surplus; }
   });
   return candidate;

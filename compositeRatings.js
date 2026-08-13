@@ -53,9 +53,13 @@ function synergyRamp(countQualifying, cutoff, maxBonus) {
 // and 70.8% as rebounders — a roster-construction bonus three quarters of the
 // league earned, which is no bonus at all. ZenGM's equivalent skill cutoffs
 // pick out roughly the top 10-25%.
-const SHOOTER_THRESHOLD = 68;
-const DEFENDER_THRESHOLD = 67;
-const REBOUNDER_THRESHOLD = 60;
+//
+// Re-solved for the 2K27 face-value roster (attributes now sit on 2K's own
+// scale, mean ~65 rather than ~50): measured union shares over the 435
+// rostered players are shooter 20.9%, defender 19.5%, rebounder 20.7%.
+const SHOOTER_THRESHOLD = 83;
+const DEFENDER_THRESHOLD = 78;
+const REBOUNDER_THRESHOLD = 71;
 
 // Computed once per game (not per possession — composites/synergy don't
 // change possession-to-possession) from a team's active rotation. Returns

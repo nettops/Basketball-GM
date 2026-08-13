@@ -78,12 +78,17 @@ function checkPlayersAreIndividuals() {
   console.log('checkPlayersAreIndividuals: OK (' + shapes + '/' + PLAYERS_2026.length + ' distinct)');
 }
 
-// Every downstream formula is written against a scale where 50 is average —
-// shotMakeProbability's `(composite - 50) / 250`, turnoverChance's `/ 400`,
-// blockChance's `(block - 50) / 900`. Before the rescale the attributes lived
-// in 48-99 with a mean of 74.2, so all of those were being read at the wrong
-// point on their own curves. The offensive and defensive inflations happened
-// to cancel in aggregate, which is why nothing looked broken.
+// This check used to pin the league to a mean-50 design, because every
+// downstream formula was written against a scale where 50 is average. The
+// 2K27 FACE-VALUE conversion retired that design on purpose: attributes now
+// read exactly as 2kratings.com prints them (league mean 67.0, sd 16.0,
+// range 25-99), and each downstream formula was re-centred individually
+// instead — the FT formula at 76, BLOCK_BASE re-based for the 56 block mean,
+// the synergy thresholds re-solved for ~20% shares. What this check guards
+// now is DRIFT: the league must stay on 2K's own scale, spread out enough
+// that players differ, with real weaknesses and real elites. If the mean
+// wanders, an import or progression change has silently moved the league off
+// the scale the engine was re-centred against.
 function checkRatingsUseTheWholeScale() {
   const all = [];
   PLAYERS_2026.forEach(function (p) {
@@ -91,9 +96,9 @@ function checkRatingsUseTheWholeScale() {
   });
   const mean = all.reduce(function (a, b) { return a + b; }, 0) / all.length;
   const sd = Math.sqrt(all.reduce(function (s, x) { return s + (x - mean) * (x - mean); }, 0) / all.length);
-  assert.ok(mean >= 44 && mean <= 56, 'league attribute mean should be near 50, got ' + mean.toFixed(1));
+  assert.ok(mean >= 62 && mean <= 72, 'league attribute mean should sit on the 2K scale (measured 67.0), got ' + mean.toFixed(1));
   assert.ok(sd >= 11 && sd <= 18, 'league attribute sd should be 11-18, got ' + sd.toFixed(1));
-  assert.ok(Math.min.apply(null, all) <= 20,
+  assert.ok(Math.min.apply(null, all) <= 30,
     'somebody should be genuinely bad at something, league min was ' + Math.min.apply(null, all));
   assert.ok(Math.max.apply(null, all) >= 90,
     'somebody should be genuinely elite at something, league max was ' + Math.max.apply(null, all));
@@ -314,14 +319,19 @@ function checkOverallPredictsProduction() {
   }
   const r = sxy / Math.sqrt(sxx * syy);
   assert.ok(n >= 100, 'need a real sample, got ' + n);
-  // 0.55, down from 0.6 with the 2K27 import: real 2K attribute sheets are
-  // genuinely less one-dimensional than the archetype-generated ones the old
-  // bar was set against, so the same methodology measures lower — 0.585 here
-  // at 1920 games, 0.705 in the 3000-game fit, against 0.789 on the old
-  // sheets. The property under test (overall predicts production, and is not
-  // decorative) survives; the bar moves to where the new league's honest
-  // ceiling is, with margin for sampling noise.
-  assert.ok(r >= 0.55, 'overall should predict plus/minus per minute, r was ' + r.toFixed(3));
+  // 0.50, down from 0.6 in two honest steps. First to 0.55 with the 2K27
+  // import: real 2K attribute sheets are genuinely less one-dimensional than
+  // the archetype-generated ones the old bar was set against. Then to 0.50
+  // with the FACE-VALUE conversion: attributes now read exactly as 2K prints
+  // them, and that scale is far more compressed (scoringWeight p95:p05 fell
+  // 2.54x -> 1.38x), so each rating point carries less plus/minus signal
+  // against the same game noise. Measured 0.544 here at 1920 games, 0.526
+  // in-sample in the 3000-game fit, against 0.585/0.705 on the quantile-
+  // mapped sheets and 0.789 on the old generated ones. The property under
+  // test (overall predicts production, and is not decorative) survives; the
+  // bar moves to where the new league's honest ceiling is, with margin for
+  // sampling noise.
+  assert.ok(r >= 0.50, 'overall should predict plus/minus per minute, r was ' + r.toFixed(3));
   console.log('checkOverallPredictsProduction: OK (r ' + r.toFixed(3) + ', n ' + n + ')');
 }
 
@@ -453,8 +463,15 @@ function checkDownstreamWeightsSurviveTheScale() {
   //    not an invariant.
   const mw = PLAYERS_2026.map(box.minutesWeight);
   const spread = Math.max.apply(null, mw) / Math.min.apply(null, mw);
-  assert.ok(spread >= 1.8 && spread <= 4.5,
-    'minutes-weight spread should be 1.8-4.5x (it was 2.64x before the rescale), got ' + spread.toFixed(2));
+  // Ceiling raised 4.5 -> 6.0 for the 2K27 face-value refit, whose rawOverall
+  // floor fell to 16 (span 16-83, 5.19x proportional). The bound guards an
+  // OUTCOME — the bench must still play — so it was re-verified at the outcome:
+  // replaying the 240-minute proportional split across all 30 real rosters,
+  // the deepest bench player still gets 6.0 minutes and the biggest star tops
+  // out at 31.1. The old 4.5 was anchored to the old fit's numeric floor, not
+  // to where the split actually breaks.
+  assert.ok(spread >= 1.8 && spread <= 6.0,
+    'minutes-weight spread should be 1.8-6.0x (2.64x on the old scale, 5.25x on the face-value fit), got ' + spread.toFixed(2));
 
   console.log('checkDownstreamWeightsSurviveTheScale: OK (' + DOWNSTREAM_WEIGHTS.length +
     ' weights, 0 clamped, minutes spread ' + spread.toFixed(2) + 'x, max trait ' + report.join(' / ') + ')');
@@ -775,7 +792,7 @@ function checkRawAndDisplayAreBothPresent() {
     'overall must be the 2K-grading display fit');
   assert.ok(typeof p.potentialDisplay === 'number', 'potentialDisplay must exist');
   assert.strictEqual(p.potentialDisplay,
-    Math.min(99, p.overall + Math.round(Math.max(0, p.potential - p.rawOverall) * 0.528)),
+    Math.min(99, p.overall + Math.round(Math.max(0, p.potential - p.rawOverall) * 0.513)),
     'potentialDisplay must be overall plus the sd-rescaled raw headroom');
   assert.ok(p.potentialDisplay >= p.overall, 'potential can never read below overall');
   assert.notStrictEqual(p.overall, p.rawOverall,
