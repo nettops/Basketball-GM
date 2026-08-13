@@ -284,6 +284,94 @@ checkEveryUltimateIsReachable();
 checkDerivationIsDeterministic();
 checkBadgeBoost();
 checkTaxonomyShape();
+function checkEveryUltimateTurnsSomething() {
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    const eff = ult.takeoverEffect(u.key, 1);
+    const dials = Object.keys(eff);
+    assert.ok(dials.length > 0, u.key + ' turns no dials — its takeover would do nothing');
+    dials.forEach(function (d) {
+      assert.ok(ult.DIAL_NAMES.indexOf(d) !== -1,
+        u.key + ' turns unknown dial "' + d + '" — the engine will never read it');
+    });
+  });
+  console.log('checkEveryUltimateTurnsSomething: OK');
+}
+
+function checkBadgeBoostScalesTheEffect() {
+  const plain = ult.takeoverEffect('heatCheck', 1);
+  const boosted = ult.takeoverEffect('heatCheck', ult.ULTIMATE_TUNING.badgeBoost);
+  assert.ok(boosted.makeThree > plain.makeThree, 'a matching badge makes the takeover stronger');
+  assert.ok(boosted.shotShare > plain.shotShare, 'including the multiplier dials');
+  // A multiplier must scale from 1, not from 0 — otherwise a 35% boost on a
+  // 2.4x share becomes 3.24x, which is a 60% boost.
+  assert.ok(boosted.shotShare < plain.shotShare * ult.ULTIMATE_TUNING.badgeBoost,
+    'multiplier dials scale from 1, not from 0');
+  // energyDrain is a fraction where LOWER is stronger; boosting it upward would
+  // turn a legendary badge into a penalty.
+  const motorPlain = ult.takeoverEffect('motorNeverStops', 1);
+  const motorBoost = ult.takeoverEffect('motorNeverStops', ult.ULTIMATE_TUNING.badgeBoost);
+  assert.ok(motorBoost.energyDrain <= motorPlain.energyDrain,
+    'a badge must never make Motor Never Stops tire FASTER');
+  console.log('checkBadgeBoostScalesTheEffect: OK');
+}
+
+// Team ultimates are multiplied by five, so their per-player magnitude must be
+// smaller than any solo one.
+function checkTeamEffectsAreSmallerPerPlayer() {
+  const solo = ult.takeoverEffect('heatCheck', 1).makeThree;
+  const team = ult.takeoverEffect('floorGeneral', 1).teamMake;
+  assert.ok(team < solo, 'a team ultimate lifts each player less than a solo one lifts its holder');
+  console.log('checkTeamEffectsAreSmallerPerPlayer: OK');
+}
+
+// Motor Never Stops earns its points by attrition. If it ever gains a shooting
+// bonus it stops being the odd one out and becomes a twelfth accuracy boost.
+function checkMotorTouchesNoShootingProbability() {
+  const eff = ult.takeoverEffect('motorNeverStops', 1);
+  ['makeThree', 'makeMid', 'makeInside', 'makeFt', 'teamMake', 'shotShare'].forEach(function (d) {
+    assert.strictEqual(eff[d], undefined, 'Motor Never Stops must not turn ' + d);
+  });
+  assert.ok(eff.energyDrain !== undefined, 'Motor Never Stops must turn energyDrain');
+  console.log('checkMotorTouchesNoShootingProbability: OK');
+}
+
+// weightedPick caps any one player at PICK_CEILING.shooter. A usage boost that
+// does not lift that ceiling saturates silently and the points band is
+// unreachable however the rest is tuned.
+function checkUsageUltimatesLiftTheCeiling() {
+  const ENGINE_CEILING = 0.50;
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    const eff = ult.takeoverEffect(u.key, 1);
+    if (!eff.shotShare) return;
+    assert.ok(eff.shotShare > 1, u.key + ' has a shotShare that does not raise anything');
+    assert.ok(eff.shotCeiling > ENGINE_CEILING,
+      u.key + ' raises shot share but not the ceiling — the boost would saturate');
+  });
+  console.log('checkUsageUltimatesLiftTheCeiling: OK');
+}
+
+// A zone bias on a shot the ultimate does not improve sends the holder to a
+// spot he is no better from, which lowers his efficiency during his own
+// takeover.
+function checkZoneBiasMatchesTheMakeBonus() {
+  const ZONE_DIAL = { three: 'makeThree', mid: 'makeMid', inside: 'makeInside' };
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    const eff = ult.takeoverEffect(u.key, 1);
+    if (!eff.zoneBias) return;
+    Object.keys(eff.zoneBias).forEach(function (zone) {
+      assert.ok(eff[ZONE_DIAL[zone]] > 0,
+        u.key + ' biases shots to ' + zone + ' without improving ' + ZONE_DIAL[zone]);
+    });
+  });
+  console.log('checkZoneBiasMatchesTheMakeBonus: OK');
+}
+
+function checkUnknownUltimateIsInert() {
+  assert.deepStrictEqual(ult.takeoverEffect('notAnUltimate', 1), {},
+    'an unknown key returns no dials rather than throwing');
+  console.log('checkUnknownUltimateIsInert: OK');
+}
+
 checkGainsAndDrains();
 checkDrainsIgnoreTheSituation();
 checkAffinity();
@@ -291,6 +379,13 @@ checkSituation();
 checkColdBloodedIgnoresEarlyGame();
 checkThresholdRises();
 checkTakeoverLength();
+checkEveryUltimateTurnsSomething();
+checkBadgeBoostScalesTheEffect();
+checkTeamEffectsAreSmallerPerPlayer();
+checkMotorTouchesNoShootingProbability();
+checkUsageUltimatesLiftTheCeiling();
+checkZoneBiasMatchesTheMakeBonus();
+checkUnknownUltimateIsInert();
 checkHolderCountBand();
 checkEveryUltimateIsHeldInTheLeague();
 checkNoUltimateDominates();

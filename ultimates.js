@@ -300,6 +300,79 @@ function ultimateFor(player) {
   return best;
 }
 
+// The closed set of dials a takeover may turn. Every name here is read by
+// simEnginePossession.js, and validate-ultimates.js asserts that STATICALLY —
+// the recurring failure in this codebase is a value computed and then
+// discarded, and an unread dial is exactly that wearing a new hat.
+//
+//   shotShare    multiplier on the holder's shot-pick weight
+//   shotCeiling  raises PICK_CEILING.shooter, for the holder and duration only
+//   zoneBias     { three|mid|inside: multiplier } on his shot-zone mix
+//   makeThree / makeMid / makeInside / makeFt   added to his make probability
+//   turnover     added to the turnover chance when he handles (negative helps him)
+//   block        added to his block chance as defender
+//   reboundShare multiplier on his rebound-pick weight
+//   foulRate     multiplier on the shooting-foul rate when he shoots
+//   energyDrain  multiplier on his OWN energy drain (below 1 = tires slower)
+//   matchupDrain multiplier on his defender's energy drain (above 1 = tires them)
+//   teamMake     added to all five team-mates' make probability
+//   teamTurnover added to the team's turnover chance (negative helps)
+//   oppMake      added to the opponent five's make probability (negative hurts them)
+//   oppTurnover  added to the opponent's turnover chance
+const DIAL_NAMES = ['shotShare', 'shotCeiling', 'zoneBias', 'makeThree', 'makeMid',
+  'makeInside', 'makeFt', 'turnover', 'block', 'reboundShare', 'foulRate',
+  'energyDrain', 'matchupDrain', 'teamMake', 'teamTurnover', 'oppMake', 'oppTurnover'];
+
+// Magnitudes are STARTING VALUES, calibrated later against the measured band of
+// 10-15 points added to the holder. Probability dials are absolute additions to
+// a 0-1 probability; share dials are multipliers.
+//
+// shotCeiling is not decoration. weightedPick caps any one player at
+// PICK_CEILING.shooter (0.50), applied on the normalised shares — a usage boost
+// that does not lift it saturates silently, and no amount of tuning the rest
+// would reach the band.
+//
+// Team dials are far smaller than solo ones because they are multiplied by
+// five. Without that, every floor general in the league would be the best
+// player alive.
+const TAKEOVER_EFFECTS = {
+  heatCheck:       { shotShare: 2.4, shotCeiling: 0.80, zoneBias: { three: 2.2 }, makeThree: 0.13 },
+  silky:           { shotShare: 2.4, shotCeiling: 0.80, zoneBias: { mid: 2.6 }, makeMid: 0.14 },
+  paintBeast:      { shotShare: 2.3, shotCeiling: 0.80, zoneBias: { inside: 2.0 }, makeInside: 0.12, foulRate: 1.3 },
+  downhill:        { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 1.9 }, makeInside: 0.10, turnover: -0.05 },
+  aboveTheRim:     { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 2.1 }, makeInside: 0.12, reboundShare: 1.6, block: 0.05 },
+  andOne:          { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 2.0 }, makeInside: 0.08, foulRate: 2.0, makeFt: 0.08 },
+  glassWrecker:    { shotShare: 1.5, shotCeiling: 0.65, zoneBias: { inside: 1.6 }, makeInside: 0.08, reboundShare: 3.0 },
+  coldBlooded:     { shotShare: 2.5, shotCeiling: 0.82, makeThree: 0.12, makeMid: 0.12, makeInside: 0.12, makeFt: 0.06 },
+  clamps:          { oppTurnover: 0.10 },
+  motorNeverStops: { energyDrain: 0.15, matchupDrain: 1.9 },
+  floorGeneral:    { teamMake: 0.045, teamTurnover: -0.02 },
+  theWall:         { oppMake: -0.05, block: 0.04 }
+};
+
+// Multiplier dials scale FROM 1, not from 0. Doubling a 1.6x share multiplier
+// would be 3.2x, which is not what a 35% badge boost means.
+const MULTIPLIER_DIALS = { shotShare: true, reboundShare: true, foulRate: true, matchupDrain: true };
+
+// Dials a badge boost must not touch: shotCeiling is a hard cap the engine
+// clamps to, zoneBias is a shot-mix ratio, and energyDrain is a fraction where
+// LOWER is stronger — multiplying it up would make the badge a penalty.
+const UNBOOSTED_DIALS = { shotCeiling: true, zoneBias: true, energyDrain: true };
+
+function takeoverEffect(ultimateKey, badgeBoost) {
+  const base = TAKEOVER_EFFECTS[ultimateKey];
+  if (!base) return {};
+  const boost = (badgeBoost === undefined || !(badgeBoost > 0)) ? 1 : badgeBoost;
+  const out = {};
+  Object.keys(base).forEach(function (dial) {
+    const v = base[dial];
+    if (UNBOOSTED_DIALS[dial]) { out[dial] = v; return; }
+    if (MULTIPLIER_DIALS[dial]) { out[dial] = 1 + (v - 1) * boost; return; }
+    out[dial] = v * boost;
+  });
+  return out;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ULTIMATE_TUNING: ULTIMATE_TUNING,
@@ -315,6 +388,9 @@ if (typeof module !== 'undefined' && module.exports) {
     situationMultiplier: situationMultiplier,
     chargeGain: chargeGain,
     chargeThreshold: chargeThreshold,
-    takeoverLength: takeoverLength
+    takeoverLength: takeoverLength,
+    DIAL_NAMES: DIAL_NAMES,
+    TAKEOVER_EFFECTS: TAKEOVER_EFFECTS,
+    takeoverEffect: takeoverEffect
   };
 }
