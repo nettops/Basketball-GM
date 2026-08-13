@@ -71,6 +71,34 @@ function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// Per-position physical distributions, measured off the real 2K27 league
+// (data/2k27-rosters.json, ~90 players per position): height and weight as
+// mean/sd, wingspan as a mean/sd DELTA over height. These replaced a flat
+// uniform 74-83in roll that made 6'2" centers as likely as 6'11" ones.
+const POSITION_PHYSICALS = {
+  PG: { h: 74.9, hSd: 2.0, w: 194, wSd: 13, ws: 3.5, wsSd: 2.0 },
+  SG: { h: 76.7, hSd: 1.4, w: 203, wSd: 13, ws: 3.8, wsSd: 2.2 },
+  SF: { h: 78.6, hSd: 1.7, w: 212, wSd: 15, ws: 4.0, wsSd: 2.3 },
+  PF: { h: 80.3, hSd: 1.6, w: 224, wSd: 17, ws: 4.3, wsSd: 1.8 },
+  C:  { h: 82.8, hSd: 1.9, w: 245, wSd: 18, ws: 4.7, wsSd: 2.1 }
+};
+
+// Approximately normal from the module's own seeded rng (sum of three
+// uniforms — deterministic, no Box-Muller state to carry).
+function gaussish(rng) {
+  return ((rng() + rng() + rng()) - 1.5) * 2;
+}
+
+function samplePhysicals(position, rng) {
+  const d = POSITION_PHYSICALS[position] || POSITION_PHYSICALS.SF;
+  const heightIn = Math.round(d.h + gaussish(rng) * d.hSd);
+  return {
+    heightIn: heightIn,
+    weightLb: Math.round(d.w + gaussish(rng) * d.wSd),
+    wingspanIn: Math.round(heightIn + d.ws + gaussish(rng) * d.wsSd)
+  };
+}
+
 // Sequence for the fixed real-2026 class below, which is built at module load
 // where no rng exists. A counter rather than Math.random so those ids are
 // identical on every page load: they are fixed data, and an id that changes
@@ -228,11 +256,13 @@ function generateProspectClass(rng, count, leagueYear) {
     // it when a generated son shares his father's first name.
     const name = _PROSPECT_DATA.names.pickUniqueName(rng, takenNames);
     const age = 18 + Math.floor(rng() * 4);
-    const heightIn = 74 + Math.floor(rng() * 10);
-    const weightLb = 180 + Math.floor(rng() * 60);
+    const phys = samplePhysicals(position, rng);
+    const heightIn = phys.heightIn;
+    const weightLb = phys.weightLb;
     const bustChance = Math.round((0.15 + (1 - rankFactor) * 0.35) * 100) / 100;
     const clampedOverall = Math.max(40, Math.min(90, overall));
     const prospect = mkProspect(name.trim(), age, heightIn, weightLb, position, clampedOverall, clampedOverall, archetype, bustChance, 'Unproven', { rng: rng });
+    prospect.wingspanIn = phys.wingspanIn;
     prospect.hiddenTraits = _PROSPECT_DATA.traits.generateHiddenTraits(prospect, rng);
     prospect.hiddenPersonality = _PROSPECT_DATA.traits.generatePersonality(prospect, rng);
     prospect.hiddenTendencies = _PROSPECT_DATA.traits.generateTendencies(prospect, rng);

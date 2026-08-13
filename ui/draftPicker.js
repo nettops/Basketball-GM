@@ -7,7 +7,9 @@
 function prospectBioLineHtml(p) {
   const feet = Math.floor(p.heightIn / 12);
   const inches = p.heightIn % 12;
-  return p.position + ' · Age ' + p.age + ' · ' + feet + '\'' + inches + '" · ' + p.weightLb + ' lb' +
+  // Wingspan tolerates absence: the fixed real-2026 class predates it.
+  const ws = p.wingspanIn ? ' · ' + Math.floor(p.wingspanIn / 12) + '\'' + (p.wingspanIn % 12) + '" ws' : '';
+  return p.position + ' · Age ' + p.age + ' · ' + feet + '\'' + inches + '" · ' + p.weightLb + ' lb' + ws +
     (p.college ? ' · ' + escapeHtml(p.college) : '');
 }
 

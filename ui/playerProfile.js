@@ -371,10 +371,18 @@ function renderPlayerProfile(container) {
 
   function draw() {
     const team = player.teamId ? getTeamById(player.teamId) : null;
+    // Physicals: real for 2K27-imported players, sampled for generated ones.
+    // Wingspan tolerates absence — players from saves written before the
+    // import carry none, and a dangling "· null" reads as a bug.
+    const ht = player.heightIn ? Math.floor(player.heightIn / 12) + '\'' + (player.heightIn % 12) + '"' : null;
+    const physicals = [ht, player.weightLb ? player.weightLb + ' lb' : null,
+      player.wingspanIn ? Math.floor(player.wingspanIn / 12) + '\'' + (player.wingspanIn % 12) + '" wingspan' : null]
+      .filter(function (x) { return x; }).join(' · ');
     let html = '<div class="view-header" style="display:flex;align-items:center;gap:16px;">' +
       playerSpriteHtml(player, team, 100) +
       '<div><h2>' + escapeHtml(player.name) + '</h2><span class="view-sub">' +
-      player.position + ' · Age ' + player.age + (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') + '</span></div></div>';
+      player.position + ' · Age ' + player.age + (team ? ' · ' + escapeHtml(team.name) : ' · Free Agent') +
+      (physicals ? ' · ' + physicals : '') + '</span></div></div>';
     html += renderCurrentSeasonPanel(player);
     html += '<div class="tab-bar">';
     PLAYER_PROFILE_TABS.forEach(function (t) {
