@@ -152,9 +152,9 @@ if (classes.length) {
 }
 
 // ------------------------------------------------------- population sanity
-console.log('\nPOPULATION — where the extra bodies sit. seasonRollover.js:102');
-console.log('  runs autoEnforceRosterSize on the USER team only, so nothing');
-console.log('  caps the other 29.\n');
+console.log('\nPOPULATION — where the extra bodies sit. enforceRosterCeilings');
+console.log('  (freeAgency.js) sweeps every AI team back to 15 when the silent');
+console.log('  market runs; the user team is the autoCap setting + rollover.\n');
 const rostered = PLAYERS_2026.filter(function (p) { return p.teamId; });
 console.log('  rostered: ' + rostered.length + ' across ' + TEAMS.length +
   ' teams = ' + (rostered.length / TEAMS.length).toFixed(1) + ' per team (cap is 15)');

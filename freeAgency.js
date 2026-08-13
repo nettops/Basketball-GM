@@ -5,7 +5,7 @@ var _FA_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap, getEffectiveSalaryFloor: getEffectiveSalaryFloor },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
-      rosterMoves: { getFreeAgents: getFreeAgents },
+      rosterMoves: { getFreeAgents: getFreeAgents, waivePlayer: waivePlayer },
       careerHistory: { recordContractInHistory: recordContractInHistory },
       finances: { budgetSpendMultiplier: budgetSpendMultiplier, ARENA_MAX_TIER: ARENA_MAX_TIER },
       ratings: { RATING_BANDS: RATING_BANDS }
@@ -492,6 +492,39 @@ function releaseUnexercisedResignRights(teamId) {
 
 const ROSTER_FLOOR = 12;
 
+// The ceiling's own league-wide sweep, symmetric to enforceRosterFloors below
+// and for the same reason: nothing else guarantees an AI team ends the
+// offseason legal. The draft hands every team two rookies unconditionally, so
+// a team that entered the offseason full comes out at 16-17 — free agency then
+// correctly refuses to sign anyone FOR them, but nothing ever waived anyone
+// either, and the team simply played the whole season over the limit
+// (measured: 2-7 teams per season across ten simulated seasons).
+// autoEnforceRosterSize (autoGM.js) is this exact loop and only ever ran
+// against the user's team.
+//
+// The user's team is deliberately excluded: their over-cap handling is the
+// opt-in Auto Roster-Size Compliance setting plus the unattended rollover
+// path (seasonRollover.js), and a league sweep must not waive the user's
+// players out from under a choice they were given a setting for.
+function enforceRosterCeilings() {
+  const userTeamId = typeof GameState !== 'undefined' ? GameState.userTeamId : null;
+  const waived = [];
+  _FA_DATA.teams.TEAMS.forEach(function (team) {
+    if (team.id === userTeamId) return;
+    let roster = _FA_DATA.league.getTeamRoster(team.id);
+    while (roster.length > ROSTER_MAX) {
+      const worst = roster.slice().sort(function (a, b) {
+        return _FA_DATA.tradeEvaluator.adjustedPlayerValue(a, team) - _FA_DATA.tradeEvaluator.adjustedPlayerValue(b, team);
+      })[0];
+      const result = _FA_DATA.rosterMoves.waivePlayer(worst.id);
+      if (!result.success) break;
+      waived.push({ playerId: worst.id, teamId: team.id });
+      roster = _FA_DATA.league.getTeamRoster(team.id);
+    }
+  });
+  return waived;
+}
+
 // Nothing else guarantees an AI team ends free agency legal. decrementContracts
 // can drop a team to any size, generateAIOffer above declines anyone under its
 // interest bar, and autoEnforceRosterSize only ever ran against the user's team
@@ -572,6 +605,9 @@ function resolveFreeAgentSilently(player, rng, roundsUnsigned) {
 const MAX_FREE_AGENCY_ROUNDS = 4;
 
 function runFreeAgencySilently(rng) {
+  // Over-full teams shed players BEFORE the pool is read, so anyone waived
+  // lands in THIS market rather than floating unsigned until next offseason.
+  enforceRosterCeilings();
   let pool = _FA_DATA.rosterMoves.getFreeAgents().slice()
     .sort(function (a, b) { return _FA_DATA.tradeEvaluator.basePlayerValue(b) - _FA_DATA.tradeEvaluator.basePlayerValue(a); });
   const results = [];
@@ -621,6 +657,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveFreeAgentSilently: resolveFreeAgentSilently,
     runFreeAgencySilently: runFreeAgencySilently,
     enforceRosterFloors: enforceRosterFloors,
+    enforceRosterCeilings: enforceRosterCeilings,
     ROSTER_FLOOR: ROSTER_FLOOR,
     MAX_FREE_AGENCY_ROUNDS: MAX_FREE_AGENCY_ROUNDS
   };

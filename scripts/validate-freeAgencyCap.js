@@ -288,6 +288,43 @@ function checkAiOffersUnchanged() {
   console.log('checkAiOffersUnchanged: OK');
 }
 
+// The 15-man ceiling has to be enforced somewhere for AI teams, not just
+// stated. The draft hands every team two rookies unconditionally, so a team
+// that entered the offseason full leaves it at 16-17; free agency then
+// correctly refuses to sign anyone for them, but nothing ever waived anyone
+// back down — measured over ten simulated seasons, 2-7 teams PLAYED EVERY
+// SEASON over the limit. autoEnforceRosterSize existed for exactly this and
+// only ever ran against the user's team.
+//
+// MUTATES THE LEAGUE (it runs the real silent market), so it runs last.
+function checkOverfullAiTeamGetsTrimmed() {
+  global.GameState.userTeamId = 'BOS';
+  const aiTeam = TEAMS.find(function (t) { return t.id !== 'BOS'; });
+  const donors = PLAYERS_2026.filter(function (p) {
+    return p.teamId && p.teamId !== aiTeam.id && p.teamId !== 'BOS';
+  });
+  while (league.getTeamRoster(aiTeam.id).length < 17) {
+    const p = donors.pop();
+    if (p.teamId === aiTeam.id) continue;
+    p.teamId = aiTeam.id;
+  }
+  while (league.getTeamRoster('BOS').length < 16) {
+    const p = donors.pop();
+    if (p.teamId === 'BOS') continue;
+    p.teamId = 'BOS';
+  }
+
+  fa.runFreeAgencySilently(makeRng(11));
+
+  assert.strictEqual(league.getTeamRoster(aiTeam.id).length, 15,
+    'an AI team over the 15-man ceiling must be waived back down by the silent market, got ' +
+    league.getTeamRoster(aiTeam.id).length);
+  assert.strictEqual(league.getTeamRoster('BOS').length, 16,
+    'the USER team is not the sweep\'s to trim — that is the opt-in autoCap ' +
+    'setting and the unattended rollover path, got ' + league.getTeamRoster('BOS').length);
+  console.log('checkOverfullAiTeamGetsTrimmed: OK');
+}
+
 checkOverCapTeamCannotSignAtAll();
 checkOfferCannotExceedCapSpace();
 checkCapSpaceLostBetweenBidAndSigning();
@@ -297,5 +334,6 @@ checkBelowMinimumRejected();
 checkDisableCapStillWorks();
 checkFullRosterCannotSign();
 checkAiOffersUnchanged();
+checkOverfullAiTeamGetsTrimmed();
 
 console.log('All free agency cap validations passed');

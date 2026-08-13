@@ -23,6 +23,9 @@ var _AUTOGM_DATA = (typeof require !== 'undefined')
 // a draft addition from pushing past 15). Waives the lowest adjustedPlayerValue
 // player, repeatedly, until back at 15 or waivePlayer itself refuses (roster
 // at the 12-man floor).
+// AI teams get the same treatment league-wide from enforceRosterCeilings
+// (freeAgency.js), which runs whenever the silent market does; this per-team
+// version serves the USER paths — the autoCap setting and the rollover.
 function autoEnforceRosterSize(team) {
   const waived = [];
   let roster = _AUTOGM_DATA.league.getTeamRoster(team.id);
