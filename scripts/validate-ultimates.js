@@ -278,6 +278,154 @@ function checkTakeoverLength() {
   console.log('checkTakeoverLength: OK');
 }
 
+// ---------------------------------------------------------------------------
+// Season-level guards. These sim a real season through league.simulateDate, so
+// they are the slow part of this file — but they are also the only assertions
+// that can catch the two defects that actually happened during development: an
+// ultimate nobody holds, and an ultimate that fires for nobody.
+//
+// Set SKIP_SEASON=1 to skip them while iterating on the pure tests.
+// ---------------------------------------------------------------------------
+const SKIP_SEASON = !!process.env.SKIP_SEASON;
+
+let _season = null;
+function simulatedSeason() {
+  if (_season) return _season;
+  const f = gameFixture();
+  const league = require(path.join(ROOT, 'league.js'));
+  const schedule = require(path.join(ROOT, 'schedule.js'));
+  const teams = require(path.join(ROOT, 'teams.js')).TEAMS;
+  const games = schedule.generateSeasonGames(f.makeRng(4242), teams).map(function (g) {
+    return { id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day,
+      played: false, homeScore: null, awayScore: null, boxScore: null,
+      isPlayoff: false, seriesId: null };
+  });
+  const season = { games: games, currentDay: -1 };
+  const rng = f.makeRng(4242);
+  const lastDay = games.reduce(function (m, g) { return Math.max(m, g.day); }, 0);
+  for (let d = 0; d <= lastDay; d++) {
+    league.simulateDate(season, d, { leagueYear: 2026 }, rng, null, null);
+  }
+  const holderKey = {};
+  f.players.forEach(function (p) {
+    if (ult.hasUltimate(p)) holderKey[p.id] = ult.ultimateFor(p).key;
+  });
+  const stat = { played: 0, takeovers: 0, points: [], byUltimate: {}, teamPts: 0, teamGames: 0,
+                 holderGames: {}, pointsByUltimate: {} };
+  games.forEach(function (g) {
+    if (!g.played || !g.boxScore) return;
+    stat.played += 1;
+    stat.teamPts += g.homeScore + g.awayScore;
+    stat.teamGames += 2;
+    Object.keys(g.boxScore).forEach(function (pid) {
+      const k = holderKey[pid];
+      const line = g.boxScore[pid];
+      if (!k || !line || line.takeoversUsed === undefined) return;
+      stat.takeovers += line.takeoversUsed;
+      stat.byUltimate[k] = (stat.byUltimate[k] || 0) + line.takeoversUsed;
+      stat.holderGames[k] = (stat.holderGames[k] || 0) + 1;
+      if (line.takeoverPoints > 0) {
+        stat.points.push(line.takeoverPoints);
+        (stat.pointsByUltimate[k] = stat.pointsByUltimate[k] || []).push(line.takeoverPoints);
+      }
+    });
+  });
+  _season = stat;
+  return _season;
+}
+
+// The measured pre-ultimates figure, from five seeds: 134.45 / 134.78 / 134.99 /
+// 135.01 / 135.09, mean 134.86. The tolerance is wider than that run-to-run
+// spread (0.64) and far tighter than anything that would move the balance
+// properties this protects.
+const LEAGUE_SCORING_BASELINE = 134.86;
+const LEAGUE_SCORING_TOLERANCE = 1.5;
+
+// THE GOVERNING CONSTRAINT. Takeovers redistribute scoring toward stars; they
+// must not add scoring to the league. Every balance property already measured —
+// a superstar worth ~10 wins alone but ~6 beside another star, champions
+// ranking 2nd-3rd, league-best records at 68-76 wins — is measured against
+// league scoring, so holding it still is what protects all of them.
+function checkLeagueScoringHeldFlat() {
+  const s = simulatedSeason();
+  const avg = s.teamPts / s.teamGames;
+  assert.ok(Math.abs(avg - LEAGUE_SCORING_BASELINE) <= LEAGUE_SCORING_TOLERANCE,
+    'league scoring is ' + avg.toFixed(2) + ', baseline ' + LEAGUE_SCORING_BASELINE +
+    ' — takeovers must redistribute scoring, not add it');
+  console.log('checkLeagueScoringHeldFlat: OK (' + avg.toFixed(2) + ')');
+}
+
+function checkTakeoverRateBand() {
+  const s = simulatedSeason();
+  const perGame = s.takeovers / s.played;
+  assert.ok(perGame >= 0.7 && perGame <= 1.4,
+    'takeovers per game is ' + perGame.toFixed(3) + ', outside the 0.7-1.4 band');
+  console.log('checkTakeoverRateBand: OK (' + perGame.toFixed(3) + ' per game)');
+}
+
+function checkPointsAddedBand() {
+  const s = simulatedSeason();
+  const mean = s.points.reduce(function (a, b) { return a + b; }, 0) / s.points.length;
+  assert.ok(mean >= 10 && mean <= 15,
+    'points added is ' + mean.toFixed(1) + ', outside the 10-15 band');
+  console.log('checkPointsAddedBand: OK (' + mean.toFixed(1) + ' points added)');
+}
+
+// An ultimate that exists, is held, and never fires is as dead as one nobody
+// holds. This is the assertion that caught the 29x rate spread.
+function checkEveryUltimateFiresInASeason() {
+  const s = simulatedSeason();
+  const silent = ult.ULTIMATE_TAXONOMY
+    .filter(function (u) { return !s.byUltimate[u.key]; })
+    .map(function (u) { return u.key; });
+  assert.strictEqual(silent.length, 0,
+    'these ultimates never fired in a whole season: ' + silent.join(', '));
+  console.log('checkEveryUltimateFiresInASeason: OK (all 12 fired)');
+}
+
+// League scoring is BLIND to a single overpowered ultimate. Measured: making
+// Heat Check absurd (shot share 6.0, +45% on threes) left league scoring inside
+// its band, because exactly one player in the 2026 league holds Heat Check and
+// one man cannot move a 1,230-game average. These two guards are what actually
+// catch that — they look at each ultimate on its own rather than at the league
+// total.
+//
+// Shipped: worst per-ultimate mean is 21.3 (Paint Beast, one holder), spread
+// 8.4x. Under the overpowered mutant: 27.8 and 21.7x.
+const WORST_ULTIMATE_MEAN_POINTS = 24;
+const MAX_RATE_SPREAD = 13;
+
+function checkNoUltimateIsWildlyOverpowered() {
+  const s = simulatedSeason();
+  let worst = null, worstMean = 0;
+  Object.keys(s.pointsByUltimate).forEach(function (k) {
+    const arr = s.pointsByUltimate[k];
+    const mean = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+    if (mean > worstMean) { worstMean = mean; worst = k; }
+  });
+  assert.ok(worstMean <= WORST_ULTIMATE_MEAN_POINTS,
+    worst + ' adds ' + worstMean.toFixed(1) + ' points a takeover, over the ' +
+    WORST_ULTIMATE_MEAN_POINTS + ' ceiling — league scoring cannot see one ' +
+    'overpowered ultimate, so this is the check that has to');
+  console.log('checkNoUltimateIsWildlyOverpowered: OK (worst ' + worst + ' at ' +
+    worstMean.toFixed(1) + ')');
+}
+
+// An ultimate that fires ten times more often than another is not "rarer", it
+// is a different feature. Some spread is real and unavoidable — three ultimates
+// have a single holder each, so their rate IS one player's rate.
+function checkRateSpreadIsBounded() {
+  const s = simulatedSeason();
+  const rates = Object.keys(s.holderGames).map(function (k) {
+    return (s.byUltimate[k] || 0) / s.holderGames[k];
+  }).filter(function (r) { return r > 0; });
+  const spread = Math.max.apply(null, rates) / Math.min.apply(null, rates);
+  assert.ok(spread <= MAX_RATE_SPREAD,
+    'takeover rate spans ' + spread.toFixed(1) + 'x across ultimates, over the ' +
+    MAX_RATE_SPREAD + 'x ceiling');
+  console.log('checkRateSpreadIsBounded: OK (' + spread.toFixed(1) + 'x)');
+}
+
 checkGate();
 checkGateUsesDisplayOverall();
 checkEveryUltimateIsReachable();
@@ -639,4 +787,14 @@ checkUnknownUltimateIsInert();
 checkHolderCountBand();
 checkEveryUltimateIsHeldInTheLeague();
 checkNoUltimateDominates();
+if (!SKIP_SEASON) {
+  checkLeagueScoringHeldFlat();
+  checkTakeoverRateBand();
+  checkPointsAddedBand();
+  checkEveryUltimateFiresInASeason();
+  checkNoUltimateIsWildlyOverpowered();
+  checkRateSpreadIsBounded();
+} else {
+  console.log("(season guards skipped: SKIP_SEASON)");
+}
 console.log('validate-ultimates: ALL OK');

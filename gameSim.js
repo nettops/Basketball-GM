@@ -362,27 +362,40 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       if (sim.takeovers[side]) return;
       const box = side === 'home' ? homeBox : awayBox;
       const ids = onCourt[side];
+      // Whoever is furthest PAST his own threshold goes, not whoever appears
+      // first in the lineup array — deciding on merit rather than on array
+      // position.
+      //
+      // Honest note: this was changed on the theory that lineup order starved
+      // slower team-mates of the side's single slot. Measured, it does not —
+      // lineup order gives a 7.8x spread in takeovers per holder-game against
+      // 8.4x for this rule. The change is defensible on its own terms and fixes
+      // nothing measurable, so do not credit it with the rate spread; that came
+      // from CHARGE_RATE (see ultimates.js).
+      let bestId = null, bestOver = 0, bestEntry = null, bestLine = null;
       for (let i = 0; i < ids.length; i++) {
         const entry = ultimateIndex[side][ids[i]];
         const line = box[ids[i]];
         if (!entry || !line) continue;
-        if (line.charge < ults.chargeThreshold(line.takeoversUsed)) continue;
-        line.charge = 0;
-        line.takeoversUsed += 1;
-        line.takeoverPointsAt = line.points;
-        sim.takeovers[side] = {
-          playerId: ids[i],
-          ultimateKey: entry.ultimate.key,
-          ultimateName: entry.ultimate.name,
-          side: entry.ultimate.side,
-          kind: entry.ultimate.kind,
-          effect: ults.takeoverEffect(entry.ultimate.key, entry.boost),
-          left: ults.takeoverLength(entry.ultimate.key)
-        };
-        pushSimEvent(ctx, side, { type: 'takeover-start', playerId: ids[i],
-          ultimateKey: entry.ultimate.key, ultimateName: entry.ultimate.name });
-        break;
+        const over = line.charge / ults.chargeThreshold(line.takeoversUsed);
+        if (over < 1 || over <= bestOver) continue;
+        bestId = ids[i]; bestOver = over; bestEntry = entry; bestLine = line;
       }
+      if (!bestId) return;
+      bestLine.charge = 0;
+      bestLine.takeoversUsed += 1;
+      bestLine.takeoverPointsAt = bestLine.points;
+      sim.takeovers[side] = {
+        playerId: bestId,
+        ultimateKey: bestEntry.ultimate.key,
+        ultimateName: bestEntry.ultimate.name,
+        side: bestEntry.ultimate.side,
+        kind: bestEntry.ultimate.kind,
+        effect: ults.takeoverEffect(bestEntry.ultimate.key, bestEntry.boost),
+        left: ults.takeoverLength(bestEntry.ultimate.key)
+      };
+      pushSimEvent(ctx, side, { type: 'takeover-start', playerId: bestId,
+        ultimateKey: bestEntry.ultimate.key, ultimateName: bestEntry.ultimate.name });
     });
 
     // Plus/minus, credited to the ten players who were actually on the floor

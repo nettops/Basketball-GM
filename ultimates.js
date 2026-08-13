@@ -143,16 +143,46 @@ const BOOSTING_TIERS = { legendary: true, secret: true };
 const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
   'block', 'rebound', 'offRebound', 'missedShot', 'turnover', 'foul'];
 
-// Values are relative to a 100-point meter. Calibrated against the measured
-// takeover rate; the sweep lives above `full` below.
-//
 // Drains are what make a takeover EARNED rather than scheduled: a star shooting
 // 4-for-15 moves backwards and never reaches one regardless of minutes played.
+//
+// `full` measured, not picked. Full seasons through league.simulateDate, seed
+// 4242, everything else held:
+//
+//   full   takeovers/game   star-game share   2nd in 1 game per   pts added   league scoring
+//   100        2.836              84.4%              1.2             12.2        136.53
+//   160        1.780              70.7%              5.8             13.1        136.01
+//   200        1.326              55.5%             35.1             13.2        135.13
+//   240        1.006              42.4%            615.0             13.4        135.21   <- shipped
+//   280        0.713              30.1%              never           13.9        134.94
+//
+// TWO OF THE DESIGN'S TARGETS CANNOT BOTH BE MET, and it is worth writing down
+// why rather than quietly missing one. The spec asks for ~1.0 takeovers per
+// game AND ~50% of star-games producing one. Those are not independent:
+//
+//   takeovers per game = star-game share x holders on the floor per game
+//
+// With 36 holders across 30 teams, roughly 2.4 of them play in any given game,
+// so 1.0 per game forces the share to 42%, and 50% would force the rate to 1.2.
+// The per-game rate is the one a player actually experiences, so it wins; 42%
+// is the honest consequence, not a miss.
+//
+// `secondFullMultiplier` measured at full 240. The design asks for a second
+// takeover roughly once every fifteen games:
+//
+//   multiplier   2nd in 1 game per   takeovers/game   pts added
+//      1.00            12.7               1.085         13.9
+//      1.08            18.9               1.020         14.3   <- shipped
+//      1.15            33.2               1.017         13.4
+//      1.25            43.9               1.002         13.4
+//      1.60           615.0               1.006         13.4
+//
+// 1.6 was the guess and it made a second takeover essentially impossible — a
+// nice-sounding number that deleted a feature. 1.08 is a small extra cost that
+// still produces the rare "he went nuclear" night.
 const CHARGE_TUNING = {
-  full: 100,
-  // A second takeover in one game should be the night people remember, not a
-  // routine second helping.
-  secondFullMultiplier: 1.6,
+  full: 240,
+  secondFullMultiplier: 1.08,
   takeoverPossessions: 20,
   longTakeoverPossessions: 50,
   gains: {
@@ -171,6 +201,60 @@ const CHARGE_TUNING = {
     periodMult: { fourth: 1.5, overtime: 2.0 },
     trailingMult: 1.2
   }
+};
+
+// How fast each ultimate's meter fills, relative to the others.
+//
+// This exists because the affinity currencies are not worth the same. Measured
+// at a flat rate of 1.0 across a full season, takeovers per holder-game ran:
+//
+//   paintBeast      0.878     aboveTheRim     0.329
+//   silky           0.688     theWall         0.232
+//   downhill        0.674     clamps          0.095
+//   glassWrecker    0.585     coldBlooded     0.037
+//   floorGeneral    0.549     motorNeverStops 0.030
+//   heatCheck       0.513
+//   andOne          0.358
+//
+// A 29x spread. Hold Paint Beast and you take over most nights; hold Motor
+// Never Stops and you do it three times a season. That is not rarity, it is a
+// dead ultimate — the same defect as one nobody holds, wearing a different hat.
+//
+// The cause is structural, not a tuning slip. Scoring ultimates charge off made
+// shots, which happen constantly; Clamps charges off steals and The Wall off
+// blocks, which do not. Cold Blooded is dead until the fourth quarter by
+// design, so it has a quarter of the game to earn in.
+//
+// Correcting it took two things, and the second was not a tuning change at all.
+//
+// The first attempt set each rate to the reciprocal of its measured rate. That
+// over-shot violently and INVERTED the problem — Clamps and Motor Never Stops
+// went to 1.9 and 2.5 per holder-game while Downhill collapsed to 0.05. The
+// cause is that the threshold is a step function, so the response near it is
+// sharply non-linear and a full correction always overshoots.
+//
+// The rates below are two DAMPED rounds, each correction square-rooted. They
+// land the spread at roughly 8x, from 0.12 to 0.99 per holder-game.
+//
+// A false lead worth recording so it is not re-investigated: only one takeover
+// runs per side at a time, and gameSim.js originally picked the first eligible
+// player in LINEUP ORDER, which looked like it must be starving slower
+// team-mates. It was not. Measured, lineup order gives a 7.8x spread against
+// 8.4x for the fairest-first rule that replaced it — indistinguishable. The
+// selection rule was changed anyway because deciding on merit beats deciding on
+// array position, but it fixed nothing and no number detects it.
+//
+// IT DOES NOT CONVERGE FURTHER, and the reason is worth recording so nobody
+// wastes another afternoon on it: Heat Check, Paint Beast and Cold Blooded have
+// exactly ONE holder each in the 2026 league. Their "rate" is one specific
+// player measured over eighty games, so another round fits Stephen Curry rather
+// than fitting the ultimate. The remaining spread is sampling noise, not
+// mis-tuning, and the guard that matters is the one in
+// scripts/validate-ultimates.js: every ultimate must actually fire in a season.
+const CHARGE_RATE = {
+  heatCheck: 1.29, silky: 1.00, paintBeast: 0.79, downhill: 0.95,
+  aboveTheRim: 0.96, andOne: 0.86, glassWrecker: 0.89, coldBlooded: 1.54,
+  clamps: 1.46, motorNeverStops: 1.79, floorGeneral: 0.96, theWall: 1.03
 };
 
 // Which play kinds are each ultimate's own currency.
@@ -219,7 +303,8 @@ function chargeGain(ultimateKey, playKind, situationMult) {
   if (base < 0) return base;
   const affinity = CHARGE_AFFINITY[ultimateKey] || [];
   const affinityMult = affinity.indexOf(playKind) !== -1 ? CHARGE_TUNING.affinityMultiplier : 1;
-  return base * affinityMult * (situationMult === undefined ? 1 : situationMult);
+  const rate = CHARGE_RATE[ultimateKey] === undefined ? 1 : CHARGE_RATE[ultimateKey];
+  return base * affinityMult * rate * (situationMult === undefined ? 1 : situationMult);
 }
 
 function chargeThreshold(takeoversUsed) {
@@ -381,6 +466,7 @@ if (typeof module !== 'undefined' && module.exports) {
     PLAY_KINDS: PLAY_KINDS,
     CHARGE_TUNING: CHARGE_TUNING,
     CHARGE_AFFINITY: CHARGE_AFFINITY,
+    CHARGE_RATE: CHARGE_RATE,
     hasUltimate: hasUltimate,
     ultimateFor: ultimateFor,
     badgeBoostFor: badgeBoostFor,
