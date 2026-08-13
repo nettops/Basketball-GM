@@ -310,20 +310,47 @@ function worstToWinIt(limit) {
 // all, rather than judged on partial evidence and then remembered wrongly.
 const LOPSIDED_MIN_SEASONS = 3;
 
+// Every player's season-by-season production, active AND retired, keyed by id.
+//
+// Built once per query rather than searched per player per trade: a long save
+// has hundreds of trades and a thousand retirees, and a scan inside the loop
+// would be a scan inside a loop inside a loop.
+//
+// Retirees are the load-bearing half. A retired player is spliced out of
+// PLAYERS_2026, so looking only there made his contribution silently zero —
+// and since a trade is only judged three seasons on, retirement is the normal
+// case, not the edge case. archiveRetiree banks productionByYear for exactly
+// this.
+function productionByYearIndex() {
+  const index = {};
+  _TOYS_DATA.players.PLAYERS_2026.forEach(function (p) {
+    const byYear = (p.careerHistory && p.careerHistory.seasonByYear) || {};
+    const out = {};
+    Object.keys(byYear).forEach(function (year) {
+      const s = byYear[year] || {};
+      out[year] = (s.points || 0) + (s.rebounds || 0) + (s.assists || 0);
+    });
+    index[p.id] = out;
+  });
+  _TOYS_DATA.history.LEAGUE_HISTORY.retiredPlayers.forEach(function (r) {
+    if (r.productionByYear) index[r.id] = r.productionByYear;
+  });
+  return index;
+}
+
 // Production a player recorded in seasons STRICTLY AFTER the trade year. What
 // he did before the trade belongs to whoever had him then, not to the trade.
-function productionAfter(playerId, afterYear) {
-  const player = _TOYS_DATA.players.PLAYERS_2026.find(function (p) { return p.id === playerId; });
-  const byYear = (player && player.careerHistory && player.careerHistory.seasonByYear) || {};
+// The index is optional so this stays callable on its own.
+function productionAfter(playerId, afterYear, index) {
+  const byYear = (index || productionByYearIndex())[playerId] || {};
   return Object.keys(byYear).reduce(function (sum, year) {
-    if (Number(year) <= afterYear) return sum;
-    const s = byYear[year];
-    return sum + (s.points || 0) + (s.rebounds || 0) + (s.assists || 0);
+    return Number(year) <= afterYear ? sum : sum + byYear[year];
   }, 0);
 }
 
 // currentYear is passed rather than read from a global so the rule is testable.
 function tradeVerdicts(currentYear) {
+  const index = productionByYearIndex();
   return _TOYS_DATA.history.LEAGUE_HISTORY.trades
     .filter(function (t) { return currentYear - t.leagueYear >= LOPSIDED_MIN_SEASONS; })
     .map(function (t) {
@@ -331,7 +358,7 @@ function tradeVerdicts(currentYear) {
       (t.participants || []).forEach(function (teamId) { bySide[teamId] = 0; });
       (t.players || []).forEach(function (p) {
         if (bySide[p.toTeamId] === undefined) bySide[p.toTeamId] = 0;
-        bySide[p.toTeamId] += productionAfter(p.playerId, t.leagueYear);
+        bySide[p.toTeamId] += productionAfter(p.playerId, t.leagueYear, index);
       });
       const totals = Object.keys(bySide).map(function (k) { return bySide[k]; });
       const combined = totals.reduce(function (a, b) { return a + b; }, 0);
@@ -345,10 +372,38 @@ function tradeVerdicts(currentYear) {
     });
 }
 
-function biggestTrades(limit, currentYear) {
-  return tradeVerdicts(currentYear)
+// How big the NAMES were, measured on the players' whole careers — not on what
+// happened next.
+//
+// This is a different question from the lopsided one and deliberately answered
+// differently. "The biggest trade in league history" means the most player
+// there has ever been in one deal, which is knowable the moment it happens; it
+// needs no waiting period and fills in from a save's first trade. Judging who
+// WON is the question that needs time, and mostLopsidedTrades below is the toy
+// that waits for it.
+function tradeStarPower(limit) {
+  const pool = {};
+  candidatePool().forEach(function (c) { pool[c.playerId] = c.production; });
+  return _TOYS_DATA.history.LEAGUE_HISTORY.trades
+    .map(function (t) {
+      const bySide = {};
+      (t.participants || []).forEach(function (teamId) { bySide[teamId] = 0; });
+      (t.players || []).forEach(function (p) {
+        if (bySide[p.toTeamId] === undefined) bySide[p.toTeamId] = 0;
+        bySide[p.toTeamId] += pool[p.playerId] || 0;
+      });
+      const combined = Object.keys(bySide).reduce(function (a, k) { return a + bySide[k]; }, 0);
+      return {
+        trade: t, leagueYear: t.leagueYear, participants: (t.participants || []).slice(),
+        bySide: bySide, combined: combined
+      };
+    })
     .sort(function (a, b) { return b.combined - a.combined; })
     .slice(0, limit || 10);
+}
+
+function biggestTrades(limit) {
+  return tradeStarPower(limit);
 }
 
 function mostLopsidedTrades(limit, currentYear) {
@@ -368,6 +423,8 @@ if (typeof module !== 'undefined' && module.exports) {
     bestToMissThePlayoffs: bestToMissThePlayoffs,
     worstToWinIt: worstToWinIt,
     productionAfter: productionAfter,
+    productionByYearIndex: productionByYearIndex,
+    tradeStarPower: tradeStarPower,
     tradeVerdicts: tradeVerdicts,
     biggestTrades: biggestTrades,
     mostLopsidedTrades: mostLopsidedTrades,

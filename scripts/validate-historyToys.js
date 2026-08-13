@@ -487,8 +487,10 @@ function checkLopsidedTradesNeedTime() {
   // Too recent to judge.
   assert.deepStrictEqual(toys.mostLopsidedTrades(5, 2032), [],
     'a trade less than ' + toys.LOPSIDED_MIN_SEASONS + ' seasons old must not be judged');
-  assert.deepStrictEqual(toys.biggestTrades(5, 2032), [],
-    'and the same rule applies to biggest trades');
+  // Biggest Trades does NOT wait. It ranks on how big the names were, which is
+  // knowable the day the trade happens; only the verdict on who WON needs time.
+  assert.strictEqual(toys.biggestTrades(5).length, 1,
+    'the biggest-trades list must not sit empty waiting three seasons');
 
   const judged = toys.mostLopsidedTrades(5, 2035);
   assert.strictEqual(judged.length, 1, 'an old enough trade must be judged');
@@ -499,6 +501,84 @@ function checkLopsidedTradesNeedTime() {
   assert.strictEqual(judged[0].bySide.LAL, 3000, 'LAL received the player who exploded');
   assert.strictEqual(judged[0].bySide.BOS, 10);
   console.log('checkLopsidedTradesNeedTime: OK');
+}
+
+// The defect that made this whole toy lie. A traded player is looked up to see
+// what he did after the deal — but a retired player is spliced out of
+// PLAYERS_2026, so his side silently scored zero. And because a trade is only
+// judged three seasons on, retirement is the NORMAL case.
+//
+// Measured before the fix: an even trade (2,600 against 2,900) read as 2,600
+// against 0 once one side retired. It did not merely under-count, it INVERTED
+// the answer and manufactured the most lopsided trade in league history out of
+// a fair swap.
+function checkARetiredPlayerStillCountsInATrade() {
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  const a = PLAYERS_2026[17], b = PLAYERS_2026[18];
+  history.ensureCareerData([a, b]);
+  a.careerHistory.seasonByYear = { 2031: { season: 2031, points: 2000, rebounds: 500, assists: 400 } };
+  b.careerHistory.seasonByYear = { 2031: { season: 2031, points: 1900, rebounds: 400, assists: 300 } };
+
+  history.LEAGUE_HISTORY.trades.push({
+    leagueYear: 2030, participants: ['BOS', 'LAL'],
+    players: [
+      { playerId: a.id, playerName: a.name, fromTeamId: 'BOS', toTeamId: 'LAL' },
+      { playerId: b.id, playerName: b.name, fromTeamId: 'LAL', toTeamId: 'BOS' }
+    ],
+    picks: []
+  });
+
+  const before = toys.mostLopsidedTrades(5, 2040)[0];
+  assert.strictEqual(before.bySide.LAL, 2900);
+  assert.strictEqual(before.bySide.BOS, 2600);
+
+  // Retire B exactly as the game does: archive him, then splice him out.
+  b.teamId = null;
+  const archived = history.archiveRetiree(b, 2035);
+  assert.ok(archived.productionByYear,
+    'the archive must bank per-season production — a career total cannot answer ' +
+    '"what did he do AFTER 2030"');
+  assert.strictEqual(archived.productionByYear[2031], 2600);
+  const idx = PLAYERS_2026.indexOf(b);
+  PLAYERS_2026.splice(idx, 1);
+
+  const after = toys.mostLopsidedTrades(5, 2040)[0];
+  assert.strictEqual(after.bySide.BOS, 2600,
+    'a retired player must still count for the side that received him, got ' + after.bySide.BOS);
+  assert.strictEqual(after.bySide.LAL, 2900, 'and the active side must be unchanged');
+  assert.strictEqual(after.difference, before.difference,
+    'retiring must not change the verdict at all — it changed it from ' +
+    before.difference + ' to ' + after.difference);
+
+  PLAYERS_2026.splice(idx, 0, b);
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  console.log('checkARetiredPlayerStillCountsInATrade: OK');
+}
+
+// Star power is a different question from who won, and answered from career
+// totals rather than from what happened next.
+function checkBiggestTradesRankOnTheNames() {
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.retiredPlayers.length = 0;
+  const star = PLAYERS_2026[19], scrub = PLAYERS_2026[20];
+  history.ensureCareerData([star, scrub]);
+  star.careerStats.points = 30000; star.careerStats.rebounds = 0; star.careerStats.assists = 0;
+  scrub.careerStats.points = 50; scrub.careerStats.rebounds = 0; scrub.careerStats.assists = 0;
+
+  history.LEAGUE_HISTORY.trades.push(
+    { leagueYear: 2049, participants: ['BOS', 'LAL'],
+      players: [{ playerId: star.id, playerName: star.name, fromTeamId: 'BOS', toTeamId: 'LAL' }], picks: [] },
+    { leagueYear: 2049, participants: ['CHI', 'MIA'],
+      players: [{ playerId: scrub.id, playerName: scrub.name, fromTeamId: 'CHI', toTeamId: 'MIA' }], picks: [] }
+  );
+
+  const big = toys.biggestTrades(5);
+  assert.strictEqual(big.length, 2, 'a trade from last season is still a trade');
+  assert.strictEqual(big[0].bySide.LAL, 30000, 'the deal that moved the star ranks first');
+  assert.strictEqual(big[1].bySide.MIA, 50);
+  assert.ok(big[0].participants.length === 2, 'the row needs both sides to render them');
+  console.log('checkBiggestTradesRankOnTheNames: OK');
 }
 
 checkTeamSeasonsAreRecorded();
@@ -514,4 +594,6 @@ checkFamiliesIncludeRetirees();
 checkHallOfVeryGood();
 checkTeamSeasonToys();
 checkLopsidedTradesNeedTime();
+checkARetiredPlayerStillCountsInATrade();
+checkBiggestTradesRankOnTheNames();
 console.log('All history toy validations passed');

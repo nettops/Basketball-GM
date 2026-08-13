@@ -173,8 +173,8 @@ const TOY_CATALOGUE = [
     run: function () { return bestToMissThePlayoffs(TOY_ROW_LIMIT); }, row: toySeasonRow },
   { id: 'worstChamp', name: 'Worst Team to Win It All', blurb: 'Got hot at the right time.',
     run: function () { return worstToWinIt(TOY_ROW_LIMIT); }, row: toySeasonRow },
-  { id: 'bigTrades', name: 'Biggest Trades', blurb: 'The most career pts+reb+ast ever moved in one deal.',
-    run: function () { return biggestTrades(TOY_ROW_LIMIT, toyCurrentYear()); },
+  { id: 'bigTrades', name: 'Biggest Trades', blurb: 'The most player ever swapped in one deal, by the careers of everyone involved. Judged on the names, so it needs no waiting period.',
+    run: function () { return biggestTrades(TOY_ROW_LIMIT); },
     row: function (r) {
       return r.leagueYear + ' — ' + r.combined.toLocaleString() + ' ' + TOY_STAT_UNIT +
         ' moved: ' + toyTradeSides(r);

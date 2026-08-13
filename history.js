@@ -288,6 +288,28 @@ function longestTenureOf(player) {
   return { years: years, teamId: teamId };
 }
 
+// One number per season played: points + rebounds + assists for that year.
+//
+// The trade toys ask "what did this player do AFTER the trade", which needs a
+// per-season breakdown, not a career total. The full seasonByYear is twenty
+// fields a season and would be a real weight on the save; this is one number,
+// and it is the only thing that question needs.
+//
+// Without it a traded player's contribution silently became zero the moment he
+// retired — and because a trade is only judged three seasons on, retirement is
+// the NORMAL case. Measured: an even trade (2,600 against 2,900) read as
+// 2,600 against 0 once one side retired, turning a fair swap into the most
+// lopsided robbery in league history.
+function productionByYearOf(player) {
+  const byYear = (player.careerHistory && player.careerHistory.seasonByYear) || {};
+  const out = {};
+  Object.keys(byYear).forEach(function (year) {
+    const s = byYear[year] || {};
+    out[year] = (s.points || 0) + (s.rebounds || 0) + (s.assists || 0);
+  });
+  return out;
+}
+
 function careerEarningsOf(player) {
   const contracts = (player.careerHistory && player.careerHistory.contractHistory) || [];
   return contracts.reduce(function (sum, c) {
@@ -318,6 +340,7 @@ function archiveRetiree(player, leagueYear) {
     // every other array here.
     firstLeagueYear: player.firstLeagueYear,
     relatives: (player.relatives || []).slice(),
+    productionByYear: productionByYearOf(player),
     id: player.id,
     name: player.name,
     position: player.position,
