@@ -378,6 +378,124 @@ function checkOneTakeoverPerSideAtATime() {
   console.log('checkOneTakeoverPerSideAtATime: OK');
 }
 
+// The recurring failure in this codebase is a value computed and then
+// discarded. Twelve ultimates advertise a set of dials; this asserts, by
+// reading the engine's source, that every dial some ultimate actually turns is
+// READ somewhere in it. A dial nobody reads is a promise the box score will
+// eventually contradict.
+function checkEveryDialIsReadByTheEngine() {
+  const fs = require('fs');
+  const poss = require(path.join(ROOT, 'simEnginePossession.js'));
+  const check = require(path.join(ROOT, 'skillCheck.js'));
+  const src = fs.readFileSync(path.join(ROOT, 'simEnginePossession.js'), 'utf8');
+
+  const turned = {};
+  ult.ULTIMATE_TAXONOMY.forEach(function (u) {
+    Object.keys(ult.takeoverEffect(u.key, 1)).forEach(function (d) { turned[d] = u.key; });
+  });
+
+  // Three of the make dials are read through a lookup table
+  // (offDial[ZONE_MAKE_DIAL[zone]]), so a `.dialName` search cannot see them.
+  // Those are proved FUNCTIONALLY below instead; the rest are proved by the
+  // text search. Both are needed: a text search passes on a dial the engine
+  // merely mentions, and a functional check needs a call path to exercise.
+  const HOLDER = 'p-holder';
+  const FUNCTIONAL = {};
+  ['three', 'mid', 'inside'].forEach(function (zone) {
+    const dial = poss.ZONE_MAKE_DIAL[zone];
+    const eff = {}; eff[dial] = 0.5;
+    const mods = poss.takeoverShotMods(HOLDER, zone, null, HOLDER, false, eff, {});
+    const total = mods.reduce(function (s, m) { return s + m.value; }, 0);
+    assert.ok(total > 0, dial + ' does not reach the shot spec for a ' + zone + ' shot');
+    // And it must NOT apply to a shot by anyone else.
+    const other = poss.takeoverShotMods('p-other', zone, null, HOLDER, false, eff, {});
+    assert.strictEqual(other.reduce(function (s, m) { return s + m.value; }, 0), 0,
+      dial + ' leaks onto a team-mate’s shot');
+    FUNCTIONAL[dial] = true;
+  });
+  // The same treatment for the two cross-side dials, which also route through
+  // a helper rather than being named at a use site.
+  assert.ok(poss.takeoverShotMods('anyone', 'inside', null, null, false, {}, { oppMake: -0.05 })
+    .some(function (m) { return m.value < 0; }), 'oppMake does not reach the shot spec');
+  FUNCTIONAL.oppMake = true;
+  assert.ok(poss.takeoverTurnoverMods('anyone', null, false, {}, { oppTurnover: 0.1 })
+    .some(function (m) { return m.value > 0; }), 'oppTurnover does not reach the turnover spec');
+  FUNCTIONAL.oppTurnover = true;
+  assert.ok(poss.takeoverShotMods('anyone', 'three', null, null, true, { teamMake: 0.04 }, {})
+    .some(function (m) { return m.value > 0; }), 'teamMake does not reach the shot spec');
+  FUNCTIONAL.teamMake = true;
+  assert.ok(poss.takeoverTurnoverMods('anyone', null, true, { teamTurnover: -0.02 }, {})
+    .some(function (m) { return m.value < 0; }), 'teamTurnover does not reach the turnover spec');
+  FUNCTIONAL.teamTurnover = true;
+  assert.ok(poss.takeoverTurnoverMods(HOLDER, HOLDER, false, { turnover: -0.05 }, {})
+    .some(function (m) { return m.value < 0; }), 'turnover does not reach the turnover spec');
+  FUNCTIONAL.turnover = true;
+  assert.ok(poss.takeoverBlockMods(HOLDER, { kind: 'solo', playerId: HOLDER }, { block: 0.05 }).length,
+    'block does not reach the block spec');
+  FUNCTIONAL.block = true;
+  // energyDrain and matchupDrain: prove the scaled drain actually scales.
+  const slow = { energy: 1 }, fast = { energy: 1 }, normal = { energy: 1 };
+  // workEthic must be present: drainEnergy reads it, and an absent attribute
+  // makes the whole drain NaN, which compares false against everything and
+  // would look like the dial simply not working.
+  const dummy = { id: HOLDER, attributes: { workEthic: 50 } };
+  poss.drainEnergyScaled(normal, dummy, undefined);
+  poss.drainEnergyScaled(slow, dummy, 0.15);
+  poss.drainEnergyScaled(fast, dummy, 1.9);
+  assert.ok(slow.energy > normal.energy, 'energyDrain below 1 must drain less');
+  assert.ok(fast.energy < normal.energy, 'matchupDrain above 1 must drain more');
+  FUNCTIONAL.energyDrain = true; FUNCTIONAL.matchupDrain = true;
+
+  const missing = [];
+  Object.keys(turned).forEach(function (dial) {
+    if (FUNCTIONAL[dial]) return;
+    if (!new RegExp('\\.' + dial + '\\b').test(src)) missing.push(dial + ' (' + turned[dial] + ')');
+  });
+  assert.strictEqual(missing.length, 0,
+    'simEnginePossession.js never reads: ' + missing.join(', '));
+  console.log('checkEveryDialIsReadByTheEngine: OK (' + Object.keys(turned).length +
+    ' dials, ' + Object.keys(FUNCTIONAL).length + ' proved functionally)');
+}
+
+// A takeover must actually produce points, not merely fire. This is the
+// difference between the feature existing and the feature working.
+function checkATakeoverMovesTheBoxScore() {
+  const f = gameFixture();
+  let withPoints = 0, total = 0, sum = 0;
+  for (let s = 0; s < 12; s++) {
+    const events = [];
+    f.gameSim.simulateGame(FIXTURE_HOME, FIXTURE_AWAY, f.makeRng(2000 + s), { events: events });
+    events.filter(function (e) { return e.type === 'takeover-end'; }).forEach(function (e) {
+      total += 1;
+      sum += e.takeoverPoints;
+      if (e.takeoverPoints > 0) withPoints += 1;
+    });
+  }
+  assert.ok(total > 0, 'no takeover completed in twelve games');
+  assert.ok(withPoints / total > 0.5,
+    'most takeovers scored nothing (' + withPoints + '/' + total +
+    ') — the dials are not reaching the engine');
+  console.log('checkATakeoverMovesTheBoxScore: OK (' + withPoints + '/' + total +
+    ' scored, mean ' + (sum / total).toFixed(1) + ' pts)');
+}
+
+// The defensive ultimates score nothing by design, so the points check above
+// cannot see them. This asserts they change the OPPONENT instead.
+function checkDefensiveTakeoversSuppressTheOpponent() {
+  const poss = require(path.join(ROOT, 'simEnginePossession.js'));
+  const check = require(path.join(ROOT, 'skillCheck.js'));
+  const wall = ult.takeoverEffect('theWall', 1);
+  const base = poss.shotSpec('inside', 70, 70, 1, 1, 1, 1, 0, 0, 0, 1);
+  const under = poss.shotSpec('inside', 70, 70, 1, 1, 1, 1, 0, 0, 0, 1);
+  under.modifiers = under.modifiers.concat([{ label: 'opponent takeover', value: wall.oppMake }]);
+  assert.ok(check.skillCheckProbability(under).probability <
+    check.skillCheckProbability(base).probability,
+    'The Wall must lower the opponent’s make probability');
+  const clamps = ult.takeoverEffect('clamps', 1);
+  assert.ok(clamps.oppTurnover > 0, 'Clamps must raise the opponent’s turnover chance');
+  console.log('checkDefensiveTakeoversSuppressTheOpponent: OK');
+}
+
 function checkEngineReportsOnlyKnownPlayKinds() {
   const fs = require('fs');
   const src = fs.readFileSync(path.join(ROOT, 'simEnginePossession.js'), 'utf8');
@@ -503,6 +621,9 @@ checkSituation();
 checkColdBloodedIgnoresEarlyGame();
 checkThresholdRises();
 checkTakeoverLength();
+checkEveryDialIsReadByTheEngine();
+checkATakeoverMovesTheBoxScore();
+checkDefensiveTakeoversSuppressTheOpponent();
 checkEngineReportsOnlyKnownPlayKinds();
 checkBoxLineCarriesMeterState();
 checkTakeoversFireInARealGame();

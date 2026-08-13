@@ -276,7 +276,16 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // a 40-point blowout was played exactly like a tie game.
     const gameCtx = {
       scoreDiff: team === 'home' ? (sim.homeScore - sim.awayScore) : (sim.awayScore - sim.homeScore),
-      period: sim.period
+      period: sim.period,
+      // Resolved from the SHOOTING team's point of view, matching scoreDiff:
+      // `offense` is a takeover held by the side with the ball, `defense` one
+      // held by the side defending. Either may be null. Resolving it here
+      // rather than in the engine is what keeps ultimates.js out of
+      // simEnginePossession.js's requires entirely.
+      takeovers: {
+        offense: sim.takeovers[team] && sim.takeovers[team].side === 'offense' ? sim.takeovers[team] : null,
+        defense: sim.takeovers[other] && sim.takeovers[other].side === 'defense' ? sim.takeovers[other] : null
+      }
     };
 
     const points = _GAMESIM_DATA.poss.simulatePossession(

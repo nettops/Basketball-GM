@@ -272,11 +272,20 @@ const TRANSITION_INSIDE_MULT = 1.6;
 const TRANSITION_THREE_MULT = 1.0;
 const TRANSITION_MID_MULT = 0.35;
 
-function pickShotZone(shooter, rng, inTransition) {
+function pickShotZone(shooter, rng, inTransition, takeoverBias) {
   const t = shooter.hiddenTendencies || {};
   let three = t.threeTendency !== undefined ? Math.max(1, t.threeTendency) : 33;
   let mid = t.midTendency !== undefined ? Math.max(1, t.midTendency) : 33;
   let inside = t.insideTendency !== undefined ? Math.max(1, t.insideTendency) : 34;
+  // A takeover pulls the holder toward the spot his ultimate improves — Heat
+  // Check starts hunting threes. Scaled like the transition bias rather than
+  // replacing the mix, so a big man taking over still is not launching from
+  // thirty feet. Absent for every shot by anyone not mid-takeover.
+  if (takeoverBias) {
+    if (takeoverBias.three) three *= takeoverBias.three;
+    if (takeoverBias.mid) mid *= takeoverBias.mid;
+    if (takeoverBias.inside) inside *= takeoverBias.inside;
+  }
   if (inTransition) {
     // Scaled, not replaced: a stretch big who never gets to the rim in the
     // half court should still be the least likely man on the break to finish
@@ -661,6 +670,68 @@ function blockSpecFor(shotDefender, zone) {
     _POSS_DATA.traits.getTraitBonus(shotDefender, 'boxscore', 'block'));
 }
 
+// A takeover's contribution to a contest, as NAMED modifiers appended to the
+// spec the existing builders return. skillCheck sums modifiers into the
+// probability and hands them back on the result, and the expandable
+// play-by-play already renders that list — so a takeover explains itself on
+// screen ("Takeover +13%") through machinery that already exists, rather than
+// being an invisible thumb on the scale.
+//
+// Appended at the call site rather than threaded through shotSpec/turnoverSpec
+// so those keep their signatures and scripts/validate-skillCheck.js can go on
+// sweeping them against the original formulas.
+const ZONE_MAKE_DIAL = { three: 'makeThree', mid: 'makeMid', inside: 'makeInside' };
+
+function withModifiers(spec, mods) {
+  if (mods.length) spec.modifiers = spec.modifiers.concat(mods);
+  return spec;
+}
+
+function takeoverShotMods(shooterId, zone, tk, soloId, teamOn, offDial, defDial) {
+  const mods = [];
+  if (soloId && shooterId === soloId) {
+    const v = offDial[ZONE_MAKE_DIAL[zone]];
+    if (v) mods.push({ label: 'takeover', value: v });
+  }
+  if (teamOn && offDial.teamMake) mods.push({ label: 'team takeover', value: offDial.teamMake });
+  // The Wall: the DEFENDING side's holder suppresses the whole opposing five,
+  // so this applies to every shot, not just the one he contests.
+  if (defDial.oppMake) mods.push({ label: 'opponent takeover', value: defDial.oppMake });
+  return mods;
+}
+
+function takeoverTurnoverMods(handlerId, soloId, teamOn, offDial, defDial) {
+  const mods = [];
+  if (soloId && handlerId === soloId && offDial.turnover) {
+    mods.push({ label: 'takeover', value: offDial.turnover });
+  }
+  if (teamOn && offDial.teamTurnover) mods.push({ label: 'team takeover', value: offDial.teamTurnover });
+  // Clamps: he is the man guarding the ball for the duration.
+  if (defDial.oppTurnover) mods.push({ label: 'clamps', value: defDial.oppTurnover });
+  return mods;
+}
+
+function takeoverBlockMods(defenderId, tkDef, defDial) {
+  if (!tkDef || !defDial.block) return [];
+  // A solo shot-blocking takeover only helps when HE is contesting; a team one
+  // (The Wall) lifts whoever is.
+  if (tkDef.kind === 'team' || defenderId === tkDef.playerId) {
+    return [{ label: 'takeover', value: defDial.block }];
+  }
+  return [];
+}
+
+// Energy drains at a scaled rate. Written as "drain normally, then give back a
+// fraction of what was taken" so it stays exactly consistent with drainEnergy's
+// own curve rather than duplicating it — the one place a second implementation
+// would silently diverge.
+function drainEnergyScaled(box, player, mult) {
+  if (mult === undefined || mult === 1) return drainEnergy(box, player);
+  const before = box.energy;
+  drainEnergy(box, player);
+  box.energy = before - (before - box.energy) * mult;
+}
+
 // Kept as a named export because scripts/validate-possession.js and the pixel
 // choreographer's classifier both read a bare probability without rolling.
 function shotMakeProbability(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult) {
@@ -737,14 +808,30 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
   if (outcome) outcome.liveBallToDefense = false;
 
+  // The two live takeovers, already resolved to offense/defense by gameSim.js.
+  // Absent for every caller that passes no gameCtx, which is what keeps every
+  // pre-ultimates caller behaving exactly as it did.
+  const tkOff = gameCtx && gameCtx.takeovers ? gameCtx.takeovers.offense : null;
+  const tkDef = gameCtx && gameCtx.takeovers ? gameCtx.takeovers.defense : null;
+  const offDial = tkOff ? tkOff.effect : {};
+  const defDial = tkDef ? tkDef.effect : {};
+  // A solo takeover names one player; a team takeover lifts all five.
+  const soloId = tkOff && tkOff.kind === 'solo' ? tkOff.playerId : null;
+  const teamOn = !!(tkOff && tkOff.kind === 'team');
+
   const handler = weightedPick(offense, energyAware(ballHandlingWeight, offenseBox, false), rng, PICK_POWER.handler);
   const onBallDefender = weightedPick(defense, energyAware(perimDefenseWeight, defenseBox, true), rng, PICK_POWER.onBallDefender);
-  drainEnergy(offenseBox[handler.id], handler);
-  drainEnergy(defenseBox[onBallDefender.id], onBallDefender);
+  // Motor Never Stops: he stops tiring, and the man guarding him tires faster.
+  const handlerIsHolder = !!(soloId && handler.id === soloId);
+  drainEnergyScaled(offenseBox[handler.id], handler,
+    handlerIsHolder ? offDial.energyDrain : undefined);
+  drainEnergyScaled(defenseBox[onBallDefender.id], onBallDefender,
+    handlerIsHolder ? offDial.matchupDrain : undefined);
   pushEvent(eventCtx, { type: 'possession', playerId: handler.id });
 
   const turnoverCheck = _POSS_DATA.check.skillCheck(
-    turnoverSpecFor(onBallDefender, handler, defSyn.defense, offSyn.offense), rng);
+    withModifiers(turnoverSpecFor(onBallDefender, handler, defSyn.defense, offSyn.offense),
+      takeoverTurnoverMods(handler.id, soloId, teamOn, offDial, defDial)), rng);
   if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
@@ -757,16 +844,52 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
-  const shooter = weightedPick(offense, energyAware(_POSS_DATA.box.scoringWeight, offenseBox, false), rng, PICK_POWER.shooter, PICK_CEILING.shooter);
-  const zone = pickShotZone(shooter, rng, inTransition);
+  // shotShare and shotCeiling. The ceiling lift is load-bearing, not garnish:
+  // weightedPick caps any one player at PICK_CEILING.shooter on the NORMALISED
+  // shares, so a usage boost without it saturates at 50% and the takeover's
+  // measured points band is unreachable however the rest is tuned. Lifted for
+  // the holder and the duration only.
+  const shooterWeight = (soloId && offDial.shotShare)
+    ? function (p) {
+        const w = _POSS_DATA.box.scoringWeight(p);
+        return p.id === soloId ? w * offDial.shotShare : w;
+      }
+    : _POSS_DATA.box.scoringWeight;
+  const shooterCeiling = (soloId && offDial.shotCeiling)
+    ? Math.max(PICK_CEILING.shooter, offDial.shotCeiling)
+    : PICK_CEILING.shooter;
+  const shooter = weightedPick(offense, energyAware(shooterWeight, offenseBox, false), rng, PICK_POWER.shooter, shooterCeiling);
+  const zone = pickShotZone(shooter, rng, inTransition,
+    (soloId && shooter.id === soloId) ? offDial.zoneBias : null);
   const shotDefender = weightedPick(defense, energyAware(function (p) { return shotDefenseWeight(p, zone); }, defenseBox, true), rng, PICK_POWER.shotDefender);
-  drainEnergy(offenseBox[shooter.id], shooter);
-  drainEnergy(defenseBox[shotDefender.id], shotDefender);
+  // reboundShare, applied on whichever side the holder is actually on. A
+  // takeover by the DEFENDING team's Glass Wrecker has to lift him on the
+  // defensive glass, which is the board he mostly gets.
+  const offReboundWeight = (soloId && offDial.reboundShare)
+    ? function (p) {
+        const w = reboundCompositeWeight(p);
+        return p.id === soloId ? w * offDial.reboundShare : w;
+      }
+    : reboundCompositeWeight;
+  const defHolderId = tkDef && tkDef.kind === 'solo' ? tkDef.playerId : null;
+  const defReboundWeight = (defHolderId && defDial.reboundShare)
+    ? function (p) {
+        const w = reboundCompositeWeight(p);
+        return p.id === defHolderId ? w * defDial.reboundShare : w;
+      }
+    : reboundCompositeWeight;
+
+  const shooterIsHolder = !!(soloId && shooter.id === soloId);
+  drainEnergyScaled(offenseBox[shooter.id], shooter,
+    shooterIsHolder ? offDial.energyDrain : undefined);
+  drainEnergyScaled(defenseBox[shotDefender.id], shotDefender,
+    shooterIsHolder ? offDial.matchupDrain : undefined);
   const zoneLabel = zone === 'three' ? '3-pointer' : (zone === 'mid' ? 'mid-range jumper' : 'shot inside');
 
   // Constants and their reasoning are hoisted to blockSpec at module scope.
   const blockCheck = _POSS_DATA.check.skillCheck(
-    blockSpecFor(shotDefender, zone), rng);
+    withModifiers(blockSpecFor(shotDefender, zone),
+      takeoverBlockMods(shotDefender.id, tkDef, defDial)), rng);
   if (blockCheck.passed) {
     defenseBox[shotDefender.id].blocks += 1;
     // A blocked shot is a defended MISS, so it counts toward DFG% denominator.
@@ -780,11 +903,13 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
-  const shotCheck = _POSS_DATA.check.skillCheck(shotMakeSpecFor(shooter, shotDefender, zone,
-    offSyn.offense, defSyn.defense,
-    energyMultiplier(offenseBox[shooter.id].energy),
-    energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls),
-    scoreDiff, gamePeriod), rng);
+  const shotCheck = _POSS_DATA.check.skillCheck(
+    withModifiers(shotMakeSpecFor(shooter, shotDefender, zone,
+      offSyn.offense, defSyn.defense,
+      energyMultiplier(offenseBox[shooter.id].energy),
+      energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls),
+      scoreDiff, gamePeriod),
+      takeoverShotMods(shooter.id, zone, tkOff, soloId, teamOn, offDial, defDial)), rng);
   const made = shotCheck.passed;
   const shotValue = zone === 'three' ? 3 : 2;
   offenseBox[shooter.id].fga += 1;
@@ -823,13 +948,13 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null, check: shotCheck });
     const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
-      const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng, PICK_POWER.rebounder);
+      const rebounder = weightedPick(offense, energyAware(offReboundWeight, offenseBox, false), rng, PICK_POWER.rebounder);
       offenseBox[rebounder.id].rebounds += 1;
       reportPlay(outcome, rebounder.id, 'offRebound');
       logPlay(log, rebounder.name + ' grabs the offensive rebound');
       pushEvent(eventCtx, { type: 'rebound', playerId: rebounder.id, offensive: true });
     } else {
-      const rebounder = weightedPick(defense, energyAware(reboundCompositeWeight, defenseBox, false), rng, PICK_POWER.rebounder);
+      const rebounder = weightedPick(defense, energyAware(defReboundWeight, defenseBox, false), rng, PICK_POWER.rebounder);
       defenseBox[rebounder.id].rebounds += 1;
       reportPlay(outcome, rebounder.id, 'rebound');
       logPlay(log, rebounder.name + ' grabs the defensive rebound');
@@ -853,7 +978,9 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   // the rest of the game.
   // 0.125 calibrated by measured rate against the real NBA's ~22 free-throw
   // attempts per team-game; at 0.11 this engine produced 17.7.
-  if (rng() < shootingFoulRate(shotDefender)) {
+  // foulRate: And-One stops settling and goes through people.
+  const foulMult = (shooterIsHolder && offDial.foulRate) ? offDial.foulRate : 1;
+  if (rng() < shootingFoulRate(shotDefender) * foulMult) {
     defenseBox[shotDefender.id].fouls += 1;
     reportPlay(outcome, shotDefender.id, 'foul');
     const ftAttempts = 2;
@@ -864,9 +991,10 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     // with a spread wide enough to separate a 60% shooter from a 90% one.
     // Free Throw Ace's affinity is `freeThrow`, so shotQualityBonus routes it
     // to the 'ft' zone — it belongs here rather than on any field-goal zone.
+    const ftBoost = (shooterIsHolder && offDial.makeFt) ? offDial.makeFt : 0;
     const ftPct = Math.max(0.45, Math.min(0.95,
       FT_BASE + (shooter.attributes.freeThrow - 50) / FT_DIV +
-      _POSS_DATA.traits.shotQualityBonus(shooter, 'ft') / SHOT_TRAIT_DIV));
+      _POSS_DATA.traits.shotQualityBonus(shooter, 'ft') / SHOT_TRAIT_DIV + ftBoost));
     let made2 = 0;
     for (let i = 0; i < ftAttempts; i++) { if (rng() < ftPct) made2 += 1; }
     offenseBox[shooter.id].fta += ftAttempts;
@@ -907,6 +1035,16 @@ if (typeof module !== 'undefined' && module.exports) {
     weightedPick: weightedPick,
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,
+    // Exported so validate-ultimates.js can assert each dial actually moves a
+    // probability, rather than only that its NAME appears in this file. Three
+    // of them are read through a lookup table, so a text search alone would
+    // pass on a dial the engine had merely mentioned.
+    ZONE_MAKE_DIAL: ZONE_MAKE_DIAL,
+    takeoverShotMods: takeoverShotMods,
+    takeoverTurnoverMods: takeoverTurnoverMods,
+    takeoverBlockMods: takeoverBlockMods,
+    drainEnergyScaled: drainEnergyScaled,
+    withModifiers: withModifiers,
     simulatePossession: simulatePossession,
     reportPlay: reportPlay,
     eligibleRoster: eligibleRoster,
