@@ -200,7 +200,13 @@ function initBoxLine() {
   // oppFga/oppFgm are what a player allowed AS THE SHOT DEFENDER — the raw
   // material for DFG%. Without them a defensive badge is invisible: steals and
   // blocks land in the box score, "lowered the shooter's percentage" does not.
-  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0 };
+  //
+  // charge/takeoverLeft/takeoversUsed/takeoverPoints/takeoverPointsAt are the
+  // ultimate meter (ultimates.js), per game and discarded with it. They live
+  // here rather than on the player because a meter that survived the final
+  // buzzer would let a star bank a takeover across a road trip.
+  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0,
+    charge: 0, takeoverLeft: 0, takeoversUsed: 0, takeoverPoints: 0, takeoverPointsAt: 0 };
 }
 
 // In-game stamina, separate from status.fatigue (fatigue.js's cross-game,
@@ -694,6 +700,20 @@ function pushEvent(eventCtx, ev) {
   eventCtx.events.push(ev);
 }
 
+// What happened, in the ultimate meter's vocabulary. gameSim.js prices these
+// through ultimates.chargeGain — this engine deliberately does not know what a
+// play is WORTH, only that it happened, which is what keeps ultimates.js out of
+// this file's requires entirely.
+//
+// A no-op when `outcome` is absent, which is every pre-ultimates caller and
+// every unit test that does not care. Draws no rng and feeds nothing back into
+// the possession, so both golden masters are untouched by its presence.
+function reportPlay(outcome, playerId, kind) {
+  if (!outcome) return;
+  if (!outcome.plays) outcome.plays = [];
+  outcome.plays.push({ playerId: playerId, kind: kind });
+}
+
 // Simulates one team's single possession against the given defense, mutating
 // both teams' box-line accumulators in place. Returns the points scored.
 // `synergy` is { offense: {offense,defense,rebound}, defense: {...} } — the
@@ -728,6 +748,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   if (turnoverCheck.passed) {
     const stolen = rng() < 0.5;
     if (stolen) defenseBox[onBallDefender.id].steals += 1;
+    reportPlay(outcome, handler.id, 'turnover');
+    if (stolen) reportPlay(outcome, onBallDefender.id, 'steal');
     logPlay(log, handler.name + ' turns it over' + (stolen ? ', stolen by ' + onBallDefender.name : ''), turnoverCheck);
     pushEvent(eventCtx, { type: 'turnover', playerId: handler.id, defenderId: stolen ? onBallDefender.id : null, check: turnoverCheck });
     // only a STEAL is a live ball; a dead-ball turnover is inbounded
@@ -751,6 +773,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     defenseBox[shotDefender.id].oppFga += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
+    reportPlay(outcome, shotDefender.id, 'block');
+    reportPlay(outcome, shooter.id, 'missedShot');
     logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name, blockCheck);
     pushEvent(eventCtx, { type: 'block', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, check: blockCheck });
     return 0;
@@ -774,6 +798,12 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     if (zone === 'three') offenseBox[shooter.id].tpm += 1;
     offenseBox[shooter.id].points += shotValue;
     points += shotValue;
+    // Written as two calls rather than one with a ternary so that every
+    // reportPlay site names its kind as a bare literal — that is what lets
+    // validate-ultimates.js check the engine's vocabulary against the pricing
+    // table statically instead of hoping a sim hits every branch.
+    if (zone === 'three') reportPlay(outcome, shooter.id, 'madeThree');
+    else reportPlay(outcome, shooter.id, 'madeTwo');
     let assistLine = '';
     let assistPlayerId = null;
     if (rng() < 0.6) {
@@ -782,22 +812,26 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
         offenseBox[passer.id].assists += 1;
         assistLine = ' (assist: ' + passer.name + ')';
         assistPlayerId = passer.id;
+        reportPlay(outcome, passer.id, 'assist');
       }
     }
     logPlay(log, shooter.name + ' makes ' + zoneLabel + assistLine, shotCheck);
     pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId, check: shotCheck });
   } else {
+    reportPlay(outcome, shooter.id, 'missedShot');
     logPlay(log, shooter.name + ' misses ' + zoneLabel, shotCheck);
     pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null, check: shotCheck });
     const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
       const rebounder = weightedPick(offense, energyAware(reboundCompositeWeight, offenseBox, false), rng, PICK_POWER.rebounder);
       offenseBox[rebounder.id].rebounds += 1;
+      reportPlay(outcome, rebounder.id, 'offRebound');
       logPlay(log, rebounder.name + ' grabs the offensive rebound');
       pushEvent(eventCtx, { type: 'rebound', playerId: rebounder.id, offensive: true });
     } else {
       const rebounder = weightedPick(defense, energyAware(reboundCompositeWeight, defenseBox, false), rng, PICK_POWER.rebounder);
       defenseBox[rebounder.id].rebounds += 1;
+      reportPlay(outcome, rebounder.id, 'rebound');
       logPlay(log, rebounder.name + ' grabs the defensive rebound');
       // A defensive rebounder is on the OTHER side from the possession's
       // offense, and pushEvent stamps ev.team from the context — so this one
@@ -821,6 +855,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   // attempts per team-game; at 0.11 this engine produced 17.7.
   if (rng() < shootingFoulRate(shotDefender)) {
     defenseBox[shotDefender.id].fouls += 1;
+    reportPlay(outcome, shotDefender.id, 'foul');
     const ftAttempts = 2;
     // Was `freeThrow / 105`, which centred a 78% free-throw shooter at a rating
     // of 82 — fine when every rating lived in 48-99, but on a true 0-100 scale
@@ -838,6 +873,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     offenseBox[shooter.id].ftm += made2;
     offenseBox[shooter.id].points += made2;
     points += made2;
+    for (let f = 0; f < made2; f++) reportPlay(outcome, shooter.id, 'freeThrow');
     logPlay(log, 'Foul on ' + shotDefender.name + ' — ' + shooter.name + ' makes ' + made2 + ' of ' + ftAttempts + ' free throws');
     pushEvent(eventCtx, { type: 'foul-ft', playerId: shooter.id, defenderId: shotDefender.id, made: made2, attempts: ftAttempts, points: made2 });
   }
@@ -872,6 +908,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pickShotZone: pickShotZone,
     shotMakeProbability: shotMakeProbability,
     simulatePossession: simulatePossession,
+    reportPlay: reportPlay,
     eligibleRoster: eligibleRoster,
     initBoxLine: initBoxLine,
     energyMultiplier: energyMultiplier

@@ -284,6 +284,41 @@ checkEveryUltimateIsReachable();
 checkDerivationIsDeterministic();
 checkBadgeBoost();
 checkTaxonomyShape();
+// The engine reports plays; ultimates.js prices them. If the engine ever
+// reports a kind the pricing table does not know, that player's meter silently
+// stops filling for the rest of the game — so the two lists are asserted to
+// agree STATICALLY, by reading the engine's source, rather than by hoping a
+// simulated game happens to hit every branch.
+function checkEngineReportsOnlyKnownPlayKinds() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(ROOT, 'simEnginePossession.js'), 'utf8');
+  const reported = [];
+  const re = /reportPlay\([^,]+,\s*[^,]+,\s*'([a-zA-Z]+)'\s*\)/g;
+  let m;
+  while ((m = re.exec(src)) !== null) { if (reported.indexOf(m[1]) === -1) reported.push(m[1]); }
+  assert.ok(reported.length > 0, 'no reportPlay call sites found — the report is not wired in');
+  reported.forEach(function (kind) {
+    assert.ok(ult.PLAY_KINDS.indexOf(kind) !== -1,
+      'the engine reports "' + kind + '", which ultimates.js prices at nothing');
+  });
+  // And the reverse: a priced kind nobody reports is dead tuning.
+  ult.PLAY_KINDS.forEach(function (kind) {
+    assert.ok(reported.indexOf(kind) !== -1,
+      'ultimates.js prices "' + kind + '" but the engine never reports it');
+  });
+  console.log('checkEngineReportsOnlyKnownPlayKinds: OK (' + reported.length + ' kinds)');
+}
+
+function checkBoxLineCarriesMeterState() {
+  const poss = require(path.join(ROOT, 'simEnginePossession.js'));
+  const line = poss.initBoxLine();
+  ['charge', 'takeoverLeft', 'takeoversUsed', 'takeoverPoints', 'takeoverPointsAt']
+    .forEach(function (f) {
+      assert.strictEqual(line[f], 0, 'a fresh box line must start with ' + f + ' at 0');
+    });
+  console.log('checkBoxLineCarriesMeterState: OK');
+}
+
 function checkEveryUltimateTurnsSomething() {
   ult.ULTIMATE_TAXONOMY.forEach(function (u) {
     const eff = ult.takeoverEffect(u.key, 1);
@@ -379,6 +414,8 @@ checkSituation();
 checkColdBloodedIgnoresEarlyGame();
 checkThresholdRises();
 checkTakeoverLength();
+checkEngineReportsOnlyKnownPlayKinds();
+checkBoxLineCarriesMeterState();
 checkEveryUltimateTurnsSomething();
 checkBadgeBoostScalesTheEffect();
 checkTeamEffectsAreSmallerPerPlayer();
