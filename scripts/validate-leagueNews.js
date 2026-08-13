@@ -56,3 +56,21 @@ function checkHighlightsFilterToOwnTeamOnly() {
 checkHighlightsFilterToOwnTeamOnly();
 
 console.log('All league news validations passed');
+
+// ~1,278 takeovers a season league-wide. A feed line for each is wallpaper, so
+// the bar is measured (see TAKEOVER_NEWS_POINTS) and your own team bypasses it.
+function checkTakeoverFeedIsFiltered() {
+  const bar = news.TAKEOVER_NEWS_POINTS;
+  const ordinary = { teamId: 'LAL', points: bar - 1, ultimateKey: 'heatCheck', playerName: 'A' };
+  const extreme = { teamId: 'LAL', points: bar, ultimateKey: 'heatCheck', playerName: 'B' };
+  assert.strictEqual(news.takeoverIsNewsworthy(ordinary, 'BOS'), false,
+    'an ordinary takeover by another team is not news');
+  assert.strictEqual(news.takeoverIsNewsworthy(ordinary, 'LAL'), true,
+    'but your own team always gets through, however ordinary');
+  assert.strictEqual(news.takeoverIsNewsworthy(extreme, 'BOS'), true,
+    'exactly at the bar is news regardless of team');
+  assert.strictEqual(news.takeoverIsNewsworthy(null, 'BOS'), false,
+    'a missing row is not news rather than a crash');
+  console.log('checkTakeoverFeedIsFiltered: OK (bar ' + bar + ')');
+}
+checkTakeoverFeedIsFiltered();

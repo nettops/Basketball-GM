@@ -195,7 +195,30 @@ function boxScoreDetailHtml(game) {
   }
 
   return '<div class="box-score-detail">' + boxScoreLineHeaderHtml(game) +
-    '<div class="box-score-teams">' + awayTable.html + homeTable.html + '</div>' + playByPlayHtml(game) + '</div>';
+    '<div class="box-score-teams">' + awayTable.html + homeTable.html + '</div>' +
+    takeoverSummaryHtml(game) + playByPlayHtml(game) + '</div>';
+}
+
+// What the takeovers in this game did, for a game you never watched. Reads
+// game.takeovers, which league.js attaches to every finished game — the live
+// view is not the only place a takeover is allowed to be visible, and for 29
+// teams out of 30 it is the only place you would ever learn one happened.
+//
+// Returns nothing at all when the game had none, rather than an empty box: a
+// "no takeovers" panel on most games is noise.
+function takeoverSummaryHtml(game) {
+  const rows = (game && game.takeovers) || [];
+  if (!rows.length) return '';
+  const items = rows.map(function (t) {
+    const def = typeof ULTIMATE_BY_KEY !== 'undefined' ? ULTIMATE_BY_KEY[t.ultimateKey] : null;
+    const label = def ? def.name : t.ultimateKey;
+    const when = t.period > 4 ? 'OT' + (t.period - 4) : 'Q' + t.period;
+    return '<li><strong>' + escapeHtml(t.playerName) + '</strong> — ' +
+      escapeHtml(label) + ' · ' + when + ' · ' +
+      (t.points > 0 ? t.points + ' pts during it' : 'no points, but it changed the floor') +
+      '</li>';
+  }).join('');
+  return '<div class="takeover-summary"><h4>Takeovers</h4><ul>' + items + '</ul></div>';
 }
 
 // Only present for games simmed under the possession engine (see
@@ -250,5 +273,5 @@ function renderBoxScoreDetail(container, game) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderSchedule: renderSchedule, renderBoxScoreDetail: renderBoxScoreDetail, boxScoreDetailHtml: boxScoreDetailHtml, playByPlayHtml: playByPlayHtml, checkBreakdownHtml: checkBreakdownHtml };
+  module.exports = { renderSchedule: renderSchedule, takeoverSummaryHtml: takeoverSummaryHtml, renderBoxScoreDetail: renderBoxScoreDetail, boxScoreDetailHtml: boxScoreDetailHtml, playByPlayHtml: playByPlayHtml, checkBreakdownHtml: checkBreakdownHtml };
 }

@@ -179,9 +179,35 @@ function renderLeagueNews(container, userTeamId) {
   draw();
 }
 
+// 1,278 takeovers a season league-wide. A feed line for every one is wallpaper,
+// so the bar is measured rather than picked. Counting a real season's
+// LEAGUE_HISTORY.takeovers by the points added during each:
+//
+//   bar   lines a season   roughly
+//    12        390         fifteen a week
+//    15        229         nine a week
+//    18        130         five a week
+//    20         85         three a week      <- shipped
+//    25         23         one a week
+//    30          3         three a season
+//
+// 20 keeps the league-wide chatter to about three a week, which is a thing you
+// notice rather than scroll past.
+//
+// Your own team is never filtered — those are the ones you actually want, and
+// there are only about 58 of them a season, roughly two a week.
+const TAKEOVER_NEWS_POINTS = 20;
+
+function takeoverIsNewsworthy(row, userTeamId) {
+  if (!row) return false;
+  if (row.teamId === userTeamId) return true;
+  return (row.points || 0) >= TAKEOVER_NEWS_POINTS;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     renderLeagueNews: renderLeagueNews, categorizeFeedEntry: categorizeFeedEntry,
-    computeHighlights: computeHighlights, computeTopPerformances: computeTopPerformances
+    computeHighlights: computeHighlights, computeTopPerformances: computeTopPerformances,
+    TAKEOVER_NEWS_POINTS: TAKEOVER_NEWS_POINTS, takeoverIsNewsworthy: takeoverIsNewsworthy
   };
 }
