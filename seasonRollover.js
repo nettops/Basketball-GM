@@ -19,7 +19,9 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       freeAgency: require('./freeAgency.js'),
       autoGM: require('./autoGM.js'),
       teams: require('./teams.js'),
-      traits: require('./traits.js')
+      traits: require('./traits.js'),
+      players: require('./players-2026.js'),
+      ultimates: require('./ultimates.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -31,7 +33,9 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
-      traits: { announceSecretBadges: announceSecretBadges }
+      traits: { announceSecretBadges: announceSecretBadges },
+      players: { PLAYERS_2026: PLAYERS_2026 },
+      ultimates: { setLeagueGate: setLeagueGate }
     };
 
 // Rolls a completed season into the next one: archives history, runs the
@@ -116,6 +120,17 @@ function runOffseasonRollover(gameState, deps) {
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;
   gameState.allStarWeekend = null;
+
+  // Re-anchor the ultimate gate to the NEW player population. It is rank-based
+  // — the 36th best player — because the league's rating distribution drifts
+  // upward as generated players replace the 2026 roster. Held at a fixed 85,
+  // holders grew from 36 to 75 over twenty seasons and took league scoring and
+  // the scoring leader up with them, while season one still looked perfect.
+  //
+  // Here, at the end of the rollover, because this is the point where retirees
+  // have gone, rookies have arrived and progression has been applied — the
+  // population the coming season will actually be played with.
+  _ROLLOVER_DATA.ultimates.setLeagueGate(_ROLLOVER_DATA.players.PLAYERS_2026);
 
   return { careerSceneShown: careerSceneShown, stoppedAfterDraft: false };
 }

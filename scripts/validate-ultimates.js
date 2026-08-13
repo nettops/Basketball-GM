@@ -311,13 +311,20 @@ function simulatedSeason() {
     if (ult.hasUltimate(p)) holderKey[p.id] = ult.ultimateFor(p).key;
   });
   const stat = { played: 0, takeovers: 0, points: [], byUltimate: {}, teamPts: 0, teamGames: 0,
-                 holderGames: {}, pointsByUltimate: {} };
+                 holderGames: {}, pointsByUltimate: {},
+                 seasonPts: {}, seasonGp: {}, bestGame: 0 };
   games.forEach(function (g) {
     if (!g.played || !g.boxScore) return;
     stat.played += 1;
     stat.teamPts += g.homeScore + g.awayScore;
     stat.teamGames += 2;
     Object.keys(g.boxScore).forEach(function (pid) {
+      // Every player, not just holders — the scoring-leader guard has to see
+      // the whole league.
+      const pts = g.boxScore[pid].points || 0;
+      stat.seasonPts[pid] = (stat.seasonPts[pid] || 0) + pts;
+      stat.seasonGp[pid] = (stat.seasonGp[pid] || 0) + 1;
+      if (pts > stat.bestGame) stat.bestGame = pts;
       const k = holderKey[pid];
       const line = g.boxScore[pid];
       if (!k || !line || line.takeoversUsed === undefined) return;
@@ -330,6 +337,9 @@ function simulatedSeason() {
       }
     });
   });
+  stat.leaderPpg = Object.keys(stat.seasonPts)
+    .filter(function (id) { return stat.seasonGp[id] >= 40; })
+    .reduce(function (m, id) { return Math.max(m, stat.seasonPts[id] / stat.seasonGp[id]); }, 0);
   _season = stat;
   return _season;
 }
@@ -370,6 +380,30 @@ function checkLeagueScoringHeldFlat() {
     'league scoring is ' + avg.toFixed(2) + ', baseline ' + LEAGUE_SCORING_BASELINE +
     ' — takeovers must redistribute scoring, not add it');
   console.log('checkLeagueScoringHeldFlat: OK (' + avg.toFixed(2) + ')');
+}
+
+// League scoring being flat says nothing about how it is DISTRIBUTED, and the
+// first build of this feature proved it: the total was inside its band while
+// the scoring leader ran to 51.4 ppg and one game reached 90 points. The engine
+// caps any player at 50% of his team's shot weight specifically to stop
+// 40-point seasons, and lifting that cap for a takeover undid it.
+//
+// Measured on the shipped build: leader 44.5, best game 75, against 43.4 and 69
+// with ultimates switched off. The bands are set above those and well below
+// what the usage-led build produced.
+const MAX_SEASON_LEADER_PPG = 47;
+const MAX_SINGLE_GAME_POINTS = 82;
+
+function checkScoringLeadersInBand() {
+  const s = simulatedSeason();
+  assert.ok(s.leaderPpg <= MAX_SEASON_LEADER_PPG,
+    'season scoring leader is ' + s.leaderPpg.toFixed(1) + ' ppg, over the ' +
+    MAX_SEASON_LEADER_PPG + ' ceiling — league TOTAL scoring cannot see this');
+  assert.ok(s.bestGame <= MAX_SINGLE_GAME_POINTS,
+    'best single game is ' + s.bestGame + ' points, over the ' +
+    MAX_SINGLE_GAME_POINTS + ' ceiling');
+  console.log('checkScoringLeadersInBand: OK (leader ' + s.leaderPpg.toFixed(1) +
+    ' ppg, best game ' + s.bestGame + ')');
 }
 
 function checkTakeoverRateBand() {
@@ -806,6 +840,7 @@ checkEveryUltimateIsHeldInTheLeague();
 checkNoUltimateDominates();
 if (!SKIP_SEASON) {
   checkLeagueScoringHeldFlat();
+  checkScoringLeadersInBand();
   checkTakeoverRateBand();
   checkPointsAddedBand();
   checkEveryUltimateFiresInASeason();

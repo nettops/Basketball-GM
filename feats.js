@@ -51,7 +51,19 @@
 // Mutable holder rather than bare consts so the calibration probe can move
 // them for one run without editing committed source — the same shape as
 // freeAgency.js's RESIGN_TUNING and seasonTransition.js's RETIREMENT_TUNING.
-var FEAT_TUNING = { bigScoring: 57, hugeScoring: 65, doubleAt: 14, fiveAt: 5 };
+// Re-measured after ultimates.js landed. A takeover adds ~13 points to a star's
+// night about once a game league-wide, so big scoring nights got commoner and
+// the old bars fell out of their bands — bigScoring fired 51 times against a
+// 15-40 target. The bands are the specification, so the BARS move (see the
+// TARGET_RATES comment in scripts/validate-feats.js).
+//
+// Swept on a real season through league.simulateDate, nights at or above:
+//   55 -> 110    62 -> 28    68 -> 8
+//   57 ->  75    64 -> 20    70 -> 5
+//   60 ->  47    66 -> 13    72 -> 3
+// bigScoring counts nights at-or-above `big` but below `huge`, so 62/70 gives
+// 23 big and 5 huge — both mid-band.
+var FEAT_TUNING = { bigScoring: 62, hugeScoring: 70, doubleAt: 14, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

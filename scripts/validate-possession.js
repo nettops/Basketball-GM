@@ -46,7 +46,14 @@ const SCORE_OUTLIER_BUDGET = 0.02;   // at most 2% may sit outside the sane band
 function checkBoxScoreConsistency() {
   const rng = makeRng(11);
   const scores = [];
-  for (let i = 0; i < 20; i++) {
+  // 120 games, not 20. The outlier budget below is a PERCENTAGE, and it was
+  // derived from 2,460 measured team-scores; at 40 scores, 2% rounds down to a
+  // single game, so any two hot nights fail it regardless of the distribution.
+  // That is exactly what happened once ultimates.js raised the tail slightly:
+  // the two offending scores were 177 and 179, both inside the 181 maximum this
+  // band was derived from. A budget expressed as a rate needs a sample that can
+  // express that rate.
+  for (let i = 0; i < 120; i++) {
     const home = TEAMS[i % TEAMS.length];
     const away = TEAMS[(i + 7) % TEAMS.length];
     if (home.id === away.id) continue;

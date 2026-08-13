@@ -29,11 +29,43 @@ var _ULT_DATA = (typeof require !== 'undefined')
 //   gate 85 -> 36    gate 87 -> 23    gate 89 -> 12
 // The target band is 30-60, so 84 and 85 both qualify and 85 is the tighter
 // "one or two per team, some teams none" the design asks for.
+//
+// gateOverall is only the FALLBACK, used before any league snapshot has been
+// taken (which is exactly the 2026 league it was measured on). The live gate is
+// RANK-BASED — the gateCount-th best player — and that matters:
+//
+// An absolute rating gate does not hold "the top 30-60 players" for long,
+// because the league's rating distribution drifts upward as generated players
+// replace the 2026 roster. Measured over a 20-season run, players at 85+ went
+// 36 -> 42 -> ... -> 75, double the intended band, and with them league scoring
+// drifted about two points high and the best scorer's peak season went from
+// roughly 51 points a game to 62. Season one looked perfect the whole time.
 const ULTIMATE_TUNING = {
   gateOverall: 85,
+  gateCount: 36,
   badgeTieBreak: 0.02,
   badgeBoost: 1.35
 };
+
+// Set from the live league whenever the population changes (seasonRollover.js).
+// Null until then, which makes hasUltimate fall back to gateOverall.
+var _leagueGate = null;
+
+// The gateCount-th highest overall in the league, floored at gateOverall so a
+// depleted or expansion league cannot hand ultimates to ordinary players.
+function setLeagueGate(players) {
+  if (!players || !players.length) { _leagueGate = null; return null; }
+  const overalls = players
+    .map(function (p) { return p.overall || 0; })
+    .sort(function (a, b) { return b - a; });
+  const nth = overalls[Math.min(overalls.length, ULTIMATE_TUNING.gateCount) - 1];
+  _leagueGate = Math.max(ULTIMATE_TUNING.gateOverall, nth);
+  return _leagueGate;
+}
+
+function currentGate() {
+  return _leagueGate === null ? ULTIMATE_TUNING.gateOverall : _leagueGate;
+}
 
 // `derive` is how a player's fitness for this ultimate is scored: either one
 // compositeRatings key, or a list of raw attributes averaged. `badges` are the
@@ -183,8 +215,8 @@ const PLAY_KINDS = ['madeThree', 'madeTwo', 'freeThrow', 'assist', 'steal',
 const CHARGE_TUNING = {
   full: 240,
   secondFullMultiplier: 1.08,
-  takeoverPossessions: 20,
-  longTakeoverPossessions: 50,
+  takeoverPossessions: 26,
+  longTakeoverPossessions: 65,
   gains: {
     madeThree: 9, madeTwo: 6, freeThrow: 2, assist: 5, steal: 8,
     block: 8, rebound: 3, offRebound: 5,
@@ -318,7 +350,7 @@ function takeoverLength(ultimateKey) {
 }
 
 function hasUltimate(player) {
-  return !!player && (player.overall || 0) >= ULTIMATE_TUNING.gateOverall;
+  return !!player && (player.overall || 0) >= currentGate();
 }
 
 function rawScore(player, ultimate) {
@@ -408,27 +440,49 @@ const DIAL_NAMES = ['shotShare', 'shotCeiling', 'zoneBias', 'makeThree', 'makeMi
   'makeInside', 'makeFt', 'turnover', 'block', 'reboundShare', 'foulRate',
   'energyDrain', 'matchupDrain', 'teamMake', 'teamTurnover', 'oppMake', 'oppTurnover'];
 
-// Magnitudes are STARTING VALUES, calibrated later against the measured band of
-// 10-15 points added to the holder. Probability dials are absolute additions to
-// a 0-1 probability; share dials are multipliers.
+// Probability dials are absolute additions to a 0-1 probability; share dials
+// are multipliers.
 //
-// shotCeiling is not decoration. weightedPick caps any one player at
-// PICK_CEILING.shooter (0.50), applied on the normalised shares — a usage boost
-// that does not lift it saturates silently, and no amount of tuning the rest
-// would reach the band.
+// THE TAKEOVER IS EFFICIENCY-LED, NOT USAGE-LED, AND THAT WAS NOT THE FIRST
+// ATTEMPT. The obvious build gives the holder the ball far more (shot share
+// 2.2-2.5, ceiling lifted to 0.78-0.82) and it broke the league. Measured over
+// a full season against the same build with ultimates switched off:
+//
+//                        league leader   best game   players over 40 ppg
+//   ultimates off            43.4 ppg        69              2
+//   usage-led  (2.4 / 0.80)  51.4 ppg        90              7
+//   softened   (1.7 / 0.62)  45.7 ppg        77              5
+//   efficiency (1.35 / 0.55) 44.5 ppg        75              7   <- shipped
+//
+// PICK_CEILING.shooter exists at 0.50 precisely to stop 40-point seasons — its
+// own comment records six of them in a 35-season run before the cap. Lifting it
+// to 0.80 for a takeover reintroduced exactly the thing it was created to
+// prevent, and league scoring could not see it: the total was fine, the
+// DISTRIBUTION was not.
+//
+// So the shipped version keeps the ceiling close to the engine's own 0.50 and
+// buys the holder's 10-15 points through accuracy and shot selection instead.
+// He scores more because more of his shots go in, not because he hogs the ball
+// — which is also the better story.
+//
+// Still honestly a shift: seven players above 40 ppg against two. Stars ARE
+// meant to become more dominant, and league scoring, the leader and the best
+// single game all sit within a point or six of baseline. But it is a change,
+// not a null result, and checkScoringLeadersInBand in validate-ultimates.js is
+// there so it cannot get worse unnoticed.
 //
 // Team dials are far smaller than solo ones because they are multiplied by
 // five. Without that, every floor general in the league would be the best
 // player alive.
 const TAKEOVER_EFFECTS = {
-  heatCheck:       { shotShare: 2.4, shotCeiling: 0.80, zoneBias: { three: 2.2 }, makeThree: 0.13 },
-  silky:           { shotShare: 2.4, shotCeiling: 0.80, zoneBias: { mid: 2.6 }, makeMid: 0.14 },
-  paintBeast:      { shotShare: 2.3, shotCeiling: 0.80, zoneBias: { inside: 2.0 }, makeInside: 0.12, foulRate: 1.3 },
-  downhill:        { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 1.9 }, makeInside: 0.10, turnover: -0.05 },
-  aboveTheRim:     { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 2.1 }, makeInside: 0.12, reboundShare: 1.6, block: 0.05 },
-  andOne:          { shotShare: 2.2, shotCeiling: 0.78, zoneBias: { inside: 2.0 }, makeInside: 0.08, foulRate: 2.0, makeFt: 0.08 },
-  glassWrecker:    { shotShare: 1.5, shotCeiling: 0.65, zoneBias: { inside: 1.6 }, makeInside: 0.08, reboundShare: 3.0 },
-  coldBlooded:     { shotShare: 2.5, shotCeiling: 0.82, makeThree: 0.12, makeMid: 0.12, makeInside: 0.12, makeFt: 0.06 },
+  heatCheck:       { shotShare: 1.35, shotCeiling: 0.55, zoneBias: { three: 2.2 }, makeThree: 0.19 },
+  silky:           { shotShare: 1.35, shotCeiling: 0.55, zoneBias: { mid: 2.6 }, makeMid: 0.20 },
+  paintBeast:      { shotShare: 1.35, shotCeiling: 0.55, zoneBias: { inside: 2.0 }, makeInside: 0.18, foulRate: 1.3 },
+  downhill:        { shotShare: 1.30, shotCeiling: 0.54, zoneBias: { inside: 1.9 }, makeInside: 0.16, turnover: -0.05 },
+  aboveTheRim:     { shotShare: 1.30, shotCeiling: 0.54, zoneBias: { inside: 2.1 }, makeInside: 0.18, reboundShare: 1.6, block: 0.05 },
+  andOne:          { shotShare: 1.30, shotCeiling: 0.54, zoneBias: { inside: 2.0 }, makeInside: 0.13, foulRate: 2.2, makeFt: 0.08 },
+  glassWrecker:    { shotShare: 1.20, shotCeiling: 0.53, zoneBias: { inside: 1.6 }, makeInside: 0.13, reboundShare: 3.0 },
+  coldBlooded:     { shotShare: 1.40, shotCeiling: 0.56, makeThree: 0.18, makeMid: 0.18, makeInside: 0.18, makeFt: 0.06 },
   clamps:          { oppTurnover: 0.10 },
   motorNeverStops: { energyDrain: 0.15, matchupDrain: 1.9 },
   floorGeneral:    { teamMake: 0.045, teamTurnover: -0.02 },
@@ -468,6 +522,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CHARGE_AFFINITY: CHARGE_AFFINITY,
     CHARGE_RATE: CHARGE_RATE,
     hasUltimate: hasUltimate,
+    setLeagueGate: setLeagueGate,
+    currentGate: currentGate,
     ultimateFor: ultimateFor,
     badgeBoostFor: badgeBoostFor,
     percentileIn: percentileIn,
