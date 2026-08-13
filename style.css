@@ -846,6 +846,73 @@ table { border-collapse: collapse; width: 100%; }
 .badge-ref-rarity-none { color: var(--loss); font-weight: 600; }
 .badge-ref-examples { font-size: .68rem; color: var(--text-mute); opacity: .8; }
 
+/* ---------- Ultimate reference (ui/ultimates.js) ---------- */
+/* This page shipped with NO rules at all. It was written as a copy of the badge
+   reference above — same structure, same class-name scheme (badge-ref-foot ->
+   ult-ref-foot) — and the markup half was carried across while this half was
+   not. Every class below resolved to nothing, so the twelve ultimates rendered
+   as one unbroken column of default-styled text and the two spans in the footer
+   sat flush against each other: "1 holderStephen Curry (88)".
+   Nothing caught it because every check asked whether the content was correct,
+   and it always was. See ui-smoke.js's opening note — the same lesson the box
+   score taught, which is that markup existing is not the feature working. */
+.ult-ref-row {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+/* Offence and defence read apart at a glance, the same way the badge cards
+   colour their left edge by category. */
+.ult-ref-row.ult-ref-offense { border-left-color: var(--gold); }
+.ult-ref-row.ult-ref-defense { border-left-color: var(--info); }
+
+.ult-ref-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ult-ref-head strong { font-weight: 700; font-size: .92rem; color: var(--text); }
+.ult-ref-desc { font-size: .82rem; color: var(--text-dim); line-height: 1.45; }
+
+.ult-ref-effects { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.ult-ref-effects li { font-size: .78rem; color: var(--text-mute); }
+
+/* Column, not row: the holder count and the names are two facts about the same
+   thing and were running together on one line with no separator. */
+.ult-ref-foot {
+  margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ult-ref-rarity { font-size: .72rem; color: var(--text-dim); font-weight: 600; }
+.ult-ref-rarity-none { color: var(--loss); }
+.ult-ref-examples { font-size: .68rem; color: var(--text-mute); opacity: .8; }
+.ult-ref-fired {
+  font-size: .68rem; color: var(--text-mute);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+
+/* The other two places the feature reaches the screen, and they were unstyled
+   for the same reason and in the same commit — the profile panel
+   (ui/playerProfile.js) and the box-score summary (ui/schedule.js). */
+.ult-profile-name { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ult-profile-name strong { font-size: .95rem; color: var(--text); }
+.ult-profile-stats {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  padding-top: 8px; margin-top: 8px; border-top: 1px solid var(--line);
+  font-size: .78rem; color: var(--text-mute);
+}
+.ult-profile-stats strong { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.takeover-summary {
+  margin-top: 12px; padding: 10px 12px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--gold); border-radius: 8px;
+}
+.takeover-summary h4 {
+  margin: 0 0 6px; font-size: .72rem; color: var(--text-mute);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.takeover-summary ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.takeover-summary li { font-size: .8rem; color: var(--text-dim); }
+.takeover-summary li strong { color: var(--text); }
+
 /* ---------- Secret badges ---------- */
 /* Deliberately louder than every other tier. These are meant to be roughly one
    per seven teams league-wide, and the first time one appears on a roster the

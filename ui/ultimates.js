@@ -75,9 +75,13 @@ function ultimateHoldersHtml(entry) {
   const names = entry.examples
     .map(function (e) { return escapeHtml(e.name) + ' (' + e.overall + ')'; })
     .join(', ');
+  // Only the first three are collected, so "5 holders" over three names reads
+  // as a complete list that is missing two. Say what is not shown.
+  const hidden = entry.total - entry.examples.length;
   return '<span class="ult-ref-rarity">' + entry.total +
     (entry.total === 1 ? ' holder' : ' holders') + '</span>' +
-    '<span class="ult-ref-examples">' + names + '</span>';
+    '<span class="ult-ref-examples">' + names +
+    (hidden > 0 ? ' and ' + hidden + ' more' : '') + '</span>';
 }
 
 function renderUltimatesReference(container) {
@@ -96,7 +100,8 @@ function renderUltimatesReference(container) {
     html += '<div class="panel"><h3>' + (kind === 'solo' ? 'Solo' : 'Team') + '</h3>' +
       '<p class="kpi-sub">' + escapeHtml(ULTIMATE_KIND_BLURB[kind]) + '</p>';
     group.forEach(function (u) {
-      html += '<div class="ult-ref-row">' +
+      html += '<div class="ult-ref-row ' +
+        (u.side === 'defense' ? 'ult-ref-defense' : 'ult-ref-offense') + '">' +
         '<div class="ult-ref-head"><strong>' + escapeHtml(u.name) + '</strong>' +
         '<span class="pill pill-mute">' + (u.side === 'defense' ? 'Defensive' : 'Offensive') + '</span></div>' +
         '<div class="ult-ref-desc">' + escapeHtml(ULTIMATE_DESCRIPTIONS[u.key]) + '</div>' +

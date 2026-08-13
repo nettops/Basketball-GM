@@ -178,10 +178,64 @@ function checkIndexHtmlLoadsEveryUiFile() {
   console.log('checkIndexHtmlLoadsEveryUiFile: OK (' + uiFiles.length + ' files)');
 }
 
+// A view that emits a class the stylesheet has no rule for renders as
+// unstyled default text, and every other check still passes: the markup is
+// there, the content is right, the view is reachable, nothing throws.
+//
+// The whole Ultimates feature shipped that way. All three of its surfaces —
+// the reference page, the profile panel and the box-score summary — were
+// written by copying ui/badges.js, class-name scheme and all (badge-ref-foot
+// became ult-ref-foot), and the stylesheet half was never carried across. The
+// reference page rendered twelve ultimates as one unbroken column of default
+// text with "1 holder" and "Stephen Curry (88)" run together, and the Node
+// suite and the 182-check browser smoke suite were both entirely green.
+//
+// Only literal class attributes are checked. A class assembled by string
+// concatenation has no statically knowable value, and guessing at one would
+// trade a real check for a noisy one.
+//
+// UNSTYLED_BY_DESIGN is for classes that exist only as a JS selector hook.
+// Adding to it is a claim that nothing should style the class — not a way to
+// silence this check.
+const UNSTYLED_BY_DESIGN = [
+  'btn', 'btn-secondary', 'form-group', 'traitCheckbox',
+  'pixel-replay-btn', 'schedule-watch-btn', 'trade-team-panel'
+];
+
+function checkEveryLiteralClassIsStyled() {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'style.css'), 'utf8');
+  const styled = {};
+  let m;
+  const selector = /\.([a-zA-Z][\w-]*)/g;
+  while ((m = selector.exec(css)) !== null) styled[m[1]] = true;
+
+  const orphans = [];
+  uiFiles.forEach(function (f) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'ui', f), 'utf8');
+    const attr = /class="([^"]*)"/g;
+    let a;
+    while ((a = attr.exec(src)) !== null) {
+      if (/['+$]/.test(a[1])) continue;   // spliced at runtime; not knowable here
+      a[1].split(/\s+/).filter(Boolean).forEach(function (cls) {
+        if (styled[cls] || UNSTYLED_BY_DESIGN.indexOf(cls) !== -1) return;
+        const where = 'ui/' + f + ' .' + cls;
+        if (orphans.indexOf(where) === -1) orphans.push(where);
+      });
+    }
+  });
+  assert.deepStrictEqual(orphans, [],
+    'these classes are emitted but style.css has no rule for them, so they ' +
+    'render as unstyled text: ' + orphans.join(', '));
+  console.log('checkEveryLiteralClassIsStyled: OK (' +
+    Object.keys(styled).length + ' styled classes, ' +
+    UNSTYLED_BY_DESIGN.length + ' deliberately unstyled)');
+}
+
 checkNoEscapeHtmlCorruption();
 checkUserTextIsEscapedInMarkup();
 checkNoInterpolatedInlineHandlers();
 checkEveryNavItemHasARenderer();
 checkIndexHtmlLoadsEveryUiFile();
+checkEveryLiteralClassIsStyled();
 
 console.log('All UI safety validations passed');
