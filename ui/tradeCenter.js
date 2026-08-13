@@ -152,7 +152,11 @@ function renderTradeCenter(container, userTeamId) {
         .filter(function (pa) { return pa.toTeamId === teamId; })
         .reduce(function (s, pa) { const pick = findPick(pa.fromTeamId, pa.round); return s + (pick ? estimateFuturePickValue(pa.round, getTeamById(pick.originalTeamId)) : 0); }, 0);
 
-      html += '<div class="trade-team-panel panel" data-team-id="' + teamId + '">';
+      // Was `class="trade-team-panel panel" data-team-id=...`. Both the extra
+      // class and the attribute were written and never read anywhere in the
+      // repo — no rule styled the class, no selector looked either up. `panel`
+      // is what actually draws this.
+      html += '<div class="panel">';
       html += '<div class="panel-header">' + teamLogoImgHtml(teamId, 20) + ' ' + escapeHtml(team.name) +
         (teamId === userTeamId ? ' <span class="pill pill-mute">You</span>' : '') + '</div>';
       html += '<div class="balance">' +

@@ -22,7 +22,7 @@ function renderAllStarScene(context) {
       <p>You've been selected as an All-Star!</p>
       <p>Your career just reached a new level.</p>
       <p style="margin-top: 30px;">
-        <button class="btn btn-primary" onclick="dismissNarrativeScene()">Continue</button>
+        <button class="btn-primary" onclick="dismissNarrativeScene()">Continue</button>
       </p>
     </div>
   `;
@@ -36,7 +36,7 @@ function renderPlayoffScene(context) {
       <p style="font-size: 18px;">Your team faces ${escapeHtml(opponent)} in ${escapeHtml(round)}.</p>
       <p style="margin: 20px 0;">This is your chance to prove yourself on the biggest stage.</p>
       <p style="margin-top: 30px;">
-        <button class="btn btn-primary" onclick="dismissNarrativeScene()">Continue</button>
+        <button class="btn-primary" onclick="dismissNarrativeScene()">Continue</button>
       </p>
     </div>
   `;
@@ -61,7 +61,7 @@ function renderRetirementScene(context) {
       ${hallOfFameEligible ? '<p style="font-size: 20px; color: #FFD700; margin-top: 20px;">Hall of Fame Eligible</p>' : ''}
 
       <p style="margin-top: 40px;">
-        <button class="btn btn-primary" onclick="renderView('legacy')">View Legacy & Start GM Career</button>
+        <button class="btn-primary" onclick="renderView('legacy')">View Legacy & Start GM Career</button>
       </p>
     </div>
   `;

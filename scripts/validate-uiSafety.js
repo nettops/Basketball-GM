@@ -196,10 +196,26 @@ function checkIndexHtmlLoadsEveryUiFile() {
 //
 // UNSTYLED_BY_DESIGN is for classes that exist only as a JS selector hook.
 // Adding to it is a claim that nothing should style the class — not a way to
-// silence this check.
+// silence this check, which is why each entry names the querySelector that
+// reads it. The list started at seven; the other four were real:
+//
+//   btn             vestigial base class, always paired with btn-primary or
+//                   btn-ghost and styling nothing. Removed from 13 elements.
+//   btn-secondary   a fourth button variant that was never defined, so three
+//                   real buttons fell back to the plain default. Mapped to the
+//                   variants that do exist — btn-ghost for the two All-Star
+//                   contest buttons, btn-danger for Fire Coach, which is what
+//                   Waive and Delete Player already use.
+//   form-group      the player-creation form had no rules at all. Career mode
+//                   is parked so nobody could see it, which is exactly why it
+//                   would have been found the hard way later.
+//   trade-team-panel  written and never read: no rule styled it and no
+//                   selector looked it up, along with a data-team-id on the
+//                   same element that nothing reads either. Both deleted.
 const UNSTYLED_BY_DESIGN = [
-  'btn', 'btn-secondary', 'form-group', 'traitCheckbox',
-  'pixel-replay-btn', 'schedule-watch-btn', 'trade-team-panel'
+  'traitCheckbox',      // ui/playerCreation.js  querySelectorAll('.traitCheckbox')
+  'pixel-replay-btn',   // ui/pixelGameView.js   querySelectorAll('.pixel-replay-btn')
+  'schedule-watch-btn'  // ui/schedule.js        querySelectorAll('.schedule-watch-btn')
 ];
 
 function checkEveryLiteralClassIsStyled() {
@@ -211,7 +227,16 @@ function checkEveryLiteralClassIsStyled() {
 
   const orphans = [];
   uiFiles.forEach(function (f) {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'ui', f), 'utf8');
+    // Comments are stripped first. A comment explaining a class that was
+    // REMOVED still contains the text class="..." and the first version of this
+    // check happily reported it as live markup. Block comments go entirely;
+    // for line comments only whole-line ones are dropped, so a trailing // in a
+    // string (a URL, say) cannot truncate a line that also emits markup.
+    const src = fs.readFileSync(path.join(__dirname, '..', 'ui', f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split(/\r?\n/)
+      .filter(function (line) { return !/^\s*\/\//.test(line); })
+      .join('\n');
     const attr = /class="([^"]*)"/g;
     let a;
     while ((a = attr.exec(src)) !== null) {

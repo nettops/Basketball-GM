@@ -63,7 +63,7 @@ function renderLegacyView(container) {
     <div class="panel">
       <p style="text-align: center; font-size: 18px;">Your playing career has concluded.</p>
       <p style="text-align: center; margin-top: 20px;">
-        <button class="btn btn-primary" onclick="startGMModeFromLegacy()">Continue as GM</button>
+        <button class="btn-primary" onclick="startGMModeFromLegacy()">Continue as GM</button>
       </p>
     </div>
   `;

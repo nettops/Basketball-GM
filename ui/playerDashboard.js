@@ -66,10 +66,10 @@ function renderPlayerDashboard(container, playerId) {
       <div class="panel-header">Offseason Decisions</div>
       <p><strong>Training Focus</strong> (applied at the next offseason progression):</p>
       <div style="margin: 10px 0;">
-        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_shooting')">Focus Shooting</button>
-        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_defense')">Focus Defense</button>
-        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_athleticism')">Focus Athleticism</button>
-        <button class="btn btn-ghost" onclick="recordTrainingDecision('focus_playmaking')">Focus Playmaking</button>
+        <button class="btn-ghost" onclick="recordTrainingDecision('focus_shooting')">Focus Shooting</button>
+        <button class="btn-ghost" onclick="recordTrainingDecision('focus_defense')">Focus Defense</button>
+        <button class="btn-ghost" onclick="recordTrainingDecision('focus_athleticism')">Focus Athleticism</button>
+        <button class="btn-ghost" onclick="recordTrainingDecision('focus_playmaking')">Focus Playmaking</button>
       </div>
       ${pendingTrainingHtml(player)}
     </div>
@@ -80,9 +80,9 @@ function renderPlayerDashboard(container, playerId) {
 
     <div class="panel">
       <div class="panel-header">Quick Actions</div>
-      <button class="btn btn-primary" onclick="simulateSeason()">Simulate to End of Season</button>
-      <button class="btn btn-ghost" onclick="renderView('dashboard')">Team Dashboard</button>
-      ${player.age >= 34 ? '<button class="btn btn-ghost" onclick="retireCareerPlayer()">Retire</button>' : ''}
+      <button class="btn-primary" onclick="simulateSeason()">Simulate to End of Season</button>
+      <button class="btn-ghost" onclick="renderView('dashboard')">Team Dashboard</button>
+      ${player.age >= 34 ? '<button class="btn-ghost" onclick="retireCareerPlayer()">Retire</button>' : ''}
     </div>
   `;
 

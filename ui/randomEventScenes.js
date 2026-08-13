@@ -11,7 +11,7 @@ function renderRandomEventScene(container, event) {
   // the handler outright, and the index is the stable key anyway.
   const decisionButtons = event.decisions.map((dec, idx) => `
     <button
-      class="btn btn-primary"
+      class="btn-primary"
       data-decision-index="${idx}"
       style="display: block; width: 100%; margin: 10px 0; text-align: left; padding: 15px;"
     >

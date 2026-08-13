@@ -38,7 +38,11 @@ function renderCoaching(container, userTeamId) {
 
     html += '<div class="panel"><div class="panel-header">Head Coach</div><div class="panel-body">' +
       coachCardHtml(team.coach) +
-      '<div class="toolbar" style="margin-top:10px;"><button id="coaching-fire-btn" class="btn-secondary">Fire Coach</button></div>' +
+      // btn-danger, not the btn-secondary that was here: that class has no rule
+      // in style.css and never had one, so this button silently rendered as a
+      // plain default button. Firing a coach is destructive, and btn-danger is
+      // what Waive, Delete Player and Rewind already use.
+      '<div class="toolbar" style="margin-top:10px;"><button id="coaching-fire-btn" class="btn-danger">Fire Coach</button></div>' +
     '</div></div>';
 
     if (candidates) {

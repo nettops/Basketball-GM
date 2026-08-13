@@ -64,12 +64,12 @@ function renderAllStarWeekend(container) {
 
     html += '<div class="panel"><div class="panel-header">Three-Point Contest</div><div class="panel-body">' +
       contestResultHtml(state.threePointResult, 'Best Round') +
-      '<div class="toolbar" style="margin-top:10px;"><button id="asw-three-btn" class="btn-secondary">' + (state.threePointResult ? 'Re-run Contest' : 'Run Contest') + '</button></div>' +
+      '<div class="toolbar" style="margin-top:10px;"><button id="asw-three-btn" class="btn-ghost">' + (state.threePointResult ? 'Re-run Contest' : 'Run Contest') + '</button></div>' +
       '</div></div>';
 
     html += '<div class="panel"><div class="panel-header">Dunk Contest</div><div class="panel-body">' +
       contestResultHtml(state.dunkResult, 'Best Dunk') +
-      '<div class="toolbar" style="margin-top:10px;"><button id="asw-dunk-btn" class="btn-secondary">' + (state.dunkResult ? 'Re-run Contest' : 'Run Contest') + '</button></div>' +
+      '<div class="toolbar" style="margin-top:10px;"><button id="asw-dunk-btn" class="btn-ghost">' + (state.dunkResult ? 'Re-run Contest' : 'Run Contest') + '</button></div>' +
       '</div></div>';
 
     container.innerHTML = html;
