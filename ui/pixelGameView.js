@@ -21,6 +21,14 @@ let _pendingLiveRunOut = null;
 // Where the user was heading when the leave-confirm interrupted them.
 let _pendingLeaveTarget = null;
 
+// The current coach's shutdown (ui/pixelCoach.js onGameOver), registered
+// module-side for the same reason as _pendingLiveRunOut: the coach holds a
+// document-level keydown listener, and only the watched-to-the-buzzer path
+// went through showFinal() — leaving a live game early (Exit, sidebar, any
+// renderView) leaked one keydown handler per abandoned game. It is
+// idempotent, so the showFinal path calling it first costs nothing.
+let _coachShutdown = null;
+
 // Gate for every exit route. Returns true if leaving may proceed right now,
 // false if the confirmation has been raised instead and the caller should
 // stand down — the overlay's own buttons resume or cancel the navigation.
@@ -104,6 +112,7 @@ function stopPixelPlayback() {
   // Module-level state in ui/pixelImpact.js, so a highlight still holding when
   // the view closes would zoom the first frame of the NEXT watched game.
   resetImpact();
+  if (_coachShutdown) { const shutdown = _coachShutdown; _coachShutdown = null; shutdown(); }
 }
 
 function pixelLerp(a, b, f) { return a + (b - a) * f; }
@@ -291,6 +300,9 @@ function renderPixelGame(container) {
     isFinished: function () { return liveFinished; },
     commentaryEl: document.getElementById('pixel-commentary')
   });
+  // Every exit route funnels through stopPixelPlayback, which runs this —
+  // see the _coachShutdown comment at the top of the file.
+  _coachShutdown = coach.onGameOver;
 
   function currentFrame() {
     while (kfIndex < kfs.length - 1 && kfs[kfIndex + 1].t <= playbackMs) kfIndex++;
