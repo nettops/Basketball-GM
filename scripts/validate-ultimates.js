@@ -346,6 +346,23 @@ const LEAGUE_SCORING_TOLERANCE = 1.5;
 // a superstar worth ~10 wins alone but ~6 beside another star, champions
 // ranking 2nd-3rd, league-best records at 68-76 wins — is measured against
 // league scoring, so holding it still is what protects all of them.
+//
+// It needed NO rebalancing, and the reason is structural rather than lucky:
+// POSSESSIONS_PER_TEAM is fixed at 90, so a takeover cannot manufacture extra
+// shots. It reassigns shots the team was going to take anyway from team-mates
+// to the holder. The holder gains 13 points a takeover, but almost all of those
+// are points a team-mate would otherwise have scored; the team's net gain is
+// only the holder's efficiency edge over the man he displaced, which is small.
+//
+// Measured, five seeds before against four after:
+//   before  134.45 134.78 134.99 135.01 135.09   mean 134.86
+//   after   134.53 135.10 135.33 135.52          mean 135.12
+// A +0.26 difference against a 0.64-wide baseline spread.
+//
+// This is also the reason the constraint is worth asserting rather than
+// assuming: it holds because possessions are capped. Any future change that
+// lets a takeover extend a possession, draw an extra shot, or add a trip down
+// the floor breaks it, and this is the test that would say so.
 function checkLeagueScoringHeldFlat() {
   const s = simulatedSeason();
   const avg = s.teamPts / s.teamGames;
