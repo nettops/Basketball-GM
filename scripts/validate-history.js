@@ -310,4 +310,47 @@ function checkRetiredNumbersExcludedFromAssignment() {
 
 checkRetiredNumbersExcludedFromAssignment();
 
+// Takeovers must be stored in their own right. save.js prunes box scores to
+// the user's own games, so a takeover that lived only in one would vanish for
+// the other 29 teams the moment the save was written.
+function checkTakeoversAreFiledAndStamped() {
+  const history = require(path.join(__dirname, '..', 'history.js'));
+  history.LEAGUE_HISTORY.takeovers.length = 0;
+  const stored = history.recordTakeovers([
+    { playerId: 'p1', playerName: 'Star One', teamId: 'BOS', ultimateKey: 'heatCheck', points: 14, period: 3 }
+  ], { leagueYear: 2026, day: 40 });
+  assert.strictEqual(history.LEAGUE_HISTORY.takeovers.length, 1);
+  const row = history.LEAGUE_HISTORY.takeovers[0];
+  assert.strictEqual(row.leagueYear, 2026, 'the season must be stamped on the row');
+  assert.strictEqual(row.day, 40, 'and the day');
+  assert.strictEqual(row.playerName, 'Star One',
+    'the NAME is stored, not just the id — a takeover outlives the player');
+  assert.strictEqual(row.ultimateKey, 'heatCheck');
+  assert.strictEqual(stored.length, 1, 'and the stored rows are returned');
+  assert.deepStrictEqual(history.recordTakeovers([], { leagueYear: 2026, day: 1 }), [],
+    'an empty list files nothing rather than throwing');
+  assert.deepStrictEqual(history.recordTakeovers(null, null), [],
+    'and a missing context files nothing rather than throwing');
+  history.LEAGUE_HISTORY.takeovers.length = 0;
+  console.log('checkTakeoversAreFiledAndStamped: OK');
+}
+checkTakeoversAreFiledAndStamped();
+
+// The same failure feats had: a call site that passes no context files rows
+// with no season on them, and they are unqueryable forever after.
+function checkTakeoverCallSitePassesContext() {
+  const fs = require('fs');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'league.js'), 'utf8');
+  const re = /recordTakeovers\(([\s\S]*?)\);/g;
+  let m, sites = 0;
+  while ((m = re.exec(src)) !== null) {
+    sites += 1;
+    assert.ok(/leagueYear/.test(m[1]), 'a recordTakeovers call site passes no leagueYear');
+    assert.ok(/day/.test(m[1]), 'a recordTakeovers call site passes no day');
+  }
+  assert.ok(sites > 0, 'recordTakeovers is never called — takeovers are not filed at all');
+  console.log('checkTakeoverCallSitePassesContext: OK (' + sites + ' site)');
+}
+checkTakeoverCallSitePassesContext();
+
 console.log('All history validations passed');

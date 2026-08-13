@@ -67,6 +67,20 @@ function recordGameResult(game, context) {
     homeTeam.record.losses += 1;
   }
   recordGameFeats(game, context);
+  recordGameTakeovers(game, context);
+}
+
+// Takeovers are produced by gameSim.js and carried on the finished game, so
+// unlike feats there is nothing to detect here — only to file. Filed from the
+// same one function every finished game passes through, for the same reason:
+// there are three call sites (regular season, playoff series, play-in) and a
+// rule written inside one of them binds only that one.
+function recordGameTakeovers(game, context) {
+  if (!game.takeovers || !game.takeovers.length || !context) return;
+  _historyDeps().history.recordTakeovers(game.takeovers, {
+    leagueYear: context.leagueYear,
+    day: context.day
+  });
 }
 
 // Every finished game in the league passes through here — regular season,
@@ -173,6 +187,11 @@ function applyGameResult(game, result, deps, season, dayIndex, leagueYear, playi
   // simulateGame result has no playByPlay field, so this is undefined —
   // and stays undefined — for games simmed under that engine).
   game.playByPlay = result.playByPlay || null;
+  // Same story as playByPlay: only the possession engine produces takeovers, so
+  // this is an empty list under the box-score engine. It has to be copied onto
+  // the game BEFORE recordGameResult, which is what files it into league
+  // history — the result object does not survive this function.
+  game.takeovers = result.takeovers || [];
 
   recordGameResult(game, { leagueYear: leagueYear, day: dayIndex });
 

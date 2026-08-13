@@ -90,7 +90,11 @@ const LEAGUE_HISTORY = {
   feats: [],
   // One row per team per completed season. Season snapshots are capped and
   // roll off the front, so they cannot back all-time team records.
-  teamSeasons: []
+  teamSeasons: [],
+  // Every completed takeover, league-wide, for the same reason feats are here:
+  // box scores are pruned to the user's own games at save time, so a takeover
+  // by another team is unrecoverable once written to disk.
+  takeovers: []
 };
 
 const ZERO_AVERAGES = { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0, fgPct: 0, tpPct: 0, ftPct: 0, mpg: 0 };
@@ -454,6 +458,25 @@ function recordFeats(featRecords) {
   return featRecords;
 }
 
+// Appends completed takeovers, stamped with the season and day they happened.
+//
+// The player's NAME is stored beside his id deliberately. A takeover outlives
+// the player: a row carrying only an id becomes unreadable the season he
+// retires, which is exactly the failure the retiree archive already taught us
+// — anything not explicitly copied is silently lost.
+function recordTakeovers(rows, context) {
+  if (!rows || !rows.length || !context) return [];
+  const stored = rows.map(function (r) {
+    return {
+      leagueYear: context.leagueYear, day: context.day,
+      playerId: r.playerId, playerName: r.playerName, teamId: r.teamId,
+      ultimateKey: r.ultimateKey, points: r.points, period: r.period
+    };
+  });
+  stored.forEach(function (r) { LEAGUE_HISTORY.takeovers.push(r); });
+  return stored;
+}
+
 function archiveTrade(proposal, leagueYear) {
   const record = {
     leagueYear: leagueYear,
@@ -648,6 +671,7 @@ if (typeof module !== 'undefined' && module.exports) {
     computeBestRecordByConference: computeBestRecordByConference,
     archiveTrade: archiveTrade,
     recordFeats: recordFeats,
+    recordTakeovers: recordTakeovers,
     archiveDraftClass: archiveDraftClass,
     finalizeSeasonHistory: finalizeSeasonHistory,
     careerLeaders: careerLeaders,
