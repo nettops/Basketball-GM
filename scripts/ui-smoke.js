@@ -1111,6 +1111,68 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The command center dashboard (2026-08-13): every number on the hero and
+  // form strip is re-derived here from the same raw state the view reads, so
+  // a drifted render (stale record, wrong seed, invented results) fails even
+  // though the page "looks fine".
+  function checkDashboard() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+    renderView('dashboard');
+    const vc = document.getElementById('view-content');
+    const team = getTeamById(GameState.userTeamId);
+    const season = GameState.season;
+
+    const rec = vc.querySelector('.dash-hero-rec');
+    results.push(ok('dashboard:hero-record',
+      !!rec && rec.textContent.indexOf(team.record.wins + '-' + team.record.losses) === 0,
+      rec ? rec.textContent.slice(0, 24) : 'no hero'));
+
+    // Recompute the seed independently from the same source the view uses.
+    const seeds = getPlayoffSeeds(team.conference, 15);
+    const seedIdx = seeds.findIndex(function (t) { return t.id === team.id; });
+    results.push(ok('dashboard:hero-seed',
+      !!rec && rec.textContent.indexOf((seedIdx + 1) + '') !== -1 &&
+      rec.textContent.indexOf(team.conference) !== -1,
+      'expected seed ' + (seedIdx + 1) + ' ' + team.conference));
+
+    // The form strip must be the schedule's truth: same count, same W/L
+    // letters, oldest to newest.
+    const played = season.games
+      .filter(function (g) { return g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id); })
+      .sort(function (a, b) { return (a.day || 0) - (b.day || 0); })
+      .slice(-5);
+    const expectSeq = played.map(function (g) {
+      const home = g.homeTeamId === team.id;
+      return (home ? g.homeScore > g.awayScore : g.awayScore > g.homeScore) ? 'W' : 'L';
+    }).join('');
+    const gotSeq = Array.prototype.map.call(
+      vc.querySelectorAll('.form-bug.win .res, .form-bug.loss .res'),
+      function (r) { return r.textContent.trim(); }).join('');
+    results.push(ok('dashboard:form-strip-truth', gotSeq === expectSeq,
+      'strip ' + gotSeq + ' vs schedule ' + expectSeq));
+
+    const userRows = vc.querySelectorAll('tr.row-user');
+    const rankCell = userRows.length === 1 ? userRows[0].querySelector('td') : null;
+    results.push(ok('dashboard:race-user-row',
+      userRows.length === 1 && !!rankCell && rankCell.textContent.trim() === String(seedIdx + 1),
+      userRows.length + ' user rows, rank ' + (rankCell ? rankCell.textContent.trim() : '?') +
+      ' vs seed ' + (seedIdx + 1)));
+
+    // The hero's Play button and the dock's Watch button must always agree
+    // about whether there is a game to play.
+    renderSimControls(document.getElementById('sim-controls'));
+    const play = vc.querySelector('#dash-play');
+    const watch = document.getElementById('sim-watch-game');
+    results.push(ok('dashboard:play-parity',
+      !!play && !!watch && play.disabled === watch.disabled,
+      'play ' + (play && play.disabled) + ' vs watch ' + (watch && watch.disabled)));
+
+    renderView(startView);
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     feats: checkFeats,
@@ -1127,6 +1189,7 @@ const UI_SMOKE = (function () {
     scroll: checkScrollOnNavigate,
     nav: checkNav,
     broadcast: checkBroadcastChrome,
+    dashboard: checkDashboard,
     dock: checkDock,
     badges: checkBadgeReference,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
