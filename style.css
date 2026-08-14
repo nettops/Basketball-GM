@@ -200,7 +200,11 @@ select { cursor: pointer; }
 .sidebar-brand span { color: var(--accent); }
 
 /* Eight rail icons, vertical stack. */
-#nav-bar { padding: 8px 0 16px; display: flex; flex-direction: column; gap: 2px; }
+/* flex:1 so the column fills the sidebar's full height — without it the rail is
+   only as tall as its icons and .rail-spacer has nothing to expand into, which
+   left the Main menu button floating directly under the last hub instead of
+   pinned to the bottom. */
+#nav-bar { padding: 8px 0 16px; display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
 .nav-item {
   display: block; width: 100%; text-align: left;
   padding: 7px 18px;
@@ -1288,3 +1292,30 @@ table { border-collapse: collapse; width: 100%; }
   color: var(--text-mute); }
 .lineup-note { color: var(--text-dim); font-size: 11px; }
 .lineup-toggle.is-on { background: var(--accent); color: #06101D; font-weight: 700; }
+
+/* ---- Main menu exit + quit confirm ---- */
+/* Pushes .rail-exit to the bottom of the icon rail. The sidebar is already a
+   flex column, so one auto-margin element takes up all the slack. */
+.rail-spacer { flex: 1 1 auto; min-height: 12px; }
+.rail-exit { color: var(--text-mute); }
+.rail-exit:hover:not(:disabled) { background: rgba(248, 81, 73, .12); color: var(--loss); }
+
+/* Modelled on .pixel-confirm (the live-game leave prompt) rather than reusing
+   it: that one is wired to the watch view's own state and renaming it would
+   touch a flow with its own validator. Same visual language, separate owner. */
+.quit-confirm {
+  position: fixed; inset: 0; z-index: 9500;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .62);
+}
+.quit-confirm-box {
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg); padding: 20px 22px; max-width: 430px;
+  box-shadow: 0 18px 48px -12px rgba(0, 0, 0, .8); text-align: center;
+}
+.quit-confirm-title { font-weight: 700; font-size: 1.05rem; margin-bottom: 8px; }
+.quit-confirm-text { font-size: .85rem; color: var(--text); margin-bottom: 10px; }
+.quit-confirm-note { font-size: .76rem; color: var(--text-mute); line-height: 1.55; margin-bottom: 16px; }
+.quit-confirm-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.quit-confirm-error { margin-top: 12px; font-size: .78rem; color: var(--loss); }
+.quit-confirm-error[hidden] { display: none; }

@@ -178,6 +178,31 @@ function renderNav(container, activeView, onNavigate, playMode, gameMode, hasLeg
     });
     container.appendChild(btn);
   });
+
+  // Way out of the career, pinned to the bottom of the rail (the spacer takes
+  // up the slack above it). Deliberately separated from the hub icons: it is
+  // not somewhere to navigate to, it ends the session — and it sits far from
+  // the icons the player uses constantly so it is hard to hit by accident.
+  //
+  // Calls the global directly rather than taking a seventh positional callback,
+  // the same way ui/saveLoad.js already calls renderView. requestReturnToMenu
+  // owns the confirm and the save offer; none of that belongs in here.
+  const spacer = document.createElement('div');
+  spacer.className = 'rail-spacer';
+  container.appendChild(spacer);
+
+  const exit = document.createElement('button');
+  exit.className = 'rail-item rail-exit';
+  exit.setAttribute('aria-label', 'Main menu');
+  exit.title = 'Main menu';
+  exit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>' +
+    '<polyline points="16 17 21 12 16 7"></polyline>' +
+    '<line x1="21" y1="12" x2="9" y2="12"></line></svg>' +
+    '<span class="rail-label">Main menu</span>';
+  exit.addEventListener('click', function () { requestReturnToMenu(false); });
+  container.appendChild(exit);
 }
 
 if (typeof module !== 'undefined' && module.exports) {

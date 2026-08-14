@@ -277,6 +277,168 @@ function switchPlayMode(newMode, teamId) {
   renderView(GameState.currentView);
 }
 
+// ---------------------------------------------------------------------------
+// Browser history
+//
+// The whole game is one page, so before this the Back button had nothing of its
+// own to go back to and simply left — taking an unsaved career with it. That is
+// the failure this exists to stop, and it is easy to hit: a thumb button on a
+// mouse, a trackpad swipe, or the muscle memory of every other site.
+//
+// One entry per SCREEN, never per render. Views redraw themselves in place all
+// the time — sorting a table, filtering a roster, ui/roster.js's draw() — and
+// an entry for each would bury the previous screen under a stack of identical
+// ones the player has to press Back through. renderView already distinguishes a
+// real screen change from a redraw for the scroll reset; this reuses that exact
+// test rather than inventing a second, disagreeing one.
+let _historyNavigating = false;
+
+function pushViewHistory(viewName) {
+  // Suppressed while REACTING to a popstate: the browser has already moved,
+  // and pushing there would add a forward entry on every Back press.
+  if (_historyNavigating) return;
+  if (typeof history === 'undefined' || !history.pushState) return;
+  history.pushState({ app: true, view: viewName }, '');
+}
+
+// Called when entering the app from the franchise screen. The initial view is
+// seeded into GameState BEFORE the first renderView so that render counts as a
+// redraw rather than a change and does not push a second, duplicate entry.
+function enterApp(initialView) {
+  document.getElementById('team-select-view').style.display = 'none';
+  document.getElementById('app-view').style.display = 'block';
+  GameState.currentView = initialView;
+  if (typeof history !== 'undefined' && history.pushState) {
+    history.pushState({ app: true, view: initialView }, '');
+  }
+}
+
+function handlePopState(e) {
+  const state = e.state;
+  const inApp = document.getElementById('app-view').style.display !== 'none';
+
+  // Popped past the first in-game entry: the player is backing out of the
+  // career itself. Route it through the same guarded exit as the sidebar item
+  // instead of letting a stray Back press bin an unsaved season.
+  if (!state || !state.app) {
+    if (inApp) requestReturnToMenu(true);
+    return;
+  }
+  if (!inApp) return;
+
+  // Already showing what this entry asks for. That happens on every resync
+  // below, where the point is to correct the history POSITION and nothing
+  // else. Returning here is not just an optimisation: re-rendering would
+  // rebuild the live watch view out from under a game in progress.
+  if (state.view === GameState.currentView) return;
+
+  _historyNavigating = true;
+  try {
+    const before = GameState.currentView;
+    renderView(state.view);
+    // renderView REFUSES to leave a live watched game — it shows its own
+    // confirm and returns without navigating. Back has already popped the
+    // entry by the time we find that out, so history would sit one step ahead
+    // of the screen from then on and every later Back would be off by one.
+    if (before !== state.view && GameState.currentView === before) {
+      resyncHistoryForward();
+    }
+  } finally {
+    _historyNavigating = false;
+  }
+}
+
+// Undo a Back that was refused, by stepping FORWARD onto the entry the player
+// came from rather than pushing a replacement for it.
+//
+// This distinction is the whole bug it fixes. pushState from anywhere that is
+// not the end of the stack silently discards every entry ahead of it, so
+// "putting the entry back" that way repaired the position by destroying the
+// future: cancel out of the quit prompt after backing up through four screens
+// and the Forward button went dead, with three real entries gone. The entry we
+// want is already sitting there — move to it, do not mint a new one.
+function resyncHistoryForward() {
+  if (typeof history === 'undefined' || !history.forward) return;
+  history.forward();
+}
+
+// ---------------------------------------------------------------------------
+// Leaving a career
+//
+// Quitting RELOADS the page rather than resetting GameState in place. The
+// league is mutated as a career runs — players age, contracts tick down,
+// ratings move, and all of it happens inside the PLAYERS_2026 array itself —
+// so simply re-showing the franchise screen would start the next career from a
+// half-aged league. Clearing it by hand means maintaining a list of every
+// stateful field forever, which is the same hand-written-list pattern that
+// already causes bugs elsewhere in this codebase (see save.js). A reload cannot
+// drift out of date.
+function careerProgressSummary() {
+  if (!GameState.season) return 'You have not started a season yet.';
+  const day = GameState.season.currentDay;
+  const year = GameState.leagueYear || 2026;
+  const parts = [];
+  parts.push(day >= 0 ? year + ' season, day ' + (day + 1) : year + ' preseason');
+  const team = GameState.userTeamId ? getTeamById(GameState.userTeamId) : null;
+  if (team && team.record) {
+    parts.push(escapeHtml(team.name) + ' ' + team.record.wins + '–' + team.record.losses);
+  }
+  return parts.join(' · ');
+}
+
+// fromHistory: the player pressed Back rather than clicking the sidebar item,
+// which means the browser has ALREADY popped the entry. Cancelling therefore
+// has to put it back, or the next Back would skip a screen.
+function requestReturnToMenu(fromHistory) {
+  if (document.getElementById('quit-confirm')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'quit-confirm';
+  overlay.className = 'quit-confirm';
+  overlay.innerHTML =
+    '<div class="quit-confirm-box">' +
+      '<div class="quit-confirm-title">Leave this career?</div>' +
+      '<div class="quit-confirm-text">' + careerProgressSummary() + '</div>' +
+      '<div class="quit-confirm-note">Progress is only saved automatically at the end of a season, ' +
+        'so anything since then is unsaved. Saving here overwrites the Autosave slot.</div>' +
+      '<div class="quit-confirm-actions">' +
+        '<button type="button" class="btn-primary" id="quit-save">Save &amp; quit</button>' +
+        '<button type="button" class="btn-danger" id="quit-go">Quit anyway</button>' +
+        '<button type="button" class="btn-ghost" id="quit-stay">Cancel</button>' +
+      '</div>' +
+      '<div class="quit-confirm-error" id="quit-error" hidden></div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  function close() { overlay.remove(); }
+
+  function stay() {
+    close();
+    // Same reasoning as resyncHistoryForward: the entry for the screen still on
+    // display is one step forward, not something to recreate. Pushing a
+    // replacement here is what used to throw away everything the player had
+    // backed through.
+    if (fromHistory) resyncHistoryForward();
+  }
+
+  document.getElementById('quit-stay').addEventListener('click', stay);
+  document.getElementById('quit-go').addEventListener('click', function () {
+    location.reload();
+  });
+  document.getElementById('quit-save').addEventListener('click', function () {
+    const result = saveToSlot('autosave', 'Autosave', GameState);
+    // Storage can be full. Quitting anyway would silently bin the career the
+    // player just asked to keep, so stay put and say so.
+    if (result && result.success === false) {
+      const err = document.getElementById('quit-error');
+      err.textContent = result.reason;
+      err.hidden = false;
+      return;
+    }
+    location.reload();
+  });
+}
+
 function spectateLeague() {
   GameState.playMode = 'spectator';
   Object.keys(GameState.automation).forEach(function (k) { GameState.automation[k] = true; });
@@ -286,8 +448,7 @@ function spectateLeague() {
   // doesn't threaten save/load's exact-resume guarantee.
   GameState.userTeamId = TEAMS[Math.floor(Math.random() * TEAMS.length)].id;
   initSeason();
-  document.getElementById('team-select-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
+  enterApp('dashboard');
   renderView('dashboard');
 }
 
@@ -621,7 +782,10 @@ function renderView(viewName) {
   // themselves in place for sorting and filtering (ui/roster.js's draw(), and
   // the Back to My Roster button, both land here with the same viewName), and
   // yanking the page to the top on every sort would be its own bug.
-  if (previousView !== viewName) container.scrollTop = 0;
+  if (previousView !== viewName) {
+    container.scrollTop = 0;
+    pushViewHistory(viewName);
+  }
   renderNav(document.getElementById('nav-bar'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderViewTabs(document.getElementById('view-tabs'), GameState.currentView, renderView, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy);
   renderTopBar(document.getElementById('app-topbar'));
@@ -680,8 +844,7 @@ function selectTeam(teamId, playMode) {
   const career = ensureGmCareer(GameState);
   if (typed) career.name = typed;
 
-  document.getElementById('team-select-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
+  enterApp('dashboard');
   renderView('dashboard');
 }
 
@@ -694,9 +857,12 @@ function loadGame(slotId) {
   // The loaded league is a different population than whatever snapshot the
   // ultimate gate last took — same reason init takes one for season one.
   setLeagueGate(PLAYERS_2026);
-  document.getElementById('team-select-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
-  renderView(GameState.currentView || 'dashboard');
+  // The loaded save carries the view it was saved on, so that is the entry the
+  // history stack opens with — Back from it means leaving, not a screen the
+  // player never actually visited.
+  const landing = GameState.currentView || 'dashboard';
+  enterApp(landing);
+  renderView(landing);
 }
 
 function initPlayerCareerMode() {
@@ -705,8 +871,9 @@ function initPlayerCareerMode() {
   GameState.gameMode = 'playerCareer';
   setLeagueYear(GameState.leagueYear || 2026);
 
-  document.getElementById('team-select-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
+  // Player Career is parked (see init below) — kept in step with the other
+  // three entry points so it is not the one that breaks when it is un-parked.
+  enterApp('playerCreation');
 
   const container = document.getElementById('view-content');
   renderPlayerCreation(container, function (player) {
@@ -816,6 +983,14 @@ function init() {
   // folded into the trait roll at the same time.
   renderTeamSelect(document.getElementById('team-select-view'), selectTeam, loadGame, spectateLeague, null);
   document.addEventListener('keydown', handleKeyboardShortcut);
+
+  // The franchise screen is the bottom of the stack. replaceState rather than
+  // pushState: this IS the entry the page loaded on, and pushing here would
+  // leave a dead duplicate behind that Back had to step through twice.
+  if (typeof history !== 'undefined' && history.replaceState) {
+    history.replaceState({ app: false }, '');
+  }
+  window.addEventListener('popstate', handlePopState);
 }
 
 document.addEventListener('DOMContentLoaded', init);
