@@ -21,14 +21,31 @@ function renderFreeAgency(container, userTeamId) {
     if (expiring.length) {
       html += '<div class="panel"><div class="panel-header">Your Expiring Contracts — ' +
         expiring.length + ' to decide</div>' +
-        '<div class="kpi-sub" style="padding:0 14px 8px;">First refusal is yours. Anyone you do not re-sign walks when the market opens.</div>' +
+        '<div class="kpi-sub" style="padding:0 14px 8px;">First refusal is yours. Anyone you do not re-sign walks when the market opens. ' +
+        'Averages are from the season just finished.</div>' +
         '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Age</th>' +
-        '<th class="num">OVR</th><th class="num">Asking</th><th class="num">Action</th></tr></thead><tbody>';
+        '<th class="num">OVR</th><th class="num">GP</th><th class="num">PPG</th><th class="num">RPG</th>' +
+        '<th class="num">APG</th><th class="num">Asking</th><th class="num">Action</th></tr></thead><tbody>';
       expiring.forEach(function (p) {
+        // seasonStats still holds the season that just ended: it is wiped by
+        // generateNewSeason (seasonTransition.js), which runs AFTER free
+        // agency in the rollover. Deciding whether to pay a player without
+        // seeing what he did last year was the gap here.
+        const avg = getPlayerAverages(p);
+        const gp = (p.seasonStats && p.seasonStats.gamesPlayed) || 0;
+        // An injured or newly arrived player can reach this table with no
+        // games at all. getPlayerAverages returns zeros for him, and printing
+        // "0.0" would read as "played and was useless" rather than "did not
+        // play" — a meaningful difference when you are deciding on a contract.
+        const stat = function (v) { return gp ? v.toFixed(1) : '&mdash;'; };
         html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
           '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
           '<td class="num">' + p.age + '</td>' +
           '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+          '<td class="num">' + (gp || '&mdash;') + '</td>' +
+          '<td class="num">' + stat(avg.ppg) + '</td>' +
+          '<td class="num">' + stat(avg.rpg) + '</td>' +
+          '<td class="num">' + stat(avg.apg) + '</td>' +
           '<td class="num">$' + p.resignRights.salary.toLocaleString() + ' &times; ' +
           p.resignRights.yearsRemaining + 'y</td>' +
           '<td class="actions"><button data-resign-id="' + p.id + '">Re-Sign</button> ' +
