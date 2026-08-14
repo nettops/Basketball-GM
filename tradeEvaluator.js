@@ -87,24 +87,50 @@ function directionMultiplier(player, timeline) {
 }
 
 
-// Live league-wide average overall, replacing the old hardcoded 75 — recomputed
-// per call (cheap: one pass over ~450 players) so needMultiplier reacts to
-// however the player pool has actually drifted, rather than assuming a fixed
-// baseline that could go stale as ratings shift over many simulated seasons.
+// Live league-wide average overall, replacing the old hardcoded 75 — so
+// needMultiplier reacts to however the player pool has actually drifted,
+// rather than assuming a fixed baseline that could go stale as ratings shift
+// over many simulated seasons.
+//
+// CACHED, invalidated explicitly. The original "recomputed per call (cheap:
+// one pass over ~450 players)" was written when rawOverall was a stored
+// field; it is a derived getter now (a 20-attribute dot product per read),
+// and trade evaluation reaches this through nested loops — measured at a
+// 3.4-second freeze on the weekly AI-to-AI pass, which is what made ultra
+// sim speed hitch once every simulated week. The average only actually
+// moves when the POOL moves: progression at rollover, draft/retirement
+// churn, a commissioner rating edit. Those sites call
+// invalidateLeagueAvgCache() below — the same snapshot-at-the-boundary
+// pattern setLeagueGate already uses. A missed site costs a slightly stale
+// 1.15/0.9 need threshold on AI trade appetite, not a correctness
+// invariant; overall itself stays derived and uncached.
+var _leagueAvgCache = null;
+function invalidateLeagueAvgCache() { _leagueAvgCache = null; }
 function currentLeagueAvgOverall() {
+  if (_leagueAvgCache !== null) return _leagueAvgCache;
   const allPlayers = _EVAL_DATA.players.PLAYERS_2026;
   // Scale-free: the fit centres the league on OVERALL_INTERCEPT by
   // construction, so this fallback cannot drift the way a literal 75 did.
   if (allPlayers.length === 0) return _EVAL_DATA.ratings.OVERALL_INTERCEPT;
-  return allPlayers.reduce(function (s, p) { return s + p.rawOverall; }, 0) / allPlayers.length;
+  _leagueAvgCache = allPlayers.reduce(function (s, p) { return s + p.rawOverall; }, 0) / allPlayers.length;
+  return _leagueAvgCache;
 }
 
-function needMultiplier(position, team) {
+// `leagueAvg` is optional: one-off callers (UI, validators) omit it and get
+// the live recompute; hot loops pass a value hoisted once per pass. The
+// "cheap: one pass over ~450 players" claim on currentLeagueAvgOverall was
+// written when rawOverall was a stored field — it is a derived GETTER now
+// (20-attribute dot product), and autoGM's weekly AI-to-AI pass called this
+// ~435 times per team, which multiplied out to ~5.6 million getter
+// evaluations and a measured 3.4-second freeze every simulated week at
+// ultra speed. Hoisting the average is what fixed that; do not remove the
+// parameter without re-measuring the weekly pass.
+function needMultiplier(position, team, leagueAvg) {
   const roster = _EVAL_DATA.league.getTeamRoster(team.id);
   const samePosition = roster.filter(function (p) { return p.position === position; });
   if (samePosition.length === 0) return 1.3;
   const avgAtPosition = samePosition.reduce(function (s, p) { return s + p.rawOverall; }, 0) / samePosition.length;
-  const leagueAvg = currentLeagueAvgOverall();
+  if (leagueAvg === undefined) leagueAvg = currentLeagueAvgOverall();
   if (avgAtPosition < leagueAvg - 10) return 1.15;
   if (avgAtPosition > leagueAvg + 10) return 0.9;
   return 1.0;
@@ -200,6 +226,7 @@ if (typeof module !== 'undefined' && module.exports) {
     basePlayerValue: basePlayerValue,
     directionMultiplier: directionMultiplier,
     currentLeagueAvgOverall: currentLeagueAvgOverall,
+    invalidateLeagueAvgCache: invalidateLeagueAvgCache,
     needMultiplier: needMultiplier,
     adjustedPlayerValue: adjustedPlayerValue,
     salaryMatchOk: salaryMatchOk,

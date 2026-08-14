@@ -96,6 +96,9 @@ class PlayerCareerController {
     ensureCareerData([player]);
 
     PLAYERS_2026.push(player);
+    // Browser-only file (reads page globals throughout); the guard keeps any
+    // future Node require from tripping on it.
+    if (typeof invalidateLeagueAvgCache === 'function') invalidateLeagueAvgCache();
 
     return player;
   }

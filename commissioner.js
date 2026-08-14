@@ -27,7 +27,7 @@ var _COMMISSIONER_DATA = (typeof require !== 'undefined')
       coaches: { ensureTeamCoach: ensureTeamCoach },
       rosterMoves: { getFreeAgents: getFreeAgents },
       trade: { validateRosterSizes: validateRosterSizes, executeTrade: executeTrade },
-      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue },
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, invalidateLeagueAvgCache: invalidateLeagueAvgCache },
       names: { takenNameSet: takenNameSet, pickUniqueName: pickUniqueName },
       history: { LEAGUE_HISTORY: LEAGUE_HISTORY }
     };
@@ -65,6 +65,8 @@ function editPlayerRatings(playerId, changes) {
       player.attributes[key] = commissionerClampRating(changes.attributes[key]);
     });
   }
+  // An edited sheet moves the trade evaluator's cached league average.
+  _COMMISSIONER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
   return { success: true };
 }
 
@@ -99,6 +101,7 @@ function deletePlayer(playerId) {
   const idx = _COMMISSIONER_DATA.players.PLAYERS_2026.findIndex(function (p) { return p.id === playerId; });
   if (idx === -1) return { success: false, reason: 'Player not found.' };
   _COMMISSIONER_DATA.players.PLAYERS_2026.splice(idx, 1);
+  _COMMISSIONER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
   return { success: true };
 }
 
@@ -155,6 +158,8 @@ function createPlayer(details) {
   }
 
   _COMMISSIONER_DATA.players.PLAYERS_2026.push(player);
+  // A new body in the pool moves the trade evaluator's cached league average.
+  _COMMISSIONER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
   return player;
 }
 
@@ -318,6 +323,8 @@ function generateFringePlayer(team, rng) {
   _COMMISSIONER_DATA.faces.ensurePlayerFace([player]);
   player.yearsPro = Math.max(1, player.age - 22);
   _COMMISSIONER_DATA.players.PLAYERS_2026.push(player);
+  // A new body in the pool moves the trade evaluator's cached league average.
+  _COMMISSIONER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
   return player;
 }
 

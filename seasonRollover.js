@@ -21,7 +21,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       teams: require('./teams.js'),
       traits: require('./traits.js'),
       players: require('./players-2026.js'),
-      ultimates: require('./ultimates.js')
+      ultimates: require('./ultimates.js'),
+      tradeEvaluator: require('./tradeEvaluator.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -35,7 +36,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       teams: { getTeamById: getTeamById },
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
-      ultimates: { setLeagueGate: setLeagueGate }
+      ultimates: { setLeagueGate: setLeagueGate },
+      tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache }
     };
 
 // Rolls a completed season into the next one: archives history, runs the
@@ -102,6 +104,13 @@ function runOffseasonRollover(gameState, deps) {
     return { careerSceneShown: false, stoppedAfterDraft: true };
   }
 
+  // BEFORE the first value consumer below, not only at the end of the
+  // rollover: progression, retirements and the draft just rewrote the pool,
+  // and free agency's signing decisions read the league-average rawOverall
+  // through the trade evaluator. Priming its cache from LAST season's pool
+  // here is what made the rollover golden diverge when the cache landed.
+  _ROLLOVER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
+
   // The user's own expiring players were deferred rather than decided for
   // them, so this path — which runs unattended — has to answer for them before
   // the market opens, or an automated save quietly loses every star it was
@@ -131,6 +140,9 @@ function runOffseasonRollover(gameState, deps) {
   // have gone, rookies have arrived and progression has been applied — the
   // population the coming season will actually be played with.
   _ROLLOVER_DATA.ultimates.setLeagueGate(_ROLLOVER_DATA.players.PLAYERS_2026);
+  // Same boundary, same reason: the trade evaluator's cached league-average
+  // rawOverall goes stale exactly when the population changes.
+  _ROLLOVER_DATA.tradeEvaluator.invalidateLeagueAvgCache();
 
   return { careerSceneShown: careerSceneShown, stoppedAfterDraft: false };
 }

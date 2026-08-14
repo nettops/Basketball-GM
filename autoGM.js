@@ -10,7 +10,7 @@ var _AUTOGM_DATA = (typeof require !== 'undefined')
   : {
       league: { getTeamRoster: getTeamRoster },
       teams: { TEAMS: TEAMS },
-      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, needMultiplier: needMultiplier },
+      tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, needMultiplier: needMultiplier, currentLeagueAvgOverall: currentLeagueAvgOverall },
       rosterMoves: { waivePlayer: waivePlayer },
       scouting: { allocateScoutPoints: allocateScoutPoints },
       trade: { validateRosterSizes: validateRosterSizes, evaluateTrade: evaluateTrade, findPick: findPick }
@@ -86,11 +86,13 @@ function autoAllocateScoutPoints(scoutingState, ownRosterIds, watchlistedProspec
 // being so narrow it almost never finds a match. Exported separately from
 // generateTradeOffer so the onTradeBlock bias is unit-testable without
 // depending on a full partner match also being found.
-function selectSurplusCandidate(team, roster) {
+// `leagueAvg` is optional and forwarded to needMultiplier — see the hoist
+// comment in generateTradeOffer for why the hot path must not let it recompute.
+function selectSurplusCandidate(team, roster, leagueAvg) {
   let candidate = null;
   let candidateSurplus = -Infinity;
   roster.forEach(function (p) {
-    const need = _AUTOGM_DATA.tradeEvaluator.needMultiplier(p.position, team);
+    const need = _AUTOGM_DATA.tradeEvaluator.needMultiplier(p.position, team, leagueAvg);
     if (need > 1.0) return; // this position is a real need — don't trade it away
     let surplus = (1 - need) - _AUTOGM_DATA.tradeEvaluator.adjustedPlayerValue(p, team) / 200;
     // A player the team has explicitly shopped (ui/tradeCenter.js's Trading
@@ -139,7 +141,23 @@ function generateTradeOffer(team, rng, excludeTeamId) {
   const roster = _AUTOGM_DATA.league.getTeamRoster(team.id);
   if (roster.length <= 12) return null;
 
-  const candidate = selectSurplusCandidate(team, roster);
+  // Hoisted ONCE for the whole offer search. needMultiplier recomputes the
+  // league-average rawOverall internally when this is omitted, and rawOverall
+  // is a derived getter — the inner loop below calls needMultiplier up to
+  // 29 partners x 15 players times, which multiplied out to a measured
+  // 3.4-second freeze per simulated week before the hoist. The per-position
+  // cache below it is the same idea one level up: this team's positional
+  // need cannot change mid-search, so five answers cover all 435 asks.
+  const leagueAvg = _AUTOGM_DATA.tradeEvaluator.currentLeagueAvgOverall();
+  const needByPosition = {};
+  const needFor = function (position) {
+    if (needByPosition[position] === undefined) {
+      needByPosition[position] = _AUTOGM_DATA.tradeEvaluator.needMultiplier(position, team, leagueAvg);
+    }
+    return needByPosition[position];
+  };
+
+  const candidate = selectSurplusCandidate(team, roster, leagueAvg);
   if (!candidate) return null;
 
   const partners = _AUTOGM_DATA.teams.TEAMS.filter(function (t) { return t.id !== team.id && t.id !== excludeTeamId; }).slice();
@@ -154,7 +172,7 @@ function generateTradeOffer(team, rng, excludeTeamId) {
     const outgoingSalary = candidate.contract.salary;
     for (let ri = 0; ri < partnerRoster.length; ri++) {
       const returnPlayer = partnerRoster[ri];
-      if (_AUTOGM_DATA.tradeEvaluator.needMultiplier(returnPlayer.position, team) < 1.0) continue; // not a position we're thin at
+      if (needFor(returnPlayer.position) < 1.0) continue; // not a position we're thin at
       const salaryIncrease = returnPlayer.contract.salary - outgoingSalary;
       if (salaryIncrease > outgoingSalary * 0.25 + 2000000) continue;
 
