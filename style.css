@@ -1078,3 +1078,56 @@ table { border-collapse: collapse; width: 100%; }
   border-left: 3px solid var(--accent); border-radius: 6px;
   padding: 5px 12px;
 }
+
+/* ---- Command Center dashboard ---- */
+/* The hero runs the RAW team primary (same contract as .ribbon): text sits on
+   the ::before scrim, never on the color itself, which is what makes a pure
+   black primary (BKN) legible. Buttons stay off the team color entirely. */
+.dash-hero { position: relative; overflow: hidden; display: flex; align-items: center; gap: 26px;
+  padding: 14px 20px; margin-bottom: 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--team-primary) 0, rgba(11, 14, 20, .6) 55%, var(--surface-1) 100%); }
+.dash-hero::before { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .25), rgba(0, 0, 0, .45)); }
+.dash-hero > * { position: relative; }
+.dash-hero-rec { font: 900 44px/1 var(--font-cond); letter-spacing: 1px; }
+.dash-hero-rec small { display: block; font: 700 11px var(--font); letter-spacing: 1.5px;
+  text-transform: uppercase; color: rgba(230, 234, 240, .75); margin-top: 2px; }
+.dash-hero-stat { border-left: 1px solid rgba(230, 234, 240, .25); padding-left: 22px; }
+.dash-hero-stat .v { font: 800 22px/1.1 var(--font-cond); }
+.dash-hero-stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: rgba(230, 234, 240, .7); }
+.dash-next { margin-left: auto; display: flex; align-items: center; gap: 14px;
+  background: rgba(5, 7, 11, .55); border: 1px solid rgba(230, 234, 240, .2);
+  border-radius: var(--r-md); padding: 10px 16px; }
+.dash-next .vs { font: 900 18px var(--font-cond); }
+.dash-next .sub { font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+  color: rgba(230, 234, 240, .65); }
+#dash-play { background: var(--gold); border: none; color: #131313; cursor: pointer;
+  font: 800 11px var(--font); letter-spacing: 1px; text-transform: uppercase;
+  border-radius: var(--r-sm); padding: 8px 14px; }
+#dash-play:hover { filter: brightness(1.1); }
+#dash-play:disabled { background: var(--surface-3); color: var(--text-mute); cursor: default; filter: none; }
+.dash-grid { display: grid; grid-template-columns: 1fr 340px; gap: 10px; align-items: start; }
+.dash-col { display: flex; flex-direction: column; gap: 10px; }
+.form-strip { display: flex; gap: 6px; }
+.form-bug { flex: 1; min-width: 0; background: var(--surface-2); border: 1px solid var(--line);
+  border-top: 3px solid var(--line-strong); border-radius: var(--r-sm); padding: 6px 8px; text-align: center; }
+.form-bug.win { border-top-color: var(--win); }
+.form-bug.loss { border-top-color: var(--loss); }
+.form-bug .opp { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.form-bug .score { font: 800 14px var(--font-cond); font-variant-numeric: tabular-nums; }
+.form-bug .res { font-size: 10px; font-weight: 800; }
+.form-bug .res.w { color: var(--win); }
+.form-bug .res.l { color: var(--loss); }
+.fo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+.fo-cell .k { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-mute); }
+.fo-cell .v { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; }
+.fo-cell .v .cap-of { color: var(--text-mute); font-weight: 400; }
+.lead-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.lead-cols .k { font-size: 10px; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--text-mute); margin-bottom: 3px; }
+.lead-row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+.lead-row.dim2 { color: var(--text-dim); }
+.lead-league { color: var(--text-mute); margin-top: 5px; }
+@media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
