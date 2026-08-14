@@ -271,8 +271,8 @@ select { cursor: pointer; }
 /* ---------- Sim dock ---------- */
 #sim-controls {
   display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  padding: 11px 26px;
-  background: var(--surface-2);
+  padding: 9px 18px;
+  background: linear-gradient(0deg, var(--bg), var(--surface-2));
   border-top: 1px solid var(--line);
 }
 .dock-group { display: flex; align-items: center; gap: 7px; }
@@ -289,7 +289,11 @@ select { cursor: pointer; }
    The min-width holds the button steady as the label changes between
    "Continue", "Continue → Playoffs" and "Stop", so the controls beside it do
    not shuffle sideways every time the league moves on. */
-#sim-continue { padding: 8px 20px; font-weight: 700; min-width: 190px; }
+#sim-continue {
+  padding: 8px 20px; min-width: 190px;
+  font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  font-size: .8rem;
+}
 #sim-skip-qty[hidden] { display: none; }
 
 /* The offseason advance button — appended by renderView as the only
