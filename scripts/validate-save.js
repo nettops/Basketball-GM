@@ -265,6 +265,10 @@ function checkPhase7FieldsRoundTrip() {
   assert.strictEqual(restored.playMode, 'commissioner', 'playMode should round-trip');
   assert.deepStrictEqual(restored.automation, gameState.automation, 'automation toggles should round-trip');
   assert.strictEqual(restored.feed.length, 1, 'feed should round-trip');
+  // keyInjury is no longer a live setting (the injury pause was removed at
+  // the user's request), which makes this assertion MORE valuable, not less:
+  // it now proves an old save's unknown pauseOn key survives the round-trip
+  // untouched instead of being stripped or crashing the load.
   assert.strictEqual(restored.settings.pauseOn.keyInjury, true, 'settings.pauseOn should round-trip as part of the existing settings blob');
   console.log('checkPhase7FieldsRoundTrip: OK');
 }

@@ -59,15 +59,21 @@ const GameState = {
   godMode: { enabled: false, autoWinEnabled: false },
   settings: {
     simEngine: 'possession', simSpeed: 'normal',
-    // madePlayoffs/missedPlayoffs fire once a season and keyInjury is rare —
-    // each is the game telling you something, so they default on. Continue
-    // would otherwise sail past every notable moment in silence.
+    // madePlayoffs/missedPlayoffs fire once a season — each is the game
+    // telling you something, so they default on. Continue would otherwise
+    // sail past every notable moment in silence.
     //
     // tradeOfferReceived does NOT: offers generate weekly, so it would stop a
     // fast-forward roughly 26 times a season. Offers now expire on their own
     // with a visible countdown (trade.js), so the inbox no longer needs to
     // interrupt in order to be noticed.
-    pauseOn: { madePlayoffs: true, missedPlayoffs: true, tradeOfferReceived: false, keyInjury: true },
+    //
+    // keyInjury USED to be here (default on) and is removed at the user's
+    // request 2026-08-14: injuries still land in the feed, they just do not
+    // stop a run. Old saves may still carry the flag in their settings blob;
+    // nothing reads it any more, and validate-save proves the blob itself
+    // round-trips untouched.
+    pauseOn: { madePlayoffs: true, missedPlayoffs: true, tradeOfferReceived: false },
     capDisabled: false,
     capLevel: 1,
     injuryFrequency: 1,
@@ -179,10 +185,6 @@ function pushInjuriesToFeed(newInjuries, dayIndex) {
     const isUserPlayer = inj.teamId === GameState.userTeamId;
     if (GameState.playMode !== 'spectator' && !isUserPlayer && player.overall < RATING_BANDS.star) return;
     pushToFeed(player.name + ' (' + getTeamById(inj.teamId).name + ') injured: ' + inj.severity, dayIndex);
-    if (isUserPlayer && player.overall >= RATING_BANDS.star && GameState.settings.pauseOn.keyInjury) {
-      GameState.pauseRequested = true;
-      GameState.pauseReason = player.name + ' injured';
-    }
   });
 }
 

@@ -15,8 +15,7 @@ const AUTOMATION_LABELS = {
 const PAUSE_ON_LABELS = {
   madePlayoffs: 'Your team makes the playoffs',
   missedPlayoffs: 'Your team misses the playoffs',
-  tradeOfferReceived: 'You receive a trade offer',
-  keyInjury: 'A key player (80+ OVR) on your team is injured'
+  tradeOfferReceived: 'You receive a trade offer'
 };
 
 const CAP_LEVEL_OPTIONS = [
