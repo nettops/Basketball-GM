@@ -36,17 +36,17 @@ no webfonts, no build step.
 
 **Files:** Modify: `style.css`
 
-- [ ] **Step 1: Tokens + base density.** In `:root` add
+- [x] **Step 1: Tokens + base density.** In `:root` add
   `--team-primary: #007A33; --team-secondary: #BA9653;
   --font-cond: "Arial Narrow", "Segoe UI", Roboto, Arial, sans-serif;`.
   Change body `font-size: 14px` → `13px`. Add
   `.cond { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }`.
-- [ ] **Step 2: Table density.** Find the table rules; set cell padding to
+- [x] **Step 2: Table density.** Find the table rules; set cell padding to
   `5px 8px`, header rules to
   `font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--accent);`
   and row borders to 1px hairlines on `--line` at reduced strength. Panels
   (`.panel` or equivalent) drop to `padding: 10px 12px`.
-- [ ] **Step 3: New component classes** (append, complete):
+- [x] **Step 3: New component classes** (append, complete):
 
 ```css
 /* Broadcast ribbon */
@@ -91,9 +91,9 @@ no webfonts, no build step.
 .stat-chip .tick-v { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
 ```
 
-- [ ] **Step 4:** Load the app in the browser; every view still renders
+- [x] **Step 4:** Load the app in the browser; every view still renders
   (denser, old topbar/sidebar still present). No console errors.
-- [ ] **Step 5:** Commit `style: broadcast tokens + ZenGM density pass`.
+- [x] **Step 5:** Commit `style: broadcast tokens + ZenGM density pass`.
 
 ### Task 2: Team ribbon (ui/topbar.js)
 
@@ -101,7 +101,7 @@ no webfonts, no build step.
 **Interfaces:** Produces the same `renderTopBar(container)` global;
 `applyTeamAccent(team)` additionally sets `--team-primary/--team-secondary`.
 
-- [ ] **Step 1:** In `applyTeamAccent`, after the accent writes, add:
+- [x] **Step 1:** In `applyTeamAccent`, after the accent writes, add:
 
 ```js
   const colors = (team && team.colors) || {};
@@ -109,18 +109,18 @@ no webfonts, no build step.
   document.documentElement.style.setProperty('--team-secondary', colors.secondary || '#BA9653');
 ```
 
-- [ ] **Step 2:** Rewrite `renderTopBar`'s innerHTML to the ribbon: left
+- [x] **Step 2:** Rewrite `renderTopBar`'s innerHTML to the ribbon: left
   `ribbon-scrim` block (logo, `.cond.ribbon-name` team name,
   `.ribbon-sub` record · conference standing), right `.ribbon-ticker`
   with `tick` readouts for Season / Day / Stage / Payroll (`is-over` when
   over cap) / Chemistry. Keep the same data sources already in the
   function; keep the root element classed `topbar ribbon` so any existing
   selector on `.topbar` keeps binding.
-- [ ] **Step 3:** Browser: ribbon shows for BOS with green gradient +
+- [x] **Step 3:** Browser: ribbon shows for BOS with green gradient +
   readable text; switch inspected save to a black-primary team check via
   commissioner or `applyTeamAccent(getTeamById('BKN'))` in console — text
   stays legible (scrim + luminance-guarded accent).
-- [ ] **Step 4:** Commit `feat: team-color broadcast ribbon`.
+- [x] **Step 4:** Commit `feat: team-color broadcast ribbon`.
 
 ### Task 3: Icon rail (ui/nav.js + index.html)
 
@@ -128,12 +128,12 @@ no webfonts, no build step.
 **Interfaces:** `renderNav(container, activeView, onNavigate, playMode,
 gameMode, hasLegacy)` signature unchanged.
 
-- [ ] **Step 1:** Add `HUB_ICONS` in ui/nav.js — inline stroke SVGs keyed
+- [x] **Step 1:** Add `HUB_ICONS` in ui/nav.js — inline stroke SVGs keyed
   by hub id (`hub-dashboard` grid, `hub-career` user, `hub-roster` users,
   `hub-schedule` calendar, `hub-league` trophy, `hub-transactions` swap
   arrows, `hub-records` chart, `hub-system` gear), all
   `fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"`.
-- [ ] **Step 2:** In `renderNav`, keep the loop and click handler exactly;
+- [x] **Step 2:** In `renderNav`, keep the loop and click handler exactly;
   change the button build to:
 
 ```js
@@ -146,12 +146,12 @@ gameMode, hasLegacy)` signature unchanged.
       '<span class="rail-label">' + hub.label + '</span>';
 ```
 
-- [ ] **Step 3:** index.html: `.sidebar-brand` shrinks to the logo mark
+- [x] **Step 3:** index.html: `.sidebar-brand` shrinks to the logo mark
   only (`NBA<span>GM</span>` stays, CSS rotates it to a small stacked
   mark or just shrinks font) — CSS-only if possible.
-- [ ] **Step 4:** Browser: 8 icons render, hover slides labels out, active
+- [x] **Step 4:** Browser: 8 icons render, hover slides labels out, active
   hub glows, clicking navigates identically, `aria-label` present.
-- [ ] **Step 5:** Commit `feat: icon rail navigation`.
+- [x] **Step 5:** Commit `feat: icon rail navigation`.
 
 ### Task 4: OVR chips + stat chips
 
@@ -161,7 +161,7 @@ ui/roster.js, loaded before profile/dashboard use it — check index.html
 order; if profile loads first, define in ui/topbar.js instead, which loads
 earliest of the chrome files).
 
-- [ ] **Step 1:** Helper (complete):
+- [x] **Step 1:** Helper (complete):
 
 ```js
 function ovrChipHtml(player) {
@@ -171,45 +171,45 @@ function ovrChipHtml(player) {
 }
 ```
 
-- [ ] **Step 2:** Roster table's OVR cell renders `ovrChipHtml(p)`;
+- [x] **Step 2:** Roster table's OVR cell renders `ovrChipHtml(p)`;
   profile header's big overall becomes a large chip (same classes, larger
   font via context selector `.profile-hero .ovr-chip { font-size: 18px; }`).
-- [ ] **Step 3:** Stat-chips row on Roster (OFF RTG / DEF RTG / PACE /
+- [x] **Step 3:** Stat-chips row on Roster (OFF RTG / DEF RTG / PACE /
   STREAK from existing team season aggregates — reuse whatever the
   dashboard already computes; if a value is unavailable early-season,
   render '—') and on Dashboard (record / streak / next opponent / cap
   space).
-- [ ] **Step 4:** Browser check both views; commit
+- [x] **Step 4:** Browser check both views; commit
   `feat: rating chips + stat chip rows`.
 
 ### Task 5: Dock + headings polish pass
 
 **Files:** Modify: `style.css`, spot-check every view in the browser
 
-- [ ] **Step 1:** Page `h2`/view headers get `.cond` sizing via CSS
+- [x] **Step 1:** Page `h2`/view headers get `.cond` sizing via CSS
   (`#view-content h2 { font-family: var(--font-cond); text-transform: uppercase; letter-spacing: .06em; }`)
   — CSS-only so no view file changes.
-- [ ] **Step 2:** Sim dock: primary Continue button
+- [x] **Step 2:** Sim dock: primary Continue button
   `text-transform: uppercase; font-weight: 800;`, dock background gradient
   per preview.
-- [ ] **Step 3:** Walk every hub in the browser (all 8), screenshot,. fix
+- [x] **Step 3:** Walk every hub in the browser (all 8), screenshot,. fix
   any layout break the density pass caused (wrapped toolbars, cramped
   modals). LOOK at the pages — content checks pass on unstyled markup
   (known bug class).
-- [ ] **Step 4:** Commit `style: condensed headings + dock polish`.
+- [x] **Step 4:** Commit `style: condensed headings + dock polish`.
 
 ### Task 6: Smoke coverage + whole-feature verification
 
 **Files:** Modify: `scripts/ui-smoke.js`
 
-- [ ] **Step 1:** New smoke group `broadcastChrome`: ribbon element exists
+- [x] **Step 1:** New smoke group `broadcastChrome`: ribbon element exists
   and contains the team name; rail renders >= 6 `.rail-item`s each with a
   non-empty `aria-label`; exactly one `.rail-item.active` and its
   `data-hub` matches `hubForView(GameState.currentView).id`;
   `--team-primary` on `:root` equals the user team's stored
   `colors.primary`; roster table contains `.ovr-chip`.
-- [ ] **Step 2:** Full validator suite (56) green.
-- [ ] **Step 3:** Browser: UI_SMOKE.run() all green (182 + new group);
+- [x] **Step 2:** Full validator suite (56) green.
+- [x] **Step 3:** Browser: UI_SMOKE.run() all green (182 + new group);
   screenshots on BOS, LAL, BKN (scrim case).
-- [ ] **Step 4:** Commit `test: broadcast chrome smoke group`; update the
+- [x] **Step 4:** Commit `test: broadcast chrome smoke group`; update the
   spec's checkbox if any, and memory.
