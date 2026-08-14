@@ -15,11 +15,18 @@
   --gold: #D4A94E;
   --accent: #58A6FF;
   --accent-soft: rgba(88, 166, 255, .14);
+  /* The RAW team hexes, set by applyTeamAccent (ui/topbar.js). Distinct from
+     --accent, which is luminance-guarded so interactive elements never go
+     invisible on a black-primary team (BKN): the ribbon may use the raw
+     primary because its text sits on a dark scrim, not on the color. */
+  --team-primary: #007A33;
+  --team-secondary: #BA9653;
   --r-sm: 4px;
   --r-md: 8px;
   --r-lg: 12px;
   --shadow: 0 2px 8px rgba(0, 0, 0, .4);
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-cond: "Arial Narrow", "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -29,9 +36,19 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  font-size: 14px;
-  line-height: 1.5;
+  /* 13px, ZenGM's base (0.8125rem): the broadcast re-skin adopts its
+     information density — the whole app tightens around this one number. */
+  font-size: 13px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Condensed display type — headings and the ribbon name, never body text. */
+.cond {
+  font-family: var(--font-cond);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 800;
 }
 
 h1, h2, h3, h4 { margin: 0 0 12px; font-weight: 650; letter-spacing: -.01em; }
@@ -133,7 +150,16 @@ select { cursor: pointer; }
   display: grid; grid-template-rows: auto auto 1fr auto;
   min-width: 0; min-height: 0;
 }
-#view-content { overflow-y: auto; padding: 22px 26px; min-height: 0; }
+#view-content { overflow-y: auto; padding: 14px 18px; min-height: 0; }
+
+/* Broadcast headings: every view title reads like a telecast graphic. The
+   selector restyles all views at once so no ui/*.js file changes for it. */
+#view-content h2 {
+  font-family: var(--font-cond);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 800;
+}
 
 /* The active hub's sub-views. :empty collapses the row entirely, so a
    single-view hub like Dashboard shows no vestigial one-tab bar and loses no
@@ -301,7 +327,7 @@ select { cursor: pointer; }
   color: var(--text-dim);
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.panel-body { padding: 14px; }
+.panel-body { padding: 10px 12px; }
 .panel-body > :last-child { margin-bottom: 0; }
 
 /* ---------- Data tables ---------- */
@@ -310,11 +336,11 @@ table { border-collapse: collapse; width: 100%; }
 .data-table th {
   position: sticky; top: 0; z-index: 1;
   background: var(--surface-2);
-  padding: 9px 12px; text-align: left;
-  font-size: .66rem; font-weight: 700;
-  letter-spacing: .08em; text-transform: uppercase;
+  padding: 6px 8px; text-align: left;
+  font-size: .69rem; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase;
   color: var(--text-dim);
-  border-bottom: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--accent);
   white-space: nowrap;
 }
 .data-table th[data-key] { cursor: pointer; user-select: none; }
@@ -328,7 +354,8 @@ table { border-collapse: collapse; width: 100%; }
    numbers. This selector is (0,2,1) and settles it. */
 .data-table th.num { text-align: right; }
 .data-table td {
-  padding: 8px 12px;
+  /* ZenGM row height: ~24px per row against the old ~34px. */
+  padding: 5px 8px;
   border-bottom: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
 }
@@ -966,3 +993,82 @@ table { border-collapse: collapse; width: 100%; }
 .champ-scene { max-width: 520px; margin: 24px auto; }
 .select-name { margin: 10px 0 14px; display: flex; gap: 8px; align-items: center; justify-content: center; }
 .select-name input { padding: 6px 8px; }
+
+/* ---------- Broadcast chrome (2026-08-14 re-skin) ---------- */
+
+/* Team ribbon: replaces the flat topbar. The gradient runs the RAW team
+   primary into the app surface; text on the colored zone sits on a dark
+   scrim so a black or white team hex can never make it unreadable. */
+.ribbon {
+  display: flex; align-items: stretch; flex-wrap: wrap;
+  background: linear-gradient(90deg, var(--team-primary) 0, rgba(11, 14, 20, .55) 340px, var(--surface-1) 560px, var(--surface-1) 100%);
+  border-bottom: 2px solid var(--accent);
+}
+.ribbon-scrim {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 18px 8px 14px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, .38), rgba(0, 0, 0, 0));
+  min-width: 0;
+}
+.ribbon-name { font-size: 17px; line-height: 1.15; white-space: nowrap; }
+.ribbon-sub {
+  font-size: 11.5px; color: rgba(255, 255, 255, .78);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ribbon-ticker {
+  display: flex; align-items: center; gap: 20px;
+  margin-left: auto; padding: 6px 18px;
+  flex-wrap: wrap;
+}
+.tick { text-align: right; }
+.tick-k {
+  display: block; font-size: 9px; font-weight: 700;
+  letter-spacing: .15em; text-transform: uppercase;
+  color: var(--text-mute);
+}
+.tick-v { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tick-v em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--text-mute); }
+.tick-v.is-over { color: var(--warn); }
+
+/* Icon rail: 8 hub icons; the label slides out on hover/focus. */
+.rail-item {
+  position: relative;
+  width: 40px; height: 40px; margin: 2px auto;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; border-radius: 8px;
+  color: var(--text-dim); cursor: pointer; padding: 0;
+}
+.rail-item svg { width: 20px; height: 20px; display: block; }
+.rail-item:hover:not(:disabled) { background: var(--surface-3); color: var(--text); border-color: transparent; }
+.rail-item.active {
+  background: var(--accent-soft); color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.rail-label {
+  position: absolute; left: 48px; top: 50%; transform: translateY(-50%);
+  background: var(--surface-3); border: 1px solid var(--line-strong);
+  border-radius: 6px; padding: 4px 10px;
+  font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity .1s ease;
+  z-index: 40;
+}
+.rail-item:hover .rail-label,
+.rail-item:focus-visible .rail-label { opacity: 1; }
+
+/* OVR rating chips — bands are applied by ovrChipHtml (ui/topbar.js), which
+   reads ratings.RATING_BANDS; these classes never encode a number. */
+.ovr-chip {
+  display: inline-block; min-width: 26px; text-align: center;
+  font-weight: 900; border-radius: 4px; padding: 1px 4px;
+  background: var(--surface-3); font-variant-numeric: tabular-nums;
+}
+.ovr-chip.is-elite { background: var(--accent); color: #06101D; }
+.ovr-chip.is-star { background: var(--accent-soft); color: var(--accent); }
+
+/* Stat chip rows opening the big views. */
+.stat-chips { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.stat-chip {
+  background: var(--surface-1); border: 1px solid var(--line);
+  border-left: 3px solid var(--accent); border-radius: 6px;
+  padding: 5px 12px;
+}
