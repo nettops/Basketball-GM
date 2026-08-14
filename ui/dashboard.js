@@ -35,6 +35,73 @@ function recentHeadlines(feed, n) {
 }
 
 
+// One game reduced to the user's side of it. `opp` is the full team object so
+// callers can reach the id (which IS the display abbreviation) or the name.
+function teamGameRow(g, teamId) {
+  const home = g.homeTeamId === teamId;
+  const opp = getTeamById(home ? g.awayTeamId : g.homeTeamId);
+  return { day: g.day, opp: opp, home: home,
+    ownScore: home ? g.homeScore : g.awayScore,
+    oppScore: home ? g.awayScore : g.homeScore,
+    won: home ? g.homeScore > g.awayScore : g.awayScore > g.homeScore };
+}
+
+// Read from the live schedule the same way powerRankings' recentFormWinPct
+// does — no separately tracked form/streak state to drift. Played playoff
+// games appended to season.games carry day: null; the ascending sort parks
+// them at the front, so slicing from the TAIL still yields the most recent
+// regular-season games, and the day > currentDay guard keeps nulls out of
+// "upcoming" entirely.
+function lastPlayedGames(teamId, season, n) {
+  if (!season) return [];
+  return season.games
+    .filter(function (g) { return g.played && (g.homeTeamId === teamId || g.awayTeamId === teamId); })
+    .sort(function (a, b) { return (a.day || 0) - (b.day || 0); })
+    .slice(-n)
+    .map(function (g) { return teamGameRow(g, teamId); });
+}
+
+function upcomingGames(teamId, season, n) {
+  if (!season) return [];
+  return season.games
+    .filter(function (g) { return !g.played && g.day > season.currentDay &&
+      (g.homeTeamId === teamId || g.awayTeamId === teamId); })
+    .sort(function (a, b) { return a.day - b.day; })
+    .slice(0, n)
+    .map(function (g) { return teamGameRow(g, teamId); });
+}
+
+function teamStreak(teamId, season) {
+  const played = lastPlayedGames(teamId, season, 82);
+  if (played.length === 0) return '—';
+  const lastWon = played[played.length - 1].won;
+  let run = 0;
+  for (let i = played.length - 1; i >= 0 && played[i].won === lastWon; i--) run++;
+  return (lastWon ? 'W' : 'L') + run;
+}
+
+function ordinal(n) {
+  const suf = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+  return n + suf;
+}
+
+// Seeding comes from getPlayoffSeeds (playoffs.js) — wins, then point diff —
+// not the standings page's wins-only divisional sort, so the number shown here
+// is the seed the bracket would actually hand out today.
+function seedLabel(team) {
+  const seeds = getPlayoffSeeds(team.conference, 15);
+  const idx = seeds.findIndex(function (t) { return t.id === team.id; });
+  return ordinal(idx + 1) + ' ' + team.conference;
+}
+
+function divisionLabel(team) {
+  const div = TEAMS.filter(function (t) { return t.division === team.division; })
+    .slice()
+    .sort(function (a, b) { return b.record.wins - a.record.wins; });
+  const idx = div.findIndex(function (t) { return t.id === team.id; });
+  return idx === 0 ? team.division + ' leaders' : ordinal(idx + 1) + ' ' + team.division;
+}
+
 // The "what do I do next" answer, on the screen you already land on. Three
 // clicks away and it stops answering the question.
 //
