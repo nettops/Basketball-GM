@@ -5,7 +5,7 @@
 // both the batch loop and (later) the live-stepped view.
 var _GAMECOACH_DATA = (typeof require !== 'undefined')
   ? { box: require('./simEngineBoxScore.js') }
-  : { box: { minutesWeight: minutesWeight } };
+  : { box: { minutesWeight: minutesWeight, lineupOrder: lineupOrder } };
 
 const ENERGY_FLOOR = 0.55;          // below this, look for a rest
 const ENERGY_EDGE = 0.15;           // a replacement must be at least this much fresher
@@ -78,8 +78,10 @@ function rotationRanks(sim, team) {
   if (!sim._rotationRanks) sim._rotationRanks = {};
   if (sim._rotationRanks[team]) return sim._rotationRanks[team];
   const ranks = {};
-  rosterFor(sim, team).slice()
-    .sort(function (a, b) { return _GAMECOACH_DATA.box.minutesWeight(b) - _GAMECOACH_DATA.box.minutesWeight(a); })
+  // Same ordering gameSim's pickStarters uses, which is the whole point: a
+  // user-picked starter leads this list too, so targetMinutes hands him a
+  // starter's 36/34/32/30/28 instead of a benchwarmer's zero.
+  _GAMECOACH_DATA.box.lineupOrder(rosterFor(sim, team), sim[team + 'Team'])
     .forEach(function (p, i) { ranks[p.id] = i; });
   sim._rotationRanks[team] = ranks;
   return ranks;

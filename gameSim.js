@@ -22,7 +22,7 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
       simEngine: { registerEngine: registerEngine },
       composite: { computeTeamSynergy: computeTeamSynergy },
       teams: { getTeamById: getTeamById },
-      box: { minutesWeight: minutesWeight },
+      box: { minutesWeight: minutesWeight, lineupOrder: lineupOrder },
       coach: { decideSubstitutions: decideSubstitutions, decideTimeout: decideTimeout, FOUL_OUT: FOUL_OUT }
     };
 
@@ -132,9 +132,11 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   // Starters are the five highest by the same weighting that used to decide
   // minutes, so "who plays most" is unchanged in spirit — it is now expressed
   // by actually being on the floor rather than by a post-hoc number.
-  function pickStarters(roster) {
-    return roster.slice()
-      .sort(function (a, b) { return _GAMESIM_DATA.box.minutesWeight(b) - _GAMESIM_DATA.box.minutesWeight(a); })
+  // The five who tip off are simply the top of the shared lineup ordering, so
+  // a user-picked starter is also top of the ROTATION and keeps his starter
+  // minute target (gameCoach's rotationRanks reads the same function).
+  function pickStarters(roster, team) {
+    return _GAMESIM_DATA.box.lineupOrder(roster, team)
       .slice(0, 5)
       .map(function (p) { return p.id; });
   }
@@ -142,7 +144,13 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const secondsPlayed = {};
   homeRoster.concat(awayRoster).forEach(function (p) { secondsPlayed[p.id] = 0; });
 
-  const onCourt = { home: pickStarters(homeRoster), away: pickStarters(awayRoster) };
+  // Resolved once and kept on the sim below: gameCoach needs the team object to
+  // read startingFive, and handing it over this way keeps gameCoach free of a
+  // `teams` dependency it would otherwise need in both its bridges.
+  const homeTeam = _GAMESIM_DATA.teams.getTeamById(homeTeamId);
+  const awayTeam = _GAMESIM_DATA.teams.getTeamById(awayTeamId);
+
+  const onCourt = { home: pickStarters(homeRoster, homeTeam), away: pickStarters(awayRoster, awayTeam) };
   const ultimateIndex = {
     home: buildUltimateIndex(homeRoster),
     away: buildUltimateIndex(awayRoster)
@@ -156,8 +164,8 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
 
   // Synergy depends only on roster composition, not anything that changes
   // possession-to-possession, so it's computed once per game.
-  const homeSynergy = _GAMESIM_DATA.composite.computeTeamSynergy(homeRoster, _GAMESIM_DATA.teams.getTeamById(homeTeamId));
-  const awaySynergy = _GAMESIM_DATA.composite.computeTeamSynergy(awayRoster, _GAMESIM_DATA.teams.getTeamById(awayTeamId));
+  const homeSynergy = _GAMESIM_DATA.composite.computeTeamSynergy(homeRoster, homeTeam);
+  const awaySynergy = _GAMESIM_DATA.composite.computeTeamSynergy(awayRoster, awayTeam);
 
   const playByPlay = [];
   // Structured events for the pixel game view — only collected when the
@@ -168,6 +176,10 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   const sim = {
     homeTeamId: homeTeamId,
     awayTeamId: awayTeamId,
+    // The team OBJECTS, so gameCoach can read startingFive without taking a
+    // dependency on teams.js (see the resolution above).
+    homeTeam: homeTeam,
+    awayTeam: awayTeam,
     homeRoster: homeRoster,
     awayRoster: awayRoster,
     homeBox: homeBox,
