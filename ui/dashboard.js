@@ -10,16 +10,6 @@ function topLeaders(players, statKey, n) {
     .slice(0, n);
 }
 
-function leadersTableHtml(title, players, statKey, statLabel) {
-  const leaders = topLeaders(players, statKey, 3);
-  if (leaders.length === 0) return '<div><div class="kpi-label">' + title + '</div><div class="empty-state">No games played yet.</div></div>';
-  return '<div><div class="kpi-label">' + title + '</div><table class="data-table"><tbody>' +
-    leaders.map(function (p, i) {
-      return '<tr><td class="num">' + (i + 1) + '</td><td class="col-name">' + escapeHtml(p.name) + '</td>' +
-        '<td class="num">' + getPlayerAverages(p)[statKey].toFixed(1) + ' ' + statLabel + '</td></tr>';
-    }).join('') + '</tbody></table></div>';
-}
-
 // Score-result feed lines ("Team A 120, Team B 117") are already fully
 // browsable in the Live Feed tab — headlines surface everything ELSE (trades,
 // injuries, signings, offseason news) so the dashboard reads as "what
@@ -137,124 +127,204 @@ function careerHintHtml() {
     '<div class="kpi-sub">' + near.current + ' of ' + near.target + '</div>';
 }
 
+// One .lead-cols column: the team's top 3 in a stat plus the league's best,
+// so "how do my guys stack up" needs no second panel.
+function leaderColHtml(title, roster, statKey, statLabel) {
+  const mine = topLeaders(roster, statKey, 3);
+  const league = topLeaders(PLAYERS_2026, statKey, 1)[0];
+  let html = '<div><div class="k">' + title + '</div>';
+  if (mine.length === 0) {
+    html += '<div class="empty-state">No games played yet.</div>';
+  } else {
+    html += mine.map(function (p, i) {
+      return '<div class="lead-row' + (i > 0 ? ' dim2' : '') + '"><span>' + escapeHtml(p.name) + '</span>' +
+        '<span class="num">' + (i > 0 ? '' : '<b>') + getPlayerAverages(p)[statKey].toFixed(1) + (i > 0 ? '' : '</b>') + '</span></div>';
+    }).join('');
+  }
+  if (league) {
+    const leagueTeam = getTeamById(league.teamId);
+    html += '<div class="lead-league">League: ' + escapeHtml(league.name) +
+      (leagueTeam ? ' <span>' + leagueTeam.id + '</span>' : '') +
+      ' ' + getPlayerAverages(league)[statKey].toFixed(1) + '</div>';
+  }
+  return html + '</div>';
+}
+
+function foCellHtml(label, value, meterPct, over) {
+  return '<div class="fo-cell"><div class="k">' + label + '</div><div class="v">' + value + '</div>' +
+    (meterPct === null ? '' :
+      '<div class="meter"><div class="meter-fill' + (over ? ' is-over' : '') + '" style="width:' + Math.min(100, Math.round(meterPct)) + '%"></div></div>') +
+    '</div>';
+}
+
+function heroStatHtml(label, value) {
+  return '<div class="dash-hero-stat"><div class="v">' + value + '</div><div class="k">' + label + '</div></div>';
+}
+
+function formBugHtml(row) {
+  return '<div class="form-bug ' + (row.won ? 'win' : 'loss') + '">' +
+    '<div class="opp">' + (row.home ? 'vs ' : '@ ') + row.opp.id + '</div>' +
+    '<div class="score">' + row.ownScore + '–' + row.oppScore + '</div>' +
+    '<div class="res ' + (row.won ? 'w' : 'l') + '">' + (row.won ? 'W' : 'L') + '</div></div>';
+}
+
+// The conference race: top 5 seeds, or top 4 plus the user's row at its true
+// rank when they sit lower — the page always shows where YOU are.
+function raceRowsHtml(team, season) {
+  const seeds = getPlayoffSeeds(team.conference, 15);
+  const leader = seeds[0];
+  const userIdx = seeds.findIndex(function (t) { return t.id === team.id; });
+  let rows = seeds.slice(0, 5).map(function (t, i) { return { t: t, rank: i + 1 }; });
+  if (userIdx >= 5) rows = rows.slice(0, 4).concat([{ t: team, rank: userIdx + 1 }]);
+  return rows.map(function (r) {
+    const gb = ((leader.record.wins - r.t.record.wins) + (r.t.record.losses - leader.record.losses)) / 2;
+    const isUser = r.t.id === team.id;
+    return '<tr class="' + (isUser ? 'row-user ' : '') + 'is-clickable" data-team-id="' + r.t.id + '"' +
+      ' title="View ' + escapeHtml(r.t.name) + '\'s roster">' +
+      '<td class="num">' + r.rank + '</td>' +
+      '<td class="col-name">' + teamLogoImgHtml(r.t.id, 18) + ' ' + escapeHtml(r.t.name) + '</td>' +
+      '<td class="num">' + r.t.record.wins + '-' + r.t.record.losses + '</td>' +
+      '<td class="num">' + (gb === 0 ? '—' : gb.toFixed(1)) + '</td>' +
+      '<td class="num">' + teamStreak(r.t.id, season) + '</td></tr>';
+  }).join('');
+}
+
 function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
+  const season = GameState.season;
   const payroll = getTeamPayroll(teamId);
   const effectiveCap = getEffectiveSalaryCap(GameState.settings && GameState.settings.capLevel);
-  const capSpace = effectiveCap - payroll;
+  const overCap = payroll > effectiveCap;
+  const gp = team.record.wins + team.record.losses;
+
   const injuredPlayers = roster.filter(function (p) { return p.status.injury; })
     .sort(function (a, b) { return b.overall - a.overall; });
-
-  const avgMorale = roster.length > 0
-    ? roster.reduce(function (s, p) { return s + p.status.morale; }, 0) / roster.length
-    : 70;
   const unhappyPlayers = roster.filter(function (p) { return moraleTier(p.status.morale) === 'unhappy'; })
     .sort(function (a, b) { return a.status.morale - b.status.morale; });
+  const headlines = recentHeadlines(GameState.feed || [], 6);
+  const last5 = lastPlayedGames(teamId, season, 5);
+  const nextGames = upcomingGames(teamId, season, 3);
 
-  const headlines = recentHeadlines(GameState.feed || [], 8);
-
-  const nextDay = GameState.season ? getNextGameDay(GameState.season, teamId, GameState.season.currentDay) : null;
-  let nextGameLabel = 'No season in progress.';
-  if (nextDay !== null) {
-    const nextGame = GameState.season.games.find(function (g) { return g.day === nextDay && (g.homeTeamId === teamId || g.awayTeamId === teamId); });
-    const isHome = nextGame.homeTeamId === teamId;
-    const opp = getTeamById(isHome ? nextGame.awayTeamId : nextGame.homeTeamId);
-    nextGameLabel = 'Next game: ' + (isHome ? 'vs ' : '@ ') + escapeHtml(opp.name) + ' (day ' + nextDay + ')';
-  } else if (GameState.season) {
-    nextGameLabel = 'No games remaining.';
+  // The spotlight mirrors the dock: whatever state disables Watch Next Game
+  // down there disables Play up here, so the two never disagree about whether
+  // there is a game to play (ui/simControls.js's noGameToWatch rule).
+  const noGameToWatch = !!GameState.offseasonStage ||
+    (!GameState.playoffBracket && season &&
+      getNextGameDay(season, teamId, season.currentDay) === null);
+  let spotTitle, spotSub;
+  if (!season) {
+    spotTitle = 'No season in progress'; spotSub = '';
+  } else if (GameState.offseasonStage) {
+    spotTitle = 'Offseason'; spotSub = 'see the dock below';
+  } else if (GameState.playoffBracket) {
+    spotTitle = 'Playoffs'; spotSub = 'next series game';
+  } else if (nextGames.length > 0) {
+    const nx = nextGames[0];
+    spotTitle = (nx.home ? 'vs ' : '@ ') + escapeHtml(nx.opp.name);
+    spotSub = 'Day ' + nx.day + ' · ' + nx.opp.record.wins + '-' + nx.opp.record.losses +
+      ' · ' + seedLabel(nx.opp);
+  } else {
+    spotTitle = 'No games remaining'; spotSub = '';
   }
 
-  const capPct = Math.min(100, Math.round((payroll / effectiveCap) * 100));
-  const capClass = capSpace >= 0 ? 'is-good' : 'is-warn';
-  const capText = capSpace >= 0
-    ? '$' + capSpace.toLocaleString() + ' space'
-    : '$' + Math.abs(capSpace).toLocaleString() + ' over';
+  const heroSub = season
+    ? seedLabel(team) + ' · ' + divisionLabel(team)
+    : team.conference + ' Conference · ' + team.division;
+
+  const comingUpBug = nextGames.length === 0 ? '' :
+    '<div class="form-bug"><div class="opp">then</div>' +
+    '<div class="score" style="color:var(--text-dim)">' +
+      nextGames.map(function (r) { return (r.home ? 'vs ' : '@ ') + r.opp.id; }).join(' · ') + '</div>' +
+    '<div class="res" style="color:var(--text-mute)">Day ' +
+      nextGames.map(function (r) { return r.day; }).join(' · ') + '</div></div>';
 
   container.innerHTML =
-    '<div class="view-header"><h2>' + teamLogoImgHtml(team.id, 28) + ' ' + escapeHtml(team.name) + '</h2>' +
-      '<span class="view-sub">' + team.conference + ' Conference · ' + team.division + '</span></div>' +
-
-    '<div class="kpi-grid">' +
-      '<div class="kpi-tile"><div class="kpi-label">Record</div>' +
-        '<div class="kpi-value">' + team.record.wins + '-' + team.record.losses + '</div></div>' +
-      '<div class="kpi-tile"><div class="kpi-label">Roster</div>' +
-        '<div class="kpi-value">' + roster.length + '</div><div class="kpi-sub">players under contract</div></div>' +
-      '<div class="kpi-tile"><div class="kpi-label">Chemistry</div>' +
-        '<div class="kpi-value">' + team.chemistry + '</div>' +
-        '<div class="meter"><div class="meter-fill" style="width:' + team.chemistry + '%"></div></div></div>' +
-      '<div class="kpi-tile"><div class="kpi-label">Fan Happiness</div>' +
-        '<div class="kpi-value">' + Math.round(team.fanHappiness) + '</div>' +
-        '<div class="meter"><div class="meter-fill" style="width:' + Math.round(team.fanHappiness) + '%"></div></div></div>' +
-      '<div class="kpi-tile"><div class="kpi-label">Owner Happiness</div>' +
-        '<div class="kpi-value">' + team.ownerHappiness + '</div>' +
-        '<div class="meter"><div class="meter-fill" style="width:' + team.ownerHappiness + '%"></div></div></div>' +
+    '<div class="dash-hero">' +
+      teamLogoImgHtml(team.id, 44) +
+      '<div class="dash-hero-rec">' + team.record.wins + '-' + team.record.losses +
+        '<small>' + escapeHtml(team.name) + ' · ' + heroSub + '</small></div>' +
+      heroStatHtml('Streak', teamStreak(teamId, season)) +
+      heroStatHtml('PPG', gp > 0 ? ((team.record.pointsFor || 0) / gp).toFixed(1) : '—') +
+      heroStatHtml('Opp PPG', gp > 0 ? ((team.record.pointsAgainst || 0) / gp).toFixed(1) : '—') +
+      '<div class="dash-next">' +
+        '<div><div class="sub">Next up</div><div class="vs">' + spotTitle + '</div>' +
+          '<div class="sub">' + spotSub + '</div></div>' +
+        '<button id="dash-play"' + (noGameToWatch ? ' disabled' : '') + '>Play Next Game</button>' +
+      '</div>' +
     '</div>' +
 
-    '<div class="panel"><div class="panel-header">Salary Cap</div><div class="panel-body">' +
-      '<div class="kpi-label">Payroll</div>' +
-      '<div class="kpi-value ' + capClass + '">$' + payroll.toLocaleString() + '</div>' +
-      '<div class="meter" style="margin:8px 0 6px;"><div class="meter-fill ' + (capSpace < 0 ? 'is-over' : '') + '" style="width:' + capPct + '%"></div></div>' +
-      '<div class="kpi-sub">Cap $' + effectiveCap.toLocaleString() + ' · ' + capText + '</div>' +
-    '</div></div>' +
+    '<div class="dash-grid"><div class="dash-col">' +
 
-    '<div class="panel"><div class="panel-header">Next Up</div><div class="panel-body">' +
-      '<div class="kpi-value" style="font-size:1.05rem;">' + nextGameLabel + '</div>' +
-    '</div></div>' +
+      ((last5.length > 0 || comingUpBug) ?
+        '<div class="form-strip">' + last5.map(formBugHtml).join('') + comingUpBug + '</div>' : '') +
 
-    '<div class="panel"><div class="panel-header">Your Career</div><div class="panel-body">' +
-      careerHintHtml() +
-    '</div></div>' +
+      '<div class="panel"><div class="panel-header">' + team.conference + ' Race</div>' +
+        '<table class="data-table"><thead><tr><th class="num">#</th><th>Team</th>' +
+        '<th class="num">W-L</th><th class="num">GB</th><th class="num">Streak</th></tr></thead><tbody>' +
+        (season ? raceRowsHtml(team, season) : '') + '</tbody></table></div>' +
 
-    '<div class="panel"><div class="panel-header">Key Injuries' +
-      (injuredPlayers.length > 0 ? ' <span class="pill pill-loss">' + injuredPlayers.length + '</span>' : '') +
-      '</div><div class="panel-body">' +
-      (injuredPlayers.length === 0
-        ? '<div class="empty-state">No players currently injured.</div>'
-        : '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">OVR</th><th>Status</th></tr></thead><tbody>' +
-          injuredPlayers.map(function (p) {
-            return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td><td><span class="pill pill-pos">' + p.position + '</span></td>' +
-              '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
-              '<td><span class="pill pill-loss">' + injuryLabel(p.status.injury) + '</span></td></tr>';
-          }).join('') + '</tbody></table>') +
-    '</div></div>' +
+      '<div class="panel"><div class="panel-header">Leaders</div><div class="panel-body lead-cols">' +
+        leaderColHtml('Points', roster, 'ppg', 'PPG') +
+        leaderColHtml('Rebounds', roster, 'rpg', 'RPG') +
+        leaderColHtml('Assists', roster, 'apg', 'APG') +
+      '</div></div>' +
 
-    '<div class="panel"><div class="panel-header">Your Team Leaders</div><div class="panel-body leaders-grid">' +
-      leadersTableHtml('Points', roster, 'ppg', 'PPG') +
-      leadersTableHtml('Rebounds', roster, 'rpg', 'RPG') +
-      leadersTableHtml('Assists', roster, 'apg', 'APG') +
-    '</div></div>' +
+    '</div><div class="dash-col">' +
 
-    '<div class="panel"><div class="panel-header">League Leaders</div><div class="panel-body leaders-grid">' +
-      leadersTableHtml('Points', PLAYERS_2026, 'ppg', 'PPG') +
-      leadersTableHtml('Rebounds', PLAYERS_2026, 'rpg', 'RPG') +
-      leadersTableHtml('Assists', PLAYERS_2026, 'apg', 'APG') +
-    '</div></div>' +
+      '<div class="panel"><div class="panel-header">Front Office</div><div class="panel-body fo-grid">' +
+        foCellHtml('Payroll', '$' + Math.round(payroll / 1e6) + 'M <span class="cap-of">/ $' +
+          Math.round(effectiveCap / 1e6) + 'M</span>', (payroll / effectiveCap) * 100, overCap) +
+        foCellHtml('Chemistry', team.chemistry, team.chemistry, false) +
+        foCellHtml('Fans', Math.round(team.fanHappiness), team.fanHappiness, false) +
+        foCellHtml('Owner', team.ownerHappiness, team.ownerHappiness, false) +
+      '</div></div>' +
 
-    '<div class="panel"><div class="panel-header">Team Morale</div><div class="panel-body">' +
-      '<div class="kpi-label">Average Morale</div>' +
-      '<div class="kpi-value">' + Math.round(avgMorale) + '</div>' +
-      '<div class="meter" style="margin:8px 0 16px;"><div class="meter-fill" style="width:' + Math.round(avgMorale) + '%"></div></div>' +
-      (unhappyPlayers.length === 0
-        ? '<div class="empty-state">No unhappy players right now.</div>'
-        : '<div class="kpi-label">Unhappy Players</div><table class="data-table"><thead><tr><th>Player</th><th class="num">Morale</th><th>Why</th></tr></thead><tbody>' +
-          unhappyPlayers.map(function (p) {
-            const reasons = moraleFactors(p, team);
-            return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
-              '<td class="num">' + moraleStatusHtml(p) + '</td>' +
-              '<td>' + (reasons.length > 0 ? reasons.join(', ') : '—') + '</td></tr>';
-          }).join('') + '</tbody></table>') +
-    '</div></div>' +
+      '<div class="panel"><div class="panel-header">Injuries &amp; Morale' +
+        (injuredPlayers.length > 0 ? ' <span class="pill pill-loss">' + injuredPlayers.length + '</span>' : '') +
+        '</div><div class="panel-body">' +
+        ((injuredPlayers.length === 0 && unhappyPlayers.length === 0)
+          ? '<div class="empty-state">All healthy, nobody unhappy.</div>'
+          : '<table class="data-table"><tbody>' +
+            injuredPlayers.map(function (p) {
+              return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
+                '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+                '<td><span class="pill pill-loss">' + injuryLabel(p.status.injury) + '</span></td></tr>';
+            }).join('') +
+            unhappyPlayers.map(function (p) {
+              const reasons = moraleFactors(p, team);
+              return '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
+                '<td class="num">' + moraleStatusHtml(p) + '</td>' +
+                '<td>' + (reasons.length > 0 ? reasons.join(', ') : '—') + '</td></tr>';
+            }).join('') + '</tbody></table>') +
+      '</div></div>' +
 
-    '<div class="panel"><div class="panel-header">Headlines</div><div class="panel-body">' +
-      (headlines.length === 0
-        ? '<div class="empty-state">No news yet.</div>'
-        : '<ul class="headline-list">' + headlines.map(function (h) {
-            // Same reason ui/liveFeed.js escapes this: feed text is built in
-            // the sim layer and embeds user-supplied player and team names.
-            return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + escapeHtml(h.text) + '</li>';
-          }).join('') + '</ul>') +
+      '<div class="panel"><div class="panel-header">Your Career</div><div class="panel-body">' +
+        careerHintHtml() +
+      '</div></div>' +
+
+      '<div class="panel"><div class="panel-header">Headlines</div><div class="panel-body">' +
+        (headlines.length === 0
+          ? '<div class="empty-state">No news yet.</div>'
+          : '<ul class="headline-list">' + headlines.map(function (h) {
+              // Same reason ui/liveFeed.js escapes this: feed text is built in
+              // the sim layer and embeds user-supplied player and team names.
+              return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + escapeHtml(h.text) + '</li>';
+            }).join('') + '</ul>') +
+      '</div></div>' +
+
     '</div></div>';
+
+  const playBtn = container.querySelector('#dash-play');
+  if (playBtn && !playBtn.disabled && typeof handleWatchNextGame === 'function') {
+    playBtn.addEventListener('click', handleWatchNextGame);
+  }
+  container.querySelectorAll('tr[data-team-id]').forEach(function (row) {
+    row.addEventListener('click', function () {
+      GameState.inspectTeamId = row.getAttribute('data-team-id');
+      renderView('roster');
+    });
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {
