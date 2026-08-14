@@ -32,7 +32,7 @@ no bridges (dashboard has no Node consumer), no stored state.
 
 **Files:** Modify: `style.css` (append after the broadcast blocks)
 
-- [ ] **Step 1:** Append the component block:
+- [x] **Step 1:** Append the component block:
 
 ```css
 /* ---- Command Center dashboard ---- */
@@ -86,7 +86,7 @@ no bridges (dashboard has no Node consumer), no stored state.
 @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
 ```
 
-- [ ] **Step 2:** Commit `style: command center dashboard CSS`.
+- [x] **Step 2:** Commit `style: command center dashboard CSS`.
 
 ### Task 2: Data helpers in ui/dashboard.js
 
@@ -97,7 +97,7 @@ no bridges (dashboard has no Node consumer), no stored state.
 `{ day, opp, home }`; `teamStreak(teamId, season)` → `'W4' | 'L2' | '—'`;
 `conferenceSeeding(conference)` → getPlayoffSeeds(conference, 15).
 
-- [ ] **Step 1:** Implement, reading `season.games` the way powerRankings'
+- [x] **Step 1:** Implement, reading `season.games` the way powerRankings'
   `recentFormWinPct` does:
 
 ```js
@@ -142,7 +142,7 @@ function teamStreak(teamId, season) {
   most recent regular-season days plus any played playoff rows, which is the
   honest "recent form".)
 
-- [ ] **Step 2:** Seed/division lookups:
+- [x] **Step 2:** Seed/division lookups:
 
 ```js
 function seedLabel(team) {
@@ -162,14 +162,14 @@ function ordinal(n) {
 }
 ```
 
-- [ ] **Step 3:** Commit `feat: dashboard form/seed helpers`.
+- [x] **Step 3:** Commit `feat: dashboard form/seed helpers`.
 
 ### Task 3: renderDashboard — hero + grid
 
 **Files:** Modify: `ui/dashboard.js` (rewrite renderDashboard; keep
 injuryLabel/topLeaders/careerHintHtml/recentHeadlines/SCORE_LINE_PATTERN)
 
-- [ ] **Step 1:** Hero band. Record from `team.record`; sub `seedLabel · divisionLabel`
+- [x] **Step 1:** Hero band. Record from `team.record`; sub `seedLabel · divisionLabel`
   (only when a season exists, else 'No season in progress'); stats streak /
   PPG / Opp PPG (`record.pointsFor / gp`, '—' when gp 0). Spotlight: regular
   season → next game from `upcomingGames(teamId, season, 1)` with opponent
@@ -177,26 +177,26 @@ injuryLabel/topLeaders/careerHintHtml/recentHeadlines/SCORE_LINE_PATTERN)
   name. Button: `<button id="dash-play">Play Next Game</button>`, disabled by
   the dock's own rule (copy of `noGameToWatch` from ui/simControls.js), wired
   to `handleWatchNextGame` (typeof-guarded like other cross-file calls).
-- [ ] **Step 2:** Left column: form strip (last 5 `.form-bug`s: `vs/@ ABBR`,
+- [x] **Step 2:** Left column: form strip (last 5 `.form-bug`s: `vs/@ ABBR`,
   `ownScore–oppScore`, W/L; plus one unstyled-top bug listing the next 2
   from `upcomingGames`), Conference Race panel (top 5 seeds or top 4 + user
   row, rank/team/W-L/GB/streak, user row `row-user` + accent tint, rows
   clickable to roster exactly like ui/standings.js), Leaders panel
   (`.lead-cols`, team top-3 per stat via existing topLeaders, muted league
   line via topLeaders over PLAYERS_2026).
-- [ ] **Step 3:** Right column: Front Office `.fo-grid` (payroll `$168M / $170M`
+- [x] **Step 3:** Right column: Front Office `.fo-grid` (payroll `$168M / $170M`
   with over-cap coloring + meter, chemistry, fans, owner each with meter),
   merged Injuries & Morale panel, Your Career (careerHintHtml unchanged),
   Headlines (recentHeadlines 6).
-- [ ] **Step 4:** Load in browser: dashboard renders, no console errors, Play
+- [x] **Step 4:** Load in browser: dashboard renders, no console errors, Play
   button starts the next game, race rows navigate to rosters.
-- [ ] **Step 5:** Commit `feat: command center dashboard`.
+- [x] **Step 5:** Commit `feat: command center dashboard`.
 
 ### Task 4: Smoke coverage
 
 **Files:** Modify: `scripts/ui-smoke.js` (new group after `broadcast:`)
 
-- [ ] **Step 1:** `checkDashboard()` group `dashboard:`; each check renders
+- [x] **Step 1:** `checkDashboard()` group `dashboard:`; each check renders
   `renderView('dashboard')` first:
   - `dashboard:hero-record` — `.dash-hero-rec` text starts with
     `record.wins + '-' + record.losses`.
@@ -208,15 +208,15 @@ injuryLabel/topLeaders/careerHintHtml/recentHeadlines/SCORE_LINE_PATTERN)
     rank cell equals the user's seed index + 1.
   - `dashboard:play-parity` — `#dash-play.disabled` ===
     `#sim-watch-game.disabled` after rendering the dock.
-- [ ] **Step 2:** Run UI_SMOKE in browser — all green including new group.
-- [ ] **Step 3:** Commit `test: dashboard smoke group`.
+- [x] **Step 2:** Run UI_SMOKE in browser — all green including new group.
+- [x] **Step 3:** Commit `test: dashboard smoke group`.
 
 ### Task 5: Whole-feature verification
 
-- [ ] **Step 1:** Full validator suite: 56/56, goldens unregenerated.
-- [ ] **Step 2:** Browser: UI_SMOKE all green; look at the page on BOS, LAL
+- [x] **Step 1:** Full validator suite: 56/56, goldens unregenerated.
+- [x] **Step 2:** Browser: UI_SMOKE all green; look at the page on BOS, LAL
   (purple/gold), BKN (black primary — hero must stay legible via scrim);
   resize below 1100px (columns stack).
-- [ ] **Step 3:** Advance a few days in-app: hero record/streak/form strip
+- [x] **Step 3:** Advance a few days in-app: hero record/streak/form strip
   update; play a game via the hero button.
-- [ ] **Step 4:** Tick plan checkboxes, update memory, report with screenshots.
+- [x] **Step 4:** Tick plan checkboxes, update memory, report with screenshots.
