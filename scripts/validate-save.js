@@ -292,6 +292,10 @@ function checkTeamFinancesCoachAndStrategyRoundTrip() {
   coachesModule.hireCoach(team, coachesModule.generateCoach(makeRng(5)), 2027);
   const hiredCoachName = team.coach.name;
   team.strategy = { pace: 1, threePointRate: -1 };
+  // A team field left out of TEAM_SAVE_FIELDS is silently dropped on reload —
+  // the user's chosen starting five is exactly that shape of field, and losing
+  // it would look like the game ignoring a decision they made.
+  team.startingFive = ['bos-jayson-tatum', 'bos-derrick-white'];
 
   const gameState = makeFakeGameState({});
   const payload = JSON.parse(JSON.stringify(saveModule.serializeGameState(gameState, 'Finances Round Trip')));
@@ -301,6 +305,7 @@ function checkTeamFinancesCoachAndStrategyRoundTrip() {
   team.finances = null;
   team.coach = null;
   team.strategy = null;
+  team.startingFive = null;
 
   const restored = {};
   saveModule.applySavedState(payload, restored);
@@ -309,6 +314,8 @@ function checkTeamFinancesCoachAndStrategyRoundTrip() {
   assert.strictEqual(team.finances.arenaTier, 3, 'arena tier should round-trip');
   assert.strictEqual(team.coach.name, hiredCoachName, 'hired coach should round-trip');
   assert.deepStrictEqual(team.strategy, { pace: 1, threePointRate: -1 }, 'strategy dials should round-trip');
+  assert.deepStrictEqual(team.startingFive, ['bos-jayson-tatum', 'bos-derrick-white'],
+    'the chosen starting five should round-trip');
 
   console.log('checkTeamFinancesCoachAndStrategyRoundTrip: OK');
 }
