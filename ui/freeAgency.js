@@ -73,7 +73,11 @@ function renderFreeAgency(container, userTeamId) {
       });
       html += '</tbody></table></div>';
     }
-    html += '<div id="bidding-panel"></div>';
+    // No standing container for the bidding panel any more: it is injected as a
+    // row directly beneath the player being bid on (see openBidUnder). It used
+    // to live here, below the whole pool, which meant clicking Make Offer on
+    // someone near the top scrolled the panel off-screen entirely — you were
+    // bidding on a player you could no longer see.
     // Same stranded-header problem: this panel titled itself before there was
     // anything to list, so a mid-season visit showed "Recent Signings" over
     // blank space. It appears once there is a signing to report.
@@ -96,9 +100,29 @@ function renderFreeAgency(container, userTeamId) {
       draw();
     });
 
+    // Opens the bidding panel in a row spliced in immediately below the player
+    // it belongs to, so the name, rating and asking price you are weighing stay
+    // on screen while you decide.
+    function openBidUnder(row, playerId) {
+      // One bid at a time. Without this, working down the list left a trail of
+      // open panels, each holding its own independent bidding state.
+      const open = container.querySelector('.bid-row');
+      if (open) open.remove();
+
+      const host = document.createElement('tr');
+      host.className = 'bid-row';
+      const cell = document.createElement('td');
+      // Read off the row rather than hard-coded: this table has already gained
+      // and lost columns, and a stale number would silently misalign the panel.
+      cell.colSpan = row.children.length;
+      host.appendChild(cell);
+      row.after(host);
+      renderBiddingPanel(cell, playerId, userTeamId, draw, signingLog);
+    }
+
     container.querySelectorAll('button[data-offer-id]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        renderBiddingPanel(document.getElementById('bidding-panel'), btn.getAttribute('data-offer-id'), userTeamId, draw, signingLog);
+        openBidUnder(btn.closest('tr'), btn.getAttribute('data-offer-id'));
       });
     });
 

@@ -1319,3 +1319,13 @@ table { border-collapse: collapse; width: 100%; }
 .quit-confirm-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .quit-confirm-error { margin-top: 12px; font-size: .78rem; color: var(--loss); }
 .quit-confirm-error[hidden] { display: none; }
+
+/* ---- Inline bidding row ---- */
+/* The bidding panel is spliced into the pool table as its own row, directly
+   beneath the player being bid on, rather than sitting below the whole list
+   where clicking Make Offer on someone near the top scrolled the panel out of
+   sight. The cell carries no padding of its own — .bid-panel brings its own
+   box — and drops the row border so the panel reads as attached to the player
+   above it rather than as a separate table row. */
+.data-table tr.bid-row > td { padding: 0 8px; border-bottom: none; background: var(--surface-2); }
+.bid-row .bid-panel { margin: 8px 0 12px; }
