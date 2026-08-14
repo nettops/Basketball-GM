@@ -332,6 +332,15 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       // Losing charge to a substitution would punish the player for a decision
       // he did not make.
       if (!line || onCourt[side].indexOf(play.playerId) === -1) continue;
+      // A player spending his takeover does not EARN charge from it. Without
+      // this, the takeover charged itself: its own dials (shotShare, And-One's
+      // 2.2x foul rate) multiply exactly the plays its affinity rewards, and
+      // the league's best charge profile refilled mid-run and fired again —
+      // measured at 1.56 takeovers a game for the scoring leader, against a
+      // design of ~1 per game for the whole league, and raising the second-
+      // meter cost to 2.2x barely dented it (1.09/game) because the box-line
+      // escalation resets every game while charge carries over.
+      if (sim.takeovers[side] && sim.takeovers[side].playerId === play.playerId) continue;
       const key = ultimateIndex[side][play.playerId].ultimate.key;
       const diff = side === 'home' ? (sim.homeScore - sim.awayScore)
                                    : (sim.awayScore - sim.homeScore);

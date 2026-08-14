@@ -208,10 +208,11 @@ function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defender
 function checkShotSpecMatchesTheOriginal() {
   // Mirrored BY HAND when the bases were trimmed 0.019 for the 2K27 face-value
   // roster (raw 2K attributes score hotter than the old mean-50 league; A/B on
-  // identical seeds read 140.54 vs the 134.86 target before the trim), and a
+  // identical seeds read 140.54 vs the 134.86 target before the trim), a
   // further 0.0064 when PICK_POWER.shooter was re-anchored and star volume
-  // concentration lifted league scoring ~1.9 above the baseline.
-  const zones = [['three', 0.3199], ['mid', 0.4099], ['inside', 0.5499]];
+  // concentration lifted league scoring ~1.9 above the baseline, and 0.0065
+  // more when the rawOverall refit's stronger rotations lifted it again.
+  const zones = [['three', 0.3134], ['mid', 0.4034], ['inside', 0.5434]];
   let worst = 0;
   zones.forEach(function (z) {
     for (let s = 0; s <= 100; s += 10) {

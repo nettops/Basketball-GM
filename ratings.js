@@ -25,29 +25,29 @@ var _RATINGS_DATA = (typeof require !== 'undefined')
   ? { data: require('./data.js') }
   : { data: { ATTRIBUTE_KEYS: ATTRIBUTE_KEYS } };
 
-// Fitted by scripts/fit-overall.js against 3000 games and 344 players (ridge 1, in-sample r 0.526).
+// Fitted by scripts/fit-overall.js against 3000 games and 348 players (ridge 1, in-sample r 0.548).
 // Re-run that script to regenerate after a deliberate sim change.
 const OVERALL_COEFFICIENTS = {
-  insideScoring: { coef: 0.00000, mean: 72.2 },
-  midRange: { coef: 0.11570, mean: 75.5 },
-  threePoint: { coef: 0.14162, mean: 76.8 },
-  freeThrow: { coef: 0.33616, mean: 76.9 },
-  passing: { coef: 0.00000, mean: 63.9 },
-  ballHandling: { coef: 0.20099, mean: 70.5 },
-  postScoring: { coef: 0.03844, mean: 54.8 },
-  perimeterDefense: { coef: 0.16521, mean: 68.5 },
-  interiorDefense: { coef: 0.00000, mean: 60.9 },
-  steal: { coef: 0.38262, mean: 56.0 },
-  block: { coef: 0.34777, mean: 57.8 },
-  offReb: { coef: 0.00000, mean: 51.3 },
-  defReb: { coef: 0.35503, mean: 62.2 },
-  speed: { coef: 0.00000, mean: 75.2 },
-  acceleration: { coef: 0.02777, mean: 76.7 },
-  strength: { coef: 0.00000, mean: 62.0 },
-  vertical: { coef: 0.04411, mean: 76.8 },
-  basketballIQ: { coef: 0.00000, mean: 69.6 },
-  leadership: { coef: 0.00000, mean: 70.8 },
-  workEthic: { coef: 0.00000, mean: 84.3 },
+  insideScoring: { coef: 0.30105, mean: 72.3 },
+  midRange: { coef: 0.11676, mean: 75.7 },
+  threePoint: { coef: 0.14641, mean: 76.5 },
+  freeThrow: { coef: 0.51891, mean: 77.1 },
+  passing: { coef: 0.13072, mean: 63.8 },
+  ballHandling: { coef: 0.00000, mean: 69.9 },
+  postScoring: { coef: 0.00000, mean: 54.7 },
+  perimeterDefense: { coef: 0.00000, mean: 68.4 },
+  interiorDefense: { coef: 0.00000, mean: 60.7 },
+  steal: { coef: 0.36157, mean: 55.8 },
+  block: { coef: 0.29173, mean: 57.6 },
+  offReb: { coef: 0.00000, mean: 51.2 },
+  defReb: { coef: 0.19811, mean: 63.1 },
+  speed: { coef: 0.00000, mean: 75.1 },
+  acceleration: { coef: 0.26433, mean: 76.5 },
+  strength: { coef: 0.07711, mean: 62.2 },
+  vertical: { coef: 0.00000, mean: 76.5 },
+  basketballIQ: { coef: 0.03110, mean: 69.5 },
+  leadership: { coef: 0.00000, mean: 70.5 },
+  workEthic: { coef: 0.10831, mean: 84.2 },
 };
 const OVERALL_INTERCEPT = 50.0000;
 // (Refit for the 2K FACE-VALUE scale: attributes now read exactly as the

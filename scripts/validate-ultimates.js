@@ -431,10 +431,15 @@ function checkLeagueScoringHeldFlat() {
 // single best game. Both primary bars are therefore set on the steady
 // statistic, with the noisy one kept only as a far-away backstop. A bar pinned
 // just above one sample of a maximum is a coin flip wearing a lab coat.
-const MAX_TOP5_MEAN_PPG = 46;
+// Tightened when PICK_CEILING.shooter dropped 0.50 -> 0.30 (user call: a
+// ~50 ppg season leader is too much). Measured here at the new cap: top
+// five average 36.8, leader 38.5, best game 83, one 80+ night. The bars sit
+// far enough above those to absorb seed noise while failing if the old
+// 49-ppg behavior ever creeps back.
+const MAX_TOP5_MEAN_PPG = 42;
 const MAX_EIGHTY_POINT_GAMES = 4;
-const HARD_MAX_LEADER_PPG = 50;
-const HARD_MAX_SINGLE_GAME = 95;
+const HARD_MAX_LEADER_PPG = 45;
+const HARD_MAX_SINGLE_GAME = 90;
 
 function checkScoringLeadersInBand() {
   const s = simulatedSeason();

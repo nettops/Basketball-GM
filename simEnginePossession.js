@@ -163,7 +163,28 @@ const PICK_POWER = {
 // best night in a season falls from 68 points to 57 and sixty-point games stop
 // entirely. A 60-point game is one hot night; a 45-point AVERAGE is eighty-two
 // of them. The cap must separate those, not flatten both.
-const PICK_CEILING = { shooter: 0.50 };
+//
+// RE-SWEPT for the 2K27 face-value roster (user: a ~50 ppg leader is too
+// much). The whole table above sat on the old scale, where the alpha's
+// per-possession share ran well past 0.50; on the compressed 2K scale the
+// best player's share is only ~0.32, so everything from 0.36 up is now the
+// no-op region — measured, one full season per setting, same seed:
+//
+//   cap     teamPPG   leader        top5 mean
+//   0.50     135.5    49.2 (VW)       40.3
+//   0.36     135.7    45.7 (VW)       39.9
+//   0.33     135.4    44.3 (VW)       39.0
+//   0.30     135.5    39.5 (VW)       36.6   <- shipped
+//   0.28     136.0    37.8 (KAT)      35.9
+//   0.26     135.8    36.4 (KAT)      33.5
+//
+// 0.30 keeps the best player on top of the table (0.28 and below shuffle
+// him to third) and lands the leader at ~39.5 — exactly proportional to a
+// real ~33 ppg scoring champion once you scale by this league's 135-point
+// pace — while team scoring does not move. Takeover dials still raise the
+// holder's ceiling past this for the duration (shotCeiling in ultimates.js),
+// so explosion nights survive; the cap trims the eighty-two-game AVERAGE.
+const PICK_CEILING = { shooter: 0.30 };
 
 function ballHandlingWeight(player) {
   return Math.max(1, _POSS_DATA.composite.computeComposite(player, 'ballHandling') + _POSS_DATA.traits.getTraitBonus(player, 'boxscore', 'assist'));
@@ -444,7 +465,11 @@ var SHOT_TUNING = {
   // on more shots and league scoring rose to ~136.8 against the 134.86
   // baseline. Sized from the measured sensitivity above (-0.019 base moved
   // scoring -5.66, so ~298 points per unit of base).
-  base: { three: 0.3199, mid: 0.4099, inside: 0.5499 },
+  //
+  // And -0.0065 more after the rawOverall refit against the capped engine:
+  // the new fit reordered rotations toward stronger lineups and scoring rose
+  // to 136.79 on the ultimates validator's seeds. Same sensitivity.
+  base: { three: 0.3134, mid: 0.4034, inside: 0.5434 },
   // skillDiv was 292 and defDiv 292. Both moved for reasons that are NOT the
   // same, which is why they are no longer equal:
   //

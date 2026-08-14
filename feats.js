@@ -84,7 +84,15 @@
 // 62 -> 60 for the same straddle (16 on one seed, 11 on the other; 60
 // measures 28). hugeScoring 74 -> 2 nights, the rare headline it is meant
 // to be.
-var FEAT_TUNING = { bigScoring: 64, hugeScoring: 76, doubleAt: 12, fiveAt: 5 };
+// Re-measured again when PICK_CEILING.shooter dropped 0.50 -> 0.30 (the
+// face-value league's scoring leader ran ~49 ppg; the cap pulls him to
+// ~39.5): the 64/76 bars fell to 7 and 0 nights. On the validator's own
+// seed the full-season counts read 56+ 40, 58+ 26, 60+ 19 and 66+ 6,
+// 68+ 4, 70+ 3 — so 58 sits mid-band for bigScoring [15,40] and 68
+// mid-band for hugeScoring [1,6], with the best night still 75. doubleAt
+// 12 -> 11 in the same pass: capping the alpha's shot volume shaved the
+// points leg of triple-doubles to 38 against the [40,120] floor.
+var FEAT_TUNING = { bigScoring: 58, hugeScoring: 68, doubleAt: 11, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 
