@@ -34,7 +34,7 @@ except one validator. No new module (avoids a new browser bridge).
 
 **Files:** Create: `scripts/validate-lineup.js`; Modify: `simEngineBoxScore.js`
 
-- [ ] **Step 1: Write the failing validator.** Create `scripts/validate-lineup.js`:
+- [x] **Step 1: Write the failing validator.** Create `scripts/validate-lineup.js`:
 
 ```js
 const assert = require('assert');
@@ -112,12 +112,12 @@ checkCapsAtFive();
 console.log('All lineup validations passed');
 ```
 
-- [ ] **Step 2: Run it, expect failure.**
+- [x] **Step 2: Run it, expect failure.**
 
 Run: `node scripts/validate-lineup.js`
 Expected: `TypeError: box.lineupOrder is not a function`
 
-- [ ] **Step 3: Implement.** In simEngineBoxScore.js, directly below
+- [x] **Step 3: Implement.** In simEngineBoxScore.js, directly below
   `minutesWeight`:
 
 ```js
@@ -159,12 +159,12 @@ function lineupOrder(roster, team) {
 
   Add `lineupOrder: lineupOrder` to the `module.exports` block.
 
-- [ ] **Step 4: Run it, expect pass.**
+- [x] **Step 4: Run it, expect pass.**
 
 Run: `node scripts/validate-lineup.js`
 Expected: `All lineup validations passed`
 
-- [ ] **Step 5: Commit** `feat: lineupOrder, one ordering for starters and minutes`.
+- [x] **Step 5: Commit** `feat: lineupOrder, one ordering for starters and minutes`.
 
 ### Task 2: The sim reads it (goldens must not move)
 
@@ -172,7 +172,7 @@ Expected: `All lineup validations passed`
 
 **Interfaces consumed:** `lineupOrder(roster, team)` from Task 1.
 
-- [ ] **Step 1: gameSim.** Replace `pickStarters` with:
+- [x] **Step 1: gameSim.** Replace `pickStarters` with:
 
 ```js
   function pickStarters(roster, team) {
@@ -196,7 +196,7 @@ Expected: `All lineup validations passed`
   beside `homeTeamId`: `homeTeam: homeTeam, awayTeam: awayTeam` — this is what
   keeps gameCoach from needing a `teams` dependency.
 
-- [ ] **Step 2: gameCoach.** `rotationRanks` ranks from the shared ordering:
+- [x] **Step 2: gameCoach.** `rotationRanks` ranks from the shared ordering:
 
 ```js
 function rotationRanks(sim, team) {
@@ -213,30 +213,30 @@ function rotationRanks(sim, team) {
   The existing caching comment stays: this is still called from inside a sort
   comparator on every possession.
 
-- [ ] **Step 3: Both browser bridges.** gameSim.js's browser branch and
+- [x] **Step 3: Both browser bridges.** gameSim.js's browser branch and
   gameCoach.js's browser branch each hand-write `box: { minutesWeight: minutesWeight }`.
   Change both to `box: { minutesWeight: minutesWeight, lineupOrder: lineupOrder }`.
   Node cannot see a mistake here — scripts/validate-browserBridges.js is what does.
 
-- [ ] **Step 4: Goldens, UNREGENERATED.**
+- [x] **Step 4: Goldens, UNREGENERATED.**
 
 Run: `node scripts/validate-gamesim.js && node scripts/validate-seasonRollover.js`
 Expected: both print their `All ... validations passed` lines. If either
 drifts, the ordering is not identical for an unpicked team — fix
 `lineupOrder`, do NOT regenerate the fixtures.
 
-- [ ] **Step 5: Bridge parity.**
+- [x] **Step 5: Bridge parity.**
 
 Run: `node scripts/validate-browserBridges.js`
 Expected: passes.
 
-- [ ] **Step 6: Commit** `feat: starters and rotation read one ordering`.
+- [x] **Step 6: Commit** `feat: starters and rotation read one ordering`.
 
 ### Task 3: The pick survives a save
 
 **Files:** Modify: `save.js`; Test: `scripts/validate-save.js`
 
-- [ ] **Step 1: Write the failing assertion.** In scripts/validate-save.js, inside
+- [x] **Step 1: Write the failing assertion.** In scripts/validate-save.js, inside
   the existing round-trip check, set a pick before saving and assert it returns:
 
 ```js
@@ -252,20 +252,20 @@ Expected: passes.
     'startingFive must survive a save/load round-trip');
 ```
 
-- [ ] **Step 2: Run it, expect failure.**
+- [x] **Step 2: Run it, expect failure.**
 
 Run: `node scripts/validate-save.js`
 Expected: AssertionError — `startingFive` comes back `undefined`.
 
-- [ ] **Step 3: Implement.** Append `'startingFive'` to `TEAM_SAVE_FIELDS` in
+- [x] **Step 3: Implement.** Append `'startingFive'` to `TEAM_SAVE_FIELDS` in
   save.js (line ~49).
 
-- [ ] **Step 4: Run it, expect pass.**
+- [x] **Step 4: Run it, expect pass.**
 
 Run: `node scripts/validate-save.js`
 Expected: passes.
 
-- [ ] **Step 5: Commit** `feat: persist the starting five`.
+- [x] **Step 5: Commit** `feat: persist the starting five`.
 
 ### Task 4: Prove the pick actually changes minutes
 
@@ -274,7 +274,7 @@ Expected: passes.
 This is the failure mode no structural test catches: the pick is stored, the
 UI shows it, and the coach quietly plays whoever he likes anyway.
 
-- [ ] **Step 1: Add the measured check** to scripts/validate-lineup.js:
+- [x] **Step 1: Add the measured check** to scripts/validate-lineup.js:
 
 ```js
 const { createRng } = require('../rng.js');
@@ -317,20 +317,20 @@ function checkPickChangesMinutes() {
 
   Call it from the bottom of the file alongside the other checks.
 
-- [ ] **Step 2: Run it.**
+- [x] **Step 2: Run it.**
 
 Run: `node scripts/validate-lineup.js`
 Expected: `checkPickChangesMinutes: OK (<small> -> <large>)`. If the two numbers
 are close, the promotion is not reaching `targetMinutes` — root-cause it in
 gameCoach before continuing; do NOT weaken the threshold.
 
-- [ ] **Step 3: Commit** `test: prove a picked five actually plays`.
+- [x] **Step 3: Commit** `test: prove a picked five actually plays`.
 
 ### Task 5: The Roster page picker
 
 **Files:** Modify: `ui/roster.js`, `style.css`
 
-- [ ] **Step 1: Helpers** at the top of ui/roster.js:
+- [x] **Step 1: Helpers** at the top of ui/roster.js:
 
 ```js
 // The stored ids, filtered to players still on the roster — a traded starter
@@ -349,7 +349,7 @@ function setStarterIds(teamId, ids) {
 }
 ```
 
-- [ ] **Step 2: The strip**, rendered only when `isOwnTeam`, inserted directly
+- [x] **Step 2: The strip**, rendered only when `isOwnTeam`, inserted directly
   after the `stat-chips` block and before the filter toolbar. Five slots; a
   filled slot shows sprite-free name, position pill and rating chip, an empty
   one reads `Auto`. Include an `Auto` button (`id="lineup-auto"`) when at least
@@ -357,7 +357,7 @@ function setStarterIds(teamId, ids) {
   position is `C` (text: `No true center — the sim does not mind, but you might.`).
   Wrap in `<div class="lineup-strip" id="lineup-strip">`.
 
-- [ ] **Step 3: The toggle.** Add a `Start` control to each roster row's Action
+- [x] **Step 3: The toggle.** Add a `Start` control to each roster row's Action
   cell, only when `isOwnTeam`:
   `<button class="btn-ghost lineup-toggle" data-lineup-id="<id>">Start</button>`,
   gaining class `is-on` and text `Starting` when the id is in
@@ -367,7 +367,7 @@ function setStarterIds(teamId, ids) {
   after any change so the strip and the row re-render from stored state rather
   than from local variables.
 
-- [ ] **Step 4: CSS** appended to style.css:
+- [x] **Step 4: CSS** appended to style.css:
 
 ```css
 /* ---- Starting five picker ---- */
@@ -386,17 +386,17 @@ function setStarterIds(teamId, ids) {
 .lineup-toggle.is-on { background: var(--accent); color: #06101D; font-weight: 700; }
 ```
 
-- [ ] **Step 5: Browser check.** Load the app, open Roster, toggle a starter,
+- [x] **Step 5: Browser check.** Load the app, open Roster, toggle a starter,
   confirm the strip updates, the sixth toggle is refused, `Auto` clears, and
   another team's roster (reached from Standings) shows no toggles.
 
-- [ ] **Step 6: Commit** `feat: starting five picker on the roster page`.
+- [x] **Step 6: Commit** `feat: starting five picker on the roster page`.
 
 ### Task 6: Smoke coverage and whole-feature verification
 
 **Files:** Modify: `scripts/ui-smoke.js`
 
-- [ ] **Step 1: Add a `lineup` group** after `dashboard`, registered in `GROUPS`:
+- [x] **Step 1: Add a `lineup` group** after `dashboard`, registered in `GROUPS`:
   - `lineup:strip-renders` — Roster for the user's team has a `#lineup-strip`
     with exactly 5 `.lineup-slot`s.
   - `lineup:toggle-persists` — clicking a `.lineup-toggle` puts that id in
@@ -410,16 +410,16 @@ function setStarterIds(teamId, ids) {
   Restore the pre-existing `startingFive` and view at the end of the group, in a
   `finally`, so the suite never leaves a lineup behind in the user's league.
 
-- [ ] **Step 2:** Run `UI_SMOKE.run()` in the browser. Expected: all green,
+- [x] **Step 2:** Run `UI_SMOKE.run()` in the browser. Expected: all green,
   including the new group.
 
-- [ ] **Step 3:** Full validator suite.
+- [x] **Step 3:** Full validator suite.
 
 Run: `for f in scripts/validate-*.js; do node "$f" >/dev/null 2>&1 || echo "FAIL $f"; done`
 Expected: no FAIL lines (57 validators now, including validate-lineup.js).
 
-- [ ] **Step 4:** Play a game from the Watch button with a deliberately odd five
+- [x] **Step 4:** Play a game from the Watch button with a deliberately odd five
   and confirm those players are on the floor at tip-off in the live view.
 
-- [ ] **Step 5: Commit** `test: starting five smoke coverage`; tick this plan's
+- [x] **Step 5: Commit** `test: starting five smoke coverage`; tick this plan's
   checkboxes and update memory.
