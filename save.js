@@ -262,6 +262,13 @@ function applySavedState(payload, gameState) {
   // every trade valuation and the rotation weights would read undefined.
   _SAVE_DATA.players.PLAYERS_2026.length = 0;
   payload.players.forEach(function (p) {
+    // Saves written before 2026-08-13 carry five scraped names with a literal
+    // HTML entity ("Day&#8217;Ron Sharpe") — the data file is fixed, this
+    // heals leagues started before the fix. Entity text double-escapes at
+    // every render site, so it can never display correctly from here.
+    if (p.name && p.name.indexOf('&#8217;') !== -1) {
+      p.name = p.name.replace(/&#8217;/g, '’');
+    }
     _SAVE_DATA.players.PLAYERS_2026.push(_SAVE_DATA.ratings.defineOverall(p));
   });
 
@@ -357,6 +364,13 @@ function applySavedState(payload, gameState) {
   if (payload.leagueHistory) {
     Object.keys(payload.leagueHistory).forEach(function (key) {
       _SAVE_DATA.history.LEAGUE_HISTORY[key] = payload.leagueHistory[key];
+    });
+    // Same entity heal as the active-player restore above: in a long-running
+    // save the five affected names may have moved into the retiree archive.
+    (_SAVE_DATA.history.LEAGUE_HISTORY.retiredPlayers || []).forEach(function (p) {
+      if (p.name && p.name.indexOf('&#8217;') !== -1) {
+        p.name = p.name.replace(/&#8217;/g, '’');
+      }
     });
   }
 
