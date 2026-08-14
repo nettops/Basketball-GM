@@ -67,8 +67,9 @@ Two smaller constraints fall out of what already exists:
 - No voice, no portraits beyond the four emotions, no animated bust poses
   beyond a slide-in and idle bob.
 - No scene authoring UI. Scenes are data in a source file.
-- No new consequence systems. Effects land on morale, the GM chronicle,
-  reputation, and the player-career decision log — all of which exist.
+- No new consequence systems beyond the reputation stat described below.
+  Effects otherwise land on morale, the GM chronicle, and the player-career
+  decision log, all of which already exist.
 
 ## Components
 
@@ -113,6 +114,10 @@ Builds a fixed overlay, walks the scene's lines, presents the choice list, and
 calls `onDone(result)` when dismissed. Owns the name plate, the typewriter, the
 bust slot, the choice list, advance-on-click/Space, and Esc-to-skip.
 
+`result` is `{ sceneId, choiceIndex, skipped }` — `choiceIndex` is `null` when
+`skipped` is true. The hook, not the engine, decides what to do with it; the
+engine never touches game state.
+
 Knows nothing about basketball. Its entire input is a scene object and a
 context object.
 
@@ -154,8 +159,8 @@ Both hooks do the same three things: build a context, ask for a scene, run it.
     { emotion: 'angry',   text: 'You lose by {margin}. What happened to {teamName} in those twelve minutes?' }
   ],
   choices: [
-    { text: 'That one is on me.',     emotion: 'shaken',  effect: (c) => ({ teamMorale: +1.5, reputation: +1, chronicle: '...' }) },
-    { text: 'Ask the guys who quit.', emotion: 'angry',   effect: (c) => ({ teamMorale: -2.5, reputation: -2, chronicle: '...' }) },
+    { text: 'That one is on me.',     emotion: 'shaken',  effect: (c) => ({ teamMorale: +1.5, reputation: +1, chronicle: 'Took the blame for a blown lead against ' + c.opponentName + '.' }) },
+    { text: 'Ask the guys who quit.', emotion: 'angry',   effect: (c) => ({ teamMorale: -2.5, reputation: -2, chronicle: 'Called out the roster in the press after losing to ' + c.opponentName + '.' }) },
     { text: 'Long season.',           emotion: 'neutral', effect: null }
   ]
 }
@@ -165,9 +170,34 @@ Both hooks do the same three things: build a context, ask for a scene, run it.
 Consequential and flavor choices sit in the same list and are visually
 identical. The player is not told which is which.
 
+## Speakers
+
+A scene's `speaker` names *who is talking*, and `dialogueContext.js` resolves it
+to something the box can draw:
+
+- `{ kind: 'player', id }` and `{ kind: 'coach', id }` resolve to an existing
+  entity, and the bust uses that entity's face data through
+  `spriteColorsForPlayer`.
+- `{ kind: 'reporter' }` has no entity behind it. Reporters are generated once
+  per league and cached on `GameState.reporters` — one per team, so the beat
+  writer who covers your team is the same person every night and becomes a
+  recurring character rather than a new stranger each game.
+
+A generated reporter is the minimum a bust and a name plate need: a name from
+`pickUniqueName` (names.js:124), a `face` built by `generateFace` (faces.js:69)
+for skin and hair, and an outlet name. They are drawn from the league RNG at
+generation time and persisted with `GameState`, so a save replays the same
+reporters. They are not players: they never enter a roster, a draft class, or
+any league listing.
+
+An absent `GameState.reporters` regenerates on load, so old saves and saves
+made before this feature both work.
+
 ## Selection
 
-1. Filter by `moment` and the current role (`gm` or `player`).
+1. Filter by `moment` and the current role. The role is `player` when
+   `GameState.playerCareerController` exists and has a `controlledPlayerId`,
+   and `gm` otherwise — the same signal the player dashboard already keys off.
 2. Keep scenes whose `when(ctx)` returns true.
 3. Take the highest `priority`; break ties with the league RNG.
 4. Drop any scene id in the recent-scenes ring buffer.
@@ -179,7 +209,8 @@ Ties break on `GameState.rng`, not `Math.random`, for the same reason
 same lines.
 
 The recent-scenes ring buffer lives on `GameState` and holds the last 8 fired
-scene ids, so the same scene cannot hit twice in a week.
+scene ids, so a scene cannot recur until 8 others have fired. It is saved with
+`GameState`; an absent buffer normalizes to empty on load.
 
 A scene whose `when()` throws is dropped from selection and logged. One bad
 predicate should not cost the user their post-game.
@@ -281,6 +312,10 @@ entry.
 
 **`drawPixelBust`** — every emotion key exists in both `BROW` and `MOUTH`, so a
 scene cannot name an emotion that silently renders a blank face.
+
+**Reporter generation** — the same seed yields the same reporters, every team
+has exactly one, and regeneration on a save with no `reporters` field produces
+a complete set.
 
 **Manual smoke** in the browser for the two hooks: halftime pauses and resumes
 playback correctly at 1x and 8x, post-game fires after a watched game, and Esc
