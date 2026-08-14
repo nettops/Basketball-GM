@@ -58,6 +58,22 @@ function ratingTier(value) {
   return 'tier-low';
 }
 
+// The stored ids, filtered to players still on this roster. A traded or
+// released starter leaves a stale id behind, so the list self-heals every time
+// the page renders rather than needing a cleanup pass somewhere else.
+function currentStarterIds(teamId) {
+  const team = getTeamById(teamId);
+  const stored = (team && team.startingFive) || [];
+  const roster = getTeamRoster(teamId);
+  return stored.filter(function (id) {
+    return roster.some(function (p) { return p.id === id; });
+  }).slice(0, 5);
+}
+
+function setStarterIds(teamId, ids) {
+  getTeamById(teamId).startingFive = ids.slice(0, 5);
+}
+
 function renderRoster(container, teamId) {
   let sortKey = 'overall';
   let sortDir = -1; // descending by default
@@ -109,6 +125,40 @@ function renderRoster(container, teamId) {
       chip('Payroll', '$' + Math.round(getTeamPayroll(teamId) / 1e6) + 'M') +
       '</div>';
 
+    // The starting five picker, own team only. Whoever is listed here leads
+    // the shared lineup ordering (simEngineBoxScore's lineupOrder), so these
+    // five both tip off AND carry starter minute targets.
+    if (isOwnTeam) {
+      const starterIds = currentStarterIds(teamId);
+      const fullRoster = getTeamRoster(teamId);
+      const byId = {};
+      fullRoster.forEach(function (p) { byId[p.id] = p; });
+
+      let slots = '';
+      for (let i = 0; i < 5; i++) {
+        const p = byId[starterIds[i]];
+        slots += p
+          ? '<div class="lineup-slot"><div class="nm">' + escapeHtml(p.name) + '</div>' +
+            '<div class="mt">' + p.position + ' · ' +
+            '<span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></div></div>'
+          : '<div class="lineup-slot is-empty"><div class="nm">Auto</div>' +
+            '<div class="mt">coach picks</div></div>';
+      }
+
+      // Informational only: position genuinely does not affect the simulation,
+      // so blocking an unusual five would enforce a rule the engine ignores.
+      const hasCenter = starterIds.some(function (id) { return byId[id] && byId[id].position === 'C'; });
+      const note = (starterIds.length === 5 && !hasCenter)
+        ? '<span class="lineup-note">No true center — the sim does not mind, but you might.</span>'
+        : '';
+
+      html += '<div class="lineup-strip" id="lineup-strip">' + slots +
+        (starterIds.length > 0
+          ? '<button class="btn-ghost" id="lineup-auto">Auto</button>'
+          : '') +
+        note + '<span class="lineup-note" id="lineup-hint"></span></div>';
+    }
+
     html += '<div class="panel"><div class="panel-body toolbar">' +
       '<label>Position: <select id="roster-filter-position">' +
       ['all'].concat(POSITIONS).map(function (pos) {
@@ -147,7 +197,12 @@ function renderRoster(container, teamId) {
         '<td class="num">' + (avg.fgPct * 100).toFixed(1) + '%</td>' +
         '<td class="num">$' + p.contract.salary.toLocaleString() + '</td>' +
         '<td class="num">' + p.contract.yearsRemaining + '</td>' +
-        '<td class="actions"><button class="btn-ghost" data-scout-id="' + p.id + '">Scout</button>' +
+        '<td class="actions">' +
+          (isOwnTeam ? '<button class="btn-ghost lineup-toggle' +
+            (currentStarterIds(teamId).indexOf(p.id) !== -1 ? ' is-on' : '') +
+            '" data-lineup-id="' + p.id + '">' +
+            (currentStarterIds(teamId).indexOf(p.id) !== -1 ? 'Starting' : 'Start') + '</button> ' : '') +
+          '<button class="btn-ghost" data-scout-id="' + p.id + '">Scout</button>' +
           (isOwnTeam ? ' <button class="btn-danger" data-waive-id="' + p.id + '">Waive</button>' : '') + '</td>' +
         '</tr>';
     });
@@ -199,6 +254,39 @@ function renderRoster(container, teamId) {
         draw();
       });
     });
+
+    // Toggling reads and writes the STORED list, then redraws from it — never
+    // from a local copy — so the strip, the row buttons and what the sim will
+    // actually do can never disagree.
+    container.querySelectorAll('button[data-lineup-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-lineup-id');
+        const ids = currentStarterIds(teamId);
+        const at = ids.indexOf(id);
+        if (at !== -1) {
+          ids.splice(at, 1);
+          setStarterIds(teamId, ids);
+        } else if (ids.length >= 5) {
+          // Refuse rather than silently swapping somebody out: predictable
+          // beats clever when five things are already chosen.
+          const hint = document.getElementById('lineup-hint');
+          if (hint) hint.textContent = 'Five already chosen — remove one first.';
+          return;
+        } else {
+          ids.push(id);
+          setStarterIds(teamId, ids);
+        }
+        draw();
+      });
+    });
+
+    const autoBtn = document.getElementById('lineup-auto');
+    if (autoBtn) {
+      autoBtn.addEventListener('click', function () {
+        setStarterIds(teamId, []);
+        draw();
+      });
+    }
 
     container.querySelectorAll('button[data-waive-id]').forEach(function (btn) {
       btn.addEventListener('click', function () {

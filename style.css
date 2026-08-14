@@ -1131,3 +1131,18 @@ table { border-collapse: collapse; width: 100%; }
 .lead-row.dim2 { color: var(--text-dim); }
 .lead-league { color: var(--text-mute); margin-top: 5px; }
 @media (max-width: 1100px) { .dash-grid { grid-template-columns: 1fr; } }
+
+/* ---- Starting five picker (Roster page) ---- */
+.lineup-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--surface-1); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 8px 10px; margin-bottom: 10px; }
+.lineup-slot { flex: 1; min-width: 120px; background: var(--surface-2);
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm); padding: 5px 8px; }
+.lineup-slot.is-empty { border-left-color: var(--line-strong); color: var(--text-mute); }
+.lineup-slot .nm { font-weight: 700; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.lineup-slot .mt { font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--text-mute); }
+.lineup-note { color: var(--text-dim); font-size: 11px; }
+.lineup-toggle.is-on { background: var(--accent); color: #06101D; font-weight: 700; }
