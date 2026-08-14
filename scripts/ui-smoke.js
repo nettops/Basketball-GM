@@ -1173,6 +1173,72 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The starting-five picker (2026-08-14). Every check asserts on the STORED
+  // list as well as the rendered strip, because the failure that matters is the
+  // two disagreeing — a lineup that looks chosen and is not.
+  function checkLineup() {
+    requireSeason();
+    const results = [];
+    const startView = GameState.currentView;
+    const startInspect = GameState.inspectTeamId;
+    const team = getTeamById(GameState.userTeamId);
+    const restoreFive = team.startingFive ? team.startingFive.slice() : undefined;
+
+    try {
+      GameState.inspectTeamId = null;
+      team.startingFive = [];
+      renderView('roster');
+      const vc = document.getElementById('view-content');
+
+      results.push(ok('lineup:strip-renders',
+        !!vc.querySelector('#lineup-strip') && vc.querySelectorAll('.lineup-slot').length === 5,
+        vc.querySelectorAll('.lineup-slot').length + ' slots'));
+
+      // Picking one must reach stored state AND show that player's name.
+      const first = vc.querySelector('.lineup-toggle');
+      const firstId = first && first.getAttribute('data-lineup-id');
+      if (first) first.click();
+      const afterOne = (getTeamById(GameState.userTeamId).startingFive || []);
+      const named = document.getElementById('view-content')
+        .querySelector('.lineup-slot:not(.is-empty) .nm');
+      const pickedPlayer = PLAYERS_2026.find(function (p) { return p.id === firstId; });
+      results.push(ok('lineup:toggle-persists',
+        afterOne.indexOf(firstId) !== -1 && !!named && !!pickedPlayer &&
+        named.textContent === pickedPlayer.name,
+        'stored ' + afterOne.length + ', slot shows ' + (named ? named.textContent : 'nothing')));
+
+      // Five is the ceiling however many times you click.
+      for (let i = 0; i < 8; i++) {
+        const btns = document.getElementById('view-content').querySelectorAll('.lineup-toggle:not(.is-on)');
+        if (btns[0]) btns[0].click();
+      }
+      const capped = (getTeamById(GameState.userTeamId).startingFive || []);
+      results.push(ok('lineup:caps-at-five', capped.length === 5, capped.length + ' stored'));
+
+      const autoBtn = document.getElementById('lineup-auto');
+      if (autoBtn) autoBtn.click();
+      results.push(ok('lineup:auto-clears',
+        (getTeamById(GameState.userTeamId).startingFive || []).length === 0,
+        (getTeamById(GameState.userTeamId).startingFive || []).length + ' left'));
+
+      // Another team's roster is browsing, not control.
+      const other = TEAMS.find(function (t) { return t.id !== GameState.userTeamId; });
+      GameState.inspectTeamId = other.id;
+      renderView('roster');
+      results.push(ok('lineup:other-team-readonly',
+        document.getElementById('view-content').querySelectorAll('.lineup-toggle').length === 0,
+        'toggles on ' + other.id));
+    } finally {
+      // Never leave a lineup behind in the user's league: this suite runs
+      // against real game state, exactly like the injection check's feed.
+      if (restoreFive === undefined) delete team.startingFive;
+      else team.startingFive = restoreFive;
+      GameState.inspectTeamId = startInspect;
+      renderView(startView);
+    }
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     feats: checkFeats,
@@ -1190,6 +1256,7 @@ const UI_SMOKE = (function () {
     nav: checkNav,
     broadcast: checkBroadcastChrome,
     dashboard: checkDashboard,
+    lineup: checkLineup,
     dock: checkDock,
     badges: checkBadgeReference,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
