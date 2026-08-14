@@ -371,16 +371,20 @@ table { border-collapse: collapse; width: 100%; }
 .data-table tr.is-clickable { cursor: pointer; }
 
 /* ---------- Rating chips ---------- */
+/* The 2K-card look: heavier weight, and the superstar tier is a FILLED
+   accent chip — the one place the accent gets to be a surface. Tier classes
+   come from ratingTier (ui/roster.js), which reads RATING_BANDS. */
 .rating-chip {
-  display: inline-block; min-width: 30px; padding: 2px 7px;
-  border-radius: var(--r-sm);
-  font-weight: 700; font-size: .8rem; text-align: center;
+  display: inline-block; min-width: 28px; padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 900; font-size: .8rem; text-align: center;
   font-variant-numeric: tabular-nums;
   background: var(--surface-3); color: var(--text-dim);
 }
-.rating-chip.tier-elite { background: rgba(212, 169, 78, .18); color: var(--gold); }
-.rating-chip.tier-high { background: rgba(88, 166, 255, .16); color: var(--info); }
-.rating-chip.tier-mid { background: rgba(63, 185, 80, .14); color: var(--win); }
+.rating-chip.tier-superstar { background: var(--accent); color: #06101D; }
+.rating-chip.tier-elite { background: var(--accent-soft); color: var(--accent); }
+.rating-chip.tier-high { background: rgba(88, 166, 255, .14); color: var(--info); }
+.rating-chip.tier-mid { background: var(--surface-3); color: var(--text); }
 .rating-chip.tier-low { background: var(--surface-3); color: var(--text-mute); }
 
 /* ---------- Pills ---------- */
@@ -1059,15 +1063,9 @@ table { border-collapse: collapse; width: 100%; }
 .rail-item:hover .rail-label,
 .rail-item:focus-visible .rail-label { opacity: 1; }
 
-/* OVR rating chips — bands are applied by ovrChipHtml (ui/topbar.js), which
-   reads ratings.RATING_BANDS; these classes never encode a number. */
-.ovr-chip {
-  display: inline-block; min-width: 26px; text-align: center;
-  font-weight: 900; border-radius: 4px; padding: 1px 4px;
-  background: var(--surface-3); font-variant-numeric: tabular-nums;
-}
-.ovr-chip.is-elite { background: var(--accent); color: #06101D; }
-.ovr-chip.is-star { background: var(--accent-soft); color: var(--accent); }
+/* (Rating chips: the existing .rating-chip system near the data-table rules
+   was restyled to the broadcast look instead of adding a second chip class —
+   one system, tier classes from ratingTier reading RATING_BANDS.) */
 
 /* Stat chip rows opening the big views. */
 .stat-chips { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }

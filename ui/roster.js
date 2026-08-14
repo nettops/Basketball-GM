@@ -49,6 +49,9 @@ function moraleStatusHtml(player) {
 // would have been cleared by nearly every player and the whole roster would
 // have rendered a single colour.
 function ratingTier(value) {
+  // tier-superstar added with the broadcast re-skin: a filled accent chip,
+  // the 2K-card look, reserved for the RATING_BANDS.superstar tier.
+  if (value >= RATING_BANDS.superstar) return 'tier-superstar';
   if (value >= RATING_BANDS.star) return 'tier-elite';
   if (value >= RATING_BANDS.rotation) return 'tier-high';
   if (value >= RATING_BANDS.fringe) return 'tier-mid';
@@ -90,6 +93,21 @@ function renderRoster(container, teamId) {
         '<span class="kpi-sub">Viewing ' + teamLogoImgHtml(teamId, 18) + ' <strong>' + escapeHtml(viewedTeam.name) + '</strong> — browsing only, no roster moves available.</span>' +
         '<button class="btn-ghost" id="roster-back-to-mine">&larr; Back to My Roster</button></div></div>';
     }
+
+    // Broadcast stat-chip strip: everything here already lives on the team
+    // record — no new aggregates, and a 0-game season honestly shows '—'.
+    const rec = getTeamById(teamId).record;
+    const gp = rec.wins + rec.losses;
+    const chip = function (label, value) {
+      return '<div class="stat-chip"><span class="tick-k">' + label + '</span>' +
+        '<span class="tick-v">' + value + '</span></div>';
+    };
+    html += '<div class="stat-chips">' +
+      chip('Record', rec.wins + '–' + rec.losses) +
+      chip('PPG', gp ? (rec.pointsFor / gp).toFixed(1) : '—') +
+      chip('Opp PPG', gp ? (rec.pointsAgainst / gp).toFixed(1) : '—') +
+      chip('Payroll', '$' + Math.round(getTeamPayroll(teamId) / 1e6) + 'M') +
+      '</div>';
 
     html += '<div class="panel"><div class="panel-body toolbar">' +
       '<label>Position: <select id="roster-filter-position">' +
