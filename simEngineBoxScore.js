@@ -115,6 +115,46 @@ function minutesWeight(player) {
   return Math.max(1, player.rawOverall + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'usage'));
 }
 
+// The ONE ordering that decides both who tips off (gameSim's pickStarters) and
+// each player's minute target (gameCoach's rotationRanks -> targetMinutes).
+// They have to read the same list: promoting a user's pick into the starting
+// five without also promoting his rotation rank leaves him a target of zero
+// minutes, and decideSubstitutions rule 5 pulls him at the first whistle — the
+// pick would look applied and be undone seconds later.
+//
+// With no startingFive this returns byte-for-byte the sort both callers used
+// before this existed, which is what lets the gamesim and rollover goldens pass
+// unregenerated and makes the whole feature opt-in.
+const STARTERS = 5;
+
+function lineupOrder(roster, team) {
+  const byWeight = roster.slice().sort(function (a, b) {
+    return minutesWeight(b) - minutesWeight(a);
+  });
+  const picks = (team && team.startingFive) || [];
+  if (picks.length === 0) return byWeight;
+
+  const inRoster = {};
+  roster.forEach(function (p) { inRoster[p.id] = p; });
+
+  const chosen = [];
+  const taken = {};
+  picks.forEach(function (id) {
+    if (chosen.length >= STARTERS) return;   // never promote more than a five
+    if (taken[id]) return;                   // duplicate id
+    const p = inRoster[id];
+    // Absent from the roster handed in: traded, released, or — because
+    // eligibleRoster filters before the sim sees anything — injured tonight.
+    // Either way the next man simply slides up and the stored pick is intact.
+    if (!p) return;
+    taken[id] = true;
+    chosen.push(p);
+  });
+  if (chosen.length === 0) return byWeight;
+
+  return chosen.concat(byWeight.filter(function (p) { return !taken[p.id]; }));
+}
+
 // Splits a player's points into approximate FG/3PT/FT makes+attempts, weighted by
 // their shooting attributes. This is a flavor-stat approximation, not a precise
 // possession-level shot model (that's the possession-by-possession engine, later).
@@ -241,6 +281,7 @@ if (typeof module !== 'undefined' && module.exports) {
     assistWeight: assistWeight,
     stealWeight: stealWeight,
     blockWeight: blockWeight,
-    minutesWeight: minutesWeight
+    minutesWeight: minutesWeight,
+    lineupOrder: lineupOrder
   };
 }
