@@ -581,7 +581,7 @@ const UI_SMOKE = (function () {
     const results = [];
     const startView = GameState.currentView;
 
-    const hubs = Array.from(document.querySelectorAll('#nav-bar .nav-item'));
+    const hubs = Array.from(document.querySelectorAll('#nav-bar .rail-item'));
     results.push(ok('nav:hub-count', hubs.length === 7, hubs.length + ' hubs'));
     results.push(ok('nav:hubs-reachable', hubs.every(isHitTestable),
       hubs.filter(function (h) { return !isHitTestable(h); })
@@ -602,13 +602,13 @@ const UI_SMOKE = (function () {
     // the offseason navigate, and the highlight must still follow. Matched on
     // data-hub rather than the label so a copy change cannot fail the test.
     renderView('frivolities');
-    const active = document.querySelector('#nav-bar .nav-item.active');
+    const active = document.querySelector('#nav-bar .rail-item.active');
     results.push(ok('nav:hub-highlighted-on-direct-nav',
       !!active && active.getAttribute('data-hub') === 'hub-records',
       active ? active.textContent : 'none'));
 
     renderView('playerProfile');
-    const profileHub = document.querySelector('#nav-bar .nav-item.active');
+    const profileHub = document.querySelector('#nav-bar .rail-item.active');
     results.push(ok('nav:related-view-keeps-hub-highlighted',
       !!profileHub && profileHub.getAttribute('data-hub') === 'hub-roster',
       profileHub ? profileHub.textContent : 'none'));
@@ -620,9 +620,9 @@ const UI_SMOKE = (function () {
     // fires its listener, so a cached loop looks like it works while
     // asserting against elements no longer on the page.
     const reachable = [];
-    const hubCount = document.querySelectorAll('#nav-bar .nav-item').length;
+    const hubCount = document.querySelectorAll('#nav-bar .rail-item').length;
     for (let i = 0; i < hubCount; i++) {
-      document.querySelectorAll('#nav-bar .nav-item')[i].click();
+      document.querySelectorAll('#nav-bar .rail-item')[i].click();
       reachable.push(GameState.currentView);
       document.querySelectorAll('#view-tabs .view-tab').forEach(function (t) {
         reachable.push(t.getAttribute('data-view'));
@@ -697,9 +697,12 @@ const UI_SMOKE = (function () {
     bar.innerHTML = '';
     refreshAdvanceFrame();
 
-    const rec = bar.querySelector('.identity-record');
-    const shown = rec ? rec.textContent.replace(/\s/g, '') : '(no record element)';
-    results.push(ok('advance:repaint-restores-topbar-record', shown === expected,
+    // The ribbon carries the record in .ribbon-sub as "W–L · Conference · ...";
+    // assert the substring rather than a dedicated element, and normalise its
+    // en-dash to the hyphen `expected` is built with.
+    const rec = bar.querySelector('.ribbon-sub');
+    const shown = rec ? rec.textContent.replace(/\s/g, '').replace(/–/g, '-') : '(no record element)';
+    results.push(ok('advance:repaint-restores-topbar-record', shown.indexOf(expected) !== -1,
       'showed ' + shown + ', league says ' + expected));
 
     // The loop must not rebuild the dock: replacing the Stop button under the
@@ -1066,6 +1069,48 @@ const UI_SMOKE = (function () {
     return results;
   }
 
+  // The broadcast chrome (2026-08-14 re-skin): ribbon, icon rail, chips.
+  function checkBroadcastChrome() {
+    const results = [];
+    const team = getTeamById(GameState.userTeamId);
+
+    const ribbon = document.querySelector('.ribbon');
+    results.push(ok('broadcast:ribbon-exists', !!ribbon, null));
+    results.push(ok('broadcast:ribbon-names-the-team',
+      !!ribbon && ribbon.textContent.indexOf(team.name) !== -1, team.name));
+
+    const rail = document.querySelectorAll('.rail-item');
+    results.push(ok('broadcast:rail-has-hubs', rail.length >= 6, rail.length + ' items'));
+    const unlabeled = Array.prototype.filter.call(rail, function (b) {
+      return !(b.getAttribute('aria-label') || '').trim();
+    });
+    results.push(ok('broadcast:rail-items-labeled', unlabeled.length === 0,
+      unlabeled.length + ' without aria-label'));
+    const active = document.querySelectorAll('.rail-item.active');
+    const expectHub = hubForView(GameState.currentView);
+    results.push(ok('broadcast:one-active-hub-and-it-matches',
+      active.length === 1 && !!expectHub && active[0].getAttribute('data-hub') === expectHub.id,
+      active.length + ' active, view ' + GameState.currentView));
+
+    // The theme var must be the TEAM'S stored hex, not the CSS default —
+    // proving applyTeamAccent actually ran for this team.
+    const setPrimary = getComputedStyle(document.documentElement)
+      .getPropertyValue('--team-primary').trim().toUpperCase();
+    const storedPrimary = (team.colors && team.colors.primary || '').toUpperCase();
+    results.push(ok('broadcast:team-primary-var-applied',
+      setPrimary === storedPrimary, setPrimary + ' vs ' + storedPrimary));
+
+    // Rating chips reach the roster table.
+    const startView = GameState.currentView;
+    renderView('roster');
+    const chips = document.getElementById('view-content').querySelectorAll('.rating-chip');
+    results.push(ok('broadcast:roster-renders-rating-chips', chips.length > 0, chips.length + ' chips'));
+    const strip = document.getElementById('view-content').querySelectorAll('.stat-chip');
+    results.push(ok('broadcast:roster-stat-strip', strip.length >= 3, strip.length + ' stat chips'));
+    renderView(startView);
+    return results;
+  }
+
   const GROUPS = {
     views: checkViews,
     feats: checkFeats,
@@ -1081,6 +1126,7 @@ const UI_SMOKE = (function () {
     empty: checkNoStrandedHeadings,
     scroll: checkScrollOnNavigate,
     nav: checkNav,
+    broadcast: checkBroadcastChrome,
     dock: checkDock,
     badges: checkBadgeReference,
     // Must be run WHILE a live game is open — `UI_SMOKE.run('live')` from the
