@@ -576,35 +576,178 @@ table { border-collapse: collapse; width: 100%; }
 .form-grid { display: grid; grid-template-columns: 128px 1fr; gap: 9px 12px; align-items: center; max-width: 440px; }
 .form-grid label { font-size: .82rem; color: var(--text-dim); }
 
-/* ---------- Team select screen ---------- */
-.select-screen { max-width: 1080px; margin: 0 auto; padding: 44px 24px 64px; }
-.select-title { text-align: center; font-size: 2rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 6px; }
-.select-sub { text-align: center; color: var(--text-mute); margin-bottom: 26px; }
+/* ---------- Franchise select screen ---------- */
+/* Replaces the old .select-screen / .team-card grid. Colour discipline is the
+   whole point of the redesign: exactly one team colour is live at a time (the
+   --tc set on the panel by ui/teamSelect.js), instead of thirty gradients
+   competing across a grid. */
+/* height, NOT min-height. With min-height the grid row is free to grow to fit
+   all thirty rows, so .fs-scroll never has a bounded height to scroll inside:
+   the rail ran to ~1400px and the panel, being centred in that same row, sat
+   half a screen below the fold. A fixed viewport height is what makes the list
+   scroll and the panel centre against the window. */
+.fs-wrap { display: grid; grid-template-columns: 344px 1fr; height: 100vh; overflow: hidden; }
 
-.segmented { display: flex; justify-content: center; gap: 0; margin-bottom: 28px; }
-.segmented label {
-  display: flex; align-items: center; gap: 7px;
-  padding: 9px 18px; cursor: pointer;
-  background: var(--surface-1); border: 1px solid var(--line-strong);
-  font-size: .85rem; color: var(--text-dim);
-}
-.segmented label:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
-.segmented label:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; border-left: none; }
-.segmented label:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
-.segmented .kpi-sub { margin: 0; }
+/* min-height: 0 is load-bearing on both grid children. Grid and flex items
+   default to min-height: auto, which means "never shrink below your content".
+   The rail's thirty rows are ~1528px tall, so without this it ignored the
+   910px row entirely, grew to 1828px, and took the panel with it -- the list
+   never scrolled and the centred panel started below the fold. */
+.fs-rail { display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--surface-1); border-right: 1px solid var(--line); }
+.fs-railhead { padding: 19px 18px 15px; border-bottom: 1px solid var(--line); }
+.fs-kicker { font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .22em; font-size: 10px; color: var(--gold); margin-bottom: 6px; }
+.fs-title { font-family: var(--font-cond); font-size: 23px; font-weight: 800;
+  text-transform: uppercase; line-height: 1; margin-bottom: 15px; }
+.fs-field { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.fs-field span { font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .14em; font-size: 10px; color: var(--text-mute); width: 26px; }
+.fs-field input { flex: 1; min-width: 0; background: var(--surface-3);
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  padding: 6px 9px; font-size: .82rem; color: var(--text); font-family: var(--font); }
+.fs-field input:focus { outline: none; border-color: var(--accent); }
 
-.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 12px; margin-bottom: 28px; }
-.team-card {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 18px 12px; cursor: pointer;
-  border-radius: var(--r-md);
-  border: 1px solid var(--line-strong);
-  color: #fff; text-align: center;
-  transition: transform .14s ease, box-shadow .14s ease;
+.fs-seg { display: flex; border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm); overflow: hidden; }
+.fs-seg button { flex: 1; padding: 6px 8px; font-size: .74rem; cursor: pointer;
+  background: var(--surface-2); color: var(--text-dim); border: none; }
+.fs-seg button.is-on { background: var(--text); color: var(--bg); font-weight: 650; }
+
+.fs-sortbar { display: flex; align-items: center; gap: 6px; padding: 10px 18px;
+  border-bottom: 1px solid var(--line); }
+.fs-sortbar span { font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .15em; font-size: 9.5px; color: var(--text-mute); margin-right: 2px; }
+.fs-sortbar button { padding: 4px 10px; font-size: .72rem; cursor: pointer;
+  background: none; color: var(--text-mute); border: 1px solid transparent;
+  border-radius: 999px; }
+.fs-sortbar button:hover { color: var(--text-dim); }
+.fs-sortbar button.is-on { color: var(--text); border-color: var(--line-strong);
+  background: var(--surface-3); }
+
+.fs-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 5px 0; }
+.fs-scroll::-webkit-scrollbar { width: 8px; }
+.fs-scroll::-webkit-scrollbar-track { background: transparent; }
+.fs-scroll::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 4px; }
+.fs-confhead { display: flex; align-items: center; gap: 10px; padding: 13px 18px 7px; }
+.fs-confhead span { font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .19em; font-size: 10px; color: var(--text-mute); }
+.fs-confhead i { flex: 1; height: 1px; background: var(--line); }
+
+.fs-row { position: relative; display: grid; width: 100%; text-align: left;
+  grid-template-columns: 27px 1fr auto; grid-template-rows: auto auto;
+  gap: 1px 11px; align-items: center; padding: 8px 18px; cursor: pointer;
+  background: none; border: none; color: var(--text); transition: background .12s ease; }
+.fs-tick { position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--tc); opacity: 0; transition: opacity .12s ease; }
+.fs-row .team-logo { grid-row: 1 / 3; }
+.fs-rowname { font-size: .8rem; font-weight: 650; line-height: 1.25; }
+.fs-rowdiv { grid-column: 2; font-size: .66rem; color: var(--text-mute); }
+.fs-rowrank { grid-column: 3; grid-row: 1 / 3; font-family: var(--font-cond);
+  font-size: .82rem; font-weight: 700; color: var(--text-mute);
+  min-width: 20px; text-align: right; }
+.fs-row:hover { background: var(--surface-2); }
+.fs-row.is-on { background: var(--surface-3); }
+.fs-row.is-on .fs-tick { opacity: 1; }
+.fs-row.is-on .fs-rowrank { color: var(--text-dim); }
+
+.fs-railfoot { display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 12px 18px; border-top: 1px solid var(--line); }
+.fs-ghost { flex: 1; min-width: 90px; padding: 9px; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: none; color: var(--text-dim); font-size: .74rem; text-align: center; }
+.fs-ghost:hover { color: var(--text); border-color: var(--text-mute); background: var(--surface-2); }
+
+.fs-panel { position: relative; overflow: hidden; min-height: 0; display: flex;
+  flex-direction: column; justify-content: center; padding: 48px 54px; }
+.fs-wash { position: absolute; inset: 0; pointer-events: none; opacity: .16;
+  background: radial-gradient(115% 85% at 90% 15%, var(--tc) 0%, transparent 60%); }
+/* Bleeds off the right edge on purpose; .fs-panel clips it. */
+.fs-ghostlogo { position: absolute; right: -104px; top: 50%; transform: translateY(-50%);
+  opacity: .055; pointer-events: none; filter: grayscale(1) brightness(2.4); }
+.fs-ghostlogo .team-logo { border: none; background: none !important; }
+
+/* container-type lets .fs-team size itself against this box - see below. */
+.fs-inner { position: relative; max-width: 600px; container-type: inline-size; }
+.fs-inner.is-wide { max-width: 780px; }
+.fs-eyebrow { display: flex; align-items: center; gap: 11px; margin-bottom: 13px; }
+.fs-eyebrow i { width: 26px; height: 2px; background: var(--tc); }
+.fs-eyebrow span { font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .2em; font-size: 10.5px; color: var(--text-mute); }
+.fs-city { font-family: var(--font-cond); font-size: 19px; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-dim); margin-bottom: -3px; }
+/* 64px is a ceiling, not a size: "Timberwolves" needs 569px at 64px and only
+   had 492px, so it was the one nickname in the league that got clipped. A fixed
+   size would break again on a narrower panel, or on whatever an expansion team
+   ends up being called. */
+.fs-team { font-family: var(--font-cond); font-size: min(64px, 10.5cqw);
+  font-weight: 800; text-transform: uppercase; line-height: .97;
+  letter-spacing: -.008em; margin: 0 0 24px; white-space: nowrap; }
+
+/* The star gets a full-width row of his own. As one of four equal columns his
+   name was clipped on almost every team in the league - "Shai Gilgeous-
+   Alexander" never had a chance in a 130px box, and he is the single thing you
+   most want to read. */
+.fs-star { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px; margin-bottom: 1px; background: var(--surface-1);
+  border: 1px solid var(--line); border-bottom: none;
+  border-radius: var(--r-md) var(--r-md) 0 0; }
+.fs-star u { flex: none; font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .15em; font-size: 9px; color: var(--text-mute); text-decoration: none; }
+.fs-star b { font-family: var(--font-cond); font-size: 29px; font-weight: 800;
+  line-height: 1; letter-spacing: -.005em; }
+.fs-star em { margin-left: auto; font-style: normal; font-size: .72rem;
+  color: var(--text-mute); white-space: nowrap; }
+.fs-star em i { font-style: normal; font-weight: 700; color: var(--text-dim); }
+
+.fs-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px; background: var(--line); border: 1px solid var(--line);
+  border-radius: 0 0 var(--r-md) var(--r-md); overflow: hidden; margin-bottom: 22px; }
+.fs-stat { background: var(--surface-1); padding: 13px 15px; min-width: 0; }
+.fs-stat u { display: block; font-family: var(--font-cond); text-transform: uppercase;
+  letter-spacing: .15em; font-size: 9px; color: var(--text-mute);
+  text-decoration: none; margin-bottom: 6px; white-space: nowrap; }
+.fs-stat b { display: block; font-family: var(--font-cond); font-size: 23px;
+  font-weight: 800; line-height: 1.02; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.fs-stat b small { font-size: 12px; color: var(--text-mute); font-weight: 600; }
+.fs-stat b.is-ok { color: var(--win); }
+.fs-stat b.is-warn { color: var(--warn); }
+.fs-stat b.is-bad { color: var(--loss); }
+.fs-stat em { display: block; font-style: normal; font-size: .66rem;
+  color: var(--text-mute); margin-top: 3px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+
+.fs-verdict { color: var(--text-dim); font-size: .84rem; line-height: 1.68;
+  margin: 0 0 26px; max-width: 490px; }
+
+.fs-cta { display: inline-flex; align-items: baseline; gap: 11px; align-self: flex-start;
+  padding: 15px 30px; cursor: pointer; border: none; border-radius: var(--r-md);
+  background: var(--tc); color: var(--tc-ink, #fff); font-family: var(--font-cond);
+  font-size: 17px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em;
+  transition: filter .15s ease; }
+.fs-cta:hover { filter: brightness(1.15); }
+.fs-cta em { font-style: normal; opacity: .72; font-size: 14px; letter-spacing: .05em; }
+
+.fs-loadhead { margin-bottom: 18px; }
+.fs-loadhead h2 { margin: 0 0 5px; font-family: var(--font-cond); font-size: 40px;
+  font-weight: 800; text-transform: uppercase; line-height: 1; }
+.fs-loadhead p { margin: 0; color: var(--text-mute); font-size: .82rem; }
+.fs-back { margin-top: 18px; padding: 11px 22px; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: none; color: var(--text-dim); font-size: .78rem; }
+.fs-back:hover { color: var(--text); border-color: var(--text-mute); }
+
+@media (max-width: 900px) {
+  /* Stacked: the page itself scrolls, so the wrap must NOT be pinned to the
+     viewport height or the panel would be trapped in a clipped box. */
+  .fs-wrap { grid-template-columns: 1fr; height: auto; overflow: visible; }
+  .fs-rail { border-right: none; border-bottom: 1px solid var(--line); }
+  .fs-scroll { max-height: 340px; }
+  .fs-panel { padding: 32px 24px; }
+  .fs-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fs-ghostlogo { right: -160px; }
 }
-.team-card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
-.team-card-name { font-weight: 700; font-size: .88rem; line-height: 1.25; text-shadow: 0 1px 3px rgba(0, 0, 0, .55); }
-.team-card-meta { font-size: .66rem; letter-spacing: .07em; text-transform: uppercase; opacity: .8; }
 
 .playoff-bracket-grid { display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 20px; align-items: start; }
 .playoff-conf-column { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -670,7 +813,6 @@ table { border-collapse: collapse; width: 100%; }
 .pbp-log { max-height: 360px; overflow-y: auto; margin-top: 10px; font-size: .82rem; }
 .pbp-quarter { font-weight: 700; color: var(--accent); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .06em; font-size: .72rem; }
 .pbp-line { padding: 3px 0; color: var(--text-dim); border-bottom: 1px solid var(--line); }
-.select-actions { text-align: center; margin-bottom: 26px; }
 
 /* ---- Pixel game view (Watch Game) ---- */
 .pixel-game { display: flex; flex-direction: column; align-items: center; gap: 8px; }

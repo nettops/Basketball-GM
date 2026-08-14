@@ -86,6 +86,10 @@
   <script src="save.js"></script>
   <script src="autoGM.js"></script>
   <script src="commissioner.js"></script>
+  <!-- Reads getTeamRoster/getTeamPayroll (league.js) and the cap helpers
+       (data.js), but only when called at team-select time - it captures
+       nothing at load, so anywhere after those two is fine. -->
+  <script src="teamDossier.js"></script>
   <script src="ui/util.js"></script>
   <script src="ui/topbar.js"></script>
   <script src="ui/nav.js"></script>
