@@ -137,6 +137,20 @@ function renderViewTabs(container, activeView, onNavigate, playMode, gameMode, h
 // At that point transitionToGMMode has already cleared gameMode, so the Career
 // tab is gone — without this the legacy view was reachable only from the
 // one-shot button on the retirement scene, and unreachable forever after.
+// Inline stroke icons, one per hub, all on currentColor so the rail's
+// state classes recolor them for free. Inline SVG rather than emoji
+// (platform-inconsistent glyphs) or an icon font (zero-dependency rule).
+const HUB_ICONS = {
+  'hub-dashboard': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  'hub-career': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>',
+  'hub-roster': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1a6.5 6.5 0 0 1 13 0v1"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 14.5a5 5 0 0 1 5.5 5v.5"/></svg>',
+  'hub-schedule': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>',
+  'hub-league': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4h8v6a4 4 0 0 1-8 0V4z"/><path d="M8 6H5a3 3 0 0 0 3 5M16 6h3a3 3 0 0 1-3 5"/><path d="M12 14v3M8 21h8M10 21v-2a2 2 0 0 1 4 0v2"/></svg>',
+  'hub-transactions': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 4l4 4-4 4M21 8H7M7 12l-4 4 4 4M3 16h14"/></svg>',
+  'hub-records': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
+  'hub-system': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>'
+};
+
 function renderNav(container, activeView, onNavigate, playMode, gameMode, hasLegacy) {
   container.innerHTML = '';
   const activeHub = hubForView(activeView);
@@ -146,9 +160,15 @@ function renderNav(container, activeView, onNavigate, playMode, gameMode, hasLeg
     if (views.length === 0) return;   // every view filtered out: skip entirely
 
     const btn = document.createElement('button');
-    btn.textContent = hub.label;
-    btn.className = (activeHub && activeHub.id === hub.id) ? 'nav-item active' : 'nav-item';
+    // Icon rail: the label lives in a flyout span, so it is still real text
+    // in the DOM — anything that finds nav entries by text keeps finding
+    // them — and aria-label/title carry it for AT and slow hoverers.
+    btn.className = (activeHub && activeHub.id === hub.id) ? 'rail-item active' : 'rail-item';
     btn.setAttribute('data-hub', hub.id);
+    btn.setAttribute('aria-label', hub.label);
+    btn.title = hub.label;
+    btn.innerHTML = (HUB_ICONS[hub.id] || HUB_ICONS['hub-dashboard']) +
+      '<span class="rail-label">' + hub.label + '</span>';
     btn.addEventListener('click', function () {
       // The sidebar Roster entry always means "my team" — clears any
       // in-progress inspection from clicking a team in Standings/Power

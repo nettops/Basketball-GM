@@ -137,12 +137,16 @@ select { cursor: pointer; }
 }
 
 /* ---------- App shell ---------- */
-.app-shell { display: grid; grid-template-columns: 232px 1fr; height: 100vh; }
+/* 56px: the icon rail. The old 232px text sidebar's width goes to tables. */
+.app-shell { display: grid; grid-template-columns: 56px 1fr; height: 100vh; }
 .app-sidebar {
   background: var(--surface-2);
   border-right: 1px solid var(--line);
   display: flex; flex-direction: column;
-  overflow-y: auto;
+  /* visible, not auto: the rail never scrolls (8 icons fit any viewport this
+     game supports) and the hover flyout labels must escape the 56px column —
+     overflow-y:auto forces overflow-x to auto too and would clip them. */
+  overflow: visible;
 }
 .app-main {
   /* Four children: topbar, view tabs, content, sim dock. The tab row is auto
@@ -187,16 +191,16 @@ select { cursor: pointer; }
 }
 
 .sidebar-brand {
-  padding: 18px 18px 14px;
-  font-size: 1.05rem; font-weight: 800; letter-spacing: .1em;
+  padding: 12px 0 10px;
+  font-size: .68rem; font-weight: 800; letter-spacing: .06em;
+  text-align: center;
   color: var(--text);
   border-bottom: 1px solid var(--line);
 }
 .sidebar-brand span { color: var(--accent); }
 
-/* Seven hub buttons, no group headers — the sidebar is short enough now that
-   grouping added labels without adding clarity. */
-#nav-bar { padding: 10px 0 20px; display: flex; flex-direction: column; gap: 1px; }
+/* Eight rail icons, vertical stack. */
+#nav-bar { padding: 8px 0 16px; display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   display: block; width: 100%; text-align: left;
   padding: 7px 18px;
