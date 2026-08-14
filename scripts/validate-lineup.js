@@ -84,8 +84,46 @@ function checkCapsAtFive() {
   console.log('checkCapsAtFive: OK');
 }
 
+// The failure mode no structural test catches: the pick is stored, the strip
+// shows it, and the coach quietly plays whoever he likes anyway. Asserted on
+// MINUTES OUT OF A REAL GAME rather than on targetMinutes, so it also fails if
+// some later substitution rule undoes the promotion a possession later.
+function checkPickChangesMinutes() {
+  const home = TEAMS[0];
+  const away = TEAMS[1];
+  const roster = league.getTeamRoster(home.id).filter(function (p) { return !p.status.injury; });
+  const auto = ids(weightSort(roster));
+  const worstFive = auto.slice(-5);
+
+  function minutesFor(playerIds) {
+    let total = 0;
+    const games = 12;
+    for (let seed = 1; seed <= games; seed++) {
+      const res = gameSim.simulateGame(home.id, away.id, makeRng(seed));
+      playerIds.forEach(function (id) {
+        const line = res.boxScore[id];
+        if (line) total += line.minutes;
+      });
+    }
+    return total / games;
+  }
+
+  delete home.startingFive;
+  const before = minutesFor(worstFive);
+  home.startingFive = worstFive;
+  const after = minutesFor(worstFive);
+  delete home.startingFive;
+
+  assert.ok(after > before * 1.5,
+    'starting the five worst players must raise their minutes, got ' +
+    before.toFixed(1) + ' -> ' + after.toFixed(1));
+  console.log('checkPickChangesMinutes: OK (' + before.toFixed(1) + ' -> ' +
+    after.toFixed(1) + ' team minutes for the worst five)');
+}
+
 checkNoPickIsIdentical();
 checkPickLeads();
 checkJunkIdsIgnored();
 checkCapsAtFive();
+checkPickChangesMinutes();
 console.log('All lineup validations passed');
