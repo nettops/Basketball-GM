@@ -10,12 +10,12 @@
 // bridge. Selection takes its rng by argument so a save replays the same show.
 
 // Who throws to the break. Every segment opens and closes on him.
-const HOST_KEY = 'ernie';
+const STUDIO_HOST_KEY = 'ernie';
 
 // The desk, in seating order. Traits change the OUTLINE, not just the palette
 // — see ui/pixelBust.js. Four men who differ only by colour read as one man in
 // four suits at this size, which validate-studioShow.js asserts against.
-const CREW = [
+const STUDIO_CREW = [
   {
     key: 'ernie',
     name: 'Ernie',
@@ -42,18 +42,18 @@ const CREW = [
   }
 ];
 
-const CREW_BY_KEY = {};
-CREW.forEach(function (m) { CREW_BY_KEY[m.key] = m; });
+const STUDIO_CREW_BY_KEY = {};
+STUDIO_CREW.forEach(function (m) { STUDIO_CREW_BY_KEY[m.key] = m; });
 
-function crewMember(key) {
-  return CREW_BY_KEY[key] || null;
+function studioCrewMember(key) {
+  return STUDIO_CREW_BY_KEY[key] || null;
 }
 
 // Segments. `when` reads the same flat halftime context the coach scenes do.
 //
 // No two adjacent beats share a speaker: two lines from one man in a row reads
 // as one long line rather than as a panel, and the validator enforces it.
-const SEGMENTS = [
+const STUDIO_SEGMENTS = [
   {
     id: 'studio-blowout-against',
     priority: 70,
@@ -137,9 +137,9 @@ const SEGMENTS = [
 //
 // The recent-segments list is a PREFERENCE, not a veto — if everything has
 // aired recently the show still goes on rather than silently skipping.
-function selectSegment(ctx, opts) {
+function studioSelectSegment(ctx, opts) {
   opts = opts || {};
-  const pool = opts.segments || SEGMENTS;
+  const pool = opts.segments || STUDIO_SEGMENTS;
   const recent = opts.recent || [];
   const rand = opts.rand || Math.random;
 
@@ -174,12 +174,17 @@ function selectSegment(ctx, opts) {
   return tied[Math.floor(rand() * tied.length)];
 }
 
+// The declarations above carry STUDIO_ prefixes because in the browser every
+// root file shares ONE global scope, and bare names like CREW or SEGMENTS are
+// exactly the kind that collide silently later (see commissioner.js's
+// clampRating shadowing progression.js's). The export KEYS are scoped to this
+// object and can stay plain.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    HOST_KEY: HOST_KEY,
-    CREW: CREW,
-    SEGMENTS: SEGMENTS,
-    crewMember: crewMember,
-    selectSegment: selectSegment
+    HOST_KEY: STUDIO_HOST_KEY,
+    CREW: STUDIO_CREW,
+    SEGMENTS: STUDIO_SEGMENTS,
+    crewMember: studioCrewMember,
+    selectSegment: studioSelectSegment
   };
 }
