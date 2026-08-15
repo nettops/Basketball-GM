@@ -8,12 +8,17 @@
 // into two implementations.
 
 var _DIALOGUE_BOX_DATA = (typeof require !== 'undefined')
-  ? { bust: require('./pixelBust.js'), scenes: require('../dialogueScenes.js') }
+  ? {
+      bust: require('./pixelBust.js'),
+      scenes: require('../dialogueScenes.js'),
+      studio: require('../studioShow.js')
+    }
   : { bust: {
         drawPixelBust: drawPixelBust, bustScale: bustScale,
         bustColorsFor: bustColorsFor, BUST: BUST
       },
-      scenes: { interpolate: interpolate } };
+      scenes: { interpolate: interpolate },
+      studio: { crewMember: studioCrewMember, CREW: STUDIO_CREW } };
 
 // A click mid-line completes it instantly, so this is a floor on comfort
 // rather than a ceiling on reading speed.
@@ -217,11 +222,183 @@ function runDialogue(scene, ctx, onDone) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// The halftime studio show.
+//
+// Shares this module's overlay, typewriter cadence and teardown rather than
+// living in its own file, so there is exactly one thing on screen at a time and
+// exactly one Esc contract. It is a separate ENTRY POINT rather than a branch
+// inside runDialogue because it answers a different question: runDialogue ends
+// in a choice, this ends in a cut back to the game.
+// ---------------------------------------------------------------------------
+
+const STUDIO_SEAT_PX = 80;
+
+function runStudioSegment(segment, ctx, onDone) {
+  if (typeof document === 'undefined' || !document.body) return false;
+  if (_openBox) return false;
+  if (!segment || !Array.isArray(segment.beats) || segment.beats.length === 0) return false;
+
+  const done = typeof onDone === 'function' ? onDone : function () {};
+  const crew = _DIALOGUE_BOX_DATA.studio.CREW;
+
+  const root = document.createElement('div');
+  root.className = 'dlg-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'studio-box';
+
+  const set = document.createElement('div');
+  set.className = 'studio-set';
+
+  const crewEl = document.createElement('div');
+  crewEl.className = 'studio-crew';
+
+  const seatScale = _DIALOGUE_BOX_DATA.bust.bustScale(STUDIO_SEAT_PX);
+  const seats = {};
+  crew.forEach(function (member) {
+    const seat = document.createElement('div');
+    seat.className = 'studio-seat';
+    const cv = document.createElement('canvas');
+    cv.width = _DIALOGUE_BOX_DATA.bust.BUST.w * seatScale;
+    cv.height = _DIALOGUE_BOX_DATA.bust.BUST.h * seatScale;
+    const nm = document.createElement('div');
+    nm.className = 'studio-seat-name';
+    nm.textContent = member.name;
+    seat.appendChild(cv);
+    seat.appendChild(nm);
+    crewEl.appendChild(seat);
+    seats[member.key] = { seat: seat, canvas: cv };
+  });
+
+  const desk = document.createElement('div');
+  desk.className = 'studio-desk';
+
+  const body = document.createElement('div');
+  body.className = 'studio-body';
+
+  const plate = document.createElement('div');
+  plate.className = 'studio-plate';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'studio-text';
+
+  const blinker = document.createElement('div');
+  blinker.className = 'studio-blinker';
+  blinker.textContent = '▼';
+  blinker.style.visibility = 'hidden';
+
+  set.appendChild(crewEl);
+  set.appendChild(desk);
+  body.appendChild(plate);
+  body.appendChild(textEl);
+  body.appendChild(blinker);
+  box.appendChild(set);
+  box.appendChild(body);
+  root.appendChild(box);
+  document.body.appendChild(root);
+
+  const reduceMotion = !!(typeof window !== 'undefined' && window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  const state = {
+    root: root, beatIndex: 0, timer: null, onKey: null,
+    fullText: '', complete: false, finished: false
+  };
+  _openBox = state;
+
+  function paintSeat(member, emotion) {
+    const cv = seats[member.key].canvas;
+    const g = cv.getContext('2d');
+    g.clearRect(0, 0, cv.width, cv.height);
+    _DIALOGUE_BOX_DATA.bust.drawPixelBust(g, member.colors, emotion, {
+      scale: seatScale, traits: member.traits
+    });
+  }
+
+  // Everybody starts neutral and dim.
+  crew.forEach(function (m) { paintSeat(m, 'neutral'); });
+
+  function finishLine() {
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    textEl.textContent = state.fullText;
+    state.complete = true;
+    blinker.style.visibility = 'visible';
+  }
+
+  function startBeat() {
+    const beat = segment.beats[state.beatIndex];
+    const speaker = _DIALOGUE_BOX_DATA.studio.crewMember(beat.who);
+    // A beat naming somebody who is not on the desk would leave the panel dark
+    // with text from nobody. Skip it rather than showing that.
+    if (!speaker) { advance(); return; }
+
+    crew.forEach(function (m) {
+      seats[m.key].seat.classList.toggle('live', m.key === beat.who);
+      paintSeat(m, m.key === beat.who ? beat.emotion : 'neutral');
+    });
+
+    plate.textContent = speaker.name;
+    state.fullText = _DIALOGUE_BOX_DATA.scenes.interpolate(beat.text, ctx || {});
+    state.complete = false;
+    textEl.textContent = '';
+    blinker.style.visibility = 'hidden';
+
+    if (reduceMotion) { finishLine(); return; }
+
+    let i = 0;
+    state.timer = setInterval(function () {
+      i++;
+      textEl.textContent = state.fullText.slice(0, i);
+      if (i % 3 === 0 && typeof playPixelSfx === 'function') playPixelSfx('blip');
+      if (i >= state.fullText.length) finishLine();
+    }, DIALOGUE_CHAR_MS);
+  }
+
+  function finish(skipped) {
+    if (state.finished) return;
+    state.finished = true;
+    closeDialogueBox();
+    done({ segmentId: segment.id, skipped: !!skipped });
+  }
+
+  function advance() {
+    if (!state.complete) { finishLine(); return; }
+    if (state.beatIndex < segment.beats.length - 1) {
+      state.beatIndex++;
+      startBeat();
+      return;
+    }
+    // Nothing to answer — the segment simply ends and the game resumes.
+    finish(false);
+  }
+
+  root.addEventListener('click', advance);
+
+  state.onKey = function (e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(true);
+      return;
+    }
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      advance();
+    }
+  };
+  document.addEventListener('keydown', state.onKey);
+
+  startBeat();
+  return true;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DIALOGUE_CHAR_MS: DIALOGUE_CHAR_MS,
     DIALOGUE_BUST_PX: DIALOGUE_BUST_PX,
+    STUDIO_SEAT_PX: STUDIO_SEAT_PX,
     runDialogue: runDialogue,
+    runStudioSegment: runStudioSegment,
     dialogueBoxIsOpen: dialogueBoxIsOpen,
     closeDialogueBox: closeDialogueBox
   };

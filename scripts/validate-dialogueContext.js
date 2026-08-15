@@ -339,6 +339,19 @@ function checkMalformedScenesAreRefused() {
 }
 checkMalformedScenesAreRefused();
 
+function checkTheStudioAlsoDegradesWithoutADom() {
+  const studio = rq('studioShow.js');
+  const seg = studio.SEGMENTS[0];
+  assert.strictEqual(dialogueBox.runStudioSegment(seg, {}, function () {}), false,
+    'the studio reports it could not open rather than throwing');
+  [null, {}, { beats: [] }].forEach(function (bad) {
+    assert.strictEqual(dialogueBox.runStudioSegment(bad, {}, function () {}), false,
+      'refused a malformed segment: ' + JSON.stringify(bad));
+  });
+  console.log('checkTheStudioAlsoDegradesWithoutADom: OK');
+}
+checkTheStudioAlsoDegradesWithoutADom();
+
 function checkTypewriterSpeedIsTheSpeccedValue() {
   assert.strictEqual(dialogueBox.DIALOGUE_CHAR_MS, 28, 'the spec fixes this at 28ms/char');
   console.log('checkTypewriterSpeedIsTheSpeccedValue: OK');

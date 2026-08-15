@@ -1412,3 +1412,79 @@ table { border-collapse: collapse; width: 100%; }
   .dlg-bust canvas { animation: none; }
   .dlg-blinker { animation: none; }
 }
+
+/* ---- The halftime studio show ----
+   Same bezel language as the dialogue box, but a wider set: four busts behind
+   a desk, the talker lit and the rest sat back in the dark. Reuses .dlg-overlay
+   for the scrim and the z-index, so only one thing is ever on screen. */
+.studio-box { width: 100%; max-width: 660px; }
+.studio-set {
+  position: relative; padding: 14px 12px 0; overflow: hidden;
+  background: linear-gradient(180deg, #161d2b 0%, #10151f 62%, #0d1017 100%);
+  border: 3px solid #55627a; border-bottom: none;
+  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line);
+}
+/* A suggestion of an arena window behind the desk, so the set has depth
+   without needing art. */
+.studio-set::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 58%;
+  background: repeating-linear-gradient(90deg, rgba(125, 211, 160, .05) 0 3px, transparent 3px 12px);
+  pointer-events: none;
+}
+.studio-crew {
+  position: relative; display: flex; justify-content: center;
+  align-items: flex-end; gap: 4px;
+}
+.studio-seat {
+  display: flex; flex-direction: column; align-items: center;
+  opacity: .38;
+  transition: opacity 120ms steps(2, end), transform 120ms steps(2, end);
+}
+/* Stepped, not eased — a smooth fade under pixel art reads as a different
+   medium arriving with it. */
+.studio-seat.live { opacity: 1; transform: translateY(-3px); }
+.studio-seat canvas { image-rendering: pixelated; display: block; }
+.studio-seat-name {
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .54rem; letter-spacing: .09em; text-transform: uppercase;
+  color: #55627a; margin-top: 3px; white-space: nowrap;
+}
+.studio-seat.live .studio-seat-name { color: #7dd3a0; }
+.studio-desk {
+  position: relative; height: 16px; margin-top: -4px;
+  background: linear-gradient(180deg, #2a3446 0%, #1b2231 42%, #141a26 100%);
+  border-top: 2px solid #55627a;
+  border-left: 3px solid #55627a; border-right: 3px solid #55627a;
+  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line);
+}
+.studio-desk::after {
+  content: 'INSIDE THE STUDIO'; position: absolute; left: 12px; top: 3px;
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .5rem; letter-spacing: .22em; color: #7dd3a0; opacity: .5;
+}
+.studio-body {
+  position: relative; padding: 10px 12px 12px;
+  background: #0d1017;
+  border: 3px solid #55627a; border-top: none;
+  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line), 0 14px 36px -8px rgba(0, 0, 0, .9);
+}
+.studio-plate {
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+  color: #7dd3a0; margin-bottom: 6px; min-height: 1em;
+}
+.studio-text {
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .84rem; line-height: 1.55; color: #dbe4f0;
+  min-height: 3.1em; white-space: pre-wrap;
+}
+.studio-blinker {
+  position: absolute; right: 10px; bottom: 6px;
+  font-size: .62rem; color: #7dd3a0;
+  animation: dlg-blink 1s steps(2, start) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-seat { transition: none; }
+  .studio-blinker { animation: none; }
+}

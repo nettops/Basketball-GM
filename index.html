@@ -164,6 +164,9 @@
   <!-- Captures teams/league/gmCareer/names/faces into its data block at LOAD
        time, so every one of them must already be defined above. -->
   <script src="dialogueContext.js"></script>
+  <!-- The halftime panel. Pure data like dialogueScenes.js, but read by
+       ui/dialogueBox.js at LOAD time, so it must come before it. -->
+  <script src="studioShow.js"></script>
   <!-- Captures drawPixelBust/bustScale/bustColorsFor/BUST from pixelBust.js
        and interpolate from dialogueScenes.js at LOAD time, so it must come
        after BOTH. Loaded earlier this threw on every page load and left the

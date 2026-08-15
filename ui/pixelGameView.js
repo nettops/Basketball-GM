@@ -1160,13 +1160,17 @@ function renderPixelGame(container) {
     setPaused(!paused);
   });
 
-  // The halftime word with your coach. Unlike the quarter-break card this is
-  // NOT a timed hitch: a dialogue cannot be on a clock, so playback is held
-  // outright and restored to whatever it was doing before.
+  // Halftime: the studio show, then a word with your coach.
   //
-  // Restores the PREVIOUS state rather than resuming unconditionally — a user
-  // who had already paused to read something should still be paused when the
-  // box closes.
+  // Unlike the quarter-break card this is NOT a timed hitch — a dialogue
+  // cannot be on a clock — so playback is held outright and restored to
+  // whatever it was doing before. It restores the PREVIOUS state rather than
+  // resuming unconditionally, because a user who had already paused to read
+  // something should still be paused when the last box closes.
+  //
+  // The pause is taken ONCE, around the whole sequence, and released once at
+  // the end. Pausing and resuming between the two boxes would let a frame of
+  // basketball play in the gap.
   function maybeRunHalftimeDialogue() {
     if (GameState.settings && GameState.settings.dialogueScenes === false) return;
     if (typeof runDialogue !== 'function' || dialogueBoxIsOpen()) return;
@@ -1176,34 +1180,61 @@ function renderPixelGame(container) {
 
     const wasPaused = paused;
     setPaused(true);
-
     const ctx = buildHalftimeContext(GameState, sim);
-    const scene = selectScene(ctx, {
-      recent: GameState.recentDialogueScenes || [],
-      rand: GameState.rng,
-      fallbackLines: (GameState.narrativeSystem && GameState.narrativeSystem.dialogueLibrary)
-        ? GameState.narrativeSystem.dialogueLibrary.media_standard
-        : null
-    });
-    // The coach has no generated face of his own, so the bust falls back to
-    // neutral colouring — but passing the team dresses him in YOUR jersey,
-    // which is most of what makes him read as your coach and not a stranger.
-    ctx.speakerName = 'Head Coach';
-    ctx.speakerTeam = getTeamById(GameState.userTeamId);
 
-    const opened = runDialogue(scene, ctx, function (result) {
-      if (!result.skipped) {
-        const choice = scene.choices[result.choiceIndex];
-        if (choice && typeof choice.effect === 'function') {
-          applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+    function release() { setPaused(wasPaused); }
+
+    // Second half of the sequence: the coach asks you something.
+    function runCoachTalk() {
+      const scene = selectScene(ctx, {
+        recent: GameState.recentDialogueScenes || [],
+        rand: GameState.rng,
+        fallbackLines: (GameState.narrativeSystem && GameState.narrativeSystem.dialogueLibrary)
+          ? GameState.narrativeSystem.dialogueLibrary.media_standard
+          : null
+      });
+      // The coach has no generated face of his own, so the bust falls back to
+      // neutral colouring — but passing the team dresses him in YOUR jersey,
+      // which is most of what makes him read as your coach and not a stranger.
+      ctx.speakerName = 'Head Coach';
+      ctx.speakerTeam = getTeamById(GameState.userTeamId);
+
+      const opened = runDialogue(scene, ctx, function (result) {
+        if (!result.skipped) {
+          const choice = scene.choices[result.choiceIndex];
+          if (choice && typeof choice.effect === 'function') {
+            applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+          }
         }
-      }
-      pushRecentScene(GameState, scene.id);
-      setPaused(wasPaused);
+        pushRecentScene(GameState, scene.id);
+        release();
+      });
+
+      // If the box could not open, playback must not be left frozen.
+      if (!opened) release();
+    }
+
+    // First half: the panel. Watch-only, so nothing is applied when it ends —
+    // including when it is skipped with Esc, which drops straight to the coach
+    // rather than abandoning halftime altogether.
+    // studioSelectSegment, not selectSegment: the studio globals carry a
+    // STUDIO_/studio prefix so they cannot collide in the one shared browser
+    // scope. dialogueScenes.js owns the bare selectScene.
+    const segment = (typeof studioSelectSegment === 'function')
+      ? studioSelectSegment(ctx, {
+          recent: GameState.recentDialogueScenes || [],
+          rand: GameState.rng
+        })
+      : null;
+
+    if (!segment || typeof runStudioSegment !== 'function') { runCoachTalk(); return; }
+
+    const aired = runStudioSegment(segment, ctx, function (result) {
+      pushRecentScene(GameState, result.segmentId);
+      runCoachTalk();
     });
 
-    // If the box could not open, playback must not be left frozen.
-    if (!opened) setPaused(wasPaused);
+    if (!aired) runCoachTalk();
   }
   document.getElementById('pixel-mute').addEventListener('click', function () {
     const a = ensurePixelAudio();
