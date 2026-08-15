@@ -186,7 +186,15 @@ function serializeGameState(gameState, name, includeSnapshots) {
     // v3. The GM career record — tenures, season rows, milestone unlocks and
     // the chronicle. Plain JSON. Everything else on the career page is DERIVED
     // from leagueHistory above, so there is nothing else to save.
-    gmCareer: gameState.gmCareer || null
+    gmCareer: gameState.gmCareer || null,
+
+    // v4. Dialogue state. Reporters are CACHED rather than derived on demand:
+    // the whole point of them is that the writer covering your team is the
+    // same person every night, and regenerating from an advanced rng on every
+    // load would hand you a stranger each session. The ring buffer stops a
+    // scene recurring immediately across a save/load.
+    reporters: gameState.reporters || null,
+    recentDialogueScenes: gameState.recentDialogueScenes || []
   };
 }
 
@@ -317,6 +325,14 @@ function applySavedState(payload, gameState) {
   // about not knowing what happened before it existed.
   gameState.gmCareer = payload.gmCareer || null;
   _SAVE_DATA.gmCareer.ensureGmCareer(gameState);
+
+  // A payload predating the dialogue feature has neither field. Reporters left
+  // null are regenerated on first use by ensureReporters; the buffer starts
+  // empty, which just means the next scene is unconstrained.
+  gameState.reporters = payload.reporters || null;
+  gameState.recentDialogueScenes = Array.isArray(payload.recentDialogueScenes)
+    ? payload.recentDialogueScenes
+    : [];
 
   gameState.playMode = payload.playMode || 'gm';
   // Deliberately all-off, and deliberately NOT script.js's defaultAutomation().

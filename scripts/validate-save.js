@@ -641,4 +641,50 @@ checkAPayloadMissingSubsystemsStillLoads();
 checkNewHistoryStoresRoundTrip();
 checkOldSaveWithoutNewFieldsLoads();
 
+// save.js builds an EXPLICIT payload field list at both ends. A new GameState
+// field that is not added to it is silently dropped on reload — which for
+// reporters would mean a different beat writer every session, defeating the
+// entire reason they are cached rather than generated per scene.
+function checkDialogueStateSurvivesARoundTrip() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const gs = makeFakeGameState({
+    reporters: {
+      BOS: { id: 'reporter-BOS', teamId: 'BOS', name: 'Dana Kessler', outlet: 'The Beat',
+             face: { body: { color: '#bb876f' }, hair: { color: '#272421' } } }
+    },
+    recentDialogueScenes: ['blown-fourth-lead', 'statement-win']
+  });
+
+  const payload = saveModule.serializeGameState(gs, 'Test');
+  assert.ok(payload.reporters, 'reporters reached the payload');
+  assert.deepStrictEqual(payload.recentDialogueScenes, ['blown-fourth-lead', 'statement-win'],
+    'the ring buffer reached the payload');
+
+  const loaded = {};
+  saveModule.applySavedState(payload, loaded);
+  assert.ok(loaded.reporters, 'reporters survived the round trip');
+  assert.strictEqual(loaded.reporters.BOS.name, 'Dana Kessler', 'the beat writer is the same person');
+  assert.strictEqual(loaded.reporters.BOS.outlet, 'The Beat');
+  assert.ok(loaded.reporters.BOS.face, 'the face survived, so the bust still draws');
+  assert.deepStrictEqual(loaded.recentDialogueScenes, ['blown-fourth-lead', 'statement-win'],
+    'the ring buffer survived');
+  console.log('checkDialogueStateSurvivesARoundTrip: OK');
+}
+checkDialogueStateSurvivesARoundTrip();
+
+function checkAnOldSaveWithoutDialogueStateLoads() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const payload = saveModule.serializeGameState(makeFakeGameState(), 'Test');
+  delete payload.reporters;
+  delete payload.recentDialogueScenes;
+
+  const loaded = {};
+  assert.doesNotThrow(function () { saveModule.applySavedState(payload, loaded); },
+    'a save predating the feature loads without throwing');
+  assert.deepStrictEqual(loaded.recentDialogueScenes, [], 'the buffer normalizes to empty');
+  assert.strictEqual(loaded.reporters, null, 'reporters stay null, to be regenerated on first use');
+  console.log('checkAnOldSaveWithoutDialogueStateLoads: OK');
+}
+checkAnOldSaveWithoutDialogueStateLoads();
+
 console.log('All save/load validations passed');
