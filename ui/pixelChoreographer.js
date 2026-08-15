@@ -1957,9 +1957,12 @@ if (typeof module !== 'undefined' && module.exports) {
     groupPossessions: groupPossessions,
     assignSlots: assignSlots,
     DUNK_REACH: DUNK_REACH,
-    // Exported so the animation lab and any timing check read the SAME beat
-    // lengths the game plays at, rather than a copy that drifts the first time
-    // one of them is retuned.
+    // Exported for the animation lab, which is a local workbench and is not in
+    // the repo (see .gitignore). NO COMMITTED CALLER, deliberately: the lab
+    // reads these so it cannot hold its own copy of every beat length and drift
+    // from the game the first time one of them is retuned. Anything else that
+    // wants to assert a timing should read them from here too rather than
+    // restating the numbers.
     BEAT: BEAT,
     layupFinish: layupFinish,
     ANKLE_BEATS: ANKLE_BEATS,

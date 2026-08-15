@@ -73,6 +73,19 @@ list; the four that drove the work:
       `drawPlayerSprite` and driven by the game's own curves. `BEAT` is now
       exported so the lab reads the real beat lengths rather than a copy.
 
+      **Deliberately not committed** (see `.gitignore`): it is a workbench, not
+      part of the game, and a fresh clone should get the game. Nothing about it
+      is load-bearing — every curve and pose it draws lives in
+      `ui/pixelMotion.js` and `ui/pixelSprites.js`, which are committed and
+      covered by `scripts/validate-pixel-posture.js`.
+
+      One loose end that follows from that: `BEAT` and `ANKLE_BEATS` are
+      exported from the choreographer for the lab's benefit and have **no
+      committed caller**. They are kept rather than reverted because the lab is
+      the thing that reads them and the alternative is the lab holding its own
+      copy of every beat length — which is exactly the drift the export exists
+      to prevent. Worth knowing they are there for an untracked consumer.
+
 ---
 
 ## What was measured after

@@ -8,3 +8,13 @@
 reference/
 
 node_modules/
+
+# The animation lab: every animation in the watched game looping side by side,
+# with speed control and frame stepping. A development page, not part of the
+# game — index.html never loads it and nothing at runtime references it.
+#
+# Kept local rather than committed, so a fresh clone gets the game and not the
+# workbench. It is rebuilt by hand when needed; the animations it draws all come
+# from ui/pixelSprites.js and ui/pixelMotion.js, which ARE committed, so nothing
+# about it is load-bearing. See docs/superpowers/plans/2026-08-15-animation-polish.md.
+animation-lab.html
