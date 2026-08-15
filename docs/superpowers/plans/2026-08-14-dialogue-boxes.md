@@ -80,7 +80,7 @@ The spec's example scene keys on `leadBlown`, which needs the score at the end o
 **Interfaces:**
 - Produces: `sim.periodScores` — an array of `{ period, home, away }`, one entry appended as each period ENDS. A finished regulation game has 4 entries. Consumed by Task 5.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `scripts/validate-gamesim.js`, immediately before the final `console.log('All ...')` line:
 
@@ -112,7 +112,7 @@ checkPeriodScoresAreRecorded();
 
 Check the top of `scripts/validate-gamesim.js` for the exact names it already binds for `gamesim` and its seeded rng helper (`mulberry32` or equivalent) and use those names rather than the ones above if they differ.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-gamesim.js
@@ -120,7 +120,7 @@ node scripts/validate-gamesim.js
 
 Expected: FAIL — `AssertionError: periodScores is an array`.
 
-- [ ] **Step 3: Add the field to the sim state**
+- [x] **Step 3: Add the field to the sim state**
 
 In `gameSim.js`, in the `const sim = { ... }` object literal, immediately after the `takeoverLog: [],` line, add:
 
@@ -132,7 +132,7 @@ In `gameSim.js`, in the `const sim = { ... }` object literal, immediately after 
     periodScores: [],
 ```
 
-- [ ] **Step 4: Record the score at the rollover**
+- [x] **Step 4: Record the score at the rollover**
 
 In `gameSim.js`, find the existing period-end branch:
 
@@ -151,7 +151,7 @@ Add the push inside that same `if`, after the `playByPlay.push(...)` call:
       sim.periodScores.push({ period: sim.period, home: sim.homeScore, away: sim.awayScore });
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-gamesim.js
@@ -159,7 +159,7 @@ node scripts/validate-gamesim.js
 
 Expected: PASS, ending with the file's existing "All ... passed" line.
 
-- [ ] **Step 6: Run the sim regression validators**
+- [x] **Step 6: Run the sim regression validators**
 
 Period scores must not perturb the simulation itself. Run the golden-output validators:
 
@@ -169,7 +169,7 @@ node scripts/validate-sim.js && node scripts/validate-possession.js && node scri
 
 Expected: all PASS. If a golden-output test fails, the push was placed inside a branch that runs more than once per period — re-check it is inside `if (sim.clock >= periodLength)`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add gameSim.js scripts/validate-gamesim.js
@@ -192,7 +192,7 @@ git commit -m "feat: record the score at the end of each period"
   - `reputationBand(value)` → one of `'Stonewalled'` (0–24), `'Divisive'` (25–44), `'Known Quantity'` (45–64), `'Respected'` (65–84), `'Institution'` (85–100).
 - Consumed by Task 5 (`applyDialogueEffect` writes it).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `scripts/validate-gmCareer.js`, before its final "All ... passed" line:
 
@@ -247,7 +247,7 @@ checkReputationBands();
 
 Check the top of `scripts/validate-gmCareer.js` for the name it binds the module to and use that if it is not `gmCareer`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-gmCareer.js
@@ -255,7 +255,7 @@ node scripts/validate-gmCareer.js
 
 Expected: FAIL — `AssertionError: a new career starts neutral` (or `TypeError: gmCareer.clampReputation is not a function`).
 
-- [ ] **Step 3: Implement in `gmCareer.js`**
+- [x] **Step 3: Implement in `gmCareer.js`**
 
 Add these two functions above `createGmCareer`:
 
@@ -300,7 +300,7 @@ Add all three names to the module's `module.exports` block:
     REPUTATION_DEFAULT: REPUTATION_DEFAULT,
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-gmCareer.js
@@ -308,7 +308,7 @@ node scripts/validate-gmCareer.js
 
 Expected: PASS.
 
-- [ ] **Step 5: Add the career view tile**
+- [x] **Step 5: Add the career view tile**
 
 In `ui/gmCareerView.js`, inside the `.kpi-grid` string, after the "Playoff Trips" tile, add:
 
@@ -320,7 +320,7 @@ In `ui/gmCareerView.js`, inside the `.kpi-grid` string, after the "Playoff Trips
 
 The variable holding the career object in `renderGmCareer` may be named something other than `career` — read the function and use the name already in scope. If only `totals` is in scope, call `ensureGmCareer(GameState)` at the top of the function to obtain it.
 
-- [ ] **Step 6: Run the UI safety and bridge validators**
+- [x] **Step 6: Run the UI safety and bridge validators**
 
 ```bash
 node scripts/validate-uiSafety.js && node scripts/validate-browserBridges.js && node scripts/validate-save.js
@@ -328,7 +328,7 @@ node scripts/validate-uiSafety.js && node scripts/validate-browserBridges.js && 
 
 Expected: all PASS. `validate-save.js` confirms a round-tripped save keeps the field.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add gmCareer.js ui/gmCareerView.js scripts/validate-gmCareer.js
@@ -353,7 +353,7 @@ git commit -m "feat: GM reputation, written by dialogue and shown on the career 
   - `drawPixelBust(ctx, colors, emotion, opts)` — draws at scale `opts.scale` (default 1); unknown emotion falls back to `'neutral'`
   - `bustColorsFor(player, team)` → `{ skin, hair, jersey, trim }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/validate-pixelBust.js`:
 
@@ -508,7 +508,7 @@ checkColorsComeFromTheSpriteSystem();
 console.log('All pixel bust validations passed');
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-pixelBust.js
@@ -516,7 +516,7 @@ node scripts/validate-pixelBust.js
 
 Expected: FAIL — `Cannot find module '.../ui/pixelBust.js'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `ui/pixelBust.js`:
 
@@ -641,7 +641,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-pixelBust.js
@@ -651,7 +651,7 @@ Expected: PASS, ending with `All pixel bust validations passed`.
 
 If `checkEmotionChangesOnlyTheBrowAndMouth` fails, an identity rect is being drawn in `BUST_FEATURE` or `BUST_SHADOW` and therefore is not counted as identity — that is the test working correctly; move the rect into the right colour bucket rather than weakening the assertion.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/pixelBust.js scripts/validate-pixelBust.js
@@ -683,7 +683,7 @@ Scene object shape:
   choices: [{ text, emotion, effect: (ctx) => object | null }] }
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/validate-dialogueScenes.js`:
 
@@ -924,7 +924,7 @@ checkAtLeastOneFlavourChoiceExists();
 console.log('All dialogue scene validations passed');
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-dialogueScenes.js
@@ -932,7 +932,7 @@ node scripts/validate-dialogueScenes.js
 
 Expected: FAIL — `Cannot find module '.../dialogueScenes.js'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `dialogueScenes.js`:
 
@@ -1140,7 +1140,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-dialogueScenes.js
@@ -1148,7 +1148,7 @@ node scripts/validate-dialogueScenes.js
 
 Expected: PASS, ending with `All dialogue scene validations passed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dialogueScenes.js scripts/validate-dialogueScenes.js
@@ -1177,7 +1177,7 @@ git commit -m "feat: dialogue scene library and selection"
 
 Reporter shape: `{ id, name, outlet, teamId, face }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/validate-dialogueContext.js`:
 
@@ -1424,7 +1424,7 @@ checkRecentSceneRingBuffer();
 console.log('All dialogue context validations passed');
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-dialogueContext.js
@@ -1432,7 +1432,7 @@ node scripts/validate-dialogueContext.js
 
 Expected: FAIL — `Cannot find module '.../dialogueContext.js'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `dialogueContext.js`. Note the `_DIALOGUE_DATA` bridge — `scripts/validate-browserBridges.js` will fail if the browser branch omits any member the source references.
 
@@ -1677,7 +1677,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-dialogueContext.js
@@ -1687,7 +1687,7 @@ Expected: PASS, ending with `All dialogue context validations passed`.
 
 If `checkReportersAreOnePerTeamAndStable` fails on a missing `TEAMS` export, check what `teams.js` actually exports for the full team list and use that name in `_teamIds` and in the browser branch of `_DIALOGUE_DATA`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add dialogueContext.js scripts/validate-dialogueContext.js
@@ -1715,7 +1715,7 @@ reason they are cached.
 - Consumes: `GameState.reporters` and `GameState.recentDialogueScenes` (Task 5).
 - Produces: both fields survive a save/load round trip.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `scripts/validate-save.js`, before its final "All ... passed" line:
 
@@ -1763,7 +1763,7 @@ checkAnOldSaveWithoutDialogueStateLoads();
 `scripts/validate-save.js` and use the fixture helpers and the save/load
 function names it already uses.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-save.js
@@ -1771,7 +1771,7 @@ node scripts/validate-save.js
 
 Expected: FAIL — `AssertionError: reporters survived the round trip`.
 
-- [ ] **Step 3: Add the fields to the payload**
+- [x] **Step 3: Add the fields to the payload**
 
 In `save.js`, at the end of the payload object (after the `gmCareer:` line),
 add:
@@ -1787,7 +1787,7 @@ add:
     recentDialogueScenes: gameState.recentDialogueScenes || []
 ```
 
-- [ ] **Step 4: Restore them on load**
+- [x] **Step 4: Restore them on load**
 
 In `save.js`, in the load path alongside the other field restorations (near
 the `gameState.gmCareer = payload.gmCareer || null;` line), add:
@@ -1802,7 +1802,7 @@ the `gameState.gmCareer = payload.gmCareer || null;` line), add:
     : [];
 ```
 
-- [ ] **Step 5: Run the test to verify it passes**
+- [x] **Step 5: Run the test to verify it passes**
 
 ```bash
 node scripts/validate-save.js
@@ -1810,7 +1810,7 @@ node scripts/validate-save.js
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add save.js scripts/validate-save.js
@@ -1838,7 +1838,7 @@ The engine. Most of it is DOM, which this codebase has no harness for, so the va
   - `closeDialogueBox()` — tears down; used when leaving a view mid-scene
   - `DIALOGUE_CHAR_MS` = 28
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `scripts/validate-dialogueContext.js`, before its final "All ... passed" line:
 
@@ -1863,7 +1863,7 @@ function checkTypewriterSpeedIsTheSpeccedValue() {
 checkTypewriterSpeedIsTheSpeccedValue();
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 node scripts/validate-dialogueContext.js
@@ -1871,7 +1871,7 @@ node scripts/validate-dialogueContext.js
 
 Expected: FAIL — `Cannot find module '.../ui/dialogueBox.js'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `ui/dialogueBox.js`:
 
@@ -2097,7 +2097,7 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 ```
 
-- [ ] **Step 4: Append the styles**
+- [x] **Step 4: Append the styles**
 
 Append to `style.css`:
 
@@ -2198,7 +2198,7 @@ see the DOM assembly in Step 3, which nests `.dlg-bust` and `.dlg-body` inside
 Markup without its matching CSS renders as unstyled plain text and every
 content assertion still passes, so this pairing gets checked by eye in Step 6.
 
-- [ ] **Step 5: Wire the script tags**
+- [x] **Step 5: Wire the script tags**
 
 In `index.html`, load order matters — these share one global scope and run in tag order.
 
@@ -2222,7 +2222,7 @@ Add immediately after `<script src="narrativeSystem.js"></script>` (its fallback
   <script src="ui/dialogueBox.js"></script>
 ```
 
-- [ ] **Step 6: Run the full validator sweep**
+- [x] **Step 6: Run the full validator sweep**
 
 ```bash
 node scripts/validate-dialogueContext.js && node scripts/validate-uiSafety.js && node scripts/validate-browserBridges.js
@@ -2230,7 +2230,7 @@ node scripts/validate-dialogueContext.js && node scripts/validate-uiSafety.js &&
 
 Expected: all PASS. `validate-browserBridges.js` is the one that catches a `_DIALOGUE_DATA` browser branch missing a member the source references — the failure mode that passes every node test and crashes the game.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ui/dialogueBox.js style.css index.html scripts/validate-dialogueContext.js
@@ -2249,7 +2249,7 @@ git commit -m "feat: the dialogue box overlay"
 - Produces: `playPixelSfx('blip')`; `GameState.settings.dialogueScenes` (boolean, defaults to enabled when `undefined`).
 - Consumed by Tasks 9 and 10, which check the setting before firing.
 
-- [ ] **Step 1: Add the blip**
+- [x] **Step 1: Add the blip**
 
 In `ui/pixelAudio.js`, inside the `playPixelSfx` switch, add alongside the other cases:
 
@@ -2259,7 +2259,7 @@ In `ui/pixelAudio.js`, inside the `playPixelSfx` switch, add alongside the other
 
 Short and quiet on purpose — it fires every third character, so anything longer or louder becomes a buzz rather than a chirp.
 
-- [ ] **Step 2: Verify it does not break the audio module**
+- [x] **Step 2: Verify it does not break the audio module**
 
 ```bash
 node --check ui/pixelAudio.js
@@ -2267,7 +2267,7 @@ node --check ui/pixelAudio.js
 
 Expected: no output (syntax is valid).
 
-- [ ] **Step 3: Add the settings toggle**
+- [x] **Step 3: Add the settings toggle**
 
 In `ui/settings.js`, alongside the other checkbox rows (follow the exact markup of the `playInEnabled` row), add:
 
@@ -2287,7 +2287,7 @@ Wire the change handler the same way the neighbouring checkboxes are wired in th
 
 Read the existing handler block and match its dispatch style (`data-setting` attribute vs. an `id`) rather than inventing a new one.
 
-- [ ] **Step 4: Run the validators**
+- [x] **Step 4: Run the validators**
 
 ```bash
 node scripts/validate-uiSafety.js && node scripts/validate-settingsRules.js
@@ -2295,7 +2295,7 @@ node scripts/validate-uiSafety.js && node scripts/validate-settingsRules.js
 
 Expected: both PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/pixelAudio.js ui/settings.js
@@ -2313,7 +2313,7 @@ git commit -m "feat: dialogue blip sfx and a toggle to turn the scenes off"
 - Consumes: everything from Tasks 1–8.
 - Produces: `maybeRunPostgameDialogue(sim, onContinue)` — a single helper both `onFinish` sites call, so the two paths cannot drift.
 
-- [ ] **Step 1: Add the helper**
+- [x] **Step 1: Add the helper**
 
 In `ui/simControls.js`, above the function containing the first `setLiveWatchSession` call, add:
 
@@ -2362,7 +2362,7 @@ function maybeRunPostgameDialogue(sim, onContinue) {
 }
 ```
 
-- [ ] **Step 2: Call it from both `onFinish` sites**
+- [x] **Step 2: Call it from both `onFinish` sites**
 
 In the regular-season `onFinish` (~line 483), change:
 
@@ -2388,7 +2388,7 @@ to:
 
 In the playoff `onFinish` (~line 392), wrap the existing body the same way. Read that callback in full first — it does more than the regular-season one (it advances the bracket and collects finished games) and **all** of that existing work must still run. Call `maybeRunPostgameDialogue` after `watch.liveGame.finish()` and move the remaining statements into its continuation, preserving their order.
 
-- [ ] **Step 3: Run the validators**
+- [x] **Step 3: Run the validators**
 
 ```bash
 node scripts/validate-uiSafety.js && node scripts/validate-simControlsOffseasonGuard.js && node scripts/validate-liveWatch.js && node scripts/validate-userPathRules.js
@@ -2396,7 +2396,7 @@ node scripts/validate-uiSafety.js && node scripts/validate-simControlsOffseasonG
 
 Expected: all PASS.
 
-- [ ] **Step 4: Manual smoke in the browser**
+- [x] **Step 4: Manual smoke in the browser**
 
 Start the dev server and play a game to completion:
 
@@ -2414,7 +2414,7 @@ Verify, in order:
 7. Esc mid-scene closes the box and changes nothing.
 8. Turning the setting off stops it firing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add ui/simControls.js
@@ -2432,7 +2432,7 @@ git commit -m "feat: post-game interview after a watched game"
 - Consumes: everything from Tasks 1–8.
 - Produces: nothing consumed elsewhere.
 
-- [ ] **Step 1: Find the seam**
+- [x] **Step 1: Find the seam**
 
 In `ui/pixelGameView.js`, the existing branch is:
 
@@ -2447,7 +2447,7 @@ In `ui/pixelGameView.js`, the existing branch is:
       }
 ```
 
-- [ ] **Step 2: Add the halftime call**
+- [x] **Step 2: Add the halftime call**
 
 Inside that branch, after `lastQuarterSeen = fr.a.period;`, add:
 
@@ -2458,7 +2458,7 @@ Inside that branch, after `lastQuarterSeen = fr.a.period;`, add:
         if (lastQuarterSeen === 3) maybeRunHalftimeDialogue();
 ```
 
-- [ ] **Step 3: Add the helper**
+- [x] **Step 3: Add the helper**
 
 Inside the same closure that owns the playback loop (so it can reach the pause controls and `sim`), add:
 
@@ -2505,7 +2505,7 @@ Inside the same closure that owns the playback loop (so it can reach the pause c
 
 `liveSim`, `isPlaying()` and `setPlaying()` are placeholders for whatever this file actually calls them. Read the playback loop and substitute the real names — the sim object it is animating, and the pause/resume controls the pause button already drives. Do **not** add new pause state; reuse what the pause button uses.
 
-- [ ] **Step 4: Tear the box down when leaving the view**
+- [x] **Step 4: Tear the box down when leaving the view**
 
 Find where this view cleans up (the same place the pixel coach's document-level `keydown` listener is removed at game over) and add:
 
@@ -2515,7 +2515,7 @@ Find where this view cleans up (the same place the pixel coach's document-level 
 
 Without this, leaving the Watch Game view mid-scene leaves an overlay pinned over the whole app.
 
-- [ ] **Step 5: Run the validators**
+- [x] **Step 5: Run the validators**
 
 ```bash
 node scripts/validate-uiSafety.js && node scripts/validate-liveWatch.js && node scripts/validate-pixel-events.js && node scripts/validate-browserBridges.js
@@ -2523,7 +2523,7 @@ node scripts/validate-uiSafety.js && node scripts/validate-liveWatch.js && node 
 
 Expected: all PASS.
 
-- [ ] **Step 6: Manual smoke in the browser**
+- [x] **Step 6: Manual smoke in the browser**
 
 ```bash
 python scripts/devserver.py
@@ -2538,7 +2538,7 @@ Verify, in order:
 6. It does not fire for a game your team is not in.
 7. It fires once, not on every frame of the period change.
 
-- [ ] **Step 7: Run the whole validator suite**
+- [x] **Step 7: Run the whole validator suite**
 
 ```bash
 for f in scripts/validate-*.js; do echo "== $f"; node "$f" > /dev/null || echo "FAILED: $f"; done
@@ -2546,7 +2546,7 @@ for f in scripts/validate-*.js; do echo "== $f"; node "$f" > /dev/null || echo "
 
 Expected: no `FAILED:` lines.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add ui/pixelGameView.js
@@ -2554,6 +2554,28 @@ git commit -m "feat: halftime exchange during a watched game"
 ```
 
 ---
+
+## Outcome (2026-08-15)
+
+All 10 tasks complete. 60 validators pass, 3 of them new. Four things went
+differently from the plan, all corrected in place:
+
+1. **Period scores belong in `endPeriod()`**, not at the play-by-play period
+   header. That header is written at the top of a step for the period about to
+   be played, so it captured a score one possession short of the period's end
+   and the final row did not equal the final score.
+2. **`CHRONICLE_KINDS` is a fixed enum.** The plan had dialogue writing a bare
+   `'press'` string; `PRESS` was added to the enum instead.
+3. **`SPRITE_CARD_NO_TEAM` was not exported** from `ui/pixelSprites.js`, so the
+   teamless-speaker fallback the plan relied on did not exist yet.
+4. **Load order.** `ui/dialogueBox.js` captures `drawPixelBust` and
+   `interpolate` at load time, so it must follow both `ui/pixelBust.js` and
+   `dialogueScenes.js`. Placed by the plan's original position it threw on
+   every page load. Also, `validate-uiSafety.js` requires every `ui/` file to
+   be loaded by `index.html`, so the script tag ships with the file rather than
+   with the task that first uses it.
+
+Nine scenes shipped rather than five, covering both moments and both roles.
 
 ## Notes for the implementer
 
