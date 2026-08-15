@@ -20,9 +20,11 @@ const POSTGAME_KEYS = [
 ];
 const HALFTIME_KEYS = [
   'moment', 'role', 'margin', 'teamName', 'opponentName', 'trailing', 'leading',
-  'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore', 'isPlayoff'
+  'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore', 'isPlayoff',
+  'slumpName', 'slumpFgm', 'slumpFga', 'slumpPoints'
 ];
-const EFFECT_CHANNELS = ['teamMorale', 'playerMorale', 'reputation', 'chronicle', 'recordDecision'];
+const EFFECT_CHANNELS = ['teamMorale', 'playerMorale', 'reputation', 'chronicle',
+  'recordDecision', 'boostPlayer'];
 
 function keysFor(moment) {
   return moment === 'halftime' ? HALFTIME_KEYS : POSTGAME_KEYS;
@@ -37,7 +39,8 @@ function fullContext(moment, role) {
     topScorerName: 'J. Tatum', topScorerPoints: 31,
     userScore: 104, opponentScore: 110, isPlayoff: false,
     streak: -2, seasonWins: 20, seasonLosses: 15,
-    trailing: true, leading: false
+    trailing: true, leading: false,
+    slumpId: 'p1', slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14, slumpPoints: 7, boostId: 'p1'
   };
 }
 
@@ -285,6 +288,78 @@ function checkEffectsDoNotMutateTheContext() {
   console.log('checkEffectsDoNotMutateTheContext: OK');
 }
 checkEffectsDoNotMutateTheContext();
+
+function checkTheHintHasSomewhereToLand() {
+  // A planted hint with no scene to act on it is a dead end. Whenever a slump
+  // exists, the winning halftime scene must be the one that can spend it.
+  const withSlump = fullContext('halftime', 'gm');
+  const scene = scenes.selectScene(withSlump, { rand: function () { return 0; } });
+  const canBoost = scene.choices.some(function (c) {
+    return typeof c.effect === 'function' && c.effect(withSlump).boostPlayer;
+  });
+  assert.ok(canBoost, 'the winning halftime scene cannot act on the hint: ' + scene.id);
+
+  // Exactly one option pays off — two would make it a coin flip rather than
+  // something you had to notice.
+  const paying = scene.choices.filter(function (c) {
+    return typeof c.effect === 'function' && c.effect(withSlump).boostPlayer;
+  });
+  assert.strictEqual(paying.length, 1, scene.id + ' has ' + paying.length + ' payoff options, want exactly 1');
+
+  // And the payoff aims at the slumping man, not somebody else.
+  assert.strictEqual(paying[0].effect(withSlump).boostPlayer, withSlump.slumpId,
+    'the payoff points at the man the panel named');
+
+  // The wrong answers must not be punishing. Missing the boost is the cost.
+  scene.choices.forEach(function (c) {
+    if (c === paying[0] || typeof c.effect !== 'function') return;
+    const out = c.effect(withSlump);
+    assert.ok(!out.boostPlayer, 'only one option boosts');
+    if (typeof out.teamMorale === 'number') {
+      assert.ok(out.teamMorale >= -1, 'a wrong guess should sting at most slightly, got ' + out.teamMorale);
+    }
+  });
+  console.log('checkTheHintHasSomewhereToLand: OK');
+}
+checkTheHintHasSomewhereToLand();
+
+function checkNoHintSceneFiresWithoutASlump() {
+  const noSlump = fullContext('halftime', 'gm');
+  noSlump.slumpId = null; noSlump.slumpName = null; noSlump.boostId = null;
+  const scene = scenes.selectScene(noSlump, { rand: function () { return 0; } });
+  scene.choices.forEach(function (c) {
+    if (typeof c.effect !== 'function') return;
+    assert.ok(!c.effect(noSlump).boostPlayer,
+      scene.id + ' offers a boost with nobody to boost');
+  });
+
+  // The narrower case that actually bites: somebody IS having a bad night, but
+  // he cannot take over, so the payoff would land on nothing. The panel still
+  // talks about him; the coach must not offer the boost.
+  const unboostable = fullContext('halftime', 'gm');
+  unboostable.boostId = null;   // slumpName/slumpId still set
+  const s2 = scenes.selectScene(unboostable, { rand: function () { return 0; } });
+  s2.choices.forEach(function (c) {
+    if (typeof c.effect !== 'function') return;
+    assert.ok(!c.effect(unboostable).boostPlayer,
+      s2.id + ' offers a boost for a player who cannot take over');
+  });
+  console.log('checkNoHintSceneFiresWithoutASlump: OK');
+}
+checkNoHintSceneFiresWithoutASlump();
+
+function checkTheCoachDoesNotGiveItAway() {
+  // The other half of the contract validate-studioShow.js guards: the panel
+  // must not signpost the hint, and the coach must not label the answer.
+  const giveaways = /the panel|they said|as mentioned|correct|right answer|recommended/i;
+  scenes.SCENES.forEach(function (s) {
+    s.lines.concat(s.choices).forEach(function (l) {
+      assert.ok(!giveaways.test(l.text), s.id + ' labels the answer: "' + l.text + '"');
+    });
+  });
+  console.log('checkTheCoachDoesNotGiveItAway: OK');
+}
+checkTheCoachDoesNotGiveItAway();
 
 function checkAtLeastOneFlavourChoiceExists() {
   // Mixed stakes was an explicit design decision: some replies change nothing,

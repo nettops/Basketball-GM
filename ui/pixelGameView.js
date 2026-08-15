@@ -1203,7 +1203,11 @@ function renderPixelGame(container) {
         if (!result.skipped) {
           const choice = scene.choices[result.choiceIndex];
           if (choice && typeof choice.effect === 'function') {
-            applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+            // The sim goes through as an explicit capability rather than on
+            // the context: this is the one moment a LIVE game exists to nudge,
+            // and the post-game caller has nothing to pass. It is also what
+            // keeps the context a flat bag of facts that a test can compare.
+            applyDialogueEffect(GameState, choice.effect(ctx), ctx, { sim: sim });
           }
         }
         pushRecentScene(GameState, scene.id);

@@ -214,6 +214,53 @@ function checkSmallSamplesAreNotSlumps() {
 }
 checkSmallSamplesAreNotSlumps();
 
+function checkAStarOutranksAWorseShootingBenchPlayer() {
+  // Found in a real game: the panel named a bench player 3-for-10 and the
+  // boost silently degraded to an energy bump. Your star struggling is the
+  // better story AND the only one the payoff actually works on.
+  const state = fakeState();
+  const sim = slumpSim();
+  sim.homeBox.p2 = { points: 2, teamId: 'BOS', fgm: 1, fga: 12, energy: 0.7, charge: 0, takeoversUsed: 0 };
+  sim.homeRoster = [
+    { id: 'p1', name: 'J. Tatum', overall: 92 },   // can take over, 3-for-14
+    { id: 'p2', name: 'Deep Bench', overall: 55 }  // cannot, and shot worse
+  ];
+  const c = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(c.slumpId, 'p1', 'the star is named, not the worse-shooting bench player');
+
+  // But when nobody who can take over qualifies, the bench player is still
+  // named rather than the panel saying nothing.
+  sim.homeRoster = [
+    { id: 'p1', name: 'J. Tatum', overall: 55 },
+    { id: 'p2', name: 'Deep Bench', overall: 55 }
+  ];
+  const fallback = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(fallback.slumpId, 'p2', 'with no stars, the worst shooter is named');
+  console.log('checkAStarOutranksAWorseShootingBenchPlayer: OK');
+}
+checkAStarOutranksAWorseShootingBenchPlayer();
+
+function checkTheBoostIsOnlyOfferedWhenItCanPayOut() {
+  // Measured in a real game: the ultimate gate is 87, so roughly one player
+  // per roster can take over. Offering the payoff to anyone else fell back to
+  // an energy bump — and for a player already at full energy, to nothing.
+  // The panel still MENTIONS the bad night; only the payoff is gated.
+  const state = fakeState();
+  const sim = slumpSim();
+
+  sim.homeRoster = [{ id: 'p1', name: 'J. Tatum', overall: 92 }, { id: 'p2', name: 'D. White', overall: 78 }];
+  const star = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(star.slumpId, 'p1', 'the bad night is reported');
+  assert.strictEqual(star.boostId, 'p1', 'and it can be acted on');
+
+  sim.homeRoster = [{ id: 'p1', name: 'J. Tatum', overall: 55 }, { id: 'p2', name: 'D. White', overall: 55 }];
+  const nobody = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(nobody.slumpId, 'p1', 'the bad night is STILL reported');
+  assert.strictEqual(nobody.boostId, null, 'but there is nothing to act on');
+  console.log('checkTheBoostIsOnlyOfferedWhenItCanPayOut: OK');
+}
+checkTheBoostIsOnlyOfferedWhenItCanPayOut();
+
 function checkTheBoostLightsTheFuse() {
   // A player who can take over gets charge — enough to make it likely, not
   // enough to be free: he still has to earn the rest in the second half.
@@ -230,6 +277,28 @@ function checkTheBoostLightsTheFuse() {
   console.log('checkTheBoostLightsTheFuse: OK');
 }
 checkTheBoostLightsTheFuse();
+
+function checkTheBoostNeverTakesChargeAway() {
+  // Live bug: the ceiling was applied with Math.min alone, so a player who had
+  // already banked more charge than the ceiling had it CLAMPED DOWN. Acting on
+  // the hint made him worse off, and measured over 60 games the whole mechanic
+  // came out as a no-op.
+  const state = fakeState();
+  const sim = slumpSim();
+  const ctx = dc.buildHalftimeContext(state, sim);
+  const line = sim.homeBox[ctx.boostId];
+
+  line.charge = dc.CHARGE_FULL * 0.95;   // already past the ceiling
+  dc.applyDialogueEffect(state, { boostPlayer: ctx.boostId }, ctx, { sim: sim });
+  assert.strictEqual(line.charge, dc.CHARGE_FULL * 0.95, 'a player past the ceiling is left alone');
+
+  line.charge = dc.CHARGE_FULL * 0.5;    // below it, so the boost should lift him
+  dc.applyDialogueEffect(state, { boostPlayer: ctx.boostId }, ctx, { sim: sim });
+  assert.ok(line.charge > dc.CHARGE_FULL * 0.5, 'a player below the ceiling is lifted');
+  assert.ok(line.charge <= dc.CHARGE_FULL * dc.BOOST_CHARGE_CEILING + 1e-9, 'but not past the ceiling');
+  console.log('checkTheBoostNeverTakesChargeAway: OK');
+}
+checkTheBoostNeverTakesChargeAway();
 
 function checkAPlayerWithNoUltimateGetsASecondWindInstead() {
   // Below the ultimate gate charge does nothing at all, so the hint would pay

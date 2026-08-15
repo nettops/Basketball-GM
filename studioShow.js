@@ -54,6 +54,40 @@ function studioCrewMember(key) {
 // No two adjacent beats share a speaker: two lines from one man in a row reads
 // as one long line rather than as a panel, and the validator enforces it.
 const STUDIO_SEGMENTS = [
+  // --- the hint ----------------------------------------------------------
+  // These name a specific man having a bad shooting night, and they are the
+  // ONLY place that information is offered. One of the coach's instructions
+  // afterwards acts on it. Nothing labels the connection — noticing it is the
+  // mechanic, so no beat here may say "and you should tell your coach".
+  //
+  // They sit above the situational segments and outrank them: a named player
+  // going 3-for-14 is a better halftime story than the margin, and it is the
+  // only segment that leads anywhere.
+  {
+    id: 'studio-slump-trailing',
+    priority: 90,
+    when: function (c) { return !!c.slumpName && c.trailing; },
+    beats: [
+      { who: 'ernie', emotion: 'neutral', text: "The {teamName} are down {margin}, and Kenny, the number that jumps out is {slumpName} — {slumpFgm} for {slumpFga}." },
+      { who: 'kenny', emotion: 'neutral', text: "And it's not that he's missing. It's WHERE he's missing from. Every one of those is a settle." },
+      { who: 'charles', emotion: 'angry', text: "He hasn't been to the rim once! Not once, Ernie. You're that big and you're shooting fadeaways?" },
+      { who: 'shaq', emotion: 'confident', text: "Somebody's gotta put him in the paint and let him get one easy. Everything else follows the easy one." },
+      { who: 'kenny', emotion: 'confident', text: "One drive. That's the whole second half right there." },
+      { who: 'ernie', emotion: 'neutral', text: "Well, somebody in that locker room is hearing this. Second half, coming up." }
+    ]
+  },
+  {
+    id: 'studio-slump-leading',
+    priority: 88,
+    when: function (c) { return !!c.slumpName && !c.trailing; },
+    beats: [
+      { who: 'ernie', emotion: 'confident', text: "The {teamName} are in front, and they've done it with {slumpName} going {slumpFgm} for {slumpFga}." },
+      { who: 'charles', emotion: 'confident', text: "That's the scary part! He's been terrible and they're STILL winning." },
+      { who: 'kenny', emotion: 'neutral', text: "He's forcing it, though. Living on jumpers he doesn't need to take." },
+      { who: 'shaq', emotion: 'confident', text: "Get him one at the rim. He goes from cold to unstoppable on one dunk, I promise you that." },
+      { who: 'ernie', emotion: 'neutral', text: "If he wakes up, this is over. Back in a moment." }
+    ]
+  },
   {
     id: 'studio-blowout-against',
     priority: 70,

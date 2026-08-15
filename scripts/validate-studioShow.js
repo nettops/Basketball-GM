@@ -13,7 +13,8 @@ const scenes = require(path.join(__dirname, '..', 'dialogueScenes.js'));
 // would print a stray {brace} on screen.
 const HALFTIME_KEYS = [
   'moment', 'role', 'margin', 'teamName', 'opponentName', 'trailing', 'leading',
-  'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore', 'isPlayoff'
+  'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore', 'isPlayoff',
+  'slumpName', 'slumpFgm', 'slumpFga', 'slumpPoints'
 ];
 
 function fullContext(over) {
@@ -202,6 +203,45 @@ function checkRecentSegmentsAreSkipped() {
   console.log('checkRecentSegmentsAreSkipped: OK');
 }
 checkRecentSegmentsAreSkipped();
+
+function checkTheHintOutranksTheSituation() {
+  // A named man going 3-for-14 is a better halftime story than the margin, and
+  // it is the only segment that leads anywhere. It has to win.
+  const withSlump = fullContext({ slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14, slumpPoints: 7 });
+  const seg = studio.selectSegment(withSlump, { rand: function () { return 0; } });
+  assert.ok(/slump/.test(seg.id), 'a slump night should air the slump segment, got ' + seg.id);
+
+  // Both a trailing and a leading slump have to be covered, or half the time
+  // the hint silently does not appear.
+  const leading = studio.selectSegment(
+    fullContext({ trailing: false, leading: true, margin: 9, slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14 }),
+    { rand: function () { return 0; } });
+  assert.ok(/slump/.test(leading.id), 'a slump while leading should also air one, got ' + leading.id);
+  console.log('checkTheHintOutranksTheSituation: OK');
+}
+checkTheHintOutranksTheSituation();
+
+function checkNoSlumpSegmentFiresWithoutASlump() {
+  // Naming a man who is not struggling would make the hint untrustworthy, and
+  // the coach's payoff option would point at nobody.
+  const seg = studio.selectSegment(fullContext({ slumpName: null }), { rand: function () { return 0; } });
+  assert.ok(!/slump/.test(seg.id), 'no slump, no slump segment, got ' + seg.id);
+  console.log('checkNoSlumpSegmentFiresWithoutASlump: OK');
+}
+checkNoSlumpSegmentFiresWithoutASlump();
+
+function checkTheHintIsNotSignposted() {
+  // Noticing the connection IS the mechanic. A beat that says "tell your
+  // coach" hands it over and there is nothing left to spot.
+  const giveaways = /tell (your|the) coach|talk to (your|the) coach|remember this|hint|next screen/i;
+  studio.SEGMENTS.forEach(function (seg) {
+    seg.beats.forEach(function (b) {
+      assert.ok(!giveaways.test(b.text), seg.id + ' signposts the hint: "' + b.text + '"');
+    });
+  });
+  console.log('checkTheHintIsNotSignposted: OK');
+}
+checkTheHintIsNotSignposted();
 
 function checkTheShowCarriesNoConsequences() {
   // Watch-only by design: a segment must have no choices and no effects.

@@ -229,6 +229,42 @@ const SCENES = [
 
   // ---- halftime ----
   {
+    // The payoff for the hint the studio panel just planted. It outranks the
+    // other halftime scenes so that a planted hint always has somewhere to go.
+    //
+    // The coach never names the problem — he asks an open question, and one of
+    // the three answers happens to be the one the panel spent two minutes
+    // describing. Nothing marks it. Noticing is the mechanic, so do NOT add a
+    // tell here; validate-studioShow.js guards the other half of that contract.
+    //
+    // The wrong answers cost nothing. Missing the boost is the cost, and
+    // punishing inattention on a cutaway you cannot replay would be harsh.
+    // Gated on boostId, NOT slumpId: the payoff only works on a player who can
+    // actually take over, and offering it otherwise pays out nothing.
+    id: 'halftime-slump-hint',
+    moment: 'halftime',
+    roles: ['gm', 'player'],
+    priority: 95,
+    when: function (c) { return !!c.boostId; },
+    speaker: { kind: 'coach' },
+    lines: [
+      { emotion: 'neutral', text: "Twelve minutes gone. I've got one adjustment in me before we go back out." },
+      { emotion: 'neutral', text: 'What do you want it to be?' }
+    ],
+    choices: [
+      // The one the panel described: get him downhill, to the rim.
+      { text: 'Run everything through {slumpName} at the rim.', emotion: 'confident',
+        effect: function (c) { return { boostPlayer: c.boostId, teamMorale: 0.5 }; } },
+      // Plausible, and wrong — it is the shot selection, not the shooter.
+      { text: 'Sit {slumpName} down. He is hurting us.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -1 }; } },
+      // Also plausible, also wrong: it treats the symptom.
+      { text: 'Push the pace and outrun them.', emotion: 'confident',
+        effect: function () { return { teamMorale: 0.5 }; } },
+      { text: 'Nothing. Let them play.', emotion: 'neutral', effect: null }
+    ]
+  },
+  {
     id: 'halftime-trailing-badly',
     moment: 'halftime',
     roles: ['gm', 'player'],

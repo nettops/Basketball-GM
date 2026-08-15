@@ -37,10 +37,16 @@ const RECENT_SCENE_LIMIT = 8;
 const SLUMP_MIN_ATTEMPTS = 8;
 const SLUMP_MAX_FG_PCT = 0.35;
 
-// How much of a full meter acting on the hint is worth. Deliberately short of
-// a full one: it makes a takeover likely, it does not hand one over. He still
-// has to earn the rest in the second half.
+// How much of a full meter acting on the hint is worth, and the ceiling it
+// cannot push past.
+//
+// The ceiling is the load-bearing one. Without it the boost topped players out
+// at 99% of the meter whenever they had already banked a little charge, and
+// measured over 40 games that produced a takeover 6 times out of 6 — not a
+// nudge but a guarantee. At 0.82 he still has to earn the last stretch, which
+// is a couple of good possessions rather than a formality.
 const BOOST_CHARGE_FRACTION = 0.6;
+const BOOST_CHARGE_CEILING = 0.82;
 
 // The fallback for a player below the ultimate gate, for whom charge would do
 // literally nothing. Roughly twice what a timeout gives (gameSim.js's
@@ -176,29 +182,52 @@ function buildPostgameContext(gameState, sim) {
 }
 
 // The man on YOUR side having the worst shooting night, if anyone qualifies.
+//
 // Only your own side: naming the opponent's cold shooter as your problem is
 // nonsense, and it would aim the boost at the wrong team.
+//
+// Players who can actually TAKE OVER are preferred over those who cannot, even
+// if a deeper bench player shot worse. Two reasons, and they point the same
+// way: your star struggling is a far better halftime story than your eleventh
+// man, and the payoff for acting on the hint is charge — which does nothing
+// at all for a player below the ultimate gate. Measured in a real game before
+// this rule existed, the panel picked a bench player 3-for-10 and the boost
+// silently degraded to an energy bump nobody would notice.
 function _slumpingPlayer(sim, userIsHome) {
   const box = userIsHome ? sim.homeBox : sim.awayBox;
   const roster = userIsHome ? sim.homeRoster : sim.awayRoster;
-  let worstId = null;
-  let worstPct = 1;
+  const ults = _DIALOGUE_DATA.ultimates;
+
+  const byId = {};
+  (roster || []).forEach(function (p) { byId[p.id] = p; });
+
+  let best = null;   // { id, pct, canTakeOver }
   Object.keys(box || {}).forEach(function (id) {
     const line = box[id];
     if (!line || (line.fga || 0) < SLUMP_MIN_ATTEMPTS) return;
     const pct = (line.fgm || 0) / line.fga;
     if (pct > SLUMP_MAX_FG_PCT) return;
-    if (pct < worstPct) { worstPct = pct; worstId = id; }
+    const canTakeOver = !!(ults.hasUltimate && ults.hasUltimate(byId[id]));
+    if (!best) { best = { id: id, pct: pct, canTakeOver: canTakeOver }; return; }
+    // A man who can take over outranks one who cannot, whatever the numbers.
+    if (canTakeOver !== best.canTakeOver) {
+      if (canTakeOver) best = { id: id, pct: pct, canTakeOver: canTakeOver };
+      return;
+    }
+    if (pct < best.pct) best = { id: id, pct: pct, canTakeOver: canTakeOver };
   });
-  if (!worstId) return null;
-  const player = (roster || []).filter(function (p) { return p.id === worstId; })[0];
+
+  if (!best) return null;
+  const worstId = best.id;
+  const player = byId[worstId];
   const line = box[worstId];
   return {
     id: worstId,
     name: (player && player.name) || 'your starter',
     fgm: line.fgm || 0,
     fga: line.fga,
-    points: line.points || 0
+    points: line.points || 0,
+    canTakeOver: best.canTakeOver
   };
 }
 
@@ -208,14 +237,25 @@ function buildHalftimeContext(gameState, sim) {
   base.leading = base.userScore > base.opponentScore;
   base.trailing = base.userScore < base.opponentScore;
 
-  // The hint the studio panel plants and one of the coach's instructions acts
-  // on. Null when nobody is struggling, which is what keeps the panel honest.
+  // Two separate things, deliberately.
+  //
+  // `slump*` is a bad night by anyone on your side. The panel talks about it
+  // whether or not anything can be done, because a panel that only ever
+  // mentions your one star is a panel that is not watching the game.
+  //
+  // `boostId` is set ONLY when that man can actually take over, and it is what
+  // gates the coach's payoff option. The measured reason: the ultimate gate is
+  // 87, so roughly one player per roster qualifies. Offering the payoff for
+  // anyone else meant it silently fell back to an energy bump — and for a
+  // player already at full energy, to nothing whatsoever. A rare real payoff
+  // beats a frequent hollow one.
   const slump = _slumpingPlayer(sim, base.userIsHome);
   base.slumpId = slump ? slump.id : null;
   base.slumpName = slump ? slump.name : null;
   base.slumpFgm = slump ? slump.fgm : null;
   base.slumpFga = slump ? slump.fga : null;
   base.slumpPoints = slump ? slump.points : null;
+  base.boostId = (slump && slump.canTakeOver) ? slump.id : null;
   return base;
 }
 
@@ -243,7 +283,14 @@ function _applyHalftimeBoost(sim, playerId, userIsHome) {
 
   if (canTakeOver && ults.chargeThreshold) {
     const threshold = ults.chargeThreshold(line.takeoversUsed || 0);
-    line.charge = Math.min(threshold * 0.99, (line.charge || 0) + threshold * BOOST_CHARGE_FRACTION);
+    const current = line.charge || 0;
+    // Never REDUCES. The ceiling caps how far the boost can carry him, not how
+    // much charge he is allowed to hold — a player already past it earned that
+    // himself, and clamping him down would make acting on the hint a penalty.
+    // This was a live bug: Math.min alone made the boost a no-op or worse for
+    // exactly the players it was meant to help.
+    line.charge = Math.max(current,
+      Math.min(threshold * BOOST_CHARGE_CEILING, current + threshold * BOOST_CHARGE_FRACTION));
   } else {
     line.energy = Math.min(1, (line.energy || 0) + BOOST_ENERGY_RESTORE);
   }
@@ -324,6 +371,7 @@ if (typeof module !== 'undefined' && module.exports) {
     SLUMP_MIN_ATTEMPTS: SLUMP_MIN_ATTEMPTS,
     SLUMP_MAX_FG_PCT: SLUMP_MAX_FG_PCT,
     BOOST_CHARGE_FRACTION: BOOST_CHARGE_FRACTION,
+    BOOST_CHARGE_CEILING: BOOST_CHARGE_CEILING,
     BOOST_ENERGY_RESTORE: BOOST_ENERGY_RESTORE,
     // Re-exported so a test can assert "less than a free takeover" without
     // reaching into ultimates.js for the number.
