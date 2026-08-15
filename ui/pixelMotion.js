@@ -215,6 +215,175 @@ function dribbleBall(u) {
   return { up: 1 + h.phase * DRIBBLE_RISE, side: DRIBBLE_SIDE * h.sign, bouncePhase: h.phase };
 }
 
+// ---------------------------------------------------------------------------
+// THE NAMED MOVES.
+//
+// Everything above is the idle dribble: a metronome, three bounces to a hand.
+// A crossover, a behind-the-back, a double move and an ankle breaker are not
+// that, and until this existed they were not anything — the choreographer slid
+// the BODY sideways and the ball kept its own metronome regardless. Measured
+// over real games, all four reached exactly 6.0px from the handler's centre,
+// which is the width of an ordinary dribble. They were the same animation with
+// different footwork.
+//
+// A move is described in BEATS, one bounce per beat, so the ball meets the
+// floor as he plants. `at` is the beat a crossing lands on; `wide` is how far
+// the ball gets from him on either side of it; `low` is how hard he drives it
+// into the floor as it passes his centre line.
+// ---------------------------------------------------------------------------
+function dribbleCrossings(move, n) {
+  // A put-down is two dribbles in place. Nothing crosses; nothing should.
+  if (move === 'putdown') return [];
+  // An ankle breaker's beats are the jab, the cut back and the clear. The ball
+  // has to change hands ON the cut — that IS the move — so it is pinned to beat
+  // 1 rather than to a fraction of the string.
+  if (move === 'ankle') return [{ at: 1, wide: 12, low: 0.8 }];
+  // A double move's signature is that the second one is the bigger: the
+  // defender has already ridden out the first.
+  if (move === 'double') {
+    return [{ at: 2, wide: 8, low: 0.5 }, { at: n - 1, wide: 12, low: 0.75 }];
+  }
+  // Behind the back is the crossover's opposite. The ball goes WIDE and stays
+  // UP, around a handler whose shoulders stay square; a crossover goes narrow
+  // and low, straight through the middle of his stance. Without that contrast
+  // the two are the same rectangles sliding sideways at this size, which is
+  // what they were.
+  if (move === 'behind') return [{ at: Math.floor(n / 2), wide: 15, low: 0, behind: 5 }];
+  return [{ at: Math.floor(n / 2), wide: 10, low: 0.65 }];
+}
+
+// How much of the string is spent easing into and out of the scripted path.
+// The move must not simply replace the free dribble: the ball is somewhere when
+// the string starts, and teleporting it to wherever the script wants it is the
+// branch-change snap this file exists to prevent.
+const MOVE_BLEND_BEATS = 0.5;
+
+// `u` is beats into the string, `from` the hand the ball is ALREADY in when the
+// string opens. Returns the same shape dribbleHand does, plus `behind`, an
+// up-screen offset that carries the ball around the far side of him rather than
+// across his front.
+//
+// `from` matters more than it looks. Without it a move always opened in the
+// right hand, so half the time the string began by quietly walking the ball
+// across from the left — a hand change the move never asked for, on top of the
+// one it did. A "crossover" measured two.
+function moveDribble(move, u, n, from) {
+  let phase = Math.abs(Math.sin(Math.PI * u));
+  let side = DRIBBLE_SIDE, sign, behind = 0;
+
+  const crossings = dribbleCrossings(move, n);
+  // TWO windows, not one, and the difference is the whole reason the first
+  // version of this measured 6.0px — the width of the ordinary dribble it was
+  // meant to be louder than.
+  //
+  // The hand-switch spans half a bounce either side of the plant (`active`).
+  // The WIDTH spans a whole bounce either side (`near`). They have to differ,
+  // because inside the switch the drawn offset is sign * side and sign is
+  // sweeping through zero: any width added there is multiplied by a number on
+  // its way to nothing. Widening on the same window as the switch also made the
+  // width jump 4px the instant the window opened, since it was at its maximum
+  // exactly where the window began.
+  //
+  // On the wider window the ball swings out to `wide` a bounce before the
+  // plant, comes all the way in to his centre line as he plants, and goes back
+  // out the other side — which is what the move looks like.
+  let active = null, near = null, d = 0, dNear = 0, passed = 0;
+  for (let i = 0; i < crossings.length; i++) {
+    const c = crossings[i];
+    if (u > c.at) passed += 1;
+    const dd = u - c.at;
+    if (Math.abs(dd) <= 1) { near = c; dNear = dd; }
+    if (Math.abs(dd) <= 0.5) { active = c; d = dd; }
+  }
+  const start = (from || 0) < 0 ? -1 : 1;
+  const hand = (passed % 2) ? -start : start;
+
+  if (near) {
+    // Doubled so that `wide` means what it says: at the edge of the switch, the
+    // widest point the drawn offset actually reaches, the ramp is at a half.
+    side = DRIBBLE_SIDE + (near.wide - DRIBBLE_SIDE) * 2 * (1 - Math.abs(dNear));
+  }
+
+  if (active) {
+    // The hand this crossing ENDS in. Before the plant `hand` is still the old
+    // one and after it is already the new one, so the target flips with d --
+    // which is what keeps sign continuous across the middle.
+    const to = d > 0 ? hand : -hand;
+    sign = to * (2 * d);
+    const mid = 1 - Math.abs(2 * d);   // 1 at the plant, 0 at the edges of the switch
+    phase = Math.max(0, Math.min(1, phase - active.low * mid * phase));
+    if (active.behind) {
+      phase = Math.max(phase, 0.5 + 0.35 * mid);
+      behind = active.behind * mid;
+    }
+  } else {
+    sign = hand;
+  }
+  return { sign: sign, side: side, phase: phase, behind: behind, crossing: !!active };
+}
+
+// Where the free clock has to resume once a string is over.
+//
+// The clock is HELD while a move plays — the move is the dribble, and a
+// metronome running underneath it would drag the starting hand around. But a
+// held clock still has the hand it started with, while the move has by then
+// carried the ball across once per crossing. Resuming without this makes the
+// handoff back its own uninvited hand change: measured as a second hand change
+// on every crossover, at the last half-beat of the string.
+//
+// So the clock is moved to an era whose hand matches the one the move finished
+// in. Two details are load-bearing:
+//   - it goes FORWARD, one or two eras, never back — a clock that can run
+//     backwards is not a clock;
+//   - it lands one bounce INTO the era, not on the boundary. The boundary is
+//     exactly where dribbleHand puts a crossing, so resuming there would hand
+//     the ball back mid-crossover with the sign passing through zero. A whole
+//     bounce in is a floor contact, which is also where the move leaves it.
+function dribbleClockAfterMove(clock, move, n) {
+  const N = DRIBBLE_HAND_BOUNCES;
+  const startCycle = Math.round(clock / N);
+  const odd = dribbleCrossings(move, n).length % 2;
+  return (startCycle + (odd ? 1 : 2)) * N + 1;
+}
+
+// THE entry point the view and the probes call. `move` is null outside a
+// dribble string and { move, n, u } inside one.
+//
+// The blend at each end is not a nicety. A string begins with the ball wherever
+// the free clock left it and ends with it wherever the script finished, and
+// both of those are branch changes -- the defect class that put a 12px snap in
+// the ball's path twice already. Easing over half a bounce at each end costs
+// nothing visually (the crossings sit at least a full beat inside) and makes
+// the handoff continuous by construction.
+function dribbleNow(clock, move) {
+  const free = dribbleHand(clock);
+  if (!move || !move.move) return { sign: free.sign, side: DRIBBLE_SIDE, phase: free.phase, behind: 0, crossing: free.crossing };
+  // The move starts in whichever hand the ball is already in. The free clock is
+  // HELD for the duration of a string (see dribbleClockAfterMove), so this is
+  // the hand it had when the string opened and it does not drift underneath the
+  // move. Deriving it instead — "the string began u bounces ago" — is wrong and
+  // was tried: the clock runs on the dribble tempo and u on the beat tempo, so
+  // the two diverge and the starting hand flips mid-move.
+  const scripted = moveDribble(move.move, move.u, move.n, free.sign);
+  const inFromStart = Math.max(0, Math.min(1, move.u / MOVE_BLEND_BEATS));
+  const inFromEnd = Math.max(0, Math.min(1, (move.n - move.u) / MOVE_BLEND_BEATS));
+  const w = Math.min(inFromStart, inFromEnd);
+  // Which free dribble each end blends against. Coming IN, it is the clock as it
+  // stands; going OUT, it has to be the clock the caller will resume with, or
+  // the last half-beat of every crossover walks the ball back to the hand it
+  // started in — a second hand change the move never asked for.
+  const base = inFromEnd < inFromStart
+    ? dribbleHand(dribbleClockAfterMove(clock, move.move, move.n))
+    : free;
+  return {
+    sign: base.sign + (scripted.sign - base.sign) * w,
+    side: DRIBBLE_SIDE + (scripted.side - DRIBBLE_SIDE) * w,
+    phase: base.phase + (scripted.phase - base.phase) * w,
+    behind: scripted.behind * w,
+    crossing: scripted.crossing && w > 0.5
+  };
+}
+
 // How far through his gather a leaper is: 0 with his feet down, 1 at the top.
 //
 // Anchored at lift ZERO, not at the bottom of the dip. A shooter ENTERS these
@@ -510,6 +679,11 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_PERIOD_SET: DRIBBLE_PERIOD_SET,
     DRIBBLE_PERIOD_MOVING: DRIBBLE_PERIOD_MOVING,
     stepDribbleClock: stepDribbleClock,
+    MOVE_BLEND_BEATS: MOVE_BLEND_BEATS,
+    dribbleCrossings: dribbleCrossings,
+    moveDribble: moveDribble,
+    dribbleNow: dribbleNow,
+    dribbleClockAfterMove: dribbleClockAfterMove,
     closeLift: closeLift,
     closeCock: closeCock,
     dunkCock: dunkCock,
