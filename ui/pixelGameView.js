@@ -841,7 +841,11 @@ function renderPixelGame(container) {
         // reaches the sprite in screen space.
         dribbling: (dribbleState && pid === dribbleHolder && !shooting && !isJumperNow &&
                     !dunkPose && !jumpFollow)
-          ? { phase: dribbleState.phase, side: dribbleState.sign * (facingById[pid] || 1) }
+          ? {
+              phase: dribbleState.phase,
+              side: dribbleState.sign * (facingById[pid] || 1),
+              crossing: dribbleState.crossing
+            }
           : null,
         highlight: isHolder,
         facing: facingById[pid] || 0,

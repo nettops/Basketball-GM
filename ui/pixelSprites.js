@@ -238,10 +238,17 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // screen-space (+1 = the sprite's right) and comes from the same
     // dribbleHand() the ball itself uses, so the hand cannot end up pumping on
     // the side the ball is not on.
+    //
+    // `crossing` is the one addition a named move makes to the pose: through a
+    // crossover he gets BOTH arms down and out, because the ball is being
+    // driven from one hand to the other and neither is idle. Without it, a
+    // move that swings the ball 15px around him was drawn by a man standing
+    // with one arm hanging.
     const reach = Math.round((1 - opts.dribbling.phase) * 3);
     const ballRight = opts.dribbling.side >= 0;
+    const crossing = !!opts.dribbling.crossing;
     const offArmY = topU + 9 - (opts.moving ? bob2 : -idle);
-    ctx.fillRect(left + (ballRight ? 0 : 8), offArmY, 2, 6 + bodyT);
+    ctx.fillRect(left + (ballRight ? 0 : 8), offArmY, 2, 6 + bodyT + (crossing ? reach : 0));
     ctx.fillRect(left + (ballRight ? 8 : 0), topU + 9, 2, 6 + bodyT + reach);
   } else if (opts.moving) {
     ctx.fillRect(left, topU + 9 - bob2, 2, 6 + bodyT);

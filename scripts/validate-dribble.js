@@ -316,22 +316,87 @@ function checkAMoveNeverSnapsTheBallSideways() {
   console.log('checkAMoveNeverSnapsTheBallSideways: OK');
 }
 
+function checkHeSellsItBeforeHeCrosses() {
+  // The hesitation. A crossover that simply happens is a ball changing hands;
+  // a crossover a defender BITES on has a beat of stillness in front of it,
+  // where the ball hangs high and nothing else moves. So through the half-beat
+  // before a crossing the ball must stay up near the top of its bounce rather
+  // than carrying on with the metronome — and then drop into the move.
+  const N = { cross: 5, behind: 5, double: 7 };
+  Object.keys(N).forEach(function (move) {
+    const n = N[move];
+    const crossings = motion.dribbleCrossings(move, n);
+    crossings.forEach(function (c) {
+      // The window the hesitation declares for itself, minus the ease-in at its
+      // far edge. Read off the module rather than hard-coded, so retuning the
+      // pause cannot silently move the goalposts this is checking against.
+      const from = c.at - 0.5 - (motion.HESITATION_BEATS - motion.HESITATION_EASE);
+      let lowest = 1;
+      for (let u = from; u < c.at - 0.5; u += 0.01) {
+        if (u <= 0) continue;
+        lowest = Math.min(lowest, motion.dribbleNow(0, { move: move, n: n, u: u }).phase);
+      }
+      assert.ok(lowest > 0.5,
+        move + ': through the half-beat before the crossing at ' + c.at + ' the ball drops to ' +
+        lowest.toFixed(2) + ' of its bounce — it should HANG there, which is the fake');
+    });
+    // And it must actually let go afterwards, or the "hesitation" is just a
+    // ball that never comes down.
+    const atPlant = motion.dribbleNow(0, { move: move, n: n, u: crossings[0].at }).phase;
+    if (move !== 'behind') {
+      assert.ok(atPlant < 0.25,
+        move + ': the ball is at ' + atPlant.toFixed(2) + ' of its bounce as he plants — ' +
+        'the hold has to break INTO the move, not carry through it');
+    }
+    console.log('  ' + move.padEnd(9) + 'holds at ' + lowestOf(move, n).toFixed(2) +
+      ', plants at ' + atPlant.toFixed(2));
+  });
+
+  // And the ankle breaker deliberately does NOT hesitate. Its fake is the jab —
+  // a 300ms beat that exists to make the defender commit — and the cut back is
+  // the 90ms punish. A ball hanging in front of the cut is a second fake
+  // stacked on the first, slowing the one beat in the game that has to snap.
+  // Asserted rather than left to comment, because "we chose not to" and "we
+  // forgot" look identical in a diff.
+  const ankleHold = lowestOf('ankle', 4);
+  assert.ok(ankleHold < 0.4,
+    'an ankle breaker must not hesitate before the cut back — it holds at ' +
+    ankleHold.toFixed(2) + ', which is a second fake on top of the jab');
+  console.log('  ankle    deliberately does not hesitate (' + ankleHold.toFixed(2) + ')');
+  console.log('checkHeSellsItBeforeHeCrosses: OK');
+}
+function lowestOf(move, n) {
+  const c = motion.dribbleCrossings(move, n)[0];
+  const from = c.at - 0.5 - (motion.HESITATION_BEATS - motion.HESITATION_EASE);
+  let lowest = 1;
+  for (let u = Math.max(0.01, from); u < c.at - 0.5; u += 0.01) {
+    lowest = Math.min(lowest, motion.dribbleNow(0, { move: move, n: n, u: u }).phase);
+  }
+  return lowest;
+}
+
 checkEachMoveHasItsOwnShape();
+checkHeSellsItBeforeHeCrosses();
 checkTheMovesAreActuallyDistinguishable();
 checkACrossoverGoesThroughTheFloorAndBehindGoesOverIt();
 checkAMoveNeverSnapsTheBallSideways();
 
 function checkTheSpritePoseIsDrivenByTheBounce() {
   const sprites = require(path.join(__dirname, '..', 'ui', 'pixelSprites.js'));
-  function armsFor(phase, side) {
+  function armsFor(phase, side, crossing) {
     const calls = [];
     const ctx = { fillStyle: '#000', fillRect: function (x, y, w, h) { calls.push([x, y, w, h]); } };
     sprites.drawPlayerSprite(ctx, 40, 40, { skin: '#bb876f', hair: '#272421', jersey: '#007A33', trim: '#BA9653' },
-      7, { heightIn: 78, dribbling: { phase: phase, side: side } });
+      7, { heightIn: 78, dribbling: { phase: phase, side: side, crossing: !!crossing } });
     return JSON.stringify(calls);
   }
   assert.notStrictEqual(armsFor(0, 1), armsFor(1, 1), 'the arm must move with the bounce');
   assert.notStrictEqual(armsFor(0, 1), armsFor(0, -1), 'the pumping arm must switch sides with the ball');
+  // Mid-crossover both arms are working, because the ball is being driven from
+  // one hand to the other and neither is idle.
+  const still = armsFor(0.3, 1), crossing = armsFor(0.3, 1, true);
+  assert.notStrictEqual(still, crossing,
+    'a man mid-crossover must not be drawn with one arm hanging at his side');
   // And a dribbling sprite must differ from a plain standing one.
   const plain = (function () {
     const calls = [];

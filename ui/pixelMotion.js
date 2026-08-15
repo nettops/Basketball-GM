@@ -237,7 +237,14 @@ function dribbleCrossings(move, n) {
   // An ankle breaker's beats are the jab, the cut back and the clear. The ball
   // has to change hands ON the cut — that IS the move — so it is pinned to beat
   // 1 rather than to a fraction of the string.
-  if (move === 'ankle') return [{ at: 1, wide: 12, low: 0.8 }];
+  // NO hesitation on this one, and that is not an oversight. An ankle breaker
+  // already has its fake: the jab is a 300ms beat whose entire job is to make
+  // the defender commit, and the cut back is the 90ms punish — the fastest beat
+  // in the game. Hanging the ball in front of the cut puts a second fake on top
+  // of the first and slows down the one beat that has to snap. The
+  // choreographer learned the same lesson the hard way when two lateral systems
+  // stacked on one axis and cancelled.
+  if (move === 'ankle') return [{ at: 1, wide: 12, low: 0.8, hesi: 0 }];
   // A double move's signature is that the second one is the bigger: the
   // defender has already ridden out the first.
   if (move === 'double') {
@@ -251,6 +258,20 @@ function dribbleCrossings(move, n) {
   if (move === 'behind') return [{ at: Math.floor(n / 2), wide: 15, low: 0, behind: 5 }];
   return [{ at: Math.floor(n / 2), wide: 10, low: 0.65 }];
 }
+
+// THE HESITATION. How long the ball hangs at the top of its bounce before a
+// crossing, in bounces, and how high it is held while it does.
+//
+// A crossover that simply happens is a ball changing hands. A crossover a
+// defender BITES on has a beat of stillness in front of it: the ball comes up
+// and stays up, the handler is doing nothing, and then it goes. Half a bounce
+// is about 120ms at a size-up tempo — long enough to read as a pause, short
+// enough that it never looks like the animation has stalled.
+const HESITATION_BEATS = 0.5;
+const HESITATION_HOLD = 0.72;
+// ...and how much of the front of that window is spent easing up INTO the hold,
+// so the ball rises into it rather than stepping up to it on one frame.
+const HESITATION_EASE = 0.12;
 
 // How much of the string is spent easing into and out of the scripted path.
 // The move must not simply replace the free dribble: the ball is somewhere when
@@ -302,6 +323,18 @@ function moveDribble(move, u, n, from) {
     // Doubled so that `wide` means what it says: at the edge of the switch, the
     // widest point the drawn offset actually reaches, the ramp is at a half.
     side = DRIBBLE_SIDE + (near.wide - DRIBBLE_SIDE) * 2 * (1 - Math.abs(dNear));
+    // He sells it. Through the half-bounce leading into the switch the ball is
+    // held up rather than carrying on with the metronome, then drops into the
+    // move. The hold is FLAT across that window — a hold that merely ramps up
+    // to its peak at the last instant is not a hesitation, it is the ball
+    // arriving late — with only the far edge eased so it rises into the pause
+    // instead of stepping up to it.
+    const backFromSwitch = -0.5 - dNear;   // bounces before the hand-switch window
+    if (near.hesi !== 0 && backFromSwitch > 0 && backFromSwitch < HESITATION_BEATS) {
+      const ease = Math.max(0, Math.min(1,
+        (HESITATION_BEATS - backFromSwitch) / HESITATION_EASE));
+      phase = Math.max(phase, HESITATION_HOLD * ease);
+    }
   }
 
   if (active) {
@@ -693,6 +726,9 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_PERIOD_MOVING: DRIBBLE_PERIOD_MOVING,
     stepDribbleClock: stepDribbleClock,
     MOVE_BLEND_BEATS: MOVE_BLEND_BEATS,
+    HESITATION_BEATS: HESITATION_BEATS,
+    HESITATION_HOLD: HESITATION_HOLD,
+    HESITATION_EASE: HESITATION_EASE,
     dribbleCrossings: dribbleCrossings,
     moveDribble: moveDribble,
     dribbleNow: dribbleNow,
