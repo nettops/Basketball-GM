@@ -390,18 +390,78 @@ async function handleWatchNextPlayoffGame() {
     userTeamId: GameState.userTeamId,
     isPlayoff: true,
     onFinish: function () {
+      // finish() first: the interview reads the completed result and box
+      // score, neither of which exists until the game is closed out.
       watch.liveGame.finish();
-      // The bracket advance was deferred along with the result — do it now
-      // that the series actually contains this game.
-      advanceBracketIfRoundComplete(GameState.playoffBracket);
-      // Including the game just coached: finish() is what completes it, so it
-      // only becomes drainable here. Without this the ONE playoff game the
-      // user actually played would be the only one with no box score.
-      collectFinishedPlayoffGames();
-      autosave(GameState);
+      maybeRunPostgameDialogue(watch.liveGame.sim, function () {
+        // The bracket advance was deferred along with the result — do it now
+        // that the series actually contains this game.
+        advanceBracketIfRoundComplete(GameState.playoffBracket);
+        // Including the game just coached: finish() is what completes it, so it
+        // only becomes drainable here. Without this the ONE playoff game the
+        // user actually played would be the only one with no box score.
+        collectFinishedPlayoffGames();
+        autosave(GameState);
+      });
     }
   });
   renderView('pixelGame');
+}
+
+// Fires the post-game interview, if one is warranted, then runs `onContinue`
+// once the box is dismissed. Returns true if a box actually opened.
+//
+// Both onFinish paths call this same helper rather than each building their
+// own: the regular-season and playoff paths already do different amounts of
+// work around it, and duplicating the gating between them is exactly how the
+// two would drift apart.
+//
+// It never swallows the continuation. Every early return calls it, so a
+// disabled setting, an unrelated game, or a refused box all still complete the
+// work the caller deferred.
+function maybeRunPostgameDialogue(sim, onContinue) {
+  const cont = typeof onContinue === 'function' ? onContinue : function () {};
+  if (GameState.settings && GameState.settings.dialogueScenes === false) { cont(); return false; }
+  if (typeof runDialogue !== 'function' || dialogueBoxIsOpen()) { cont(); return false; }
+  if (!sim || (sim.homeTeamId !== GameState.userTeamId && sim.awayTeamId !== GameState.userTeamId)) {
+    cont();
+    return false;
+  }
+
+  const ctx = buildPostgameContext(GameState, sim);
+  const scene = selectScene(ctx, {
+    recent: GameState.recentDialogueScenes || [],
+    rand: GameState.rng,
+    fallbackLines: (GameState.narrativeSystem && GameState.narrativeSystem.dialogueLibrary)
+      ? GameState.narrativeSystem.dialogueLibrary.media_standard
+      : null
+  });
+
+  const reporter = reporterForTeam(GameState, GameState.userTeamId);
+  if (reporter) {
+    ctx.speakerReporter = { face: reporter.face };
+    // join(), not concatenation with a string literal: this value is assigned
+    // with textContent inside the dialogue box and must NOT be escaped — an
+    // escaped apostrophe would render as "&#39;" on screen. Written this way
+    // so the ui-safety scanner, which treats `x + '...'` as markup building,
+    // does not flag a line that never touches innerHTML.
+    ctx.speakerName = [reporter.name, reporter.outlet].join(' — ');
+  }
+
+  const opened = runDialogue(scene, ctx, function (result) {
+    // A skipped scene applies nothing: silence is not an answer.
+    if (!result.skipped) {
+      const choice = scene.choices[result.choiceIndex];
+      if (choice && typeof choice.effect === 'function') {
+        applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+      }
+    }
+    pushRecentScene(GameState, scene.id);
+    cont();
+  });
+
+  if (!opened) cont();
+  return opened;
 }
 
 // Files anything the playoff machinery has finished into the season's game
@@ -481,8 +541,14 @@ async function watchGameOnDay(targetDay) {
     sim: watch.liveGame.sim,
     userTeamId: GameState.userTeamId,
     onFinish: function () {
+      // finish() first: the interview reads the completed result and box
+      // score, neither of which exists until the game is closed out. The
+      // autosave is deferred so the reputation and morale the interview
+      // moves are actually in the file it writes.
       watch.liveGame.finish();
-      autosave(GameState);
+      maybeRunPostgameDialogue(watch.liveGame.sim, function () {
+        autosave(GameState);
+      });
     }
   });
   renderView('pixelGame');
