@@ -170,4 +170,125 @@ function checkColorsComeFromTheSpriteSystem() {
 }
 checkColorsComeFromTheSpriteSystem();
 
+// --- traits ---------------------------------------------------------------
+// Traits exist so several people can share one renderer and still read as
+// different men. The load-bearing assertion is the silhouette one: colour
+// alone does not distinguish anybody at this size.
+
+function silhouetteOf(traits, emotion) {
+  // Which cells get painted at all, ignoring colour. Two men with the same
+  // outline are the same man wearing a different suit.
+  const grid = {};
+  const ctx = {
+    fillStyle: '#000',
+    fillRect: function (x, y, w, h) {
+      for (let px = x; px < x + w; px++) {
+        for (let py = y; py < y + h; py++) grid[px + ',' + py] = 1;
+      }
+    }
+  };
+  bust.drawPixelBust(ctx, COLORS, emotion || 'neutral', { scale: 1, traits: traits });
+  return Object.keys(grid).sort().join('|');
+}
+
+function checkTraitTablesAreComplete() {
+  Object.keys(bust.HAIR).forEach(function (k) {
+    assert.ok(Array.isArray(bust.HAIR[k]), 'hair ' + k + ' is a rect list');
+  });
+  Object.keys(bust.FACIAL).forEach(function (k) {
+    assert.ok(Array.isArray(bust.FACIAL[k]), 'facial ' + k + ' is a rect list');
+  });
+  Object.keys(bust.BUILD).forEach(function (k) {
+    const b = bust.BUILD[k];
+    assert.ok(Array.isArray(b.shoulder) && b.shoulder.length === 4, k + ' has a shoulder rect');
+    assert.ok(Array.isArray(b.trim) && b.trim.length === 4, k + ' has a trim rect');
+    assert.strictEqual(typeof b.jawPad, 'number', k + ' has a jaw pad');
+    assert.strictEqual(typeof b.lift, 'number', k + ' has a lift');
+  });
+  assert.ok(bust.HAIR.bald && bust.HAIR.bald.length === 0, 'bald draws no hair');
+  console.log('checkTraitTablesAreComplete: OK');
+}
+checkTraitTablesAreComplete();
+
+function checkTraitsStayInsideTheGrid() {
+  // Every combination, not just the ones the crew happens to use.
+  Object.keys(bust.HAIR).forEach(function (hair) {
+    Object.keys(bust.BUILD).forEach(function (build) {
+      Object.keys(bust.FACIAL).forEach(function (facialHair) {
+        [true, false].forEach(function (glasses) {
+          const ctx = fakeCtx();
+          bust.drawPixelBust(ctx, COLORS, 'neutral', {
+            scale: 1, traits: { hair: hair, build: build, facialHair: facialHair, glasses: glasses }
+          });
+          ctx.calls.forEach(function (c) {
+            const label = hair + '/' + build + '/' + facialHair + (glasses ? '/glasses' : '');
+            assert.ok(c.x >= 0 && c.x + c.w <= bust.BUST.w, label + ' overflows width: ' + JSON.stringify(c));
+            assert.ok(c.y >= 0 && c.y + c.h <= bust.BUST.h, label + ' overflows height: ' + JSON.stringify(c));
+            assert.ok(c.w > 0 && c.h > 0, label + ' drew a rect with no area');
+          });
+        });
+      });
+    });
+  });
+  console.log('checkTraitsStayInsideTheGrid: OK');
+}
+checkTraitsStayInsideTheGrid();
+
+function checkUnknownTraitsFallBack() {
+  const weird = silhouetteOf({ hair: 'mohawk', build: 'enormous', facialHair: 'muttonchops' });
+  const plain = silhouetteOf({ hair: 'full', build: 'normal', facialHair: 'none' });
+  assert.strictEqual(weird, plain, 'unknown trait values fall back to the defaults');
+  assert.doesNotThrow(function () { silhouetteOf(undefined); }, 'no traits at all is fine');
+  console.log('checkUnknownTraitsFallBack: OK');
+}
+checkUnknownTraitsFallBack();
+
+function checkBuildChangesTheOutline() {
+  const normal = silhouetteOf({ build: 'normal' });
+  const broad = silhouetteOf({ build: 'broad' });
+  const huge = silhouetteOf({ build: 'huge' });
+  assert.notStrictEqual(normal, broad, 'broad differs from normal');
+  assert.notStrictEqual(broad, huge, 'huge differs from broad');
+  assert.notStrictEqual(normal, huge, 'huge differs from normal');
+  console.log('checkBuildChangesTheOutline: OK');
+}
+checkBuildChangesTheOutline();
+
+function checkLiftMovesTheHeadAndNotTheShoulders() {
+  // A bigger man should be TALLER in his seat, not floating off the desk. The
+  // shoulder rect is the thing that sits on the desk line, so it must not move.
+  Object.keys(bust.BUILD).forEach(function (k) {
+    const b = bust.BUILD[k];
+    const ctx = fakeCtx();
+    bust.drawPixelBust(ctx, COLORS, 'neutral', { scale: 1, traits: { build: k } });
+    const shoulder = ctx.calls.filter(function (c) {
+      return c.color === COLORS.jersey && c.w === b.shoulder[2] && c.h === b.shoulder[3];
+    })[0];
+    assert.ok(shoulder, k + ': the shoulder rect was drawn');
+    assert.strictEqual(shoulder.y, b.shoulder[1], k + ': the shoulders ignore lift');
+  });
+  console.log('checkLiftMovesTheHeadAndNotTheShoulders: OK');
+}
+checkLiftMovesTheHeadAndNotTheShoulders();
+
+function checkEmotionStillOnlyChangesTheFace() {
+  // The original guarantee has to survive the traits: swapping an expression
+  // must not move a hairline or a shoulder.
+  const traits = { hair: 'receding', build: 'broad', facialHair: 'goatee', glasses: true };
+  function identityOf(emotion) {
+    const ctx = fakeCtx();
+    bust.drawPixelBust(ctx, COLORS, emotion, { scale: 1, traits: traits });
+    return JSON.stringify(ctx.calls.filter(function (c) {
+      return c.color === COLORS.skin || c.color === COLORS.hair ||
+             c.color === COLORS.jersey || c.color === COLORS.trim;
+    }));
+  }
+  const base = identityOf('neutral');
+  bust.BUST_EMOTIONS.forEach(function (e) {
+    assert.strictEqual(identityOf(e), base, e + ' moved something that is not the expression');
+  });
+  console.log('checkEmotionStillOnlyChangesTheFace: OK');
+}
+checkEmotionStillOnlyChangesTheFace();
+
 console.log('All pixel bust validations passed');

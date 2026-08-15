@@ -28,22 +28,47 @@ const BUST_FALLBACK_HAIR = '#272421';
 const BUST_FEATURE = '#1b1a19';            // eyes, brows, mouth — near-black
 const BUST_SHADOW = 'rgba(0,0,0,0.18)';    // jaw and nose shading
 
-// Identity: drawn identically for every emotion, back to front. Anything that
-// varies with emotion belongs in BROW or MOUTH, never here — see
-// checkEmotionChangesOnlyTheBrowAndMouth.
-const HEAD_RECTS = [
-  ['jersey', [5, 34, 22, 6]],
-  ['trim',   [5, 34, 22, 1]],
-  ['skin',   [13, 29, 6, 6]],    // neck
-  ['skin',   [8, 6, 16, 24]],    // head
-  ['shadow', [8, 27, 16, 3]],    // jaw shading, so the chin reads
-  ['hair',   [7, 4, 18, 6]],     // fringe
-  ['hair',   [7, 4, 2, 11]],     // left sideburn
-  ['hair',   [23, 4, 2, 11]]     // right sideburn
-];
-
 const EYE_RECTS = [[11, 17, 3, 3], [18, 17, 3, 3]];
 const NOSE_RECT = [15, 21, 2, 3];
+
+// --- traits ---------------------------------------------------------------
+// Traits let several people share this one renderer and still read as
+// different men. At 32x40 that has to come from the OUTLINE: recolouring the
+// same silhouette produces one man in four suits, which is what the studio
+// panel needs not to be.
+
+// Hair decides the shape above the brow, which is most of the outline.
+const HAIR = {
+  full:     [[7, 4, 18, 6], [7, 4, 2, 11], [23, 4, 2, 11]],
+  short:    [[8, 5, 16, 4], [8, 5, 2, 8], [22, 5, 2, 8]],
+  receding: [[9, 5, 14, 3], [7, 7, 2, 8], [23, 7, 2, 8]],
+  bald:     []
+};
+// A bald head still needs its crown filled in, or the face floats.
+const CROWN_RECT = [9, 4, 14, 4];
+
+const FACIAL = {
+  none:     [],
+  goatee:   [[14, 27, 4, 2], [13, 26, 1, 1], [18, 26, 1, 1]],
+  mustache: [[14, 23, 4, 1]]
+};
+
+// Build widens the shoulders and the jaw and lifts the head. Three sizes
+// rather than two: bald+broad twice over gave two men with pixel-identical
+// outlines, because a goatee only recolours cells the face already fills.
+// `lift` raises everything above the shoulders, so a bigger man sits TALLER
+// rather than merely wider — the shoulders stay on the desk line.
+const BUILD = {
+  normal: { shoulder: [5, 34, 22, 6], trim: [5, 34, 22, 1], jawPad: 0, lift: 0 },
+  broad:  { shoulder: [2, 33, 28, 7], trim: [2, 33, 28, 1], jawPad: 1, lift: 0 },
+  huge:   { shoulder: [0, 32, 32, 8], trim: [0, 32, 32, 1], jawPad: 2, lift: -2 }
+};
+
+const GLASSES_RECTS = [
+  [10, 16, 5, 1], [17, 16, 5, 1],
+  [10, 16, 1, 4], [14, 16, 1, 4], [17, 16, 1, 4], [21, 16, 1, 4],
+  [15, 17, 2, 1]   // bridge
+];
 
 // Brows and mouths are the ONLY things emotion changes.
 const BROW = {
@@ -86,20 +111,43 @@ function drawPixelBust(ctx, colors, emotion, opts) {
   const oy = opts.y || 0;
   const e = BROW[emotion] ? emotion : 'neutral';
 
+  const t = opts.traits || {};
+  const hairId = HAIR[t.hair] ? t.hair : 'full';
+  const build = BUILD[t.build] || BUILD.normal;
+  const facial = FACIAL[t.facialHair] || FACIAL.none;
+  const pad = build.jawPad;
+  const dy = build.lift;
+
+  // Shoulders sit on the desk line whatever the build.
   function rect(color, r) {
     ctx.fillStyle = color;
     ctx.fillRect(ox + r[0] * s, oy + r[1] * s, r[2] * s, r[3] * s);
   }
+  // Everything from the neck up rides the build's lift.
+  function head(color, r) {
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + r[0] * s, oy + (r[1] + dy) * s, r[2] * s, r[3] * s);
+  }
 
-  const palette = {
-    skin: colors.skin, hair: colors.hair, jersey: colors.jersey,
-    trim: colors.trim, shadow: BUST_SHADOW
-  };
-  HEAD_RECTS.forEach(function (pair) { rect(palette[pair[0]], pair[1]); });
-  EYE_RECTS.forEach(function (r) { rect(BUST_FEATURE, r); });
-  rect(BUST_SHADOW, NOSE_RECT);
-  BROW[e].forEach(function (r) { rect(BUST_FEATURE, r); });
-  MOUTH[e].forEach(function (r) { rect(BUST_FEATURE, r); });
+  rect(colors.jersey, build.shoulder);
+  rect(colors.trim, build.trim);
+  // Collar notch, so a suit reads as a suit rather than a jersey. Shortened by
+  // the lift so it still meets the neck instead of overshooting the shoulders.
+  rect(colors.trim, [14, 33 + dy, 4, 3 - dy]);
+  head(colors.skin, [13, 29, 6, 6]);                      // neck
+  head(colors.skin, [8 - pad, 6, 16 + pad * 2, 24]);      // head
+  head(BUST_SHADOW, [8 - pad, 27, 16 + pad * 2, 3]);      // jaw shading
+  if (hairId === 'bald') head(colors.skin, CROWN_RECT);
+  HAIR[hairId].forEach(function (r) { head(colors.hair, r); });
+  EYE_RECTS.forEach(function (r) { head(BUST_FEATURE, r); });
+  head(BUST_SHADOW, NOSE_RECT);
+  BROW[e].forEach(function (r) { head(BUST_FEATURE, r); });
+  MOUTH[e].forEach(function (r) { head(BUST_FEATURE, r); });
+  facial.forEach(function (r) { head(colors.hair, r); });
+  if (t.glasses) {
+    const g = colors.glasses || '#c9d1d9';
+    GLASSES_RECTS.forEach(function (r) { head(g, r); });
+  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -108,6 +156,9 @@ if (typeof module !== 'undefined' && module.exports) {
     BUST_EMOTIONS: BUST_EMOTIONS,
     BROW: BROW,
     MOUTH: MOUTH,
+    HAIR: HAIR,
+    FACIAL: FACIAL,
+    BUILD: BUILD,
     bustScale: bustScale,
     bustColorsFor: bustColorsFor,
     drawPixelBust: drawPixelBust
