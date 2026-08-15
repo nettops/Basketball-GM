@@ -113,6 +113,9 @@ function stopPixelPlayback() {
   // the view closes would zoom the first frame of the NEXT watched game.
   resetImpact();
   if (_coachShutdown) { const shutdown = _coachShutdown; _coachShutdown = null; shutdown(); }
+  // Leaving the view mid-scene would otherwise leave a fixed overlay pinned
+  // over the whole app with nothing left running to dismiss it.
+  if (typeof closeDialogueBox === 'function') closeDialogueBox();
 }
 
 function pixelLerp(a, b, f) { return a + (b - a) * f; }
@@ -547,6 +550,10 @@ function renderPixelGame(container) {
         }
         lastQuarterSeen = fr.a.period;
         playPixelSfx('buzzer');
+        // Halftime is the crossing INTO period 3 — the end of the second.
+        // Guarded by lastQuarterSeen, which only ever advances, so this fires
+        // once per game rather than on every frame of the boundary.
+        if (lastQuarterSeen === 3) maybeRunHalftimeDialogue();
       }
       lastEffectKfT = fr.a.t;
     }
@@ -1140,10 +1147,64 @@ function renderPixelGame(container) {
     _rafId = requestAnimationFrame(tick);
   }
 
+  // The pause button owns both `paused` and its own label, so anything else
+  // that pauses playback has to move them together or the button starts
+  // lying about what it will do next.
+  function setPaused(value) {
+    paused = !!value;
+    const btn = document.getElementById('pixel-play-pause');
+    if (btn) btn.textContent = paused ? 'Play' : 'Pause';
+  }
+
   document.getElementById('pixel-play-pause').addEventListener('click', function () {
-    paused = !paused;
-    this.textContent = paused ? 'Play' : 'Pause';
+    setPaused(!paused);
   });
+
+  // The halftime word with your coach. Unlike the quarter-break card this is
+  // NOT a timed hitch: a dialogue cannot be on a clock, so playback is held
+  // outright and restored to whatever it was doing before.
+  //
+  // Restores the PREVIOUS state rather than resuming unconditionally — a user
+  // who had already paused to read something should still be paused when the
+  // box closes.
+  function maybeRunHalftimeDialogue() {
+    if (GameState.settings && GameState.settings.dialogueScenes === false) return;
+    if (typeof runDialogue !== 'function' || dialogueBoxIsOpen()) return;
+    const sim = session.sim;
+    if (!sim) return;
+    if (sim.homeTeamId !== GameState.userTeamId && sim.awayTeamId !== GameState.userTeamId) return;
+
+    const wasPaused = paused;
+    setPaused(true);
+
+    const ctx = buildHalftimeContext(GameState, sim);
+    const scene = selectScene(ctx, {
+      recent: GameState.recentDialogueScenes || [],
+      rand: GameState.rng,
+      fallbackLines: (GameState.narrativeSystem && GameState.narrativeSystem.dialogueLibrary)
+        ? GameState.narrativeSystem.dialogueLibrary.media_standard
+        : null
+    });
+    // The coach has no generated face of his own, so the bust falls back to
+    // neutral colouring — but passing the team dresses him in YOUR jersey,
+    // which is most of what makes him read as your coach and not a stranger.
+    ctx.speakerName = 'Head Coach';
+    ctx.speakerTeam = getTeamById(GameState.userTeamId);
+
+    const opened = runDialogue(scene, ctx, function (result) {
+      if (!result.skipped) {
+        const choice = scene.choices[result.choiceIndex];
+        if (choice && typeof choice.effect === 'function') {
+          applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+        }
+      }
+      pushRecentScene(GameState, scene.id);
+      setPaused(wasPaused);
+    });
+
+    // If the box could not open, playback must not be left frozen.
+    if (!opened) setPaused(wasPaused);
+  }
   document.getElementById('pixel-mute').addEventListener('click', function () {
     const a = ensurePixelAudio();
     if (!a) { this.disabled = true; this.textContent = 'Sound: N/A'; return; }
