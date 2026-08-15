@@ -11,7 +11,8 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       league: require('./league.js'),
       gmCareer: require('./gmCareer.js'),
       names: require('./names.js'),
-      faces: require('./faces.js')
+      faces: require('./faces.js'),
+      ultimates: require('./ultimates.js')
     }
   : {
       teams: { getTeamById: getTeamById, TEAMS: TEAMS },
@@ -23,10 +24,28 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
         CHRONICLE_KINDS: CHRONICLE_KINDS
       },
       names: { pickUniqueName: pickUniqueName, takenNameSet: takenNameSet },
-      faces: { generateFace: generateFace }
+      faces: { generateFace: generateFace },
+      ultimates: { hasUltimate: hasUltimate, chargeThreshold: chargeThreshold }
     };
 
 const RECENT_SCENE_LIMIT = 8;
+
+// --- the halftime hint ----------------------------------------------------
+// A player has to have taken enough shots for a bad night to be a bad night
+// rather than a small sample. 1-for-3 is three shots; calling it out would
+// make the panel look like it was not watching.
+const SLUMP_MIN_ATTEMPTS = 8;
+const SLUMP_MAX_FG_PCT = 0.35;
+
+// How much of a full meter acting on the hint is worth. Deliberately short of
+// a full one: it makes a takeover likely, it does not hand one over. He still
+// has to earn the rest in the second half.
+const BOOST_CHARGE_FRACTION = 0.6;
+
+// The fallback for a player below the ultimate gate, for whom charge would do
+// literally nothing. Roughly twice what a timeout gives (gameSim.js's
+// TIMEOUT_ENERGY_RESTORE is 0.12), so the hint always buys something real.
+const BOOST_ENERGY_RESTORE = 0.25;
 
 // Deliberately city-free. Team names are mutable — commissioner.js can rename
 // a franchise and expansion teams appear mid-save — so an outlet built by
@@ -156,11 +175,47 @@ function buildPostgameContext(gameState, sim) {
   return base;
 }
 
+// The man on YOUR side having the worst shooting night, if anyone qualifies.
+// Only your own side: naming the opponent's cold shooter as your problem is
+// nonsense, and it would aim the boost at the wrong team.
+function _slumpingPlayer(sim, userIsHome) {
+  const box = userIsHome ? sim.homeBox : sim.awayBox;
+  const roster = userIsHome ? sim.homeRoster : sim.awayRoster;
+  let worstId = null;
+  let worstPct = 1;
+  Object.keys(box || {}).forEach(function (id) {
+    const line = box[id];
+    if (!line || (line.fga || 0) < SLUMP_MIN_ATTEMPTS) return;
+    const pct = (line.fgm || 0) / line.fga;
+    if (pct > SLUMP_MAX_FG_PCT) return;
+    if (pct < worstPct) { worstPct = pct; worstId = id; }
+  });
+  if (!worstId) return null;
+  const player = (roster || []).filter(function (p) { return p.id === worstId; })[0];
+  const line = box[worstId];
+  return {
+    id: worstId,
+    name: (player && player.name) || 'your starter',
+    fgm: line.fgm || 0,
+    fga: line.fga,
+    points: line.points || 0
+  };
+}
+
 function buildHalftimeContext(gameState, sim) {
   const base = _baseContext(gameState, sim);
   base.moment = 'halftime';
   base.leading = base.userScore > base.opponentScore;
   base.trailing = base.userScore < base.opponentScore;
+
+  // The hint the studio panel plants and one of the coach's instructions acts
+  // on. Null when nobody is struggling, which is what keeps the panel honest.
+  const slump = _slumpingPlayer(sim, base.userIsHome);
+  base.slumpId = slump ? slump.id : null;
+  base.slumpName = slump ? slump.name : null;
+  base.slumpFgm = slump ? slump.fgm : null;
+  base.slumpFga = slump ? slump.fga : null;
+  base.slumpPoints = slump ? slump.points : null;
   return base;
 }
 
@@ -169,10 +224,40 @@ function _nudgeMorale(player, delta) {
   player.status.morale = Math.max(0, Math.min(100, player.status.morale + delta));
 }
 
+// Acting on the halftime hint. Charge for a player who can actually take over,
+// energy for one who cannot — below the ultimate gate charge does nothing at
+// all, so without the fallback the hint would sometimes pay out nothing.
+//
+// Refuses anyone who is not on the user's own side. That is the most damaging
+// bug this mechanic could have: buying the opponent a takeover.
+function _applyHalftimeBoost(sim, playerId, userIsHome) {
+  if (!sim || !playerId) return false;
+  const box = userIsHome ? sim.homeBox : sim.awayBox;
+  const roster = userIsHome ? sim.homeRoster : sim.awayRoster;
+  const line = box && box[playerId];
+  if (!line) return false;
+
+  const player = (roster || []).filter(function (p) { return p.id === playerId; })[0];
+  const ults = _DIALOGUE_DATA.ultimates;
+  const canTakeOver = !!(player && ults.hasUltimate && ults.hasUltimate(player));
+
+  if (canTakeOver && ults.chargeThreshold) {
+    const threshold = ults.chargeThreshold(line.takeoversUsed || 0);
+    line.charge = Math.min(threshold * 0.99, (line.charge || 0) + threshold * BOOST_CHARGE_FRACTION);
+  } else {
+    line.energy = Math.min(1, (line.energy || 0) + BOOST_ENERGY_RESTORE);
+  }
+  return true;
+}
+
 // The single interpreter of an effect description. Scenes return these; only
 // this function touches game state, which is what keeps the scene library
 // testable with no game at all.
-function applyDialogueEffect(gameState, desc, ctx) {
+//
+// `opts.sim` is supplied only by the halftime caller, which is the one moment
+// a live game exists to nudge. Every other caller passes nothing and the
+// boost channel simply does not fire.
+function applyDialogueEffect(gameState, desc, ctx, opts) {
   const applied = [];
   if (!desc || typeof desc !== 'object') return { applied: applied };
   const roster = (ctx && ctx.roster) || [];
@@ -206,6 +291,13 @@ function applyDialogueEffect(gameState, desc, ctx) {
     }
   }
 
+  if (desc.boostPlayer && opts && opts.sim) {
+    const userIsHome = ctx && typeof ctx.userIsHome === 'boolean'
+      ? ctx.userIsHome
+      : opts.sim.homeTeamId === gameState.userTeamId;
+    if (_applyHalftimeBoost(opts.sim, desc.boostPlayer, userIsHome)) applied.push('boostPlayer');
+  }
+
   if (desc.recordDecision) {
     const c = gameState.playerCareerController;
     if (c && typeof c.recordDecision === 'function') {
@@ -229,6 +321,15 @@ function pushRecentScene(gameState, sceneId) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     RECENT_SCENE_LIMIT: RECENT_SCENE_LIMIT,
+    SLUMP_MIN_ATTEMPTS: SLUMP_MIN_ATTEMPTS,
+    SLUMP_MAX_FG_PCT: SLUMP_MAX_FG_PCT,
+    BOOST_CHARGE_FRACTION: BOOST_CHARGE_FRACTION,
+    BOOST_ENERGY_RESTORE: BOOST_ENERGY_RESTORE,
+    // Re-exported so a test can assert "less than a free takeover" without
+    // reaching into ultimates.js for the number.
+    CHARGE_FULL: _DIALOGUE_DATA.ultimates.chargeThreshold
+      ? _DIALOGUE_DATA.ultimates.chargeThreshold(0)
+      : 200,
     OUTLET_NAMES: OUTLET_NAMES,
     currentRole: currentRole,
     ensureReporters: ensureReporters,

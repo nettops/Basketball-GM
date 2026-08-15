@@ -44,11 +44,24 @@ function fakeSim() {
       { period: 3, home: 84, away: 73 },
       { period: 4, home: 104, away: 110 }
     ],
-    homeBox: { p1: { points: 31, teamId: 'BOS' }, p2: { points: 12, teamId: 'BOS' } },
-    awayBox: { p3: { points: 28, teamId: 'LAL' } },
-    homeRoster: [{ id: 'p1', name: 'J. Tatum' }, { id: 'p2', name: 'D. White' }],
-    awayRoster: [{ id: 'p3', name: 'L. James' }]
+    homeBox: {
+      p1: { points: 31, teamId: 'BOS', fgm: 11, fga: 20, energy: 0.6, charge: 0, takeoversUsed: 0 },
+      p2: { points: 12, teamId: 'BOS', fgm: 4, fga: 9, energy: 0.7, charge: 0, takeoversUsed: 0 }
+    },
+    awayBox: { p3: { points: 28, teamId: 'LAL', fgm: 10, fga: 18, energy: 0.8, charge: 0, takeoversUsed: 0 } },
+    homeRoster: [{ id: 'p1', name: 'J. Tatum', overall: 92 }, { id: 'p2', name: 'D. White', overall: 78 }],
+    awayRoster: [{ id: 'p3', name: 'L. James', overall: 90 }]
   };
+}
+
+// A sim where one user-side starter is having a genuinely bad shooting night.
+function slumpSim() {
+  const sim = fakeSim();
+  sim.period = 2;
+  sim.homeScore = 48; sim.awayScore = 62;
+  sim.homeBox.p1 = { points: 7, teamId: 'BOS', fgm: 3, fga: 14, energy: 0.5, charge: 0, takeoversUsed: 0 };
+  sim.homeBox.p2 = { points: 16, teamId: 'BOS', fgm: 7, fga: 11, energy: 0.7, charge: 0, takeoversUsed: 0 };
+  return sim;
 }
 
 function checkRoleDetection() {
@@ -146,6 +159,131 @@ function checkATiedHalftimeIsNeitherLeadingNorTrailing() {
   console.log('checkATiedHalftimeIsNeitherLeadingNorTrailing: OK');
 }
 checkATiedHalftimeIsNeitherLeadingNorTrailing();
+
+// --- the halftime hint ----------------------------------------------------
+// The panel names a man having a bad night; one of the coach's instructions
+// acts on it. These checks are about not naming the WRONG man, since the whole
+// mechanic depends on the hint being trustworthy.
+
+function checkSlumpFindsTheStrugglingStarter() {
+  const c = dc.buildHalftimeContext(fakeState(), slumpSim());
+  assert.strictEqual(c.slumpId, 'p1', 'the 3-for-14 man is the slump');
+  assert.strictEqual(c.slumpName, 'J. Tatum');
+  assert.strictEqual(c.slumpFgm, 3);
+  assert.strictEqual(c.slumpFga, 14);
+  console.log('checkSlumpFindsTheStrugglingStarter: OK');
+}
+checkSlumpFindsTheStrugglingStarter();
+
+function checkSlumpIsOnlyTheUsersOwnSide() {
+  // Naming the opponent's cold shooter as "your" problem would be nonsense,
+  // and worse, the boost would then be aimed at the other team.
+  const state = fakeState();
+  const sim = slumpSim();
+  // Give the AWAY side a far worse night than anyone in Boston.
+  sim.awayBox.p3 = { points: 2, teamId: 'LAL', fgm: 1, fga: 16, energy: 0.6, charge: 0, takeoversUsed: 0 };
+  const c = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(c.slumpId, 'p1', 'still the user-side man, not the opponent');
+
+  state.userTeamId = 'LAL';
+  const away = dc.buildHalftimeContext(state, sim);
+  assert.strictEqual(away.slumpId, 'p3', 'and it follows the user to the away side');
+  console.log('checkSlumpIsOnlyTheUsersOwnSide: OK');
+}
+checkSlumpIsOnlyTheUsersOwnSide();
+
+function checkAGoodNightHasNoSlump() {
+  // No hint on a night nobody is struggling — a panel inventing a slump is
+  // worse than a panel not mentioning one.
+  const c = dc.buildHalftimeContext(fakeState(), fakeSim());
+  assert.strictEqual(c.slumpId, null, '11-for-20 and 4-for-9 is nobody having a bad night');
+  assert.strictEqual(c.slumpName, null);
+  console.log('checkAGoodNightHasNoSlump: OK');
+}
+checkAGoodNightHasNoSlump();
+
+function checkSmallSamplesAreNotSlumps() {
+  // 1-for-3 is not a bad night, it is three shots. Calling it out would make
+  // the panel look like it was not watching.
+  const state = fakeState();
+  const sim = slumpSim();
+  sim.homeBox.p1 = { points: 2, teamId: 'BOS', fgm: 1, fga: 3, energy: 0.6, charge: 0, takeoversUsed: 0 };
+  sim.homeBox.p2 = { points: 16, teamId: 'BOS', fgm: 7, fga: 11, energy: 0.7, charge: 0, takeoversUsed: 0 };
+  assert.strictEqual(dc.buildHalftimeContext(state, sim).slumpId, null, 'three attempts is not a slump');
+  console.log('checkSmallSamplesAreNotSlumps: OK');
+}
+checkSmallSamplesAreNotSlumps();
+
+function checkTheBoostLightsTheFuse() {
+  // A player who can take over gets charge — enough to make it likely, not
+  // enough to be free: he still has to earn the rest in the second half.
+  const state = fakeState();
+  const sim = slumpSim();
+  const ctx = dc.buildHalftimeContext(state, sim);
+  const before = sim.homeBox.p1.charge;
+
+  const res = dc.applyDialogueEffect(state, { boostPlayer: ctx.slumpId }, ctx, { sim: sim });
+  assert.ok(res.applied.indexOf('boostPlayer') !== -1, 'the boost was applied');
+  assert.ok(sim.homeBox.p1.charge > before, 'charge went up');
+  assert.ok(sim.homeBox.p1.charge < dc.CHARGE_FULL, 'but not to a free takeover');
+  assert.ok(sim.homeBox.p1.charge >= dc.CHARGE_FULL * 0.4, 'and it is a real push, not a token');
+  console.log('checkTheBoostLightsTheFuse: OK');
+}
+checkTheBoostLightsTheFuse();
+
+function checkAPlayerWithNoUltimateGetsASecondWindInstead() {
+  // Below the ultimate gate charge does nothing at all, so the hint would pay
+  // out nothing. Energy is the fallback so it always buys something.
+  const state = fakeState();
+  const sim = slumpSim();
+  sim.homeRoster = [{ id: 'p1', name: 'J. Tatum', overall: 55 }, { id: 'p2', name: 'D. White', overall: 78 }];
+  const ctx = dc.buildHalftimeContext(state, sim);
+  const beforeEnergy = sim.homeBox.p1.energy;
+  const beforeCharge = sim.homeBox.p1.charge;
+
+  dc.applyDialogueEffect(state, { boostPlayer: 'p1' }, ctx, { sim: sim });
+  assert.ok(sim.homeBox.p1.energy > beforeEnergy, 'he got his legs back');
+  assert.strictEqual(sim.homeBox.p1.charge, beforeCharge, 'and no charge, which would do nothing for him');
+  assert.ok(sim.homeBox.p1.energy <= 1, 'energy clamps at full');
+  console.log('checkAPlayerWithNoUltimateGetsASecondWindInstead: OK');
+}
+checkAPlayerWithNoUltimateGetsASecondWindInstead();
+
+function checkTheBoostNeedsASimAndAKnownPlayer() {
+  const state = fakeState();
+  const sim = slumpSim();
+  const ctx = dc.buildHalftimeContext(state, sim);
+
+  // No sim supplied (the post-game path never has one) — must not throw.
+  const noSim = dc.applyDialogueEffect(state, { boostPlayer: 'p1' }, ctx);
+  assert.strictEqual(noSim.applied.indexOf('boostPlayer'), -1, 'nothing applied without a sim');
+
+  // A player who is not in either box.
+  const before = JSON.stringify(sim.homeBox);
+  const stranger = dc.applyDialogueEffect(state, { boostPlayer: 'nobody' }, ctx, { sim: sim });
+  assert.strictEqual(stranger.applied.indexOf('boostPlayer'), -1, 'nothing applied for a stranger');
+  assert.strictEqual(JSON.stringify(sim.homeBox), before, 'and nothing was touched');
+
+  // A null target, which is what a scene produces when there is no slump.
+  assert.doesNotThrow(function () {
+    dc.applyDialogueEffect(state, { boostPlayer: null }, ctx, { sim: sim });
+  }, 'a null target is a no-op');
+  console.log('checkTheBoostNeedsASimAndAKnownPlayer: OK');
+}
+checkTheBoostNeedsASimAndAKnownPlayer();
+
+function checkTheBoostCannotReachTheOpponent() {
+  // The most damaging possible bug in this mechanic: buying the other team a
+  // takeover. The applier must refuse a player who is not on the user's side.
+  const state = fakeState();
+  const sim = slumpSim();
+  const ctx = dc.buildHalftimeContext(state, sim);
+  const before = JSON.stringify(sim.awayBox);
+  dc.applyDialogueEffect(state, { boostPlayer: 'p3' }, ctx, { sim: sim });
+  assert.strictEqual(JSON.stringify(sim.awayBox), before, 'the opponent was not boosted');
+  console.log('checkTheBoostCannotReachTheOpponent: OK');
+}
+checkTheBoostCannotReachTheOpponent();
 
 function checkReportersAreOnePerTeamAndStable() {
   const state = fakeState();
