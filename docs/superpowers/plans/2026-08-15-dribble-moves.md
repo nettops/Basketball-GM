@@ -69,14 +69,14 @@ Four findings, all reproduced before any code was written.
   `dribbleHand(u)` and `dribbleBall(u)` now take bounces, not milliseconds;
   `ballPosition` takes `s.dribbleU` in place of using `s.playbackMs` for the bounce.
 
-- [ ] **Step 1:** Write the failing test — a handler whose speed wobbles across
+- [x] **Step 1:** Write the failing test — a handler whose speed wobbles across
       the moving/standing gate, asserting the ball never jumps >1.5px in a frame.
-- [ ] **Step 2:** Run it, watch it fail at 12px.
-- [ ] **Step 3:** Extract `DRIBBLE_PERIOD_SET`/`DRIBBLE_PERIOD_MOVING`, add
+- [x] **Step 2:** Run it, watch it fail at 12px.
+- [x] **Step 3:** Extract `DRIBBLE_PERIOD_SET`/`DRIBBLE_PERIOD_MOVING`, add
       `stepDribbleClock`, re-express `dribbleHand` in bounces.
-- [ ] **Step 4:** Advance the clock once per frame in the view and thread it
+- [x] **Step 4:** Advance the clock once per frame in the view and thread it
       through every caller.
-- [ ] **Step 5:** Run the dribble validator and the animation probes. Commit.
+- [x] **Step 5:** Run the dribble validator and the animation probes. Commit.
 
 ### Task 2: The move drives the ball
 
@@ -100,12 +100,12 @@ Shape per move, in bounces, one bounce per beat:
 | double move | 2, the second late | 8px then 12px | low |
 | ankle breaker | 1, on the cut-back beat | 12px | lowest |
 
-- [ ] **Step 1:** Write failing tests — each move's widest reach, its crossing
+- [x] **Step 1:** Write failing tests — each move's widest reach, its crossing
       count, and the no-teleport bound across the free↔scripted handoff.
-- [ ] **Step 2:** Run, watch them fail.
-- [ ] **Step 3:** Implement, widening at the *edges* of the crossing window and
+- [x] **Step 2:** Run, watch them fail.
+- [x] **Step 3:** Implement, widening at the *edges* of the crossing window and
       dropping the ball to the floor at its centre.
-- [ ] **Step 4:** Run. Commit.
+- [x] **Step 4:** Run. Commit.
 
 ### Task 3: The choreographer says which move is playing
 
@@ -114,12 +114,12 @@ Shape per move, in bounces, one bounce per beat:
   `ballLat`), `ui/pixelGameView.js` (read it)
 - Test: `scripts/validate-pixel-choreographer.js`, `scripts/probe-iso-moves.js`
 
-- [ ] **Step 1:** Failing test — every beat of a dribble string carries a marker
+- [x] **Step 1:** Failing test — every beat of a dribble string carries a marker
       naming the move and its index.
-- [ ] **Step 2:** Stamp it; remove `ballLat` and correct the comment that claims
+- [x] **Step 2:** Stamp it; remove `ballLat` and correct the comment that claims
       it does something.
-- [ ] **Step 3:** Read it in the view for both the ball and the arm.
-- [ ] **Step 4:** Re-run `probe-iso-moves.js` — the five moves must now differ.
+- [x] **Step 3:** Read it in the view for both the ball and the arm.
+- [x] **Step 4:** Re-run `probe-iso-moves.js` — the five moves must now differ.
       Commit.
 
 ### Task 4: He sells it (treatment C)
@@ -128,10 +128,10 @@ Shape per move, in bounces, one bounce per beat:
 - Modify: `ui/pixelMotion.js`, `ui/pixelSprites.js`
 - Test: `scripts/validate-dribble.js`, `scripts/validate-pixel-sprites.js`
 
-- [ ] **Step 1:** Failing test — the ball hangs near the top of the bounce
+- [x] **Step 1:** Failing test — the ball hangs near the top of the bounce
       through the half-beat before a crossing, then drops into it.
-- [ ] **Step 2:** Implement the hesitation and the body's sink into the move.
-- [ ] **Step 3:** Run. Commit.
+- [x] **Step 2:** Implement the hesitation and the body's sink into the move.
+- [x] **Step 3:** Run. Commit.
 
 ### Task 5: The ankle breaker becomes a skill check
 
@@ -142,15 +142,69 @@ Shape per move, in bounces, one bounce per beat:
   it does not scan today. That gap is what let `selectSegment is not defined`
   reach the browser earlier in this work.
 
-- [ ] **Step 1:** Failing test — the same matchup must not always produce the
+- [x] **Step 1:** Failing test — the same matchup must not always produce the
       same verdict, and neither the best nor the worst matchup may be certain.
-- [ ] **Step 2:** Replace the cutoff with `skillCheckProbability` plus a
+- [x] **Step 2:** Replace the cutoff with `skillCheckProbability` plus a
       `roll01` draw seeded off the possession.
-- [ ] **Step 3:** Calibrate base/scale to hold ~4.5 ankle breakers per game.
-- [ ] **Step 4:** Run the impact-moment validator and the ankle probe. Commit.
+- [x] **Step 3:** Calibrate base/scale to hold ~4.5 ankle breakers per game.
+- [x] **Step 4:** Run the impact-moment validator and the ankle probe. Commit.
 
 ### Task 6: Verify live, and tidy up
 
-- [ ] **Step 1:** Watch a real game in the browser and confirm the moves read.
-- [ ] **Step 2:** Full validator suite.
-- [ ] **Step 3:** Delete the preview page. Commit.
+- [x] **Step 1:** Watch a real game in the browser and confirm the moves read.
+- [x] **Step 2:** Full validator suite.
+- [x] **Step 3:** Delete the preview page. Commit.
+
+
+---
+
+## Outcome
+
+All six tasks done. 62 validators pass, 0 fail.
+
+**The tempo snap:** 446 twelve-pixel hand-swaps a game -> 0. Pinned by
+`checkChangingTempoDoesNotRewriteThePast`, which wobbles a handler's speed
+across the moving/standing gate, and by a whole-game counter in
+`probe-iso-moves.js`.
+
+**The moves, measured over twelve real games through the drawing path.** Hand
+changes per string: put-down 0 (was 2), crossover 1, behind-the-back 1, double
+move 2. Widest the ball reaches from his centre: put-down 6px, crossover 10px,
+double move 12px, ankle breaker 12px, behind-the-back 15px. Before this every
+one of them measured 6.0px.
+
+**The hesitation** holds the ball at 0.72 of its bounce through the half-beat
+before a crossing, then drops it to 0.00 at the plant. The ankle breaker
+deliberately has none — its fake is the jab — and that is asserted, not
+commented.
+
+**The ankle breaker** is now a `skillCheck.js` contest drawn on a `roll01`
+possession seed: 4.40/game against the 1.5-6.0 band, where the cutoff gave
+4.50. Chance runs 2% at worst, 8.5% median, 41% at best, against a threshold
+under which 100% of repeated matchups were all-or-nothing.
+
+**Live in a real game** (Portland at Boston, watched at 4x then 1x): named
+moves reach the view — crossover, behind-the-back, double move and put-down all
+observed — the ball reaches 14.8px from the body, and its offset from his hand
+never steps more than **0.69px per frame**.
+
+### Two measuring tools were lying
+
+Both `validate-impactMoments.js` and `probe-ankle-breakers.js` called
+`classifyImpact` without a seed, which hands every event in the league the same
+roll. They read 7.42 and 8.02 per game against a true 4.40. Worth remembering
+when any deterministic rule becomes a check: every caller that omits the seed
+silently becomes all-or-nothing rather than failing.
+
+### A gap closed on the way past
+
+`validate-browserBridges.js` scanned only the repo root, never `ui/`. That is
+the exact gap that let `selectSegment is not defined` reach a real page with
+every validator green. It now covers both.
+
+### Not done
+
+Per-player dribble tempo (treatment D from the previous round) is still
+unbuilt: every player dribbles at the same rhythm, quick guard and slow big
+alike, which sits oddly beside the idle breathing that deliberately gives each
+player his own period.
