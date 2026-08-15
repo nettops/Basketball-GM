@@ -134,6 +134,8 @@ function isPass(kfs, i) {
 // Render [from, to) of the timeline at 60fps, exactly as the view would.
 function renderClip(kfs, from, to) {
   const smooth = {};
+  // The dribble clock, advanced exactly as ui/pixelGameView.js advances it.
+  let dribbleU = 0;
   const frames = [];
   const ids = {};
   for (let i = from; i < to; i++) Object.keys(kfs[i].pos).forEach(function (p) { ids[p] = 1; });
@@ -164,6 +166,9 @@ function renderClip(kfs, from, to) {
         else { s.x = tx; s.y = ty; }
         bodies.push({ id: pid, x: +s.x.toFixed(2), y: +s.y.toFixed(2) });
       });
+      const holderHand = (holder && smooth[holder]) || null;
+      dribbleU = motion.stepDribbleClock(dribbleU, FRAME_MS,
+        !!(holderHand && Math.hypot(holderHand.vx, holderHand.vy) > 6));
       if (!launchDone) { launch = launchAt(kfs, i, smooth); launchDone = true; }
       const arrival = arrivalAt(kfs, i, smooth);
       const lifts = motion.resolveLifts(a, b, f, false);
@@ -171,7 +176,7 @@ function renderClip(kfs, from, to) {
       const bp = motion.ballPosition({
         a: a, b: b, f: f, holder: holder, hand: hand, facing: 1,
         lifts: lifts, shotComing: shotComingAt(kfs, i), reduceMotion: false,
-        playbackMs: a.t + span * f, launch: launch, arrival: arrival
+        dribbleU: dribbleU, launch: launch, arrival: arrival
       });
       // per-body lift, so the preview draws the leap the game draws
       const liftById = {};

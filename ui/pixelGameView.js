@@ -434,6 +434,11 @@ function renderPixelGame(container) {
   let excitementIsHome = true;  // which side the arena is reacting for
   let lastBallActor = null;     // last player to hold the ball
   let lastBouncePhase = 1;      // for detecting dribble floor contact
+  // The dribble clock, in bounces. Owned here rather than derived from
+  // playbackMs because the tempo changes with the handler's speed, and a phase
+  // derived from absolute time gets RETROACTIVELY rewritten every time it does
+  // — 446 twelve-pixel hand-swaps a game. See stepDribbleClock.
+  let dribbleU = 0;
   let lastSnapRendered = null;  // avoids rebuilding the info strip every frame
   let refX = PIXEL_STAGE.w / 2;
   let refY = PIXEL_STAGE.court.y + PIXEL_STAGE.court.h - 12;
@@ -618,12 +623,22 @@ function renderPixelGame(container) {
     // the ball can never disagree about which hand has it. Computed here
     // rather than from ballPosition below only because the sprite loop runs
     // first — the inputs are identical.
+    //
+    // The clock is advanced exactly once per frame, here, before anything reads
+    // it. Advancing it in two places would let the ball and the arm run at
+    // different tempos, which is the one thing sharing dribbleHand is for.
+    // Timeline milliseconds this frame is worth. Clamped so a backgrounded tab
+    // does not fast-forward on return; shared by the dribble clock and the body
+    // springs so the ball and the bodies can never disagree about how much time
+    // passed.
+    const dtMsTimeline = Math.min(140, realDt * speed);
+
     const dribbleHolder = fr.a.ball.holder;
     const dribbleSmooth = dribbleHolder && smooth[dribbleHolder];
-    const dribbleState = dribbleSmooth
-      ? dribbleHand(playbackMs,
-          Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6)
-      : null;
+    dribbleU = stepDribbleClock(dribbleU, dtMsTimeline,
+      !!(dribbleSmooth &&
+         Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6));
+    const dribbleState = dribbleSmooth ? dribbleHand(dribbleU) : null;
 
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
@@ -638,10 +653,9 @@ function renderPixelGame(container) {
       ? { x: smooth[fr.a.ball.holder].x, y: smooth[fr.a.ball.holder].y }
       : { x: fr.a.ball.x, y: fr.a.ball.y };
 
-    // Advance every player's spring toward its keyframe target.
-    // Clamped so a backgrounded tab doesn't fast-forward the springs on
-    // return; substepped below so the clamp doesn't distort the motion.
-    const dtTimeline = Math.min(140, realDt * speed) / 1000;
+    // Advance every player's spring toward its keyframe target. Substepped
+    // below so the clamp on dtMsTimeline doesn't distort the motion.
+    const dtTimeline = dtMsTimeline / 1000;
     ids.forEach(function (pid) {
       const pa = fr.a.pos[pid];
       const pb = fr.b.pos[pid];
@@ -876,7 +890,7 @@ function renderPixelGame(container) {
           hand: throwerHand,
           facing: facingById[thrower] || 1,
           shotComing: shotComingAt(kfIndex - 1),
-          reduceMotion: reduceMotion
+          reduceMotion: reduceMotion, dribbleU: dribbleU
         }) : null
       };
     }
@@ -892,7 +906,7 @@ function renderPixelGame(container) {
       hand: catcherHand,
       facing: facingById[catcher] || 1,
       shotComing: shotComingAt(kfIndex + 1),
-      reduceMotion: reduceMotion
+      reduceMotion: reduceMotion, dribbleU: dribbleU
     }) : null;
     const bp = ballPosition({
       a: fr.a, b: fr.b, f: fr.f,
@@ -902,7 +916,7 @@ function renderPixelGame(container) {
       lifts: lifts,
       shotComing: shotComing,
       reduceMotion: reduceMotion,
-      playbackMs: playbackMs,
+      dribbleU: dribbleU,
       launch: launch,
       arrival: arrival
     });

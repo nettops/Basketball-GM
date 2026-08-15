@@ -136,6 +136,31 @@ const DRIBBLE_RISE = 10;
 // How many bounces he keeps it in one hand before crossing it over.
 const DRIBBLE_HAND_BOUNCES = 3;
 
+// How long one bounce takes, set and on the move. A handler pushing the ball
+// ahead of him dribbles quicker than one sizing his man up.
+const DRIBBLE_PERIOD_SET = 140;
+const DRIBBLE_PERIOD_MOVING = 95;
+
+// THE DRIBBLE CLOCK, and why it is a clock rather than a formula.
+//
+// This used to be `playbackMs`, with the period chosen per frame from whether
+// the holder was moving. That is fine until the tempo changes — and then it is
+// catastrophic, because the phase was `playbackMs / period`, so a new period
+// retroactively rewrote the ENTIRE history. A springy body's speed wobbles
+// across the 6px/s threshold constantly, and every crossing snapped the ball up
+// to 12px into the other hand in a single frame. Measured over real games at
+// 446 times a game: the largest remaining teleport in the ball's path, and one
+// that no test in validate-dribble.js could see, because they all held the
+// tempo constant.
+//
+// A clock cannot have that bug. It only ever moves forward, and the tempo
+// decides how fast it runs FROM NOW ON. The unit is bounces, not milliseconds,
+// so the rest of this file can talk about "half a bounce either side" and mean
+// it whatever the tempo is doing.
+function stepDribbleClock(u, dtMs, holderMoving) {
+  return u + dtMs / (Math.PI * (holderMoving ? DRIBBLE_PERIOD_MOVING : DRIBBLE_PERIOD_SET));
+}
+
 // Which side of the body the ball is on, and how far through the bounce it is.
 //
 // Exported and used by BOTH the ball and the sprite's arm, because they have to
@@ -159,11 +184,9 @@ const DRIBBLE_HAND_BOUNCES = 3;
 // sideways in one frame — the "prop snaps at a branch change" defect this file
 // exists to prevent.
 //
-// `u` is time measured in bounces: abs(sin) is zero at every whole u (the floor)
-// and one at every half (the top).
-function dribbleHand(playbackMs, holderMoving) {
-  const period = holderMoving ? 95 : 140;
-  const u = playbackMs / (Math.PI * period);
+// `u` is the dribble clock, in bounces: abs(sin(pi*u)) is zero at every whole u
+// (the floor) and one at every half (the top).
+function dribbleHand(u) {
   const N = DRIBBLE_HAND_BOUNCES;
   const cycle = Math.round(u / N);      // which hand era we are nearest
   const d = u - cycle * N;              // bounces from that era's crossing
@@ -183,12 +206,12 @@ function dribbleHand(playbackMs, holderMoving) {
   return {
     sign: sign,
     crossing: crossing,
-    phase: Math.abs(Math.sin(playbackMs / period))
+    phase: Math.abs(Math.sin(Math.PI * u))
   };
 }
 
-function dribbleBall(playbackMs, holderMoving) {
-  const h = dribbleHand(playbackMs, holderMoving);
+function dribbleBall(u) {
+  const h = dribbleHand(u);
   return { up: 1 + h.phase * DRIBBLE_RISE, side: DRIBBLE_SIDE * h.sign, bouncePhase: h.phase };
 }
 
@@ -253,7 +276,7 @@ function ballMode(s) {
 //   lifts            the resolveLifts() result for this frame
 //   shotComing       is the next ball sequence a shot at a rim
 //   reduceMotion     the accessibility setting
-//   playbackMs       timeline clock, for the dribble bounce
+//   dribbleU         the dribble clock, in bounces (see stepDribbleClock)
 // }
 //
 // Returns { bx, by, groundY, mode, bouncePhase }. bx/by are where to draw the
@@ -268,8 +291,7 @@ function ballPosition(s) {
     const face = (s.facing || 1) >= 0 ? 1 : -1;
     // Where the dribble has it RIGHT NOW. Every held branch blends out of
     // this, so no branch change can move the ball on its own.
-    const holderMoving = Math.sqrt(s.hand.vx * s.hand.vx + s.hand.vy * s.hand.vy) > 6;
-    const drib = dribbleBall(s.playbackMs, holderMoving);
+    const drib = dribbleBall(s.dribbleU || 0);
 
     if (mode === 'dribble') {
       return {
@@ -439,9 +461,12 @@ function launchPoint(s) {
     holder: s.prev.ball.holder, hand: s.hand, facing: s.facing,
     lifts: lifts, shotComing: s.shotComing,
     reduceMotion: s.reduceMotion,
-    // The keyframe's own timestamp, not the live clock: that is the instant
-    // the ball left, and it makes the dribble bounce deterministic.
-    playbackMs: s.a.t
+    // The LIVE dribble clock. This used to be the keyframe's own timestamp, on
+    // the reasoning that a fixed instant makes the bounce deterministic — true
+    // of a formula, meaningless for a clock, and actively wrong here: the ball
+    // has to leave from where the dribble actually had it, or the flight starts
+    // with the snap this whole file exists to prevent.
+    dribbleU: s.dribbleU
   });
 }
 
@@ -459,7 +484,7 @@ function arrivalPoint(s) {
     holder: s.b.ball.holder, hand: s.hand, facing: s.facing,
     lifts: resolveLifts(s.b, c, 0, s.reduceMotion),
     shotComing: s.shotComing, reduceMotion: s.reduceMotion,
-    playbackMs: s.b.t
+    dribbleU: s.dribbleU
   });
 }
 
@@ -482,6 +507,9 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_SIDE: DRIBBLE_SIDE,
     DRIBBLE_RISE: DRIBBLE_RISE,
     DRIBBLE_HAND_BOUNCES: DRIBBLE_HAND_BOUNCES,
+    DRIBBLE_PERIOD_SET: DRIBBLE_PERIOD_SET,
+    DRIBBLE_PERIOD_MOVING: DRIBBLE_PERIOD_MOVING,
+    stepDribbleClock: stepDribbleClock,
     closeLift: closeLift,
     closeCock: closeCock,
     dunkCock: dunkCock,

@@ -139,6 +139,10 @@ function run(games) {
   for (let g = 0; g < games; g++) {
     const kfs = buildTimeline(1000 + g);
     let prev = null, prevMode = null, prevHolder = null;   // carried across beat boundaries
+    // The dribble clock. This probe builds its hands with vx/vy of zero, so the
+    // holder never reads as moving and the clock runs at the standing tempo —
+    // which is the tempo those still hands stand for.
+    let dribbleU = 0;
 
     for (let i = 0; i + 1 < kfs.length; i++) {
       const a = kfs[i], b = kfs[i + 1];
@@ -182,10 +186,11 @@ function run(games) {
             }
           : null;
         const lifts = motion.resolveLifts(a, b, f, false);
+        dribbleU = motion.stepDribbleClock(dribbleU, span / steps, false);
         const bp = motion.ballPosition({
           a: a, b: b, f: f, holder: holder, hand: hand, facing: 1,
           lifts: lifts, shotComing: shotComingAt(kfs, i),
-          reduceMotion: false, playbackMs: a.t + span * f,
+          reduceMotion: false, dribbleU: dribbleU,
           launch: launchAt(kfs, i), arrival: arrivalAt(kfs, i)
         });
         if (prev) {
@@ -214,7 +219,7 @@ function run(games) {
           const bp = motion.ballPosition({
             a: a, b: b, f: 1, holder: a.ball.holder,
             hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 }, facing: 1,
-            lifts: lifts, shotComing: true, reduceMotion: false, playbackMs: b.t
+            lifts: lifts, shotComing: true, reduceMotion: false, dribbleU: dribbleU
           });
           add(geometry.dunkBallToRim, Math.hypot(bp.bx - b.ball.x, bp.by - b.ball.y), 'dunk');
         }
@@ -229,7 +234,7 @@ function run(games) {
           const flying = motion.ballPosition({
             a: a, b: b, f: 0.999, holder: null, hand: null, facing: 1,
             lifts: motion.resolveLifts(a, b, 1, false), shotComing: false,
-            reduceMotion: false, playbackMs: b.t, launch: launchAt(kfs, i),
+            reduceMotion: false, dribbleU: dribbleU, launch: launchAt(kfs, i),
             arrival: arrivalAt(kfs, i)
           });
           const c2 = kfs[i + 2];
@@ -238,7 +243,7 @@ function run(games) {
               a: b, b: c2, f: 0, holder: b.ball.holder,
               hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 }, facing: 1,
               lifts: motion.resolveLifts(b, c2, 0, false),
-              shotComing: shotComingAt(kfs, i + 1), reduceMotion: false, playbackMs: b.t
+              shotComing: shotComingAt(kfs, i + 1), reduceMotion: false, dribbleU: dribbleU
             });
             const d = Math.hypot(caught.bx - flying.bx, caught.by - flying.by);
             if (!geometry.catchByKind[fam]) geometry.catchByKind[fam] = stat();
@@ -262,7 +267,7 @@ function run(games) {
             a: a, b: b, f: 0.999, holder: a.ball.holder,
             hand: { x: hp[0], y: hp[1], vx: 0, vy: 0 }, facing: 1,
             lifts: liftsEnd, shotComing: shotComingAt(kfs, i),
-            reduceMotion: false, playbackMs: b.t
+            reduceMotion: false, dribbleU: dribbleU
           });
           // first frame of the NEXT segment, where the ball is a projectile
           const c = kfs[i + 2];
@@ -270,7 +275,7 @@ function run(games) {
             const liftsNext = motion.resolveLifts(b, c, 0, false);
             const flown = motion.ballPosition({
               a: b, b: c, f: 0, holder: null, hand: null, facing: 1,
-              lifts: liftsNext, shotComing: false, reduceMotion: false, playbackMs: b.t,
+              lifts: liftsNext, shotComing: false, reduceMotion: false, dribbleU: dribbleU,
               launch: launchAt(kfs, i + 1), arrival: arrivalAt(kfs, i + 1)
             });
             if (!geometry.releaseByKind[fam]) geometry.releaseByKind[fam] = stat();
