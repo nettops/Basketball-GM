@@ -132,9 +132,64 @@ function overheadBallSide(kind) {
 // between the floor and the top of the bounce when the shooter decides to go.
 const DRIBBLE_SIDE = 6;
 const DRIBBLE_RISE = 10;
+
+// How many bounces he keeps it in one hand before crossing it over.
+const DRIBBLE_HAND_BOUNCES = 3;
+
+// Which side of the body the ball is on, and how far through the bounce it is.
+//
+// Exported and used by BOTH the ball and the sprite's arm, because they have to
+// agree about which hand has it — an arm pumping on the left while the ball
+// bounces on the right is worse than no arm animation at all.
+//
+// The crossover is CENTRED ON A FLOOR CONTACT, and takes half a bounce either
+// side of it. The ball therefore goes down on one hand, touches the floor as it
+// passes the middle of his body, and comes up on the other — which is what a
+// crossover is.
+//
+// The first version spread the crossing across a whole bounce instead, from one
+// floor contact to the next. That put the ball dead centre at the TOP of the
+// bounce, i.e. floating at chest height in front of his sternum, and it read as
+// the ball passing through him. checkTheCrossHappensAtTheFloor catches exactly
+// that and was written before this was right.
+//
+// Doing it over half a bounce either side also keeps the path continuous: at
+// the edges of the window the sign already equals the steady value the bounces
+// outside it hold, so nothing snaps. An instant switch would move the ball 12px
+// sideways in one frame — the "prop snaps at a branch change" defect this file
+// exists to prevent.
+//
+// `u` is time measured in bounces: abs(sin) is zero at every whole u (the floor)
+// and one at every half (the top).
+function dribbleHand(playbackMs, holderMoving) {
+  const period = holderMoving ? 95 : 140;
+  const u = playbackMs / (Math.PI * period);
+  const N = DRIBBLE_HAND_BOUNCES;
+  const cycle = Math.round(u / N);      // which hand era we are nearest
+  const d = u - cycle * N;              // bounces from that era's crossing
+  const to = (cycle % 2) ? -1 : 1;      // the hand this era ends up in
+  const crossing = cycle > 0 && Math.abs(d) <= 0.5;
+  // Inside the window sign sweeps -to -> 0 -> +to, hitting zero exactly on the
+  // floor contact. Outside it, it is whichever side this era holds.
+  //
+  // The first era is special: there is no previous hand to cross from, so it
+  // starts already committed. Without this the very first frame reads d === 0
+  // with crossing suppressed and flips 12px on frame two — the teleport this
+  // whole function is shaped to avoid, reintroduced by the guard against it.
+  let sign;
+  if (crossing) sign = to * (2 * d);
+  else if (cycle === 0 && d <= 0) sign = to;
+  else sign = d > 0 ? to : -to;
+  return {
+    sign: sign,
+    crossing: crossing,
+    phase: Math.abs(Math.sin(playbackMs / period))
+  };
+}
+
 function dribbleBall(playbackMs, holderMoving) {
-  const bouncePhase = Math.abs(Math.sin(playbackMs / (holderMoving ? 95 : 140)));
-  return { up: 1 + bouncePhase * DRIBBLE_RISE, side: DRIBBLE_SIDE, bouncePhase: bouncePhase };
+  const h = dribbleHand(playbackMs, holderMoving);
+  return { up: 1 + h.phase * DRIBBLE_RISE, side: DRIBBLE_SIDE * h.sign, bouncePhase: h.phase };
 }
 
 // How far through his gather a leaper is: 0 with his feet down, 1 at the top.
@@ -423,6 +478,10 @@ if (typeof module !== 'undefined' && module.exports) {
     overheadBallOffset: overheadBallOffset,
     overheadBallSide: overheadBallSide,
     dribbleBall: dribbleBall,
+    dribbleHand: dribbleHand,
+    DRIBBLE_SIDE: DRIBBLE_SIDE,
+    DRIBBLE_RISE: DRIBBLE_RISE,
+    DRIBBLE_HAND_BOUNCES: DRIBBLE_HAND_BOUNCES,
     closeLift: closeLift,
     closeCock: closeCock,
     dunkCock: dunkCock,

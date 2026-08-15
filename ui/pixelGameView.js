@@ -613,6 +613,18 @@ function renderPixelGame(container) {
       ? crossA.by : null;
     const crossFlashId = (crossA && crossA.phase === 'clear') ? crossA.on : null;
 
+    // The live dribble, for whoever has the ball. Read from the SAME
+    // dribbleHand the ball's own position comes from, so the pumping arm and
+    // the ball can never disagree about which hand has it. Computed here
+    // rather than from ballPosition below only because the sprite loop runs
+    // first — the inputs are identical.
+    const dribbleHolder = fr.a.ball.holder;
+    const dribbleSmooth = dribbleHolder && smooth[dribbleHolder];
+    const dribbleState = dribbleSmooth
+      ? dribbleHand(playbackMs,
+          Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6)
+      : null;
+
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
 
@@ -797,6 +809,14 @@ function renderPixelGame(container) {
         following: isJumperNow && jumpFollow,
         dunking: dunkPose,
         stumbling: !reduceMotion && pid === stumbleId,
+        // Only while he is actually handling it — a man gathering into a shot,
+        // rising, or going up to dunk is not dribbling any more, and those
+        // poses own the arms. The ball's own facing is applied here so `side`
+        // reaches the sprite in screen space.
+        dribbling: (dribbleState && pid === dribbleHolder && !shooting && !isJumperNow &&
+                    !dunkPose && !jumpFollow)
+          ? { phase: dribbleState.phase, side: dribbleState.sign * (facingById[pid] || 1) }
+          : null,
         highlight: isHolder,
         facing: facingById[pid] || 0,
         moving: moving

@@ -227,6 +227,22 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   } else if (opts.shooting) {
     ctx.fillRect(left, topU + 2, 2, 7);
     ctx.fillRect(left + 8, topU + 2, 2, 7);
+  } else if (opts.dribbling) {
+    // He is actually dribbling the ball. Before this the ball bounced beside a
+    // man whose arms were doing the idle weight-shift — nobody's hand ever went
+    // down to meet it, which is the single thing that made the default dribble
+    // read as a bouncing prop rather than a player.
+    //
+    // The ball-side arm EXTENDS from a fixed shoulder rather than sliding down
+    // whole: a shoulder that moves with the ball reads as a shrug. `side` is
+    // screen-space (+1 = the sprite's right) and comes from the same
+    // dribbleHand() the ball itself uses, so the hand cannot end up pumping on
+    // the side the ball is not on.
+    const reach = Math.round((1 - opts.dribbling.phase) * 3);
+    const ballRight = opts.dribbling.side >= 0;
+    const offArmY = topU + 9 - (opts.moving ? bob2 : -idle);
+    ctx.fillRect(left + (ballRight ? 0 : 8), offArmY, 2, 6 + bodyT);
+    ctx.fillRect(left + (ballRight ? 8 : 0), topU + 9, 2, 6 + bodyT + reach);
   } else if (opts.moving) {
     ctx.fillRect(left, topU + 9 - bob2, 2, 6 + bodyT);
     ctx.fillRect(left + 8, topU + 9 - bob, 2, 6 + bodyT);
