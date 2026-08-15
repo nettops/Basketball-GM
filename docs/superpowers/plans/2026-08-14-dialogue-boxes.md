@@ -1938,6 +1938,11 @@ function runDialogue(scene, ctx, onDone) {
   const box = document.createElement('div');
   box.className = 'dlg-box';
 
+  // The bezel. Bust and text live INSIDE it; the choice stack is a sibling
+  // that continues the same rings downward.
+  const frame = document.createElement('div');
+  frame.className = 'dlg-frame';
+
   const bustWrap = document.createElement('div');
   bustWrap.className = 'dlg-bust';
   const scale = _DIALOGUE_BOX_DATA.bust.bustScale(DIALOGUE_BUST_PX);
@@ -1969,9 +1974,10 @@ function runDialogue(scene, ctx, onDone) {
   body.appendChild(plate);
   body.appendChild(textEl);
   body.appendChild(blinker);
-  body.appendChild(choiceList);
-  box.appendChild(bustWrap);
-  box.appendChild(body);
+  frame.appendChild(bustWrap);
+  frame.appendChild(body);
+  box.appendChild(frame);
+  box.appendChild(choiceList);
   root.appendChild(box);
   document.body.appendChild(root);
 
@@ -2095,67 +2101,86 @@ if (typeof module !== 'undefined' && module.exports) {
 
 Append to `style.css`:
 
+Direction **C, "arcade terminal"**, chosen from rendered mockups on 2026-08-15.
+Hard double border, monospace, no rounded corners — the box belongs to the
+pixel game rather than the app chrome. Deliberately does NOT use `--r-lg` or
+the app's sans stack; that is the point of the direction.
+
 ```css
-/* ---- Dialogue box ----
+/* ---- Dialogue box (arcade terminal) ----
    z-index sits ABOVE .quit-confirm (9500): a dialogue can open over the live
-   game view, and the layer beneath must not be clickable through it. */
+   game view, and the layer beneath must not be clickable through it.
+
+   The doubled border is drawn with box-shadow rings rather than nested
+   elements: two solid rings at 3px and 5px give the CRT-bezel edge without a
+   wrapper div per ring. Squared corners throughout — a rounded corner is what
+   would make this read as app chrome instead of as the game. */
 .dlg-overlay {
   position: fixed; inset: 0; z-index: 9600;
   display: flex; align-items: flex-end; justify-content: center;
-  padding: 0 16px 24px;
+  padding: 0 14px 14px;
   background: rgba(0, 0, 0, .45);
   cursor: pointer;
 }
-.dlg-box {
-  display: flex; align-items: flex-end; gap: 14px;
-  width: 100%; max-width: 720px;
+.dlg-box { width: 100%; max-width: 660px; }
+.dlg-frame {
+  display: flex;
+  background: #0d1017;
+  border: 3px solid #55627a;
+  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line), 0 14px 36px -8px rgba(0, 0, 0, .9);
 }
-.dlg-bust { flex: 0 0 auto; line-height: 0; }
+.dlg-bust {
+  flex: 0 0 auto; padding: 10px; align-self: stretch;
+  display: flex; align-items: flex-end;
+  background: #11151d;
+  border-right: 3px solid #55627a;
+}
 .dlg-bust canvas {
-  image-rendering: pixelated;
-  display: block;
-  animation: dlg-bust-in 180ms ease-out;
+  image-rendering: pixelated; display: block;
+  animation: dlg-bust-in 180ms steps(3, end);
 }
+/* Stepped, not eased: a smooth slide under a pixel bust reads as a different
+   art style arriving with it. */
 @keyframes dlg-bust-in {
-  from { transform: translateX(-14px); opacity: 0; }
+  from { transform: translateX(-9px); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
-.dlg-body {
-  position: relative; flex: 1 1 auto;
-  background: var(--surface-2);
-  border: 2px solid var(--line-strong);
-  border-radius: var(--r-lg);
-  padding: 18px 18px 14px;
-  box-shadow: 0 18px 48px -12px rgba(0, 0, 0, .8);
-  min-height: 96px;
-}
+.dlg-body { position: relative; flex: 1 1 auto; padding: 9px 12px 11px; min-width: 0; }
 .dlg-plate {
-  position: absolute; top: -13px; left: 14px;
-  background: var(--surface-2);
-  border: 2px solid var(--line-strong);
-  border-radius: var(--r-sm, 4px);
-  padding: 2px 10px;
-  font-size: .78rem; font-weight: 700; letter-spacing: .03em;
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+  color: #7dd3a0; margin-bottom: 6px;
 }
 .dlg-text {
-  font-size: .95rem; line-height: 1.6; color: var(--text);
-  min-height: 3.2em; white-space: pre-wrap;
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .84rem; line-height: 1.55; color: #dbe4f0;
+  min-height: 3.1em; white-space: pre-wrap;
 }
 .dlg-blinker {
-  position: absolute; right: 12px; bottom: 8px;
-  font-size: .7rem; color: var(--text-mute);
+  position: absolute; right: 10px; bottom: 6px;
+  font-size: .62rem; color: #7dd3a0;
   animation: dlg-blink 1s steps(2, start) infinite;
 }
 @keyframes dlg-blink { to { visibility: hidden; } }
-.dlg-choices { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+/* Choices continue the frame downward — same rings, no top border, so the
+   stack reads as one console rather than as buttons under a box. */
+.dlg-choices { display: flex; flex-direction: column; }
 .dlg-choice {
-  text-align: left; padding: 9px 12px; cursor: pointer;
-  background: var(--surface-1, var(--surface-2));
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm, 4px);
-  color: var(--text); font: inherit; font-size: .88rem;
+  position: relative; text-align: left; cursor: pointer;
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .8rem; color: #dbe4f0;
+  background: #0d1017;
+  border: 3px solid #55627a; border-top: none;
+  padding: 8px 12px 8px 26px;
+  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line);
 }
-.dlg-choice:hover { border-color: var(--accent, var(--line-strong)); }
+.dlg-choice::before {
+  content: '\25B6'; position: absolute; left: 10px; top: 50%;
+  transform: translateY(-50%); font-size: .62rem; color: #7dd3a0;
+  opacity: 0;
+}
+.dlg-choice:hover, .dlg-choice:focus-visible { background: #161c26; outline: none; }
+.dlg-choice:hover::before, .dlg-choice:focus-visible::before { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
   .dlg-bust canvas { animation: none; }
@@ -2163,7 +2188,15 @@ Append to `style.css`:
 }
 ```
 
-If `--surface-1`, `--r-sm`, or `--accent` are not defined in this stylesheet, the fallbacks above already cover it — but check the `:root` block and prefer a variable that actually exists.
+The literal hex values here are intentional and are **not** a token oversight:
+this direction is deliberately outside the app's surface ramp. `--line` is
+still used for the outer ring so the frame agrees with the app's edge colour.
+
+Because `.dlg-frame` is a new wrapper element, `runDialogue` must build it —
+see the DOM assembly in Step 3, which nests `.dlg-bust` and `.dlg-body` inside
+`.dlg-frame`, with `.dlg-choices` a sibling of `.dlg-frame` inside `.dlg-box`.
+Markup without its matching CSS renders as unstyled plain text and every
+content assertion still passes, so this pairing gets checked by eye in Step 6.
 
 - [ ] **Step 5: Wire the script tags**
 

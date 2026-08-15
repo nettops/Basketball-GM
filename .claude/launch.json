@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "nba-gm",
-      "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "python scripts/devserver.py \"$PORT\""],
-      "port": 8124,
-      "autoPort": true
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["scripts/devserver.py", "8137"],
+      "port": 8137
     }
   ]
 }
