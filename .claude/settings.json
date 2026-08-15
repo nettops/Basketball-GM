@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/validate-*)",
+      "Bash(node scripts/probe-*)",
+      "Bash(node scripts/ui-smoke.js)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)",
+      "Read"
+    ]
+  }
+}
