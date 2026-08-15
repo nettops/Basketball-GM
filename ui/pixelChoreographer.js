@@ -358,7 +358,21 @@ function isDunker(player) {
 // league. Knock-on: crossovers freeze the game at 1x-4x, so highlights per
 // game at 4x rise from ~3.7 to ~5.8. Still comfortable; at 8x the bar excludes
 // ankle breakers entirely so nothing changes there.
-const IMPACT_THRESHOLDS = { poster: 47, ankle: 26 };
+// ankle was 26. Two things pushed it to 22.
+//
+// First, it had drifted without anyone noticing: 26 measured 3.65/game when it
+// was set on 2026-08-10, and 2.91/game after the real 2K27 rosters landed on
+// 08-13 — actual NBA ratings cross this edge less often than the generated ones
+// did. The band is wide enough that nothing failed.
+//
+// Second, more of them is wanted. Measured over the same 120 games, 22 gives
+// 4.50/game — half again what you see now, and comfortably under the band's
+// ceiling of 6. 20 was the next step down at 5.67 and was rejected: it leaves
+// no headroom for the next roster swap to drift into.
+//
+// Posters are unaffected at every candidate (1.59/game throughout) — the two
+// edges are independent, which is worth knowing before touching either.
+const IMPACT_THRESHOLDS = { poster: 47, ankle: 22 };
 
 // How badly the finisher beat the man protecting the rim.
 function posterEdge(shooter, defender) {
