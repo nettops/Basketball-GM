@@ -73,8 +73,14 @@ function familyOf(a, b) {
   if (b.dunk) return 'dunk.' + b.dunk.phase;
   if (b.jump) return 'jump' + (b.jump.three ? '3' : 'M') + '.' + b.jump.phase;
   if (b.cross) return 'cross.' + b.cross.phase;
+  // The layup, which had no phases to bucket by until it was given the same
+  // gather/rise/release/land the other two finishes have. Checked BEFORE the
+  // holder-transition rules below so its release lands in close.release rather
+  // than being swept into the generic shotRelease bucket with free throws.
+  if (b.close) return 'close.' + b.close.phase;
   if (a.dunk && a.dunk.phase === 'land') return 'dunk.after';
   if (a.jump && a.jump.phase === 'follow') return 'jump.after';
+  if (a.close && a.close.phase === 'land') return 'close.after';
   if (b.sfx === 'whistle') return 'freeThrow';
   if (b.ball.holder === null && a.ball.holder !== null) {
     // A shot leaves for a rim; a pass leaves for a teammate. They are the same

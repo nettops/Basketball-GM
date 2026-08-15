@@ -346,7 +346,20 @@ function renderPixelGame(container) {
   // keep looking the way they last ran; shake/hitch/quarter-card timers
   // drive the impact feedback.
   const facingById = {};
+  // When each leaper's feet last touched down, in playback ms, and off which
+  // kind of leap. Keyed by player so two men can be landing at once, which
+  // happens on every contested finish at the rim. Entries are left to go stale
+  // rather than swept: landingSquash answers zero past its recovery window, so
+  // a stale stamp costs one subtraction and draws nothing.
+  const landedAt = {};
+  // Each player's foot lift on the previous drawn frame, so a landing can be
+  // caught as the transition it is.
+  const prevFootById = {};
   let shakeStartMs = -Infinity;
+  // A dunk landing gets its own, separate from the collision shake: see where
+  // it is applied for why the two must not share a timer or an axis.
+  let landShakeStartMs = -Infinity;
+  const LAND_SHAKE_MS = 110;
   let hitchMs = 0;              // freeze-frame remaining (real ms, unscaled)
   let lastEffectKfT = -1;
   let lastQuarterSeen = 1;
@@ -572,6 +585,16 @@ function renderPixelGame(container) {
       shakeX = Math.round(Math.sin(playbackMs / 9) * 2);
       shakeY = Math.round(Math.cos(playbackMs / 7));
     }
+    // A LANDING IS A VERTICAL EVENT, and that is why it does not reuse the
+    // shake above. The collision shake rattles both axes on a ringing sine,
+    // which is right for two bodies meeting and wrong for one coming down: feet
+    // hitting the floor drive the picture down once and let it settle. A half
+    // sine does exactly that — it starts at zero, so it cannot pop on the frame
+    // it arms, and returns to zero, so it cannot leave the camera offset.
+    const landAge = playbackMs - landShakeStartMs;
+    if (landAge >= 0 && landAge < LAND_SHAKE_MS) {
+      shakeY += Math.round(Math.sin((landAge / LAND_SHAKE_MS) * Math.PI) * 2);
+    }
     ctx.save();
     ctx.translate(shakeX, shakeY);
     // Snap zoom on a highlight. Inside the shake transform and before the
@@ -606,6 +629,12 @@ function renderPixelGame(container) {
     const dunkerId = lifts.dunkerId, dunkerLift = lifts.dunkerLift;
     const jumperId = lifts.jumperId, jumperLift = lifts.jumperLift;
     const jumpFollow = lifts.jumpFollow;
+    const closerId = lifts.closerId;
+    // The layup's phase marker, for the finishing side. Read off whichever of
+    // the two bracketing keyframes actually carries it, the same way the ids
+    // above are resolved — on the release beat only `a` has it.
+    const closeMark = (fr.a.close && fr.a.close.id ? fr.a.close : (fr.b.close || null));
+
 
     // Who just got crossed over. The stumble starts on the CUT — he is still
     // upright while he bites on the jab — and holds through the windup so he
@@ -773,17 +802,64 @@ function renderPixelGame(container) {
       const isJumperNow = pid === jumperId;
       // The jump phases own the shooter outright now; the old 60ms-window
       // detection would otherwise fight them for the pose.
-      const shooting = !isDunkerNow && !isJumperNow &&
+      const isCloserNow = pid === closerId;
+      // An UNMARKED finish at the rim — a tip-in, a putback — still falls back
+      // to the old heuristic. A marked layup owns the branch by identity.
+      const shooting = !isDunkerNow && !isJumperNow && !isCloserNow &&
         isHolder && fr.b.ball.holder === null && shotComing;
       // A dunk owns the shooter's vertical outright: its arc is three times a
       // jumper's and runs past the release, so the two must not both apply.
       // anticipation: dip into the legs before rising into the shot
       const jumpLift = isDunkerNow
         ? dunkerLift
-        : (isJumperNow ? jumperLift : (shooting ? closeLift(fr.f) : 0));
+        : (isJumperNow ? jumperLift
+          : (isCloserNow ? lifts.closerLift : (shooting ? closeLift(fr.f) : 0)));
+      // FEET vs HIPS. A negative lift is a knee bend, and drawing it as `y -
+      // lift` put the whole sprite — feet included — below its own shadow for
+      // the whole anticipation of every shot in the game. `foot` is how far off
+      // the floor he actually is; `crouch` is the bend, and the sprite absorbs
+      // it by folding rather than sinking.
+      const footLift = Math.max(0, jumpLift);
+
+      // THE LANDING, caught as a transition between drawn frames rather than
+      // read off the lift curve. See justLanded() for why: the window in which
+      // a dunk's curve reports "down" is 3ms wide, and a renderer stepping
+      // 16.7ms walks over it four times in five.
+      const prevFoot = prevFootById[pid];
+      prevFootById[pid] = footLift;
+      if (justLanded(prevFoot, footLift)) {
+        const kind = isDunkerNow ? 'dunk' : (isCloserNow ? 'close' : 'jump');
+        landedAt[pid] = { at: playbackMs, kind: kind };
+        // A landing is an ANIMATION event, so it is announced from the frame
+        // the feet actually touch rather than from a keyframe's `sfx` field —
+        // the beat boundary can be a tenth of a second away from the frame that
+        // shows the contact.
+        if (speed <= 4) playPixelSfx(kind === 'dunk' ? 'landHard' : 'land');
+        // ...and the floor takes it. Only a dunk landing shakes the camera: a
+        // pull-up coming down four times a possession would be seasick, which
+        // is the same reasoning that keeps blocks out of the zoom tier.
+        if (!reduceMotion && kind === 'dunk' && speed < 8) landShakeStartMs = playbackMs;
+      }
+      // The squash outlives the beat it happened on, so it is added to whatever
+      // bend the current phase already asks for.
+      const land = landedAt[pid];
+      const landSquash = land ? landingSquash(playbackMs - land.at, land.kind) : 0;
+      const crouchPx = Math.max(0, -jumpLift) + landSquash;
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       const dunkPose = isDunkerNow && jumpLift >= 3;
+      // Same rule for the layup: the airborne pose starts once he is actually
+      // airborne, so the gather is drawn as a man loading up rather than as a
+      // man hanging with his knee up while his feet are on the floor.
+      const layupPose = isCloserNow && jumpLift >= 3
+        ? {
+            side: (closeMark && closeMark.side) || 1,
+            // Full extension is reached at the top of the rise and held through
+            // the release, so the arm arrives with the ball rather than after
+            // it.
+            extend: Math.max(0, Math.min(1, jumpLift / CLOSE_LIFT.rise))
+          }
+        : null;
       // ground shadow stays planted even when the sprite lifts
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
@@ -823,8 +899,17 @@ function renderPixelGame(container) {
         ctx.fillStyle = 'rgba(255,255,255,0.42)';
         ctx.fillRect(Math.round(x) - 7, Math.round(y) - 26, 14, 28);
       }
-      drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
+      drawPlayerSprite(ctx, x, y - footLift, colorsById[pid], p ? p.jerseyNumber : '', {
         heightIn: p ? p.heightIn : null,
+        crouch: crouchPx,
+        layup: layupPose,
+        // The handler's weight rides over the ball. Only the man actually
+        // dribbling leans — a lean on a body with no ball beside it is just the
+        // sprite standing crooked.
+        lean: (dribbleState && pid === dribbleHolder && !shooting && !isJumperNow &&
+               !dunkPose && !layupPose && !jumpFollow)
+          ? dribbleLean(dribbleState) * (facingById[pid] || 1)
+          : 0,
         frame: Math.floor((playbackMs + phase) / stride) % 2,
         // each player breathes on his own period, so ten sprites never pulse
         // in unison — the give-away that it is one global timer

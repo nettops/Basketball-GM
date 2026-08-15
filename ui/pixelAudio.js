@@ -99,6 +99,13 @@ function playPixelSfx(name) {
     // quietest voice by far: it fires several times a second, so it sits
     // under the action rather than competing with it
     case 'dribble': sfxNoise(a, 0.05, 'lowpass', 380, 0.8, 0.06); break;
+    // Feet hitting the floor. Fired from the animation frame the descent
+    // reports contact on, not from a keyframe, so it lands with the squash
+    // rather than at the beat boundary near it. Two weights: a jumper coming
+    // down off a pull-up and a dunker coming down off the rim are not the same
+    // event, and one voice for both makes the dunk sound weightless.
+    case 'land':     sfxNoise(a, 0.09, 'lowpass', 240, 0.9, 0.09); break;
+    case 'landHard': sfxNoise(a, 0.15, 'lowpass', 170, 1.0, 0.17); sfxTone(a, 90, 0.12, 'square', 0.07, 55); break;
     // The dialogue typewriter. Fires every third character, so it is kept
     // short and quiet for the same reason 'dribble' is — anything longer
     // turns a line of text into a buzz.

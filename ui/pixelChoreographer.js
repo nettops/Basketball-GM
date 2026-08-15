@@ -102,9 +102,18 @@ const BEAT = {
   // time is better spent there than on players strolling into position.
   transition: 580, formation: 540, fastBreak: 420, pass: 340, windup: 300, drive: 500,
   release: 60, flight3: 850, flightMid: 650, flightIn: 420,
-  // A layup gathers over this. Long enough for the ball to come up out of the
-  // dribble and the body to dip and rise -- twelve frames rather than four.
-  closeRelease: 200,
+  // The layup, in three beats, for the same reason the jump shot is in four.
+  //
+  // It used to be ONE 200ms beat with no phase markers on it, so the finish at
+  // the rim that is not a dunk was the only one in the game with no structure:
+  // twelve frames carrying the gather, the takeoff, the extension and the
+  // release at once, and the shooter's feet back on the floor by the frame the
+  // ball left his hand. Gather is the dip and the foot plant, rise is the
+  // takeoff, release is the extension the ball leaves from.
+  //
+  // Quicker than a dunk's 170/150 gather-and-rise on purpose: a layup is laid
+  // in off two steps, not exploded into.
+  closeGather: 150, closeRise: 130, closeRelease: 90,
   // Dunk beats. The rise is short and the hang is shorter — a leap that takes
   // as long as a jump shot's flight reads as floating, not exploding.
   dunkGather: 170, dunkRise: 150, dunkSlam: 90, dunkLand: 130,
@@ -795,6 +804,15 @@ function createChoreographer(session) {
     if (keyframes.length) keyframes[keyframes.length - 1].handle = meta;
   }
 
+  // Layup phase ('gather' | 'rise' | 'release' | 'land') plus who is finishing
+  // and which side of the rim he is going up on. Stamped rather than passed for
+  // the same reason `handle` is: push already carries thirteen positional
+  // parameters and the note beside it calls a fourteenth a bug waiting to
+  // happen. The view turns this into lift, crouch and the finishing hand.
+  function tagClose(meta) {
+    if (keyframes.length) keyframes[keyframes.length - 1].close = meta;
+  }
+
   // Which move is playing, on EVERY beat of a string rather than only the
   // first. `handle` stays a once-per-string marker because that is what
   // scripts/probe-dribbles.js counts; this is the per-frame one, because the
@@ -1445,8 +1463,18 @@ function createChoreographer(session) {
           const dstart = shotPos[victim];
           crossMeta = { by: handler, on: victim };
 
-          function step(hOff, dOff) {
-            const p = Object.assign({}, shotPos);
+          // The other eight keep playing. Measured over four games, 76% of
+          // players were motionless through the clear and the cross — the beat
+          // where the handler is supposed to be exploding into daylight was a
+          // ten-man freeze frame with two men moving in it. The dunk and the
+          // jump shot both had this and both were fixed the same way: flow the
+          // floor, lock the two the moment belongs to.
+          //
+          // Locking matters here more than anywhere else. The beaten defender
+          // has to STAY beaten, and a flowed victim would quietly drift back
+          // into the man who just crossed him.
+          function step(hOff, dOff, seed) {
+            const p = flowPositions(shotPos, [handler, victim], seed, defenderIds);
             p[handler] = clampToCourt(sp[0] + lx * dir * hOff, sp[1] + ly * dir * hOff);
             p[victim] = clampToCourt(dstart[0] + lx * dir * dOff, dstart[1] + ly * dir * dOff);
             return p;
@@ -1457,7 +1485,7 @@ function createChoreographer(session) {
           // Displacement was 7/13 -> -8/17 -> 0/19, which left two body widths
           // of daylight on a 10px sprite. Now 10/20 -> -12/26 -> 0/30: three
           // body widths, chosen from four treatments played side by side.
-          const jab = step(10, 20);
+          const jab = step(10, 20, pi * 31 + ei);
           push(BEAT.crossJab, jab, { x: jab[handler][0], y: jab[handler][1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'jab', by: handler, on: victim });
           // This string is the possession's dribbles — see the `ankle` branch
@@ -1469,12 +1497,12 @@ function createChoreographer(session) {
           // most of them: measured at 0.64 hand changes per ankle breaker.
           tagDribble('ankle', ANKLE_BEATS, 0);
           // cut back hard; he keeps going the wrong way
-          const cut = step(-12, 26);
+          const cut = step(-12, 26, pi * 37 + ei * 3);
           push(BEAT.crossCut, cut, { x: cut[handler][0], y: cut[handler][1], holder: handler },
             period, quarter, clock, '', '', 'squeak', null, null, { phase: 'cross', by: handler, on: victim });
           tagDribble('ankle', ANKLE_BEATS, 1);
           // and rise into the shot with the separation already open
-          const clear = step(0, 30);
+          const clear = step(0, 30, pi * 41 + ei * 5);
           push(BEAT.crossClear, clear, { x: sp[0], y: sp[1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'clear', by: handler, on: victim });
           tagDribble('ankle', ANKLE_BEATS, 2);
@@ -1645,20 +1673,45 @@ function createChoreographer(session) {
             { phase: 'follow', id: jumpBy, three: three });
           curPos = crashPos;
         } else {
-          // release: ball leaves the hands...
-          // BEAT.closeRelease, not BEAT.release. A layup's entire gather -- the
-          // ball coming up out of the dribble AND the body's dip into the
-          // finish -- lived inside the 60ms release beat, which at 60fps is
-          // four frames. That is the same defect the jump shot was given its
-          // own gather and rise beats to fix; shots at the rim that are not
-          // dunks never got it.
+          // The layup, in the three beats the jump shot and the dunk have had
+          // all along. One 200ms beat carried the gather, the takeoff, the
+          // extension and the release together, which is why the finish read as
+          // a bump rather than as a man going up.
+          //
+          // `closeSide` is the direction of the rim from where he gathers, and
+          // it is what stops a left-side finish being the right-side one drawn
+          // backwards: the view puts the ball on the leading hand and angles the
+          // body from it.
+          const closeBy = ev.playerId;
+          const closeSide = hoop.x >= relSpot[0] ? 1 : -1;
+          const closeLock = [ev.playerId, ev.defenderId];
+          // The floor keeps playing through all three, locked on the two men the
+          // moment belongs to — the same treatment the jump shot needed when it
+          // measured a ten-man freeze frame through its rise.
+          push(BEAT.closeGather,
+            flowPositions(releasePos, closeLock, pi * 23 + ei, defenderIds),
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '');
+          tagClose({ phase: 'gather', id: closeBy, side: closeSide });
+          push(BEAT.closeRise,
+            flowPositions(releasePos, closeLock, pi * 29 + ei * 3, defenderIds),
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '');
+          tagClose({ phase: 'rise', id: closeBy, side: closeSide });
+          // release: ball leaves the hands, at the top of the finish rather than
+          // with his feet already back on the floor
           push(BEAT.closeRelease, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
+          tagClose({ phase: 'release', id: closeBy, side: closeSide });
           // ...and flies to the rim while everyone crashes the glass — the
           // floor keeps moving for the whole flight instead of freezing
           push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
             ev.made ? madeLabel : '', shotComment,
             ev.made ? (dunking ? 'dunk' : 'swish') : 'clang',
             impactMarker);
+          // ...and he comes down on it. Without a 'land' phase the finisher was
+          // still at full lift when the release beat ended and simply cut to
+          // standing on the next frame.
+          tagClose({ phase: 'land', id: closeBy, side: closeSide });
           curPos = crashPos;
         }
         // missed shots rattle off the rim before the board scramble
@@ -1743,6 +1796,11 @@ if (typeof module !== 'undefined' && module.exports) {
     groupPossessions: groupPossessions,
     assignSlots: assignSlots,
     DUNK_REACH: DUNK_REACH,
+    // Exported so the animation lab and any timing check read the SAME beat
+    // lengths the game plays at, rather than a copy that drifts the first time
+    // one of them is retuned.
+    BEAT: BEAT,
+    ANKLE_BEATS: ANKLE_BEATS,
     IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
     roll01: roll01,
     dribbleCount: dribbleCount,

@@ -145,6 +145,37 @@ function spriteTallness(heightIn) {
 // the tall man leggy (which is true of tall people) without halving anybody.
 function spriteLegDelta(tall) { return Math.round(tall * 0.6); }
 
+// KNEE BEND, and why it is not the same thing as moving the sprite down.
+//
+// Anticipation used to be drawn by the view as `y - lift` with a negative lift,
+// which slides the whole body — feet included — below the shadow. A man loading
+// up for a shot does not sink into the court: his feet stay where they are, his
+// knees fold, and everything above the knees comes down with them. That is what
+// `crouch` does here, and it is the difference between the gather reading as
+// effort and reading as a rendering fault.
+//
+// The bend is SPLIT between the knees and the waist, for the same reason
+// spriteLegDelta splits height between legs and torso: legs are only 6px on a
+// standard body and 4px on a short guard, so taking the whole bend out of them
+// either eats the shins outright or leaves the players who take most of the
+// shots with a 1px gather. A real gather folds at both joints anyway.
+//
+// Floors on each: 3px of shin and 5px of torso have to survive, or the
+// silhouette stops reading as a person and starts reading as a drawing bug.
+const CROUCH_MIN_LEG = 3;
+const CROUCH_MIN_TORSO = 5;
+
+// Returns { hip, head }: how far the hips drop (the knees folding) and how far
+// the shoulders drop (the knees plus the waist). They differ, and that
+// difference is what makes it a squat rather than the sprite shrinking.
+function crouchSplit(crouch, legLen, torsoLen) {
+  const c = typeof crouch === 'number' && crouch > 0 ? Math.round(crouch) : 0;
+  if (!c) return { hip: 0, head: 0 };
+  const hip = Math.min(c, Math.max(0, legLen - CROUCH_MIN_LEG));
+  const waist = Math.min(c - hip, Math.max(0, torsoLen - CROUCH_MIN_TORSO));
+  return { hip: hip, head: hip + waist };
+}
+
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   opts = opts || {};
   const left = Math.round(x) - 5;
@@ -155,7 +186,16 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   const tall = typeof opts.tall === 'number' ? opts.tall : spriteTallness(opts.heightIn);
   const legT = spriteLegDelta(tall);      // added to leg length
   const bodyT = tall - legT;              // added to torso length
-  const topU = top - tall;   // head and shoulders — everything above the torso
+  // How far the hips and the shoulders drop with the feet planted.
+  const bend = crouchSplit(opts.crouch, 6 + legT, 8 + bodyT);
+  const hipDrop = bend.hip;
+  const waist = bend.head - bend.hip;   // the fold at the waist, on top of the knees
+  // Torso lean, in whole pixels so nothing lands between them. The legs do NOT
+  // take it — a body leaning over planted feet is the whole point, and moving
+  // both together is just the sprite sliding sideways.
+  const lean = Math.round(opts.lean || 0);
+  const topU = top - tall + bend.head;  // head and shoulders — everything above the torso
+  const lx = left + lean;               // upper-body x, leaned off the planted feet
   const facing = opts.facing || 0;
 
   if (opts.highlight) {
@@ -179,27 +219,47 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   if (opts.dunking) {
     ctx.fillRect(left + 1, topU + 18, 2, 4);  // trail leg, bent back
     ctx.fillRect(left + 6, topU + 17, 2, 3);  // lead knee driven up
+  } else if (opts.layup) {
+    // A dunker tucks BOTH legs under him; a layup drives ONE knee and lets the
+    // other trail. That asymmetry is most of what separates the two
+    // silhouettes in the air, and without it every finish at the rim read as
+    // the same airborne shape at a different height.
+    const lead = (opts.layup.side || 1) >= 0;
+    ctx.fillRect(left + (lead ? 6 : 2), topU + 16, 2, 4);   // driven knee
+    ctx.fillRect(left + (lead ? 2 : 6), topU + 19, 2, 5);   // trail leg hanging
   } else if (opts.stumbling) {
     // Legs splayed WIDE and buckling. The old pose was symmetric — both legs
     // the same length at the same height — which reads as a wide defensive
     // stance rather than as losing your feet. Now the trail leg skids out from
     // under him while the front leg collapses shorter and lower, so the two
     // sides disagree about where his weight is going.
-    ctx.fillRect(left - 3, topU + 21, 4, 3);   // trail leg skidding out
-    ctx.fillRect(left + 8, topU + 22, 4, 2);   // front leg collapsed under him
+    // Anchored to the FLOOR, not to the shoulder line. These used to hang off
+    // `topU`, which moves with the player's height — so a 6'0" guard's splayed
+    // legs punched 3px through the court and a 7'7" centre's floated 5px above
+    // it. A man losing his feet is still standing on them; it is the same
+    // defect the shooting gather had, in the one pose where the legs are the
+    // whole point.
+    const footY = top + 24;
+    ctx.fillRect(left - 3, footY - 3, 4, 3);   // trail leg skidding out
+    ctx.fillRect(left + 8, footY - 2, 4, 2);   // front leg collapsed under him
   } else {
     // idle shifts the weight onto one leg: that hip drops a pixel and the
-    // other leg shortens, which is the smallest change that reads as alive
-    ctx.fillRect(left + 2, top + 18 - legT + bob + idle, 2, 6 + legT - bob - idle);
-    ctx.fillRect(left + 6, top + 18 - legT + bob2, 2, 6 + legT - bob2 - idle);
+    // other leg shortens, which is the smallest change that reads as alive.
+    // `hipDrop` folds the knees on top of that, feet staying put.
+    const legY = top + 18 - legT + hipDrop;
+    const legH = 6 + legT - hipDrop;
+    ctx.fillRect(left + 2, legY + bob + idle, 2, Math.max(1, legH - bob - idle));
+    ctx.fillRect(left + 6, legY + bob2, 2, Math.max(1, legH - bob2 - idle));
   }
-  // shorts
+  // shorts — ride the hips, so they come down with the knees but not with the
+  // extra fold at the waist
   ctx.fillStyle = colors.jersey;
-  ctx.fillRect(left + 1, topU + 15 + bodyT, 8, 4);
-  // torso / jersey
-  ctx.fillRect(left + 1, topU + 8, 8, 8 + bodyT);
+  ctx.fillRect(lx + 1, top + 15 - legT + hipDrop, 8, 4);
+  // torso / jersey. Shortened by the fold at the waist so the shoulders can
+  // come down further than the hips without the chest stretching to meet them.
+  ctx.fillRect(lx + 1, topU + 8, 8, Math.max(1, 8 + bodyT - waist));
   ctx.fillStyle = colors.trim;
-  ctx.fillRect(left + 1, topU + 8, 8, 1); // shoulder trim
+  ctx.fillRect(lx + 1, topU + 8, 8, 1); // shoulder trim
   // arms: raised when shooting, swinging opposite the legs when running
   ctx.fillStyle = colors.skin;
   if (opts.dunking) {
@@ -207,26 +267,42 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // shooter's arms stop at the hairline, so the extended arm is what reads
     // as "going up at the rim" rather than "taking a jumper".
     const ballSide = (opts.facing || 0) >= 0;
-    ctx.fillRect(left + (ballSide ? 8 : 0), topU - 6, 2, 14);
-    ctx.fillRect(left + (ballSide ? 0 : 8), topU + 3, 2, 7);
+    ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6, 2, 14);
+    ctx.fillRect(lx + (ballSide ? 0 : 8), topU + 3, 2, 7);
+  } else if (opts.layup) {
+    // The finishing hand goes up on the side he is going up from, and the OFF
+    // arm tucks across the chest rather than hanging — that tuck is the ball
+    // protection the brief asks for, and it is also what stops the pose being
+    // read as a dunk that fell short.
+    //
+    // `extend` (0..1) is how far through the reach he is, so the arm rises into
+    // full extension over the rise and release beats instead of appearing at
+    // full stretch on the frame the pose switches on.
+    const lead = (opts.layup.side || 1) >= 0;
+    const ext = Math.max(0, Math.min(1, opts.layup.extend === undefined ? 1 : opts.layup.extend));
+    const reach = Math.round(ext * 5);            // 0 at the gather, 5 at full stretch
+    ctx.fillRect(lx + (lead ? 8 : 0), topU + 3 - reach, 2, 7 + reach);
+    // off arm across the body, held in tight
+    ctx.fillRect(lx + (lead ? 3 : 5), topU + 10, 2, 2);
+    ctx.fillRect(lx + (lead ? 1 : 7), topU + 9, 2, 4);
   } else if (opts.stumbling) {
     // Arms flung out ASYMMETRICALLY and further than before — lead arm thrown
     // up and out, trail arm dropped behind. Both arms at the same height reads
     // as a shrug; the mismatch is what reads as falling. Total reach widens
     // from 14px to 17px, which is what makes the silhouette carry at speed.
-    ctx.fillRect(left - 4, topU + 6, 4, 2);    // lead arm flung up and out
-    ctx.fillRect(left + 9, topU + 13, 4, 2);   // trail arm dropped behind
+    ctx.fillRect(lx - 4, topU + 6, 4, 2);    // lead arm flung up and out
+    ctx.fillRect(lx + 9, topU + 13, 4, 2);   // trail arm dropped behind
   } else if (opts.following) {
     // Follow-through: shooting hand still up and snapped over, guide hand
     // dropped away. Held while the ball is in the air — this is the pose that
     // actually says "jump shot" rather than "player with both arms up".
     const hand = (opts.facing || 0) >= 0;
-    ctx.fillRect(left + (hand ? 8 : 0), topU - 2, 2, 10);
-    ctx.fillRect(left + (hand ? 8 : 0) + (hand ? -1 : 1), topU - 3, 2, 1);   // snapped wrist
-    ctx.fillRect(left + (hand ? 0 : 8), topU + 10, 2, 5);
+    ctx.fillRect(lx + (hand ? 8 : 0), topU - 2, 2, 10);
+    ctx.fillRect(lx + (hand ? 8 : 0) + (hand ? -1 : 1), topU - 3, 2, 1);   // snapped wrist
+    ctx.fillRect(lx + (hand ? 0 : 8), topU + 10, 2, 5);
   } else if (opts.shooting) {
-    ctx.fillRect(left, topU + 2, 2, 7);
-    ctx.fillRect(left + 8, topU + 2, 2, 7);
+    ctx.fillRect(lx, topU + 2, 2, 7);
+    ctx.fillRect(lx + 8, topU + 2, 2, 7);
   } else if (opts.dribbling) {
     // He is actually dribbling the ball. Before this the ball bounced beside a
     // man whose arms were doing the idle weight-shift — nobody's hand ever went
@@ -248,24 +324,24 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     const ballRight = opts.dribbling.side >= 0;
     const crossing = !!opts.dribbling.crossing;
     const offArmY = topU + 9 - (opts.moving ? bob2 : -idle);
-    ctx.fillRect(left + (ballRight ? 0 : 8), offArmY, 2, 6 + bodyT + (crossing ? reach : 0));
-    ctx.fillRect(left + (ballRight ? 8 : 0), topU + 9, 2, 6 + bodyT + reach);
+    ctx.fillRect(lx + (ballRight ? 0 : 8), offArmY, 2, 6 + bodyT + (crossing ? reach : 0));
+    ctx.fillRect(lx + (ballRight ? 8 : 0), topU + 9, 2, 6 + bodyT + reach);
   } else if (opts.moving) {
-    ctx.fillRect(left, topU + 9 - bob2, 2, 6 + bodyT);
-    ctx.fillRect(left + 8, topU + 9 - bob, 2, 6 + bodyT);
+    ctx.fillRect(lx, topU + 9 - bob2, 2, 6 + bodyT);
+    ctx.fillRect(lx + 8, topU + 9 - bob, 2, 6 + bodyT);
   } else {
     // the arms ride the weight shift too, opposite shoulders
-    ctx.fillRect(left, topU + 9 + idle, 2, 6 + bodyT);
-    ctx.fillRect(left + 8, topU + 9, 2, 6 + bodyT);
+    ctx.fillRect(lx, topU + 9 + idle, 2, 6 + bodyT);
+    ctx.fillRect(lx + 8, topU + 9, 2, 6 + bodyT);
   }
   // head + hair, leaning 1px into the direction of travel
-  ctx.fillRect(left + 3 + facing, topU + 2, 4, 5);
+  ctx.fillRect(lx + 3 + facing, topU + 2, 4, 5);
   ctx.fillStyle = colors.hair;
-  ctx.fillRect(left + 2 + facing, topU, 6, 3);
+  ctx.fillRect(lx + 2 + facing, topU, 6, 3);
   // jersey number (single digit centered, two digits offset)
   const numStr = String(number == null ? '' : number);
   if (numStr.length > 0) {
-    const numX = left + (numStr.length === 1 ? 4 : 2);
+    const numX = lx + (numStr.length === 1 ? 4 : 2);
     drawPixelNumber(ctx, numX, topU + 10, numStr, colors.trim);
   }
 }
@@ -439,6 +515,9 @@ if (typeof module !== 'undefined' && module.exports) {
     SPRITE_HEIGHT: SPRITE_HEIGHT,
     spriteTallness: spriteTallness,
     spriteLegDelta: spriteLegDelta,
+    CROUCH_MIN_LEG: CROUCH_MIN_LEG,
+    CROUCH_MIN_TORSO: CROUCH_MIN_TORSO,
+    crouchSplit: crouchSplit,
     drawPlayerSprite: drawPlayerSprite,
     drawBall: drawBall
   };

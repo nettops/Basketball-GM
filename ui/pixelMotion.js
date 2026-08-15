@@ -32,6 +32,25 @@ function dunkLiftAt(kf) {
   return (d && DUNK_LIFT[d.phase] !== undefined) ? DUNK_LIFT[d.phase] : 0;
 }
 
+// A NEGATIVE LIFT IS A KNEE BEND, NOT A MAN SINKING THROUGH THE FLOOR.
+//
+// The gather beats carry negative lifts (-2 on a dunk, -3 on a pull-up, -4 on a
+// three) and the view drew them as `y - lift`, which translates the WHOLE
+// sprite down — feet included. The shadow is drawn at `y` and does not move, so
+// for the entire anticipation of every shot in the game the player stood up to
+// four pixels BELOW his own shadow, with his feet under the floor. It reads as
+// the court swallowing him rather than as him loading up.
+//
+// The two halves of that number mean different things and have to be drawn
+// differently: the positive part lifts the feet off the ground, the negative
+// part is compression with the feet planted. Splitting it here rather than in
+// the view keeps it testable and keeps the BALL untouched — the ball hangs off
+// the shoulders, which really do drop with the hips, so ball math still reads
+// the raw signed lift exactly as before.
+function liftToPose(raw) {
+  return { foot: Math.max(0, raw), crouch: Math.max(0, -raw) };
+}
+
 // Jump shot. Smaller than a dunk on purpose — a pull-up is not a leap — but a
 // three gets more of everything, because a deep shot is a bigger effort.
 const JUMP_LIFT = { gather: -3, rise: 9, release: 9, follow: 0 };
@@ -46,6 +65,24 @@ function jumpLiftAt(kf) {
   return j.three ? Math.round(base * 1.35) : base;
 }
 
+// THE LAYUP, which used to be the one finish at the rim with no phases in it.
+//
+// A dunk has gather/rise/slam/land and a jumper has gather/rise/release/follow;
+// a layup had a single 200ms beat and `closeLift(f)`, a sine hump that returned
+// to ZERO at the end of the beat — which is the frame the ball leaves. So the
+// game released every layup at the instant the shooter's feet were back on the
+// floor, and the whole finish was a 12-frame bump with the generic both-arms-up
+// jump-shot pose on top of it.
+//
+// Now it is built like the other two. Lower than a dunk, quicker than a jumper,
+// and — the point of the whole exercise — STILL IN THE AIR at the release, with
+// the descent handled after the ball has gone.
+const CLOSE_LIFT = { gather: -3, rise: 8, release: 9, land: 0 };
+function closeLiftAt(kf) {
+  const c = kf && kf.close;
+  return (c && CLOSE_LIFT[c.phase] !== undefined) ? CLOSE_LIFT[c.phase] : 0;
+}
+
 // How far above his own feet a player holds the ball at full extension, by
 // shot kind. These are the numbers the finished poses already used and they do
 // not move — what changed is how the ball GETS here (see heldBallOffset).
@@ -55,6 +92,33 @@ const DUNK_BALL_HIGH = 30;
 const CLOSE_BALL_HIGH = 24;
 
 function motionLerp(a, b, f) { return a + (b - a) * f; }
+
+// How long a leaper takes to come down, in real ms, regardless of how long the
+// beat he comes down on happens to be.
+//
+// The descent is deliberately NOT spread across the beat. The last beat of a
+// jump shot is the ball's whole flight (650-850ms), and easing him down over
+// all of it would leave him hanging in the air until the ball reached the rim.
+// A layup has the same problem for the same reason; a dunk does not, because
+// its landing beat is already short and shaped for it.
+const DESCENT_MS = { jump: 170, close: 200 };
+
+// One leaper, resolved. Factored out because the layup needs precisely what the
+// jumper already had, and a third copy of this arithmetic is a third place for
+// the descent to be got subtly wrong.
+function resolveLeaper(a, b, f, liftAt, markerKey, descentMs) {
+  const ma = a[markerKey], mb = b[markerKey];
+  const id = (ma && ma.id) || (mb && mb.id) || null;
+  if (!id) return { id: null, lift: 0 };
+  const la = liftAt(a), lb = liftAt(b);
+  const spanMs = Math.max(1, b.t - a.t);
+  const falling = lb < la;
+  // Descent runs on its own clock; the rise still uses beat progress.
+  const jf = (falling && descentMs) ? Math.min(1, f * (spanMs / descentMs)) : f;
+  const ef = lb > la ? 1 - Math.pow(1 - jf, 2) : Math.pow(jf, 1.4);
+  const lift = Math.round(la + (lb - la) * ef);
+  return { id: id, lift: lift };
+}
 
 // Who is airborne on this frame and by how much.
 //
@@ -72,31 +136,97 @@ function resolveLifts(a, b, f, reduceMotion) {
     dunkerLift = Math.round(la + (lb - la) * ef);
   }
 
-  // The jumper. The descent is deliberately NOT spread across the beat: the
-  // last beat of a jump shot is the ball's whole flight (650-850ms), and
-  // easing him down over all of it would leave him hanging in the air until
-  // the ball reached the rim. He comes down in a fixed 170ms whatever the beat
-  // length, then stands in his follow-through.
-  const jumpA = a.jump, jumpB = b.jump;
-  const jumperId = (jumpA && jumpA.id) || (jumpB && jumpB.id) || null;
-  let jumperLift = 0, jumpFollow = false;
-  if (jumperId && !reduceMotion) {
-    const la = jumpLiftAt(a), lb = jumpLiftAt(b);
-    const spanMs = Math.max(1, b.t - a.t);
-    const jf = lb < la ? Math.min(1, f * (spanMs / 170)) : f;
-    const ef = lb > la ? 1 - Math.pow(1 - jf, 2) : Math.pow(jf, 1.4);
-    jumperLift = Math.round(la + (lb - la) * ef);
-    // Follow-through runs from the release, for as long as the ball is in the
-    // air — but capped. Left uncapped it rode the 'follow' keyframe into the
-    // rebound beat as well, so shooters stood posing with their hand up for
-    // 1.6s while the board was being fought for.
-    jumpFollow = !!(jumpA && jumpA.phase === 'release' && f * spanMs < JUMP_FOLLOW_MAX_MS);
-  }
+  const jumper = reduceMotion ? { id: null, lift: 0 }
+    : resolveLeaper(a, b, f, jumpLiftAt, 'jump', DESCENT_MS.jump);
+  const jumpA = a.jump;
+  const spanMs = Math.max(1, b.t - a.t);
+  const jumperId = (jumpA && jumpA.id) || (b.jump && b.jump.id) || null;
+  const jumperLift = jumper.lift;
+  // Follow-through runs from the release, for as long as the ball is in the
+  // air — but capped. Left uncapped it rode the 'follow' keyframe into the
+  // rebound beat as well, so shooters stood posing with their hand up for
+  // 1.6s while the board was being fought for.
+  const jumpFollow = !reduceMotion &&
+    !!(jumpA && jumpA.phase === 'release' && f * spanMs < JUMP_FOLLOW_MAX_MS);
 
+  // The layup, on exactly the machinery the jumper uses.
+  const closer = reduceMotion ? { id: null, lift: 0 }
+    : resolveLeaper(a, b, f, closeLiftAt, 'close', DESCENT_MS.close);
+
+  // The signed lifts stay exactly as they were — the ball reads them and its
+  // path must not move. `*Foot` and `*Crouch` are the same numbers split for
+  // the sprite: feet off the floor, and knees bent with the feet down.
+  const dunkPose = liftToPose(dunkerLift);
+  const jumpPose = liftToPose(jumperLift);
+  const closePose = liftToPose(closer.lift);
   return {
     dunkerId: dunkerId, dunkerLift: dunkerLift,
-    jumperId: jumperId, jumperLift: jumperLift, jumpFollow: jumpFollow
+    dunkerFoot: dunkPose.foot, dunkerCrouch: dunkPose.crouch,
+    jumperId: jumperId, jumperLift: jumperLift, jumpFollow: jumpFollow,
+    jumperFoot: jumpPose.foot, jumperCrouch: jumpPose.crouch,
+    closerId: closer.id, closerLift: closer.lift,
+    closerFoot: closePose.foot, closerCrouch: closePose.crouch
   };
+}
+
+// THE LANDING, which until now did not exist.
+//
+// Measured over four games, the dunk's `land` beat is 130ms during which 100%
+// of players hold a keyframe position exactly — and the sprite cuts from the
+// airborne pose (legs tucked, arm over the head) straight back to standing on
+// one frame. A leap that ends by snapping to idle throws away the whole leap:
+// there is no contact, no compression, no recovery, so nothing on screen says
+// the man just came down off the rim carrying his own weight.
+//
+// This is a curve on REAL time since the feet touched, not on beat progress,
+// for the same reason the jump-shot descent is: the beat that follows a landing
+// is whatever the possession does next and can be four times as long as the
+// landing should be. Compression is fast and recovery is slower — that ratio is
+// what makes it read as weight rather than as a bounce.
+const LANDING_COMPRESS_MS = 70;
+const LANDING_RECOVER_MS = 190;
+const LANDING_SQUASH_PX = { dunk: 4, jump: 2, close: 3 };
+
+function landingSquashPx(kind) {
+  return LANDING_SQUASH_PX[kind] !== undefined ? LANDING_SQUASH_PX[kind] : LANDING_SQUASH_PX.jump;
+}
+
+// Returns the knee bend, in pixels, `ms` after the feet touched. Zero before
+// contact and zero once recovered, so a caller can hold a stale stamp forever
+// and simply get nothing — which is what makes it safe to seek into.
+function landingSquash(ms, kind) {
+  if (typeof ms !== 'number' || ms < 0) return 0;
+  const peak = landingSquashPx(kind);
+  if (ms < LANDING_COMPRESS_MS) {
+    // Into the floor. Eased out so the deepest point is approached rather than
+    // hit on one frame — a linear ramp here reads as a stutter at this size.
+    const f = ms / LANDING_COMPRESS_MS;
+    return peak * (1 - Math.pow(1 - f, 2));
+  }
+  const g = (ms - LANDING_COMPRESS_MS) / LANDING_RECOVER_MS;
+  if (g >= 1) return 0;
+  // Back up, unhurried. Slower out than in is the whole point: it is the
+  // difference between absorbing a landing and rebounding off the floor.
+  return peak * Math.pow(1 - g, 1.7);
+}
+
+const LANDING_TOTAL_MS = LANDING_COMPRESS_MS + LANDING_RECOVER_MS;
+
+// HAS HE JUST LANDED? Compares the foot lift on the previous drawn frame with
+// this one.
+//
+// This is a frame-to-frame test rather than something the lift curve reports,
+// and that is not a stylistic choice — the first version had `resolveLeaper`
+// hand back "how long ago the feet touched", solved from the easing. It was
+// correct and it was useless: a dunk's fall is `round(13 * (1 - f^1.6))` over a
+// 130ms beat, so the window between the lift rounding to zero and the beat
+// ending is **3.1ms wide**. A renderer stepping 16.7ms at a time walks straight
+// over it about four times in five, and the landing simply never fires.
+//
+// A transition test cannot miss, because the view asks it on every frame it
+// actually draws — whatever the beat lengths, whatever the playback speed.
+function justLanded(prevFoot, foot) {
+  return typeof prevFoot === 'number' && prevFoot > 0 && foot <= 0;
 }
 
 // WHERE A HELD BALL SITS, and the one idea that governs all of it.
@@ -417,6 +547,32 @@ function dribbleNow(clock, move) {
   };
 }
 
+// THE WEIGHT UNDER THE DRIBBLE.
+//
+// The dribble pose animated arms and nothing else: the ball swung 15px around a
+// man whose torso never moved, so a crossover was a prop travelling past a
+// statue. A handler's weight is over the hand the ball is in, and a crossover
+// is that weight crossing — which is why this rides `sign`, the same value the
+// ball and the dribbling arm already share. Nothing here can disagree with
+// where the ball is, because it is derived from where the ball is.
+//
+// It is also continuous by construction, which is the property this file cares
+// about most. `sign` sweeps -1 -> 0 -> +1 through the floor contact, so the
+// lean passes through upright exactly as the ball passes his centre line. An
+// instant flip would be the torso teleporting, which is the same defect class
+// as the ball teleporting and reads worse.
+//
+// Small numbers on purpose. The body is 10px wide; 2px of lean is a fifth of
+// him, which at this size is a pronounced shift rather than a subtle one.
+const DRIBBLE_LEAN_PX = 1;
+const CROSS_LEAN_PX = 2;
+
+function dribbleLean(now) {
+  if (!now) return 0;
+  const amp = now.crossing ? CROSS_LEAN_PX : DRIBBLE_LEAN_PX;
+  return amp * now.sign;
+}
+
 // How far through his gather a leaper is: 0 with his feet down, 1 at the top.
 //
 // Anchored at lift ZERO, not at the bottom of the dip. A shooter ENTERS these
@@ -428,9 +584,14 @@ function dribbleNow(clock, move) {
 function cockTo(lift, apex) { return Math.max(0, Math.min(1, lift / apex)); }
 function dunkCock(lift) { return cockTo(lift, DUNK_LIFT.rise); }
 function jumpCock(lift) { return cockTo(lift, JUMP_LIFT.rise); }
-// A layup has no phase markers — it is a plain beat that happens to end with
-// the ball gone — so its gather runs on beat progress instead.
-function closeCock(f) { return Math.max(0, Math.min(1, f)); }
+// A marked layup gathers on its own rise, exactly like the other two finishes.
+function closeCock(lift) { return cockTo(lift, CLOSE_LIFT.rise); }
+// An UNMARKED finish at the rim — a tip-in, a putback, anything under reduced
+// motion — is still a plain beat that happens to end with the ball gone, so its
+// gather runs on beat progress. Kept as its own function rather than folded in,
+// because the two take different units and mixing them silently saturates the
+// blend at one end or never reaches it at the other.
+function closeCockAtBeat(f) { return Math.max(0, Math.min(1, f)); }
 
 // The body lift for a close shot: a dip into the legs, then a rise into the
 // finish. Lives here rather than in the view's sprite loop because the BALL
@@ -464,6 +625,11 @@ function ballMode(s) {
   // fix: identity decides the branch, height only decides the offset.
   if (s.holder === s.lifts.jumperId && !s.reduceMotion) return 'jump';
   if (s.holder === s.lifts.dunkerId && !s.reduceMotion) return 'dunk';
+  // Identity first, for the same reason the other two branch on it. The
+  // heuristic below it is kept as the fallback for finishes at the rim that
+  // carry no phase markers — a tip-in, a putback, and anything under
+  // prefers-reduced-motion, where the marker path is switched off entirely.
+  if (s.holder === s.lifts.closerId && !s.reduceMotion) return 'close';
   if (s.b.ball.holder === null && s.shotComing) return 'close';
   return 'dribble';
 }
@@ -518,12 +684,15 @@ function ballPosition(s) {
 
     // One gather for all three shot kinds: how high the body is, how far
     // through the gather he is, and where the dribble left the ball.
+    // A marked layup rides its own phases like the other two finishes; an
+    // unmarked one (tip-in, putback, reduced motion) still rides beat progress.
+    const marked = mode === 'close' && s.holder === s.lifts.closerId;
     const lift = mode === 'jump' ? s.lifts.jumperLift
       : mode === 'dunk' ? s.lifts.dunkerLift
-      : closeLift(s.f);
+      : (marked ? s.lifts.closerLift : closeLift(s.f));
     const cock = mode === 'jump' ? jumpCock(s.lifts.jumperLift)
       : mode === 'dunk' ? dunkCock(s.lifts.dunkerLift)
-      : closeCock(s.f);
+      : (marked ? closeCock(s.lifts.closerLift) : closeCockAtBeat(s.f));
     const off = heldBallOffset(mode, lift, cock, drib);
     let bx = hx + face * off.side;
     let by = hy - off.up;
@@ -707,6 +876,19 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DUNK_LIFT: DUNK_LIFT,
     JUMP_LIFT: JUMP_LIFT,
+    CLOSE_LIFT: CLOSE_LIFT,
+    closeLiftAt: closeLiftAt,
+    liftToPose: liftToPose,
+    resolveLeaper: resolveLeaper,
+    DESCENT_MS: DESCENT_MS,
+    LANDING_COMPRESS_MS: LANDING_COMPRESS_MS,
+    LANDING_RECOVER_MS: LANDING_RECOVER_MS,
+    LANDING_TOTAL_MS: LANDING_TOTAL_MS,
+    LANDING_SQUASH_PX: LANDING_SQUASH_PX,
+    landingSquash: landingSquash,
+    justLanded: justLanded,
+    landingSquashPx: landingSquashPx,
+    closeCockAtBeat: closeCockAtBeat,
     JUMP_FOLLOW_MAX_MS: JUMP_FOLLOW_MAX_MS,
     JUMP_BALL_HIGH: JUMP_BALL_HIGH,
     DUNK_BALL_HIGH: DUNK_BALL_HIGH,
@@ -732,6 +914,9 @@ if (typeof module !== 'undefined' && module.exports) {
     dribbleCrossings: dribbleCrossings,
     moveDribble: moveDribble,
     dribbleNow: dribbleNow,
+    dribbleLean: dribbleLean,
+    DRIBBLE_LEAN_PX: DRIBBLE_LEAN_PX,
+    CROSS_LEAN_PX: CROSS_LEAN_PX,
     dribbleClockAfterMove: dribbleClockAfterMove,
     closeLift: closeLift,
     closeCock: closeCock,
