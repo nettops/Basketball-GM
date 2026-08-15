@@ -400,6 +400,7 @@ if (typeof document !== 'undefined') startPlayerSpriteAutoPaint();
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SPRITE_CARD: SPRITE_CARD,
+    SPRITE_CARD_NO_TEAM: SPRITE_CARD_NO_TEAM,
     spriteCardScale: spriteCardScale,
     safeSpriteColor: safeSpriteColor,
     playerSpriteHtml: playerSpriteHtml,
