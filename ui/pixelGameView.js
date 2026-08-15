@@ -605,6 +605,13 @@ function renderPixelGame(container) {
     const crossA = fr.a.cross;
     const stumbleId = (crossA && (crossA.phase === 'cross' || crossA.phase === 'clear' || crossA.phase === 'recover'))
       ? crossA.on : null;
+    // The handler leaves streaks through the cut, and the man he beat flashes
+    // once as it lands. Both exist because the move is over in a few hundred
+    // milliseconds and the displacement alone was not carrying it — see the
+    // four treatments compared before this was chosen.
+    const crossStreakId = (crossA && (crossA.phase === 'cross' || crossA.phase === 'clear'))
+      ? crossA.by : null;
+    const crossFlashId = (crossA && crossA.phase === 'clear') ? crossA.on : null;
 
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
@@ -757,6 +764,26 @@ function renderPixelGame(container) {
         ctx.beginPath();
         ctx.ellipse(Math.round(x), Math.round(y), 7, 3, 0, 0, Math.PI * 2);
         ctx.stroke();
+      }
+      // Streaks trailing the handler through the cut. Drawn BEFORE the sprite
+      // and behind him along the path he came from, so they read as motion he
+      // left rather than as something attached to him. Suppressed under
+      // reduced motion, where the whole point is fewer moving pixels.
+      if (!reduceMotion && pid === crossStreakId && lastPosById[pid]) {
+        const bx = lastPosById[pid][0] - x, by2 = lastPosById[pid][1] - y;
+        const len = Math.sqrt(bx * bx + by2 * by2);
+        if (len > 0.6) {
+          ctx.fillStyle = 'rgba(255,255,255,0.30)';
+          for (let s = 1; s <= 4; s++) {
+            const k = s * 3.2 / len;
+            ctx.fillRect(Math.round(x + bx * k) - 5, Math.round(y + by2 * k) - 12, 10, 1);
+          }
+        }
+      }
+      // And the beaten man flashes once as the cut lands.
+      if (!reduceMotion && pid === crossFlashId) {
+        ctx.fillStyle = 'rgba(255,255,255,0.42)';
+        ctx.fillRect(Math.round(x) - 7, Math.round(y) - 26, 14, 28);
       }
       drawPlayerSprite(ctx, x, y - jumpLift, colorsById[pid], p ? p.jerseyNumber : '', {
         heightIn: p ? p.heightIn : null,

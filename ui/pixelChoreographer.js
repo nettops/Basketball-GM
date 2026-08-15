@@ -103,7 +103,13 @@ const BEAT = {
   // Crossover beats. The jab has to last long enough for the defender to
   // visibly commit to it, or the cut back reads as a sidestep rather than a
   // player being sent the wrong way.
-  crossJab: 200, crossCut: 140, crossClear: 190,
+  //
+  // Retimed from 200/140/190. The CONTRAST is what sells the move, more than
+  // the distance does: a long bite and then a fast punish. The jab now holds
+  // half again as long so the commit is unmistakable, the cut is 35% quicker
+  // so it snaps, and the clear is longer so the daylight is on screen long
+  // enough to register before the shot goes up.
+  crossJab: 300, crossCut: 90, crossClear: 220,
   // Inbound after a made basket. Short — a live ball inbound is quick, and
   // this fires after most made shots, so any longer and it drags the game.
   inboundSet: 340, inboundPass: 260,
@@ -1349,8 +1355,12 @@ function createChoreographer(session) {
             return p;
           }
           // jab one way — the defender bites HARDER than the jab, which is the
-          // whole trick: he has to be further across than the man he guards
-          const jab = step(7, 13);
+          // whole trick: he has to be further across than the man he guards.
+          //
+          // Displacement was 7/13 -> -8/17 -> 0/19, which left two body widths
+          // of daylight on a 10px sprite. Now 10/20 -> -12/26 -> 0/30: three
+          // body widths, chosen from four treatments played side by side.
+          const jab = step(10, 20);
           push(BEAT.crossJab, jab, { x: jab[handler][0], y: jab[handler][1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'jab', by: handler, on: victim });
           // This string is the possession's dribbles — see the `ankle` branch
@@ -1358,11 +1368,11 @@ function createChoreographer(session) {
           // place it counts every other string.
           tagHandle({ n: dribbles, move: 'ankle' });
           // cut back hard; he keeps going the wrong way
-          const cut = step(-8, 17);
+          const cut = step(-12, 26);
           push(BEAT.crossCut, cut, { x: cut[handler][0], y: cut[handler][1], holder: handler },
             period, quarter, clock, '', '', 'squeak', null, null, { phase: 'cross', by: handler, on: victim });
           // and rise into the shot with the separation already open
-          const clear = step(0, 19);
+          const clear = step(0, 30);
           push(BEAT.crossClear, clear, { x: sp[0], y: sp[1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'clear', by: handler, on: victim });
           // the defender STAYS beaten for the rest of the possession — leaving
