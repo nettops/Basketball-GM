@@ -27,9 +27,62 @@
 // timeline stays pure positions. Interpolated between keyframes like
 // everything else, so seeking mid-leap lands at the right height.
 const DUNK_LIFT = { gather: -2, rise: 16, slam: 13, land: 0 };
-function dunkLiftAt(kf) {
+
+// ...AND THE SAME TABLE FOR A DUNK THAT KNOWS WHICH DUNK IT IS.
+//
+// Every dunk in the game used to be this one table: dip 2, rise 16, slam 13,
+// land. Now the peak comes off the catalogue entry (a quick finish tops out at
+// 11, a hang windmill at 20) and two phases have been added under it:
+//
+//   plant   the deepest point of the load, BELOW the gather. This is the frame
+//           where his foot is actually against the floor and everything is
+//           about to reverse — the brief calls it out as its own phase and it
+//           was the one part of the ten-phase structure with nowhere to live.
+//   hang    the top, HELD. A dunk that hangs is not a dunk that rises higher;
+//           it is one that stops rising for a while, which needs a phase of its
+//           own or the peak is a single frame the eye never lands on.
+function dunkLiftTable(dunk) {
+  const peak = (dunk && dunk.lift) || DUNK_LIFT.rise;
+  const twoFoot = dunk && dunk.takeoff === 'two';
+  return {
+    // A two-foot gather loads deeper — that is what two feet are for.
+    gather: twoFoot ? -3 : -2,
+    plant: twoFoot ? -5 : -3,
+    rise: peak,
+    hang: peak,
+    // He is already coming down as he puts it through.
+    slam: Math.round(peak * 0.82),
+    land: 0
+  };
+}
+
+function dunkLiftAt(kf, dunk) {
   const d = kf && kf.dunk;
-  return (d && DUNK_LIFT[d.phase] !== undefined) ? DUNK_LIFT[d.phase] : 0;
+  if (!d) return 0;
+  const table = dunk ? dunkLiftTable(dunk) : DUNK_LIFT;
+  return table[d.phase] !== undefined ? table[d.phase] : 0;
+}
+
+// HOW FAR THROUGH ITS ROUTE THE BALL IS, which is not the same as how high he
+// is and cannot be derived from it.
+//
+// The obvious shortcut is to drive the ball off the body's lift — it was how
+// the single old dunk worked, via dunkCock(). It breaks the moment `hang`
+// exists: the whole point of a hang is that the lift stops changing, so a ball
+// driven off lift stops dead at the top of every dunk and then jumps to the rim.
+// A windmill hanging 240ms would freeze mid-circle.
+//
+// So the route has its own clock, keyed off the phases. It only ever moves
+// forward, which is what lets a 360 and a quick finish share one function.
+// The choreographer stamps `route` on each phase from that dunk's own beat
+// lengths (see dunkRouteMarks). This table is only the fallback for a dunk that
+// carries no marks — an un-stamped keyframe, or an older save.
+const DUNK_ROUTE_T = { gather: 0, plant: 0, rise: 0.62, hang: 0.85, slam: 1, land: 1 };
+function dunkRouteAt(kf) {
+  const d = kf && kf.dunk;
+  if (!d) return 0;
+  if (typeof d.route === 'number') return d.route;
+  return DUNK_ROUTE_T[d.phase] !== undefined ? DUNK_ROUTE_T[d.phase] : 0;
 }
 
 // A NEGATIVE LIFT IS A KNEE BEND, NOT A MAN SINKING THROUGH THE FLOOR.
@@ -153,12 +206,21 @@ function resolveLeaper(a, b, f, liftAt, markerKey, descentMs) {
 function resolveLifts(a, b, f, reduceMotion) {
   const dunkA = a.dunk, dunkB = b.dunk;
   const dunkerId = (dunkA && dunkA.id) || (dunkB && dunkB.id) || null;
-  let dunkerLift = 0;
+  // WHICH dunk. The choreographer stamps the catalogue id on every phase of the
+  // string; `dunkStyleOf` is injected rather than required so this file keeps no
+  // dependency on ui/pixelDunks.js and the probes can load it alone.
+  const dunkMark = (dunkA && dunkA.id ? dunkA : (dunkB || null));
+  const dunk = dunkMark && dunkMark.dunk ? dunkMark.dunk : null;
+  let dunkerLift = 0, dunkerRoute = 0;
   if (dunkerId && !reduceMotion) {
-    const la = dunkLiftAt(a), lb = dunkLiftAt(b);
+    const la = dunkLiftAt(a, dunk), lb = dunkLiftAt(b, dunk);
     // snap up, fall away — a symmetric ease makes the leap look weightless
     const ef = lb > la ? 1 - Math.pow(1 - f, 2) : Math.pow(f, 1.6);
     dunkerLift = Math.round(la + (lb - la) * ef);
+    // The ball's own clock through the route. Linear: the route functions carry
+    // their own easing, and easing this too would double it.
+    const ra = dunkRouteAt(a), rb = dunkRouteAt(b);
+    dunkerRoute = ra + (rb - ra) * f;
   }
 
   const jumper = reduceMotion ? { id: null, lift: 0 }
@@ -188,6 +250,9 @@ function resolveLifts(a, b, f, reduceMotion) {
   return {
     dunkerId: dunkerId, dunkerLift: dunkerLift,
     dunkerFoot: dunkPose.foot, dunkerCrouch: dunkPose.crouch,
+    dunkerRoute: dunkerRoute,
+    dunkerStyle: (dunk && dunk.path) || 'power',
+    dunkerDunk: dunk,
     jumperId: jumperId, jumperLift: jumperLift, jumpFollow: jumpFollow,
     jumperFoot: jumpPose.foot, jumperCrouch: jumpPose.crouch,
     closerId: closer.id, closerLift: closer.lift,
@@ -1063,9 +1128,36 @@ function ballPosition(s) {
     const cock = mode === 'jump' ? jumpCock(s.lifts.jumperLift)
       : mode === 'dunk' ? dunkCock(s.lifts.dunkerLift)
       : (marked ? closeCock(s.lifts.closerLift, s.lifts.closerFinish) : closeCockAtBeat(s.f));
-    const off = heldBallOffset(mode, lift, cock, drib);
+    let off = heldBallOffset(mode, lift, cock, drib);
+    let behind = 0;
+
+    // THE DUNK'S ROUTE. Every dunk used to run the same straight blend from the
+    // dribble up to 30px on the finishing side, so a windmill, a tomahawk and a
+    // quick lay-in moved the ball along an identical line and differed only in
+    // how high the body got.
+    //
+    // `s.dunkPath` is injected rather than imported: this file has no
+    // dependencies and that is worth keeping, so the caller (the view, a probe,
+    // the lab) hands in ui/pixelDunks.js's dunkBallPath and there is still only
+    // one copy of the routes. Without it the old straight blend still applies,
+    // which is what keeps an un-marked dunk working.
+    if (mode === 'dunk' && typeof s.dunkPath === 'function') {
+      const t = s.lifts.dunkerRoute || 0;
+      const route = s.dunkPath(s.lifts.dunkerStyle || 'power', t);
+      // Blended out of the dribble over the first quarter of the route, for the
+      // same reason every other branch change in this file is: the ball is
+      // somewhere when the dunk starts, and snapping it onto the route would be
+      // the teleport this whole file is shaped to prevent.
+      const w = Math.max(0, Math.min(1, t / 0.25));
+      off = {
+        up: drib.up + (route.up - drib.up) * w,
+        side: drib.side + (route.side - drib.side) * w
+      };
+      behind = (route.back || 0) * w;
+    }
+
     let bx = hx + face * off.side;
-    let by = hy - off.up;
+    let by = hy - off.up - behind;
 
     // THE SLAM ITSELF. `holder` is read from keyframe a, so the ball stayed in
     // his hand for the whole 90ms slam beat and was simply at the rim on the
@@ -1245,6 +1337,9 @@ function arrivalPoint(s) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DUNK_LIFT: DUNK_LIFT,
+    dunkLiftTable: dunkLiftTable,
+    DUNK_ROUTE_T: DUNK_ROUTE_T,
+    dunkRouteAt: dunkRouteAt,
     JUMP_LIFT: JUMP_LIFT,
     CLOSE_LIFT: CLOSE_LIFT,
     CLOSE_LIFT_BY_FINISH: CLOSE_LIFT_BY_FINISH,

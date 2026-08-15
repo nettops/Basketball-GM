@@ -217,8 +217,31 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   // One pixel of alternating weight is enough to read as breathing.
   const idle = (!opts.moving && !opts.dunking && !opts.stumbling && opts.idleFrame) ? 1 : 0;
   if (opts.dunking) {
-    ctx.fillRect(left + 1, topU + 18, 2, 4);  // trail leg, bent back
-    ctx.fillRect(left + 6, topU + 17, 2, 3);  // lead knee driven up
+    // THE AIRBORNE LEGS, which now say which dunk this is.
+    //
+    // `dunking` used to be a boolean and drew one pair of tucked legs for every
+    // finish in the game. It takes a descriptor now — see ui/pixelDunks.js — and
+    // the legs are the half of the silhouette the ball route cannot carry:
+    //
+    //   two-foot takeoff   both knees tucked together, symmetric. He gathered
+    //                      and went straight up.
+    //   one-foot takeoff   one knee driven hard up, the other trailing behind.
+    //                      Asymmetric, and it reads as running into the leap.
+    //   eastbay            the legs SPLIT to let the ball through, which is the
+    //                      whole point of the route and would otherwise be a
+    //                      ball passing through his shins.
+    const dk = (typeof opts.dunking === 'object' && opts.dunking) ? opts.dunking : {};
+    const split = dk.path === 'eastbay';
+    if (split) {
+      ctx.fillRect(left - 1, topU + 17, 2, 5);   // trail leg thrown wide
+      ctx.fillRect(left + 8, topU + 16, 2, 5);   // lead leg thrown wide
+    } else if (dk.takeoff === 'two') {
+      ctx.fillRect(left + 2, topU + 18, 2, 4);   // both knees tucked together
+      ctx.fillRect(left + 6, topU + 18, 2, 4);
+    } else {
+      ctx.fillRect(left + 1, topU + 18, 2, 4);  // trail leg, bent back
+      ctx.fillRect(left + 6, topU + 17, 2, 3);  // lead knee driven up
+    }
   } else if (opts.layup) {
     // A dunker tucks BOTH legs under him; a layup drives ONE knee and lets the
     // other trail. That asymmetry is most of what separates the two
@@ -272,9 +295,23 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // One arm reaches ABOVE the head with the ball; the other trails. A
     // shooter's arms stop at the hairline, so the extended arm is what reads
     // as "going up at the rim" rather than "taking a jumper".
-    const ballSide = (opts.facing || 0) >= 0;
-    ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6, 2, 14);
-    ctx.fillRect(lx + (ballSide ? 0 : 8), topU + 3, 2, 7);
+    const dkA = (typeof opts.dunking === 'object' && opts.dunking) ? opts.dunking : {};
+    // A REVERSE finishes on the far hand — he has taken it under and round, so
+    // the ball is on the side away from the way he came, exactly as the layup's
+    // reverse does.
+    const ballSide = dkA.reverse
+      ? (opts.facing || 0) < 0
+      : (opts.facing || 0) >= 0;
+    if (dkA.hands === 2) {
+      // BOTH arms over the head. The single clearest silhouette difference
+      // available on a body this wide, and the reason one- and two-hand dunks
+      // are separate entries rather than one entry with a label.
+      ctx.fillRect(lx, topU - 5, 2, 13);
+      ctx.fillRect(lx + 8, topU - 5, 2, 13);
+    } else {
+      ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6, 2, 14);
+      ctx.fillRect(lx + (ballSide ? 0 : 8), topU + 3, 2, 7);
+    }
   } else if (opts.layup) {
     // The finishing hand goes up on the side he is going up from, and the OFF
     // arm tucks across the chest rather than hanging — that tuck is the ball
@@ -359,10 +396,25 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     ctx.fillRect(lx, topU + 9 + idle, 2, 6 + bodyT);
     ctx.fillRect(lx + 8, topU + 9, 2, 6 + bodyT);
   }
-  // head + hair, leaning 1px into the direction of travel
-  ctx.fillRect(lx + 3 + facing, topU + 2, 4, 5);
-  ctx.fillStyle = colors.hair;
-  ctx.fillRect(lx + 2 + facing, topU, 6, 3);
+  // HEAD. Normally skin with hair on top, leaning a pixel into the direction of
+  // travel — which is also the only thing on the sprite that says which way he
+  // is looking.
+  //
+  // `backToCamera` replaces the face with hair. It exists for the spinning
+  // dunks: a body ten pixels across cannot be drawn at an intermediate angle,
+  // so a 360 is drawn as facing right, then BACK, then facing left, then back
+  // again — and the back of a head is the frame that sells the quarter turn.
+  // Without it a spin is just the sprite flipping, which reads as a glitch.
+  const backTo = !!opts.backToCamera;
+  if (backTo) {
+    ctx.fillStyle = colors.hair;
+    ctx.fillRect(lx + 2, topU, 6, 5);
+    ctx.fillRect(lx + 3, topU + 5, 4, 1);
+  } else {
+    ctx.fillRect(lx + 3 + facing, topU + 2, 4, 5);
+    ctx.fillStyle = colors.hair;
+    ctx.fillRect(lx + 2 + facing, topU, 6, 3);
+  }
   // jersey number (single digit centered, two digits offset)
   const numStr = String(number == null ? '' : number);
   if (numStr.length > 0) {

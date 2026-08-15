@@ -15,6 +15,7 @@ const path = require('path');
 
 const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
 const sprites = require(path.join(__dirname, '..', 'ui', 'pixelSprites.js'));
+const dunks = require(path.join(__dirname, '..', 'ui', 'pixelDunks.js'));
 
 const COLORS = { skin: '#a06', hair: '#111', jersey: '#28f', trim: '#fff' };
 
@@ -546,6 +547,150 @@ function checkTempoRespondsToSkillAndPressure() {
     motion.handlerTempo(id, 40, 0).toFixed(3) + ')');
 }
 
+function checkEveryDunkRouteEndsAtTheRim() {
+  // A dunk finishes with the ball at the rim, and the view hands it off to the
+  // slam on the last frame of the route. Written by hand the routes did NOT
+  // converge — the windmill's circle came back to up=25 side=0, below the rim
+  // and on the wrong side of him, and the double clutch overshot to 40. Both
+  // would put a jump at the exact moment the eye is on the hoop.
+  dunks.DUNK_PATH_NAMES.forEach(function (name) {
+    const end = dunks.dunkBallPath(name, 1);
+    assert.ok(Math.abs(end.up - dunks.DUNK_TERMINAL.up) < 0.01 &&
+              Math.abs(end.side - dunks.DUNK_TERMINAL.side) < 0.01,
+      name + ' ends at (' + end.up.toFixed(1) + ',' + end.side.toFixed(1) +
+      ') instead of the rim');
+    assert.ok(Math.abs(end.back || 0) < 0.01, name + ' finishes behind him');
+    // ...and starts where the ball already is, so the blend out of the dribble
+    // has something continuous to blend into.
+    const start = dunks.dunkBallPath(name, 0);
+    assert.ok(start.up < 14, name + ' starts ' + start.up.toFixed(1) + 'px up — the ball is in his hand');
+  });
+  console.log('checkEveryDunkRouteEndsAtTheRim: OK (' + dunks.DUNK_PATH_NAMES.length + ' routes)');
+}
+
+function checkNoTwoDunkRoutesAreTheSameRoute() {
+  // The brief's central rule: no copy/paste variations. Two routes that never
+  // separate by more than a body width are one route with two names.
+  //
+  // This caught `straight`, which differed from `power` only in amplitude and
+  // separated by 0.7px across the whole flight. It differs in TIME now.
+  const names = dunks.DUNK_PATH_NAMES;
+  const traces = {};
+  names.forEach(function (n) {
+    const tr = [];
+    for (let t = 0; t <= 1.0001; t += 1 / 120) tr.push(dunks.dunkBallPath(n, t));
+    traces[n] = tr;
+  });
+  let closest = Infinity, pair = '';
+  for (let i = 0; i < names.length; i++) {
+    for (let j = i + 1; j < names.length; j++) {
+      let m = 0;
+      for (let k = 0; k < traces[names[i]].length; k++) {
+        const a = traces[names[i]][k], b = traces[names[j]][k];
+        m = Math.max(m, Math.hypot(a.up - b.up, a.side - b.side));
+      }
+      if (m < closest) { closest = m; pair = names[i] + '/' + names[j]; }
+    }
+  }
+  // A body is 10px wide. Two routes that never get a body width apart are the
+  // same route.
+  assert.ok(closest >= 5,
+    pair + ' never separate by more than ' + closest.toFixed(1) + 'px — same route, two names');
+  console.log('checkNoTwoDunkRoutesAreTheSameRoute: OK (closest pair ' + pair +
+    ' at ' + closest.toFixed(1) + 'px)');
+}
+
+function checkTheBallStaysReadableThroughEveryDunk() {
+  // The ball is 3px. Measured against each dunk's OWN beats, because the beat
+  // lengths exist precisely to keep the elaborate routes readable — a windmill
+  // sweeping an 11px circle through a power dunk's 145ms beat moves 4.7px a
+  // frame, which is not a circle, it is a smear.
+  let worst = 0, worstId = '';
+  dunks.DUNKS.forEach(function (d) {
+    const beats = dunks.dunkBeats(d, {});
+    const marks = dunks.dunkRouteMarks(beats);
+    const segs = [['rise', 0, marks.rise, beats.rise],
+                  ['hang', marks.rise, marks.hang, beats.hang],
+                  ['slam', marks.hang, 1, beats.slam]];
+    segs.forEach(function (seg) {
+      const frames = Math.max(1, seg[3] / (1000 / 60));
+      for (let k = 0; k < frames; k++) {
+        const a = dunks.dunkBallPath(d.path, seg[1] + (seg[2] - seg[1]) * (k / frames));
+        const b = dunks.dunkBallPath(d.path, seg[1] + (seg[2] - seg[1]) * ((k + 1) / frames));
+        const step = Math.hypot(b.up - a.up, b.side - a.side);
+        if (step > worst) { worst = step; worstId = d.id + '/' + seg[0]; }
+      }
+    });
+  });
+  // A slam is the fastest ball motion in the game and gets more room than the
+  // 3.2px/frame the dribble moves run to — but not unbounded. Past about five
+  // the ball stops being an object and becomes a flicker between two places.
+  assert.ok(worst < 4.6,
+    'the ball moves ' + worst.toFixed(2) + 'px in one frame during ' + worstId);
+  console.log('checkTheBallStaysReadableThroughEveryDunk: OK (worst ' +
+    worst.toFixed(2) + 'px/frame, ' + worstId + ')');
+}
+
+function checkDunkSelectionRespectsItsContext() {
+  // Section 16's rule: never pick an animation that does not make sense here.
+  for (let seed = 0; seed < 400; seed++) {
+    // A man going through a body does not windmill.
+    const c = dunks.pickDunk({ tier: 4, contact: true }, seed);
+    assert.ok(!c.spin && !c.reverse, 'a contact dunk rotated: ' + c.id);
+    assert.ok(c.path !== 'windmill' && c.path !== 'eastbay' && c.path !== 'double',
+      'a contact dunk took an elaborate route: ' + c.id);
+    // A putback is caught and finished in one motion.
+    const p = dunks.pickDunk({ tier: 4, putback: true }, seed);
+    assert.ok(!p.spin, 'a putback rotated: ' + p.id);
+    // An alley-oop is caught in the air — nothing that starts below the waist.
+    const a = dunks.pickDunk({ tier: 4, alley: true }, seed);
+    assert.ok(a.path !== 'eastbay' && a.path !== 'double' && !a.reverse,
+      'an alley-oop used a route that starts at the floor: ' + a.id);
+    // A standing finish has no runway to carry anything elaborate.
+    const s = dunks.pickDunk({ tier: 4, runway: 5 }, seed);
+    assert.ok(s.quick || s.path === 'power' || s.path === 'straight',
+      'a standing dunk got a running route: ' + s.id);
+    // Nobody is handed a dunk above his tier.
+    const low = dunks.pickDunk({ tier: 0 }, seed);
+    assert.strictEqual(low.tier || 0, 0, 'a poor leaper got ' + low.id);
+  }
+  // ...and he never throws the same dunk twice running when another exists.
+  for (let seed = 0; seed < 400; seed++) {
+    const first = dunks.pickDunk({ tier: 4 }, seed);
+    const second = dunks.pickDunk({ tier: 4, lastId: first.id }, seed);
+    assert.notStrictEqual(second.id, first.id, 'repeated ' + first.id + ' back to back');
+  }
+  console.log('checkDunkSelectionRespectsItsContext: OK (400 seeds x 5 contexts)');
+}
+
+function checkTheCatalogueIsInternallyHonest() {
+  const ids = {};
+  dunks.DUNKS.forEach(function (d) {
+    assert.ok(!ids[d.id], 'duplicate dunk id ' + d.id);
+    ids[d.id] = true;
+    assert.ok(dunks.DUNK_PATHS[d.path], d.id + ' names a route that does not exist: ' + d.path);
+    assert.ok(d.hands === 1 || d.hands === 2, d.id + ' has ' + d.hands + ' hands');
+    assert.ok(d.takeoff === 'one' || d.takeoff === 'two', d.id + ' has no takeoff foot');
+    assert.ok(d.lift > 0 && d.lift <= 22, d.id + ' leaps ' + d.lift + 'px');
+    assert.ok(d.hang > 0, d.id + ' does not hang at all');
+    // Every dunk must be reachable by somebody, or it is dead weight in a table
+    // that exists to be varied.
+    const pool = dunks.dunkPool({ tier: 4 });
+    assert.ok(pool.indexOf(d) !== -1 || d.tier > 4, d.id + ' can never be selected');
+  });
+  // The lift table must never put the feet through the floor at the peak, and
+  // the plant must be the DEEPEST point of the load — that is what makes it a
+  // plant rather than a second gather.
+  dunks.DUNKS.forEach(function (d) {
+    const t = motion.dunkLiftTable(d);
+    assert.ok(t.plant < t.gather, d.id + ' plants no deeper than it gathers');
+    assert.ok(t.rise === t.hang, d.id + ' changes height through its hang');
+    assert.ok(t.slam < t.rise, d.id + ' is still rising as it goes through the rim');
+    assert.strictEqual(t.land, 0, d.id + ' lands off the floor');
+  });
+  console.log('checkTheCatalogueIsInternallyHonest: OK (' + dunks.DUNKS.length + ' entries)');
+}
+
 function checkPosesStayWithinTheSpriteBox() {
   // Every pose, at every height, has to stay inside the footprint the court
   // draw order and the collision separator assume. A pose that reaches three
@@ -595,6 +740,11 @@ checkTheWeightFollowsTheBallAndNeverTeleports();
 checkALeanNeverMovesTheFeet();
 checkTheLayupPoseIsItsOwnSilhouette();
 checkOnlyOnePoseCanEverWin();
+checkTheCatalogueIsInternallyHonest();
+checkEveryDunkRouteEndsAtTheRim();
+checkNoTwoDunkRoutesAreTheSameRoute();
+checkTheBallStaysReadableThroughEveryDunk();
+checkDunkSelectionRespectsItsContext();
 checkTheThreeLayupFinishesAreThreeDifferentPictures();
 checkContactIsRareAndDecays();
 checkOnlyTheLegsMoveGoesThroughTheLegs();

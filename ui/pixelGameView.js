@@ -1002,6 +1002,23 @@ function renderPixelGame(container) {
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       const dunkPose = isDunkerNow && jumpLift >= 3;
+      // WHICH dunk, and where in its rotation he is. The marker rides every
+      // phase of the string, so a seek into the middle of a 360 still knows it
+      // is a 360.
+      const dunkMark = (fr.a.dunk && fr.a.dunk.id ? fr.a.dunk : (fr.b.dunk || null));
+      const theDunk = dunkMark && dunkMark.dunk ? dunkMark.dunk : null;
+      // THE SPIN. A ten-pixel body cannot be drawn at an intermediate angle, so
+      // a rotation is drawn as facing-right, back-to-camera, facing-left,
+      // back-to-camera, facing-right. The back of the head is what sells the
+      // quarter turn; without it a 360 is a sprite flipping, which reads as a
+      // glitch rather than as a man turning.
+      let spinFacing = 0, spinBack = false;
+      if (theDunk && theDunk.spin && dunkPose && !reduceMotion) {
+        const turns = (theDunk.spin / 360) * (lifts.dunkerRoute || 0);
+        const q = (turns * 4) % 4;                 // quarter turns elapsed
+        spinBack = (q >= 0.75 && q < 1.25) || (q >= 2.75 && q < 3.25);
+        spinFacing = (q >= 1.25 && q < 2.75) ? -1 : 1;
+      }
       // Same rule for the layup: the airborne pose starts once he is actually
       // airborne, so the gather is drawn as a man loading up rather than as a
       // man hanging with his knee up while his feet are on the floor.
@@ -1101,7 +1118,13 @@ function renderPixelGame(container) {
         // holds the follow-through, which is what a jumper actually looks like
         shooting: pose === 'shooting',
         following: pose === 'following',
-        dunking: pose === 'dunking',
+        dunking: pose === 'dunking'
+          ? (theDunk
+              ? { hands: theDunk.hands, path: theDunk.path,
+                  takeoff: theDunk.takeoff, reverse: !!theDunk.reverse }
+              : true)
+          : false,
+        backToCamera: pose === 'dunking' && spinBack,
         stumbling: pose === 'stumbling',
         // Only while he is actually handling it — a man gathering into a shot,
         // rising, or going up to dunk is not dribbling any more, and those
@@ -1116,7 +1139,9 @@ function renderPixelGame(container) {
             }
           : null,
         highlight: isHolder,
-        facing: facingById[pid] || 0,
+        facing: (pose === 'dunking' && spinFacing)
+          ? spinFacing * (facingById[pid] || 1)
+          : (facingById[pid] || 0),
         moving: moving
       });
       lastPosById[pid] = [x, y];
@@ -1199,6 +1224,7 @@ function renderPixelGame(container) {
       facing: facingById[holder] || 1,
       lifts: lifts,
       shotComing: shotComing,
+      dunkPath: dunkBallPath,
       reduceMotion: reduceMotion,
       dribbleU: dribbleU, dribbleMove: dribbleMove,
       launch: launch,

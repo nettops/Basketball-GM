@@ -94,6 +94,15 @@ function assignSlots(five) {
 // either of those moves, which is why it is named rather than inlined.
 const DUNK_REACH = 46;
 
+// The dunk catalogue. Loaded the same dual way the rest of this codebase does:
+// a global in the browser (index.html loads ui/pixelDunks.js first), a require
+// in Node. Kept as one reference so the choreographer, the view and the probes
+// all read the same table.
+const _DUNKS = (typeof module !== 'undefined' && module.exports)
+  ? require('./pixelDunks.js')
+  : { pickDunk: pickDunk, dunkTierFor: dunkTierFor, dunkBeats: dunkBeats,
+      dunkRouteMarks: dunkRouteMarks, dunkLanding: dunkLanding };
+
 const BEAT = {
   // Trimmed from 700/650/600. These three are the possession's dead air — the
   // walk up the floor, the flow into the set, the reset after a board — and
@@ -799,6 +808,12 @@ function createChoreographer(session) {
   // Running takeover state, threaded through the whole timeline. Survives
   // across possessions by design: a takeover lasts about twenty of them.
   const takeoverHolders = { home: null, away: null };
+  // What each player dunked last time, so pickDunk can avoid repeating it. The
+  // single loudest form of the repetition this expansion is about.
+  const lastDunkById = {};
+  // Whether the previous play was this player's own offensive rebound, which is
+  // what makes the next finish a putback rather than a drive.
+  let lastOrebBy = null;
   let pendingTakeover = null;
   function consumePendingTakeover() {
     const p = pendingTakeover;
@@ -1745,7 +1760,14 @@ function createChoreographer(session) {
           // Computed here rather than at the rise push, because the slam and
           // the landing both HOLD this exact frame and need it in hand first.
           const risePos = flowPositions(apexPos, dunkLock, pi * 23 + ei, defenderIds);
-          const landPos = Object.assign({}, risePos);
+          // Where the floor has got to by the END of the hang. The slam and the
+          // landing both hold this frame, so it has to be computed before them —
+          // and it has to come from the HANG rather than from the rise, or the
+          // slam drags all nine of them back to where they stood before the hang
+          // flowed them. That is a backwards teleport on the one beat the eye is
+          // guaranteed to be watching.
+          const hangPos = flowPositions(risePos, dunkLock, pi * 73 + ei * 11, defenderIds);
+          const landPos = Object.assign({}, hangPos);
           // Posterized: the defender is driven back off the rim. Without this
           // the victim stands politely still and it reads as an uncontested
           // dunk — the defender's reaction IS the poster.
@@ -1757,25 +1779,72 @@ function createChoreographer(session) {
               landPos[victim][1] + ((pi + ei) % 2 ? 5 : -5)
             );
           }
+          // WHICH DUNK. Context first: how much runway he had, whether a body is
+          // in the way, whether he is finishing his own miss, how high he can
+          // actually get, and what he did last time.
+          const runway = Math.hypot(relSpot[0] - sp[0], relSpot[1] - sp[1]);
+          const dunkCtx = {
+            tier: _DUNKS.dunkTierFor(shooterPlayer),
+            contact: impactKind === 'poster' || (onBall && ev.zone === 'inside'),
+            putback: lastOrebBy === ev.playerId,
+            runway: runway,
+            lastId: lastDunkById[ev.playerId] || null
+          };
+          const theDunk = _DUNKS.pickDunk(dunkCtx, pi * 67 + ei * 13 + 5);
+          lastDunkById[ev.playerId] = theDunk.id;
+          const dunkBeatsMs = _DUNKS.dunkBeats(theDunk, dunkCtx);
+          const routeMarks = _DUNKS.dunkRouteMarks(dunkBeatsMs);
+          const landing = _DUNKS.dunkLanding(theDunk, dunkCtx);
+          // Everything the view needs to draw THIS dunk, stamped on every phase
+          // of the string so a seek into the middle of one still knows what it
+          // is watching.
+          const dunkMeta = {
+            id: dunkBy, dunk: theDunk, landing: landing,
+            contact: !!dunkCtx.contact, putback: !!dunkCtx.putback
+          };
+          function dunkPhase(phase) {
+            return Object.assign({ phase: phase, route: routeMarks[phase] }, dunkMeta);
+          }
+
           // `zoomTo` rides the GATHER beat, not the rise. Keyframes sit at beat
           // ENDS, so the rise keyframe is the apex — arming there put the camera
           // in only after he was already up. On the gather it covers the whole
           // ascent, which is the part worth magnifying.
-          push(BEAT.dunkGather, flowPositions(releasePos, dunkLock, pi * 19 + ei, defenderIds),
+          push(dunkBeatsMs.gather, flowPositions(releasePos, dunkLock, pi * 19 + ei, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null,
-            { phase: 'gather', id: dunkBy, zoomTo: impactKind === 'poster' ? impactAt : null });
-          push(BEAT.dunkRise, risePos,
+            Object.assign(dunkPhase('gather'),
+              { zoomTo: impactKind === 'poster' ? impactAt : null }));
+          // THE PLANT. His foot against the floor, at the deepest point of the
+          // load — the frame everything is about to reverse from. The ten-phase
+          // structure named it and there was nowhere for it to live.
+          push(dunkBeatsMs.plant, flowPositions(releasePos, dunkLock, pi * 71 + ei, defenderIds),
+            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            period, quarter, clock, '', '', 'squeak', null, dunkPhase('plant'));
+          push(dunkBeatsMs.rise, risePos,
             { x: rimX, y: hoop.y, holder: ev.playerId },
-            period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
+            period, quarter, clock, '', '', '', null, dunkPhase('rise'));
+          // THE HANG. The top, held. A peak that lasts one frame is a peak the
+          // eye never lands on, and how long he holds it is most of what makes a
+          // windmill feel different from a quick finish.
+          //
+          // HE hangs; the other nine do not. Built from risePos the first time,
+          // which held every player on the floor for up to 240ms and measured
+          // 100% frozen — the same defect the landing beat had, arriving through
+          // a new phase. The finisher and the man under him are locked (he is
+          // the still point the shot is about, and a flowed victim would drift
+          // out from under him); everybody else keeps playing.
+          push(dunkBeatsMs.hang, hangPos,
+            { x: rimX, y: hoop.y, holder: ev.playerId },
+            period, quarter, clock, '', '', '', null, dunkPhase('hang'));
           // THE SLAM STAYS FROZEN, and that is not an oversight to be tidied up
           // later. 90ms with the whole floor held is the impact hold: the eye
           // is nailed to the rim, and this beat is where the previous version
           // teleported nine men into rebounding spots at 209px/sec — two body
           // widths, seven times faster than the rise around it. It is the one
           // beat in the game where a freeze is the effect.
-          push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
-            period, quarter, clock, madeLabel, shotComment, 'dunk', impactMarker, { phase: 'slam', id: dunkBy });
+          push(dunkBeatsMs.slam, landPos, { x: hoop.x, y: hoop.y, holder: null },
+            period, quarter, clock, madeLabel, shotComment, 'dunk', impactMarker, dunkPhase('slam'));
           // THE LANDING DOES NOT. By here the ball is through the net and play
           // is restarting, and holding a second beat merely because the slam
           // before it is held turns a 90ms accent into a 220ms stall — measured
@@ -1784,8 +1853,8 @@ function createChoreographer(session) {
           // driven back, or the reaction that made it a poster quietly undoes
           // itself); everybody else gets on with the game.
           const dunkLandPos = flowPositions(landPos, dunkLock, pi * 43 + ei * 7, defenderIds);
-          push(BEAT.dunkLand, dunkLandPos, { x: hoop.x, y: hoop.y + 7, holder: null },
-            period, quarter, clock, '', '', '', null, { phase: 'land', id: dunkBy });
+          push(dunkBeatsMs.land, dunkLandPos, { x: hoop.x, y: hoop.y + 7, holder: null },
+            period, quarter, clock, '', '', '', null, dunkPhase('land'));
           curPos = dunkLandPos;
         } else if (ev.zone === 'mid' || ev.zone === 'three') {
           // The jump shot, with an actual jump in it. Measured before this: the
@@ -1892,7 +1961,12 @@ function createChoreographer(session) {
         push(BEAT.resolve, flowPositions(rpos, [ev.playerId], pi * 11 + ei),
           { x: rp[0], y: rp[1], holder: rpos[ev.playerId] ? ev.playerId : null }, period, quarter, clock,
           ev.offensive ? 'Offensive board' : '', rebComment);
+        // Remembered so the NEXT finish knows it is a putback: caught off the
+        // glass and put straight back, which is a different animation from a
+        // man who drove the length of the floor to get there.
+        lastOrebBy = ev.offensive ? ev.playerId : null;
         curPos = rpos;
+        if (ev.type !== 'rebound') lastOrebBy = null;
       } else if (ev.type === 'foul-ft') {
         const ftLine = clampToCourt(hoop.x + (poss.team === 'home' ? -58 : 58), hoop.y);
         const fpos = Object.assign({}, curPos);
