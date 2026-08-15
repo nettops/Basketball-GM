@@ -30,11 +30,23 @@ const DIALOGUE_BUST_PX = 120;
 // never what the player wanted.
 let _openBox = null;
 
+// A finished studio set, left on screen ONLY to pull back underneath the coach
+// box that follows it. It is no longer interactive and owns no listeners — it
+// is scenery being struck while the next thing walks on. Tracked separately so
+// closeDialogueBox can sweep it if the user leaves mid-transition.
+let _lingering = null;
+
 function dialogueBoxIsOpen() {
   return _openBox !== null;
 }
 
+function _retireLingering() {
+  if (_lingering && _lingering.parentNode) _lingering.parentNode.removeChild(_lingering);
+  _lingering = null;
+}
+
 function closeDialogueBox() {
+  _retireLingering();
   if (!_openBox) return;
   if (_openBox.onKey && typeof document !== 'undefined') {
     document.removeEventListener('keydown', _openBox.onKey);
@@ -232,7 +244,15 @@ function runDialogue(scene, ctx, onDone) {
 // in a choice, this ends in a cut back to the game.
 // ---------------------------------------------------------------------------
 
-const STUDIO_SEAT_PX = 80;
+// Fullscreen, so the busts are drawn four times up rather than two: at 80px a
+// face is a suggestion, and the whole point of the set is that you can see who
+// is talking.
+const STUDIO_SEAT_PX = 160;
+
+// How long the set takes to pull back out of the way. Must match the transition
+// on .studio-fs.studio-handoff in style.css — the timer is only a backstop for
+// removing the node, but a shorter one would cut the movement off.
+const STUDIO_HANDOFF_MS = 700;
 
 function runStudioSegment(segment, ctx, onDone) {
   if (typeof document === 'undefined' || !document.body) return false;
@@ -242,11 +262,10 @@ function runStudioSegment(segment, ctx, onDone) {
   const done = typeof onDone === 'function' ? onDone : function () {};
   const crew = _DIALOGUE_BOX_DATA.studio.CREW;
 
+  // Its own root rather than .dlg-overlay: that class is a bottom-anchored
+  // scrim for a box, and this fills the screen.
   const root = document.createElement('div');
-  root.className = 'dlg-overlay';
-
-  const box = document.createElement('div');
-  box.className = 'studio-box';
+  root.className = 'studio-fs';
 
   const set = document.createElement('div');
   set.className = 'studio-set';
@@ -288,14 +307,21 @@ function runStudioSegment(segment, ctx, onDone) {
   blinker.textContent = '▼';
   blinker.style.visibility = 'hidden';
 
+  // Fullscreen takes the whole screen away, so the way out has to be visible.
+  const escHint = document.createElement('div');
+  escHint.className = 'studio-esc';
+  escHint.textContent = 'ESC TO SKIP';
+
   set.appendChild(crewEl);
-  set.appendChild(desk);
+  body.appendChild(escHint);
   body.appendChild(plate);
   body.appendChild(textEl);
   body.appendChild(blinker);
-  box.appendChild(set);
-  box.appendChild(body);
-  root.appendChild(box);
+  // The desk is a sibling of the set, not a child: the set grows to fill the
+  // screen and the desk is a fixed band across the bottom of it.
+  root.appendChild(set);
+  root.appendChild(desk);
+  root.appendChild(body);
   document.body.appendChild(root);
 
   const reduceMotion = !!(typeof window !== 'undefined' && window.matchMedia &&
@@ -355,10 +381,30 @@ function runStudioSegment(segment, ctx, onDone) {
     }, DIALOGUE_CHAR_MS);
   }
 
+  // Hands the screen over rather than tearing it down.
+  //
+  // The coach box opens OVER this set while it pulls back and dims, so the two
+  // read as one continuous movement instead of two separate popups. That means
+  // the set has to outlive its own segment: it stops listening, gives up the
+  // one-box slot so the next box can open, and is swept a beat later.
+  //
+  // Everything interactive is detached first. A lingering set that still had
+  // its click handler would swallow clicks meant for the coach's choices.
   function finish(skipped) {
     if (state.finished) return;
     state.finished = true;
-    closeDialogueBox();
+
+    if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    if (state.onKey) document.removeEventListener('keydown', state.onKey);
+    root.removeEventListener('click', advance);
+    root.classList.add('studio-handoff');
+
+    _openBox = null;
+    _retireLingering();
+    _lingering = root;
+    const node = root;
+    setTimeout(function () { if (_lingering === node) _retireLingering(); }, STUDIO_HANDOFF_MS);
+
     done({ segmentId: segment.id, skipped: !!skipped });
   }
 
@@ -397,6 +443,7 @@ if (typeof module !== 'undefined' && module.exports) {
     DIALOGUE_CHAR_MS: DIALOGUE_CHAR_MS,
     DIALOGUE_BUST_PX: DIALOGUE_BUST_PX,
     STUDIO_SEAT_PX: STUDIO_SEAT_PX,
+    STUDIO_HANDOFF_MS: STUDIO_HANDOFF_MS,
     runDialogue: runDialogue,
     runStudioSegment: runStudioSegment,
     dialogueBoxIsOpen: dialogueBoxIsOpen,

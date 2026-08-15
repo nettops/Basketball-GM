@@ -1413,78 +1413,120 @@ table { border-collapse: collapse; width: 100%; }
   .dlg-blinker { animation: none; }
 }
 
+
 /* ---- The halftime studio show ----
-   Same bezel language as the dialogue box, but a wider set: four busts behind
-   a desk, the talker lit and the rest sat back in the dark. Reuses .dlg-overlay
-   for the scrim and the z-index, so only one thing is ever on screen. */
-.studio-box { width: 100%; max-width: 660px; }
-.studio-set {
-  position: relative; padding: 14px 12px 0; overflow: hidden;
-  background: linear-gradient(180deg, #161d2b 0%, #10151f 62%, #0d1017 100%);
-  border: 3px solid #55627a; border-bottom: none;
-  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line);
+   Fullscreen: the set takes the whole screen, four busts drawn at 4x behind a
+   desk that runs edge to edge, and a broadcast band across the bottom. It is
+   the single biggest interruption in the game and is meant to feel like one.
+
+   It does NOT reuse .dlg-overlay. That class is a bottom-anchored scrim built
+   to hold a box; this fills the viewport and is a column. */
+.studio-fs {
+  position: fixed; inset: 0; z-index: 9600;
+  display: flex; flex-direction: column;
+  background: #0d1017;
+  cursor: pointer;
 }
-/* A suggestion of an arena window behind the desk, so the set has depth
-   without needing art. */
+.studio-set {
+  position: relative; flex: 1 1 auto; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  background: radial-gradient(ellipse at 50% 120%, #1d2636 0%, #10151f 55%, #0a0d13 100%);
+}
+/* An arena window behind the desk, and the scanline bed over everything, so
+   the set has depth without needing any art. */
 .studio-set::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 58%;
-  background: repeating-linear-gradient(90deg, rgba(125, 211, 160, .05) 0 3px, transparent 3px 12px);
+  content: ''; position: absolute; left: 0; right: 0; top: 0; height: 62%;
+  background: repeating-linear-gradient(90deg, rgba(125, 211, 160, .055) 0 3px, transparent 3px 14px);
   pointer-events: none;
 }
+.studio-set::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .16) 0 2px, transparent 2px 4px);
+}
 .studio-crew {
-  position: relative; display: flex; justify-content: center;
-  align-items: flex-end; gap: 4px;
+  position: relative; display: flex; justify-content: center; align-items: flex-end;
+  gap: 18px; padding-bottom: 4px;
 }
 .studio-seat {
-  display: flex; flex-direction: column; align-items: center;
-  opacity: .38;
-  transition: opacity 120ms steps(2, end), transform 120ms steps(2, end);
+  display: flex; flex-direction: column; align-items: center; opacity: .34;
+  transition: opacity 130ms steps(2, end), transform 130ms steps(2, end);
 }
 /* Stepped, not eased — a smooth fade under pixel art reads as a different
    medium arriving with it. */
-.studio-seat.live { opacity: 1; transform: translateY(-3px); }
+.studio-seat.live { opacity: 1; transform: translateY(-6px); }
 .studio-seat canvas { image-rendering: pixelated; display: block; }
 .studio-seat-name {
   font-family: ui-monospace, "Consolas", "Courier New", monospace;
-  font-size: .54rem; letter-spacing: .09em; text-transform: uppercase;
-  color: #55627a; margin-top: 3px; white-space: nowrap;
+  font-size: .62rem; letter-spacing: .12em; text-transform: uppercase;
+  color: #55627a; margin-top: 5px; white-space: nowrap;
 }
 .studio-seat.live .studio-seat-name { color: #7dd3a0; }
 .studio-desk {
-  position: relative; height: 16px; margin-top: -4px;
-  background: linear-gradient(180deg, #2a3446 0%, #1b2231 42%, #141a26 100%);
-  border-top: 2px solid #55627a;
-  border-left: 3px solid #55627a; border-right: 3px solid #55627a;
-  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line);
+  position: relative; flex: 0 0 auto; height: 46px;
+  background: linear-gradient(180deg, #2a3446 0%, #1b2231 40%, #0f141d 100%);
+  border-top: 3px solid #55627a;
 }
 .studio-desk::after {
-  content: 'INSIDE THE STUDIO'; position: absolute; left: 12px; top: 3px;
+  content: 'INSIDE THE STUDIO';
+  position: absolute; left: 50%; top: 13px; transform: translateX(-50%);
   font-family: ui-monospace, "Consolas", "Courier New", monospace;
-  font-size: .5rem; letter-spacing: .22em; color: #7dd3a0; opacity: .5;
+  font-size: .72rem; letter-spacing: .34em; color: #7dd3a0; opacity: .55;
 }
 .studio-body {
-  position: relative; padding: 10px 12px 12px;
-  background: #0d1017;
-  border: 3px solid #55627a; border-top: none;
-  box-shadow: 0 0 0 3px #0d1017, 0 0 0 5px var(--line), 0 14px 36px -8px rgba(0, 0, 0, .9);
+  position: relative; flex: 0 0 auto; min-height: 150px;
+  padding: 18px 40px 22px;
+  background: #0a0d13; border-top: 3px solid #55627a;
+}
+/* Fullscreen takes the whole screen away, so the way out has to be visible. */
+.studio-esc {
+  position: absolute; right: 22px; top: 18px;
+  font-family: ui-monospace, "Consolas", "Courier New", monospace;
+  font-size: .68rem; letter-spacing: .12em; color: #55627a;
 }
 .studio-plate {
   font-family: ui-monospace, "Consolas", "Courier New", monospace;
-  font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
-  color: #7dd3a0; margin-bottom: 6px; min-height: 1em;
+  font-size: .82rem; letter-spacing: .16em; text-transform: uppercase;
+  color: #7dd3a0; margin-bottom: 10px; min-height: 1em;
 }
 .studio-text {
   font-family: ui-monospace, "Consolas", "Courier New", monospace;
-  font-size: .84rem; line-height: 1.55; color: #dbe4f0;
-  min-height: 3.1em; white-space: pre-wrap;
+  font-size: 1.05rem; line-height: 1.6; color: #dbe4f0;
+  max-width: 900px; white-space: pre-wrap;
 }
 .studio-blinker {
-  position: absolute; right: 10px; bottom: 6px;
-  font-size: .62rem; color: #7dd3a0;
+  position: absolute; right: 26px; bottom: 16px;
+  color: #7dd3a0; font-size: .8rem;
   animation: dlg-blink 1s steps(2, start) infinite;
+}
+
+/* ---- The handoff: studio out, coach in ----
+   The set pulls back and dims while the coach box rises over it, so halftime
+   is one continuous movement rather than two popups. The set is still on
+   screen at this point but has stopped listening — see runStudioSegment's
+   finish(), which detaches every handler before adding this class.
+
+   620ms against the 700ms sweep timer in ui/dialogueBox.js: the node is
+   removed after the movement finishes, never during it. */
+.studio-fs.studio-handoff {
+  transform-origin: 50% 42%;
+  transform: scale(.82) translateY(-6%);
+  filter: brightness(.45) saturate(.7);
+  transition: transform 620ms cubic-bezier(.22, .61, .36, 1), filter 620ms linear;
+  pointer-events: none;
+}
+/* The coach box rides in from below. Applied to every dialogue box, not just
+   the one after a show: a box that simply appears is the thing this replaces. */
+.dlg-box { animation: dlg-box-rise 560ms cubic-bezier(.22, .61, .36, 1); }
+@keyframes dlg-box-rise {
+  from { transform: translateY(120%); }
+  to   { transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .studio-seat { transition: none; }
   .studio-blinker { animation: none; }
+  .dlg-box { animation: none; }
+  /* The pull-back still happens, because the set must get out of the way —
+     but it happens at once rather than as a movement. */
+  .studio-fs.studio-handoff { transition: none; }
 }

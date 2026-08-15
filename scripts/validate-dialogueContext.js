@@ -559,6 +559,26 @@ function checkTheStudioAlsoDegradesWithoutADom() {
 }
 checkTheStudioAlsoDegradesWithoutADom();
 
+function checkTheHandoffOutlastsItsAnimation() {
+  // The sweep timer removes the lingering set. If it fired before the CSS
+  // transition finished, the set would vanish mid-move instead of pulling
+  // back — the exact defect the transition exists to avoid.
+  assert.ok(dialogueBox.STUDIO_HANDOFF_MS >= 620,
+    'the sweep must outlast the 620ms pull-back, got ' + dialogueBox.STUDIO_HANDOFF_MS);
+  console.log('checkTheHandoffOutlastsItsAnimation: OK');
+}
+checkTheHandoffOutlastsItsAnimation();
+
+function checkTheStudioIsDrawnBigEnoughToSeeAFace() {
+  // Fullscreen exists so you can see who is talking. At the old 80px the bust
+  // scaled to 2x and a face was a suggestion.
+  const bust = rq('ui/pixelBust.js');
+  assert.ok(bust.bustScale(dialogueBox.STUDIO_SEAT_PX) >= 4,
+    'seats should draw at 4x or better, got ' + bust.bustScale(dialogueBox.STUDIO_SEAT_PX));
+  console.log('checkTheStudioIsDrawnBigEnoughToSeeAFace: OK');
+}
+checkTheStudioIsDrawnBigEnoughToSeeAFace();
+
 function checkTypewriterSpeedIsTheSpeccedValue() {
   assert.strictEqual(dialogueBox.DIALOGUE_CHAR_MS, 28, 'the spec fixes this at 28ms/char');
   console.log('checkTypewriterSpeedIsTheSpeccedValue: OK');
