@@ -538,4 +538,27 @@ function checkUserTeamKeepsItsTimeoutDecision() {
 }
 checkUserTeamKeepsItsTimeoutDecision();
 
+function checkPeriodScoresAreRecorded() {
+  const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(12345));
+  while (!sim.done) sim.step();
+
+  assert.ok(Array.isArray(sim.periodScores), 'periodScores is an array');
+  assert.ok(sim.periodScores.length >= 4, 'at least four periods ended, got ' + sim.periodScores.length);
+
+  sim.periodScores.forEach(function (row, i) {
+    assert.strictEqual(row.period, i + 1, 'periods are recorded in order');
+    assert.ok(Number.isFinite(row.home) && Number.isFinite(row.away), 'scores are numbers');
+    if (i > 0) {
+      assert.ok(row.home >= sim.periodScores[i - 1].home, 'home score never decreases');
+      assert.ok(row.away >= sim.periodScores[i - 1].away, 'away score never decreases');
+    }
+  });
+
+  const last = sim.periodScores[sim.periodScores.length - 1];
+  assert.strictEqual(last.home, sim.homeScore, 'final period row matches the final home score');
+  assert.strictEqual(last.away, sim.awayScore, 'final period row matches the final away score');
+  console.log('checkPeriodScoresAreRecorded: OK');
+}
+checkPeriodScoresAreRecorded();
+
 console.log('All game sim validations passed');

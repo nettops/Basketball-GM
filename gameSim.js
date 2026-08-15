@@ -199,6 +199,11 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // box scores are pruned at save time, so a takeover that lived only in one
     // would vanish for the other 29 teams.
     takeoverLog: [],
+    // The score as each period ENDED, one row per completed period. The sim
+    // already knows when a period rolls over; without this the score at any
+    // moment before the final buzzer is unrecoverable afterwards, which is
+    // exactly what "blew a fourth-quarter lead" is a statement about.
+    periodScores: [],
     // Set by a watching view to the side the human is coaching. Null for
     // every unwatched game, which is what keeps batch sims unchanged.
     userTeam: null,
@@ -509,6 +514,13 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
   }
 
   function endPeriod() {
+    // Recorded HERE rather than at the play-by-play period header above: that
+    // header is written at the top of a step, for the period about to be
+    // played, so the score it would capture is a possession short. This runs
+    // after the last possession of the period has resolved, which is what
+    // makes the final row equal the final score.
+    sim.periodScores.push({ period: sim.period, home: sim.homeScore, away: sim.awayScore });
+
     const regulationOver = sim.period >= REGULATION_PERIODS;
     if (!regulationOver) {
       sim.period += 1;
