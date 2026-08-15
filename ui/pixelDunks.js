@@ -238,6 +238,52 @@ function dunkBallPath(style, t, foot) {
 // the old 11px quick dunks were doing.
 const MIN_DUNK_LIFT = 16;
 
+// HOW HIGH HIS HAND IS, which is not a clock — it is wherever the ball has got
+// to, and it never goes back down.
+//
+// The arm was first swept on the pose's own `rising` channel, and that channel
+// starts during the gather. Rendered frame by frame the result was plain: the
+// arm was fully overhead while the ball was still down at his chest, so for the
+// whole rise he was reaching at nothing and the limb read as a pole beside his
+// head rather than as an arm holding a basketball.
+//
+// Driving it off the ball's LIVE height is the other failure — a windmill's ball
+// swings down and round, and the arm pumped with it. So it follows the running
+// maximum: the hand goes up with the ball and stays there while the ball orbits,
+// which is both what an arm does and what is drawable on a body ten px across.
+//
+// Sampled once per route at load rather than solved per frame; 48 steps is well
+// inside a pixel over the whole climb, and this is read for every dunking player
+// on every frame.
+const ENVELOPE_STEPS = 48;
+const DUNK_ENVELOPES = (function () {
+  const out = {};
+  DUNK_PATH_NAMES.forEach(function (name) {
+    const fn = DUNK_PATHS[name];
+    const start = fn(0), end = fn(1), span = end.up - start.up;
+    const table = [];
+    let run = -Infinity;
+    for (let i = 0; i <= ENVELOPE_STEPS; i++) {
+      const t = i / ENVELOPE_STEPS;
+      // the shape's own normalised height, before the rim scaling is applied
+      const u = Math.abs(span) < 1 ? 0 : (fn(t).up - start.up) / span;
+      run = Math.max(run, u);
+      table.push(run);
+    }
+    out[name] = table;
+  });
+  return out;
+}());
+
+function dunkArmHeight(style, t, foot) {
+  const table = DUNK_ENVELOPES[style] || DUNK_ENVELOPES.power;
+  const c = Math.max(0, Math.min(1, t)) * ENVELOPE_STEPS;
+  const i = Math.min(ENVELOPE_STEPS - 1, Math.floor(c));
+  const u = table[i] + (table[i + 1] - table[i]) * (c - i);
+  const termUp = typeof foot === 'number' ? RIM_ABOVE_FLOOR - foot : DUNK_TERMINAL.up;
+  return DUNK_ORIGIN.up + u * (termUp - DUNK_ORIGIN.up);
+}
+
 // ---------------------------------------------------------------------------
 // THE CATALOGUE.
 //
@@ -489,6 +535,7 @@ if (typeof module !== 'undefined' && module.exports) {
     RIM_ABOVE_FLOOR: RIM_ABOVE_FLOOR,
     DUNK_ORIGIN: DUNK_ORIGIN,
     MIN_DUNK_LIFT: MIN_DUNK_LIFT,
+    dunkArmHeight: dunkArmHeight,
     dunkById: dunkById,
     dunkTierFor: dunkTierFor,
     dunkRoll: dunkRoll,

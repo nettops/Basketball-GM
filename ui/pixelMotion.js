@@ -66,6 +66,104 @@ function dunkLiftTable(dunk, tall) {
   };
 }
 
+// HOW FAR INTO THE AIRBORNE POSE HE IS — its own channel, on the phase clock.
+//
+// First written as a function of the instantaneous lift, which does not work:
+// the lift snaps up 4px on the first frame of the rise (that is the leap, and it
+// is meant to), so a pose derived from it swept the arm 10px in that same frame
+// and the takeoff still read as a switch rather than a movement.
+//
+// On its own clock the arm starts coming up during the GATHER, which is what a
+// man actually does — he brings the ball to his chest before he brings it over
+// his head — and the sweep is spread across the whole windup and rise instead of
+// being crammed into the frame where the body is already doing the most.
+//
+// It comes back DOWN on the land beat so the limbs return to a standing pose
+// before his feet arrive, rather than the sprite popping out of the dunk.
+const DUNK_RISE = {
+  ready: 0, gather: 0.12, plant: 0.26, rise: 1, hang: 1, slam: 1, land: 0
+};
+
+// SECONDARY MOTION IN THE AIR — its own channel again, running rise to slam.
+//
+// `rising` is pinned at 1 for the whole airborne phase (that is what being
+// airborne means), so with nothing else moving, 7% of airborne frames were
+// measured with the body, the pose AND the ball all identical to the frame
+// before. A man at the top of a dunk is not a held cel.
+//
+// It is deliberately small: 2px of leg over the whole hang. Section 15's own
+// caveat is that every movement has to serve readability, and on a 10px body
+// anything larger stops being secondary and starts competing with the route.
+const DUNK_AIR = { rise: 0, hang: 0.55, slam: 1, land: 1 };
+
+function dunkAirAt(kf) {
+  const d = kf && kf.dunk;
+  if (!d) return 0;
+  return DUNK_AIR[d.phase] !== undefined ? DUNK_AIR[d.phase] : 0;
+}
+
+function dunkRiseAt(kf) {
+  const d = kf && kf.dunk;
+  if (!d) return 0;
+  return DUNK_RISE[d.phase] !== undefined ? DUNK_RISE[d.phase] : 0;
+}
+
+// THE TAKEOFF, which is two movements sharing one beat and used to share one
+// curve as well.
+//
+// The plant keyframe is a NEGATIVE lift — knees folded, feet planted — and the
+// rise keyframe is the apex. A single ease across that whole span decides for
+// itself how long the extension gets, and it decided on almost nothing: solving
+// `1 - (1-f)^2` for the zero crossing of a -5 to +16 span puts it at f=0.13, so
+// the man went from fully compressed to off the floor inside ONE frame of a
+// nine-frame beat, and 4px of body — a sixth of his height — moved in 16ms.
+// Compression with no visible extension is a pose change, not a jump.
+//
+// So the beat is split at the floor. The extension gets a guaranteed share and
+// eases OUT of the crouch; the leap gets the rest and snaps up. Two movements,
+// two curves, and the moment his feet leave the ground is a moment you can see.
+// Solved, not picked. Swept share x exponent against two budgets — the
+// extension must last at least 2 frames on the SHORTEST rise beat in the
+// catalogue, and no frame of the leap may move the body more than 4px (the step
+// the takeoff already ran to, so the explosiveness is not being paid for). 0.30
+// and 1.4 is the pair that meets both with the longest extension.
+const EXTEND_SHARE = 0.3;
+const LEAP_EASE = 1.4;
+
+function dunkTakeoff(la, lb, f) {
+  // Only a beat that actually crosses the floor is a takeoff; everything else
+  // (rise to hang, hang to slam, slam to land) keeps the old behaviour.
+  if (!(la < 0 && lb > 0)) {
+    return la + (lb - la) * (lb > la ? 1 - Math.pow(1 - f, 2) : Math.pow(f, 1.6));
+  }
+  if (f <= EXTEND_SHARE) {
+    // Driving out of the crouch: fast off the bottom, easing as he reaches full
+    // extension. This is the part that was missing.
+    const u = f / EXTEND_SHARE;
+    return la * Math.pow(1 - u, 2);
+  }
+  const u = (f - EXTEND_SHARE) / (1 - EXTEND_SHARE);
+  return lb * (1 - Math.pow(1 - u, LEAP_EASE));
+}
+
+// HOW FAR THROUGH PICKING THE BALL UP HE IS, at file scope so Node can reach it.
+//
+// It lived inside ballPos, which needs a whole render state to call, so nothing
+// tested it — and the defect it was hiding (the ball falling back out of his
+// hands at the takeoff) needed exactly this curve next to the route's origin to
+// be visible at all. CLAUDE.md's rule: if Node cannot reach it, it is not
+// covered.
+//
+// Most of the gather happens in the gather beat and it finishes on the plant,
+// so the ball is settled in his hands BEFORE he drives out of the crouch —
+// a man does not still be collecting the ball as his feet leave the floor.
+function dunkGatherProgress(phase, f) {
+  const u = Math.max(0, Math.min(1, f));
+  if (phase === 'gather') return u * 0.55;
+  if (phase === 'plant') return 0.55 + u * 0.45;
+  return phase === 'rise' ? 1 : 0;
+}
+
 function dunkLiftAt(kf, dunk) {
   const d = kf && kf.dunk;
   if (!d) return 0;
@@ -221,16 +319,21 @@ function resolveLifts(a, b, f, reduceMotion) {
   // dependency on ui/pixelDunks.js and the probes can load it alone.
   const dunkMark = (dunkA && dunkA.id ? dunkA : (dunkB || null));
   const dunk = dunkMark && dunkMark.dunk ? dunkMark.dunk : null;
-  let dunkerLift = 0, dunkerRoute = 0;
+  let dunkerLift = 0, dunkerRoute = 0, dunkerRising = 0, dunkerAir = 0;
   if (dunkerId && !reduceMotion) {
     const la = dunkLiftAt(a, dunk), lb = dunkLiftAt(b, dunk);
-    // snap up, fall away — a symmetric ease makes the leap look weightless
-    const ef = lb > la ? 1 - Math.pow(1 - f, 2) : Math.pow(f, 1.6);
-    dunkerLift = Math.round(la + (lb - la) * ef);
+    dunkerLift = Math.round(dunkTakeoff(la, lb, f));
     // The ball's own clock through the route. Linear: the route functions carry
     // their own easing, and easing this too would double it.
     const ra = dunkRouteAt(a), rb = dunkRouteAt(b);
     dunkerRoute = ra + (rb - ra) * f;
+    // The pose's own clock. Eased slightly against the lift rather than with it:
+    // the body snaps up, the limbs sweep. Moving every part on one curve is what
+    // makes a sprite read as one rigid object.
+    const sa = dunkRiseAt(a), sb = dunkRiseAt(b);
+    dunkerRising = sa + (sb - sa) * (sb > sa ? 1 - Math.pow(1 - f, 1.5) : Math.pow(f, 1.3));
+    const aa = dunkAirAt(a), ab = dunkAirAt(b);
+    dunkerAir = aa + (ab - aa) * f;
   }
 
   const jumper = reduceMotion ? { id: null, lift: 0 }
@@ -261,6 +364,8 @@ function resolveLifts(a, b, f, reduceMotion) {
     dunkerId: dunkerId, dunkerLift: dunkerLift,
     dunkerFoot: dunkPose.foot, dunkerCrouch: dunkPose.crouch,
     dunkerRoute: dunkerRoute,
+    dunkerRising: dunkerRising,
+    dunkerAir: dunkerAir,
     dunkerStyle: (dunk && dunk.path) || 'power',
     dunkerDunk: dunk,
     jumperId: jumperId, jumperLift: jumperLift, jumpFollow: jumpFollow,
@@ -1158,16 +1263,18 @@ function ballPosition(s) {
       // quietly moved the hoop by how high he jumped.
       const route = s.dunkPath(s.lifts.dunkerStyle || 'power', t, s.lifts.dunkerFoot);
       if (t > 0) {
-        // Blended out of the dribble over the first quarter of the route, for the
-        // same reason every other branch change in this file is: the ball is
-        // somewhere when the dunk starts, and snapping it onto the route would be
-        // the teleport this whole file is shaped to prevent.
-        const w = Math.max(0, Math.min(1, t / 0.25));
-        off = {
-          up: drib.up + (route.up - drib.up) * w,
-          side: drib.side + (route.side - drib.side) * w
-        };
-        behind = (route.back || 0) * w;
+        // Straight onto the route, with nothing to blend out of.
+        //
+        // This used to re-blend from the dribble over the first quarter of the
+        // route — correct when routes began at his feet, and a defect the moment
+        // they began in his hands. The two blends fought: the windup had already
+        // carried the ball up to the origin, and then the first frame of the rise
+        // weighted `t/0.25` at nearly zero and yanked it back down to dribble
+        // height. The ball fell 5px out of his hands at the exact instant he left
+        // the floor, and climbed the same 5px again. Continuous by construction
+        // now, because the gather ends where the route starts.
+        off = { up: route.up, side: route.side };
+        behind = route.back || 0;
       } else {
         // THE GATHER, which did not exist. The route clock is pinned at 0 for
         // the whole windup — that is deliberate, a gather is not ball travel —
@@ -1179,10 +1286,7 @@ function ballPosition(s) {
         // exactly where the route begins. The destination is read from the route
         // itself rather than restated here, so the two cannot drift apart.
         const startAt = s.dunkPath(s.lifts.dunkerStyle || 'power', 0, s.lifts.dunkerFoot);
-        const ph = (s.b.dunk && s.b.dunk.phase) || null;
-        const g = ph === 'gather' ? s.f * 0.55
-          : ph === 'plant' ? 0.55 + s.f * 0.45
-            : ph === 'rise' ? 1 : 0;
+        const g = dunkGatherProgress((s.b.dunk && s.b.dunk.phase) || null, s.f);
         off = {
           up: drib.up + (startAt.up - drib.up) * g,
           side: drib.side + (startAt.side - drib.side) * g
@@ -1372,6 +1476,13 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DUNK_LIFT: DUNK_LIFT,
     dunkLiftTable: dunkLiftTable,
+    DUNK_RISE: DUNK_RISE,
+    dunkRiseAt: dunkRiseAt,
+    DUNK_AIR: DUNK_AIR,
+    dunkAirAt: dunkAirAt,
+    dunkTakeoff: dunkTakeoff,
+    dunkGatherProgress: dunkGatherProgress,
+    EXTEND_SHARE: EXTEND_SHARE,
     DUNK_ROUTE_T: DUNK_ROUTE_T,
     dunkRouteAt: dunkRouteAt,
     JUMP_LIFT: JUMP_LIFT,

@@ -192,6 +192,10 @@ function crouchSplit(crouch, legLen, torsoLen) {
 // returns that DELTA and not a total, which is worth stating because reading it
 // as a total put the hand 26px from the ball and the check caught it.
 const SPRITE_BODY_PX = 24;
+// Where he carries the ball before he extends: the same height ui/pixelDunks.js
+// starts every route at. The two must agree or the arm leaves the carry position
+// at a different moment than the ball does; validate-pixel-posture asserts it.
+const DUNK_CARRY_UP = 12;
 const DUNK_HAND_OVER = 6;
 const DUNK_REACH_MIN = -3, DUNK_REACH_MAX = 5;
 
@@ -206,6 +210,38 @@ function dunkReach(standing, ballUp) {
 function dunkHandHeight(heightIn, ballUp) {
   const standing = SPRITE_BODY_PX + spriteTallness(heightIn);
   return standing + DUNK_HAND_OVER + dunkReach(standing, ballUp);
+}
+
+// LEAVING THE FLOOR IS A MOVEMENT, NOT A SWITCH.
+//
+// The airborne pose used to engage the instant the lift crossed 3px: legs went
+// from full-length to tucked stubs and the arm from beside the torso to fully
+// overhead, between one frame and the next. Measured over the real timeline
+// that was 179px of a ~240px sprite changing in a single frame — the "sprite A
+// then sprite B" failure, in the one place the eye is guaranteed to be looking.
+//
+// `rising` runs 0..1 as he leaves the floor and back down as he descends, and
+// the limbs are drawn AT that fraction rather than at one end of it.
+//
+// Arms and legs ride DIFFERENT curves off the same number, which is the whole
+// trick: moving every limb on one clock is what makes a sprite read as rigid.
+// Going up the arms lead; coming down the legs reach for the floor first while
+// the arms stay high, which is both the follow-through and what a man actually
+// does when he lands.
+const RISE_FULL_PX = 7;                 // fully airborne by 7px off the floor
+
+function spriteRiseFraction(lift) {
+  return Math.max(0, Math.min(1, (lift - 1) / RISE_FULL_PX));
+}
+function armRise(u) { return Math.pow(u, 0.6); }   // lead up, linger coming down
+function legRise(u) { return Math.pow(u, 1.5); }   // reach for the floor early
+
+// Interpolates a rect and snaps to the pixel grid. Rounding at the END rather
+// than lerping pre-rounded endpoints is what keeps the sweep from stepping.
+function lerpRect(a, b, u) {
+  return [Math.round(a[0] + (b[0] - a[0]) * u), Math.round(a[1] + (b[1] - a[1]) * u),
+    Math.max(1, Math.round(a[2] + (b[2] - a[2]) * u)),
+    Math.max(1, Math.round(a[3] + (b[3] - a[3]) * u))];
 }
 
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
@@ -264,16 +300,47 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     //                      ball passing through his shins.
     const dk = (typeof opts.dunking === 'object' && opts.dunking) ? opts.dunking : {};
     const split = dk.path === 'eastbay';
+    // Where the legs are going, and where they are coming FROM — the standing
+    // pair, feet on the floor at top+24. The tuck is drawn part-way between.
+    // THE STANCE HE TAKES OFF FROM, which is where a takeoff is actually
+    // readable. One foot and two feet only differed once he was already in the
+    // air — by which point the floor, the plant and the whole reason the two
+    // are different moves have gone past. The tuck is drawn as a departure from
+    // THIS, so the stance shows through the entire windup.
+    //
+    //   two feet   a wide gathered base, both feet level. He stopped, sat down
+    //              into it and went straight up.
+    //   one foot   a stride: the plant foot forward and carrying him, the trail
+    //              foot back and short. He ran into the leap.
+    const legY = top + 18 - legT + hipDrop, legH = 6 + legT - hipDrop;
+    const twoFoot = dk.takeoff === 'two';
+    const standL = twoFoot ? [left + 1, legY, 2, legH] : [left, legY + 1, 2, Math.max(1, legH - 1)];
+    const standR = twoFoot ? [left + 7, legY, 2, legH] : [left + 6, legY, 2, legH];
+    // SECONDARY MOTION. `air` runs 0 at the apex of the rise to 1 at the slam,
+    // and the legs uncoil across it — you tuck hard off the floor and you are
+    // already opening out by the time you reach the rim. 2px over the whole
+    // hang, which is small on purpose: bigger and it competes with the route.
+    const air = typeof dk.air === 'number' ? Math.max(0, Math.min(1, dk.air)) : 0;
+    const drop = Math.round(air * 2);
+    let tuckL, tuckR;
     if (split) {
-      ctx.fillRect(left - 1, topU + 17, 2, 5);   // trail leg thrown wide
-      ctx.fillRect(left + 8, topU + 16, 2, 5);   // lead leg thrown wide
+      // ...and the eastbay's split CLOSES as the ball comes back out from
+      // between his legs. Held open to the slam it read as a man landing in the
+      // splits, and it is the one pose where the legs carry the whole move.
+      const open = Math.round((1 - air) * 1);
+      tuckL = [left - open, topU + 17 + drop, 2, 5];
+      tuckR = [left + 7 + open, topU + 16 + drop, 2, 5];
     } else if (dk.takeoff === 'two') {
-      ctx.fillRect(left + 2, topU + 18, 2, 4);   // both knees tucked together
-      ctx.fillRect(left + 6, topU + 18, 2, 4);
+      tuckL = [left + 2, topU + 18 + drop, 2, 4];   // both knees tucked together
+      tuckR = [left + 6, topU + 18 + drop, 2, 4];
     } else {
-      ctx.fillRect(left + 1, topU + 18, 2, 4);  // trail leg, bent back
-      ctx.fillRect(left + 6, topU + 17, 2, 3);  // lead knee driven up
+      tuckL = [left + 1, topU + 18 + drop, 2, 4];   // trail leg, bent back
+      tuckR = [left + 6, topU + 17 + drop, 2, 3];   // lead knee driven up
     }
+    const lu = legRise(typeof dk.rising === 'number' ? dk.rising : 1);
+    const rl = lerpRect(standL, tuckL, lu), rr = lerpRect(standR, tuckR, lu);
+    ctx.fillRect(rl[0], rl[1], rl[2], rl[3]);
+    ctx.fillRect(rr[0], rr[1], rr[2], rr[3]);
   } else if (opts.layup) {
     // A dunker tucks BOTH legs under him; a layup drives ONE knee and lets the
     // other trail. That asymmetry is most of what separates the two
@@ -344,17 +411,44 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // `tall + 6` from the same origin, so the difference is the stretch. Bounded
     // either way: an arm is not elastic, and the bound is what keeps a bad
     // number from drawing a limb across the whole frame.
+    const natural = SPRITE_BODY_PX + tall - bend.head + DUNK_HAND_OVER;
     const dkReach = dunkReach(SPRITE_BODY_PX + tall - bend.head, dkA.ballUp);
+    // Swept up from the sides rather than switched on. An arm that is beside the
+    // torso on one frame and fully overhead on the next is most of the 179px
+    // that used to change at the takeoff.
+    // THE ARM IS ON THE BALL'S CLOCK, NOT THE BODY'S.
+    //
+    // Swept on the pose's `rising` channel it was fully overhead while the ball
+    // was still at his chest — the channel starts during the gather and the ball
+    // does not leave his hands until the rise, so for the whole climb he was
+    // reaching at nothing. Legs still ride `rising`, because legs answer to the
+    // leap; the arm answers to what it is holding. That split is the difference
+    // between a body and a rigid sprite.
+    //
+    // `armUp` is the ball's running-maximum height above his feet — see
+    // dunkArmHeight. It leaves the carry position as the ball does and arrives
+    // overhead as the ball reaches the rim.
+    const au = typeof dkA.armUp === 'number'
+      ? Math.max(0, Math.min(1, (dkA.armUp - DUNK_CARRY_UP) /
+          Math.max(1, natural - DUNK_CARRY_UP)))
+      : armRise(typeof dkA.rising === 'number' ? dkA.rising : 1);
+    const restL = [lx, topU + 9, 2, 6 + bodyT], restR = [lx + 8, topU + 9, 2, 6 + bodyT];
+    let upL, upR;
     if (dkA.hands === 2) {
       // BOTH arms over the head. The single clearest silhouette difference
       // available on a body this wide, and the reason one- and two-hand dunks
       // are separate entries rather than one entry with a label.
-      ctx.fillRect(lx, topU - 5 - dkReach, 2, 13 + dkReach);
-      ctx.fillRect(lx + 8, topU - 5 - dkReach, 2, 13 + dkReach);
+      upL = [lx, topU - 5 - dkReach, 2, 13 + dkReach];
+      upR = [lx + 8, topU - 5 - dkReach, 2, 13 + dkReach];
     } else {
-      ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6 - dkReach, 2, 14 + dkReach);
-      ctx.fillRect(lx + (ballSide ? 0 : 8), topU + 3, 2, 7);
+      const bs = ballSide ? 1 : 0;
+      upL = [lx + (bs ? 8 : 0), topU - 6 - dkReach, 2, 14 + dkReach];
+      upR = [lx + (bs ? 0 : 8), topU + 3, 2, 7];
     }
+    const a1 = lerpRect(dkA.hands === 2 ? restL : (ballSide ? restR : restL), upL, au);
+    const a2 = lerpRect(dkA.hands === 2 ? restR : (ballSide ? restL : restR), upR, au);
+    ctx.fillRect(a1[0], a1[1], a1[2], a1[3]);
+    ctx.fillRect(a2[0], a2[1], a2[2], a2[3]);
   } else if (opts.layup) {
     // The finishing hand goes up on the side he is going up from, and the OFF
     // arm tucks across the chest rather than hanging — that tuck is the ball
@@ -672,7 +766,10 @@ if (typeof module !== 'undefined' && module.exports) {
     CROUCH_MIN_TORSO: CROUCH_MIN_TORSO,
     crouchSplit: crouchSplit,
     drawPlayerSprite: drawPlayerSprite,
+    spriteRiseFraction: spriteRiseFraction,
+    riseFull: RISE_FULL_PX,
     dunkReach: dunkReach,
+    DUNK_CARRY_UP: DUNK_CARRY_UP,
     dunkHandHeight: dunkHandHeight,
     DUNK_HAND_OVER: DUNK_HAND_OVER,
     BALL_SQUASH_MIN: BALL_SQUASH_MIN,

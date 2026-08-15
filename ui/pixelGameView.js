@@ -1001,7 +1001,15 @@ function renderPixelGame(container) {
         plantCrouch(braking) + hesiCoil + CONTACT_CROUCH_PX * bumpAmt;
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
-      const dunkPose = isDunkerNow && jumpLift >= 3;
+      // Engaged as he LEAVES the floor, not 3px up. The pose is drawn at
+      // `rising` now rather than at one end of it, so starting it early costs
+      // nothing — at rising 0 it is the standing pose — and it is what removes
+      // the snap between the two.
+      // Engaged for the WHOLE dunk string, not from a lift threshold. The pose
+      // is drawn at `rising` now, and at rising 0 that is the standing pose, so
+      // there is nothing to switch on — which is the point.
+      const dunkRising = lifts.dunkerRising || 0;
+      const dunkPose = isDunkerNow && dunkRising > 0.01;
       // WHICH dunk, and where in its rotation he is. The marker rides every
       // phase of the string, so a seek into the middle of a 360 still knows it
       // is a 360.
@@ -1127,7 +1135,12 @@ function renderPixelGame(container) {
                   // ball, a windmill's arm pumped up and down as the ball swung
                   // round beside him. His hand is going to the rim for the whole
                   // flight, and at the slam the two are the same place anyway.
-                  ballUp: RIM_ABOVE_FLOOR - lifts.dunkerFoot }
+                  ballUp: RIM_ABOVE_FLOOR - lifts.dunkerFoot,
+                  rising: dunkRising, air: lifts.dunkerAir || 0,
+                  // where his HAND is: the ball's running-maximum height, so the
+                  // arm leaves the carry position exactly as the ball does
+                  armUp: dunkArmHeight(theDunk.path, lifts.dunkerRoute || 0,
+                    lifts.dunkerFoot) }
               : true)
           : false,
         backToCamera: pose === 'dunking' && spinBack,

@@ -644,6 +644,83 @@ function checkTheHandMeetsTheBall() {
     'px across 3 heights x ' + dunks.DUNKS.length + ' dunks)');
 }
 
+function checkHePicksTheBallUpBeforeHeLeavesTheFloor() {
+  // Two blends used to fight over the ball at the takeoff. The windup carried it
+  // up from the dribble into his hands; then the first frame of the rise took a
+  // different branch that re-blended FROM THE DRIBBLE weighted `t/0.25`, which
+  // at t just above zero is nearly all dribble — so the ball fell 5px back out
+  // of his hands at the exact instant his feet left the floor, and climbed the
+  // same 5px again.
+  //
+  // The handover is continuous by construction now: the gather finishes at the
+  // route's own origin, and the route starts there. This asserts both halves of
+  // that sentence, because either one drifting re-opens the gap.
+  assert.strictEqual(motion.dunkGatherProgress('plant', 1), 1,
+    'the gather does not finish by the end of the plant — he is still collecting the ball as he leaves the floor');
+  assert.strictEqual(motion.dunkGatherProgress('rise', 0), 1,
+    'the rise does not start with the ball already gathered');
+  // ...and it must be MONOTONIC through the windup, or the ball bobs in his
+  // hands while he is loading up.
+  let prev = -1;
+  [['gather', 0], ['gather', 0.5], ['gather', 1], ['plant', 0], ['plant', 0.5], ['plant', 1]]
+    .forEach(function (step) {
+      const g = motion.dunkGatherProgress(step[0], step[1]);
+      assert.ok(g >= prev, 'the gather goes backwards at ' + step[0] + ' ' + step[1]);
+      prev = g;
+    });
+  // The destination is the route's origin, for every route and every leap.
+  dunks.DUNK_PATH_NAMES.forEach(function (name) {
+    for (let foot = 0; foot <= 21; foot++) {
+      const start = dunks.dunkBallPath(name, 0, foot);
+      assert.ok(Math.abs(start.up - dunks.DUNK_ORIGIN.up) < 0.01,
+        name + ' at foot ' + foot + ' starts at ' + start.up.toFixed(1) +
+        ', so the gather hands the ball over to somewhere it is not');
+    }
+  });
+  console.log('checkHePicksTheBallUpBeforeHeLeavesTheFloor: OK (gather ends at the origin ' +
+    'for ' + dunks.DUNK_PATH_NAMES.length + ' routes x 22 leaps)');
+}
+
+function checkTheHandGoesUpWithTheBallAndStaysThere() {
+  // The arm used to sweep on the POSE's clock, which starts during the gather —
+  // so it was fully overhead while the ball was still at his chest and he spent
+  // the whole rise reaching at nothing. Rendered frame by frame it read as a
+  // pole beside his head rather than as an arm holding a basketball.
+  //
+  // Driving it off the ball's LIVE height is the opposite failure: a windmill's
+  // ball swings down and round, and the arm pumped with it. So it follows the
+  // running maximum, and this asserts both halves — it starts where the ball
+  // starts, and it never retreats.
+  assert.strictEqual(sprites.DUNK_CARRY_UP, dunks.DUNK_ORIGIN.up,
+    'the sprite carries the ball at ' + sprites.DUNK_CARRY_UP + ' but the routes start it at ' +
+    dunks.DUNK_ORIGIN.up + ' — the arm leaves the carry at a different moment than the ball does');
+  let worstFall = 0, fellOn = '';
+  dunks.DUNK_PATH_NAMES.forEach(function (name) {
+    [11, 15, 21].forEach(function (foot) {
+      let prev = null;
+      for (let t = 0; t <= 1.0001; t += 1 / 120) {
+        const h = dunks.dunkArmHeight(name, t, foot);
+        if (prev !== null && h < prev - 1e-9) {
+          const fall = prev - h;
+          if (fall > worstFall) { worstFall = fall; fellOn = name + '@foot' + foot; }
+        }
+        prev = h;
+      }
+      assert.ok(Math.abs(dunks.dunkArmHeight(name, 0, foot) - dunks.DUNK_ORIGIN.up) < 0.01,
+        name + ' starts its arm somewhere other than the carry position');
+      // ...and arrives at the rim, or the hand stops short of the finish.
+      assert.ok(Math.abs(dunks.dunkArmHeight(name, 1, foot) -
+        (dunks.RIM_ABOVE_FLOOR - foot)) < 0.01,
+        name + ' does not finish its arm at the rim');
+    });
+  });
+  assert.strictEqual(worstFall, 0,
+    'the dunking arm drops ' + worstFall.toFixed(2) + 'px mid-flight on ' + fellOn +
+    ' — that is the pump the envelope exists to prevent');
+  console.log('checkTheHandGoesUpWithTheBallAndStaysThere: OK (' +
+    dunks.DUNK_PATH_NAMES.length + ' routes x 3 leaps, never retreats)');
+}
+
 function checkNoTwoDunkRoutesAreTheSameRoute() {
   // The brief's central rule: no copy/paste variations. Two routes that never
   // separate by more than a body width are one route with two names.
@@ -832,6 +909,8 @@ checkTheLayupPoseIsItsOwnSilhouette();
 checkOnlyOnePoseCanEverWin();
 checkTheCatalogueIsInternallyHonest();
 checkEveryDunkRouteEndsAtTheRim();
+checkHePicksTheBallUpBeforeHeLeavesTheFloor();
+checkTheHandGoesUpWithTheBallAndStaysThere();
 checkEveryDunkFinishesAtTheSameRim();
 checkTheHandMeetsTheBall();
 checkNoTwoDunkRoutesAreTheSameRoute();
