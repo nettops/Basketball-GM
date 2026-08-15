@@ -96,9 +96,17 @@ function providedKeys(branchText) {
   return out;
 }
 
+// Root modules AND ui/. Only root was scanned for a long time, on the reasoning
+// that view files have no dependencies to bridge — which stopped being true the
+// moment one of them needed a root module. The gap is not hypothetical: a view
+// file referencing a name that existed in Node and not in the browser is
+// exactly how `selectSegment is not defined` reached a real page, with every
+// Node validator green.
 const files = fs.readdirSync(ROOT).filter(function (f) {
   return f.endsWith('.js') && fs.statSync(path.join(ROOT, f)).isFile();
-});
+}).concat(fs.readdirSync(path.join(ROOT, 'ui')).filter(function (f) {
+  return f.endsWith('.js');
+}).map(function (f) { return path.join('ui', f); }));
 
 const failures = [];
 let checkedFiles = 0, checkedRefs = 0;

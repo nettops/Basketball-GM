@@ -3,6 +3,14 @@
 // view interpolates between. Pure data-in data-out — no canvas, no GameState —
 // so scripts/validate-pixel-choreographer.js can exercise it in Node.
 
+// The one thing this file takes from outside itself: the opposed-attribute
+// check the possession engine settles every contest with. An ankle breaker is a
+// contest — his handle against the man in front of him — and it had been the
+// only one in the game decided by a bare threshold instead.
+var _CHOREO_DATA = (typeof require !== 'undefined')
+  ? { skill: require('../skillCheck.js') }
+  : { skill: { skillCheckProbability: skillCheckProbability } };
+
 const PIXEL_STAGE = {
   w: 480, h: 270,
   court: { x: 20, y: 64, w: 440, h: 192 },
@@ -391,6 +399,65 @@ function isDunker(player) {
 // edges are independent, which is worth knowing before touching either.
 const IMPACT_THRESHOLDS = { poster: 47, ankle: 22 };
 
+// THE ANKLE BREAKER IS A CONTEST, NOT A LOOKUP.
+//
+// `handleEdge >= 22` is a hard cutoff, and a hard cutoff on two fixed rating
+// sets is fully deterministic: the same two players always produce the same
+// verdict. Measured over 30 games, of every matchup that came up three or more
+// times, 100% were all-or-nothing. A handler sitting at edge 22.5 broke his
+// man's ankles on 3 of 3 made jumpers; one at 21.5 would never do it, in any
+// game, all season. Roughly one matchup in twenty sits within three points of
+// the line, and the line decides them absolutely.
+//
+// So it goes through skillCheck.js like every other contest in the game — same
+// centring, same conventions, so a badge or a fatigue term can be added here
+// later in the one place they are added everywhere else.
+//
+// THE DRAW IS roll01, NOT AN RNG. This file is replayed: the same event log has
+// to produce the same timeline every time it is built, or seeking and
+// re-watching a game would deal a different highlight reel. roll01 hashes a
+// possession seed, so the result is fixed for a given game and still
+// uncorrelated between possessions.
+//
+// Calibrated to hold the fire rate the threshold produced — 4.40/game against
+// the 1.5-6.0 band, where the cutoff gave 4.50 — while turning every certainty
+// into a probability. Solved by sweeping `base` over the real population of
+// 1291 outside makes across 30 games rather than picked by eye:
+//
+//   base    rate/game
+//   0.055      4.20
+//   0.065      4.40   <- here
+//   0.070      4.60
+//   0.090      5.03
+//   0.115      5.97   <- the band's ceiling is 6.0
+//
+// `scale` is deliberately gentle, so an elite guard against a poor defender is
+// several times likelier than the reverse without either being a foregone
+// conclusion. Across those matchups the chance runs 2% at worst, 8.5% median,
+// 41% at best.
+//
+// `min` matters as much as the rest. Without a floor the arithmetic clamps a
+// third of all matchups to exactly zero, which reintroduces the very thing
+// being fixed at the other end of the scale — a poor handler who can NEVER do
+// it, in any game, all season. He can; rarely.
+const ANKLE_CHECK = { base: 0.065, scale: 150, min: 0.02, max: 0.45 };
+
+// How badly the handler beat his man, as a probability rather than a verdict.
+// Split out from the roll so a UI or a sweep can read the chance without
+// consuming anything.
+function ankleChance(shooter, defender) {
+  if (!shooter || !shooter.attributes || !defender || !defender.attributes) return 0;
+  const a = shooter.attributes, d = defender.attributes;
+  return _CHOREO_DATA.skill.skillCheckProbability({
+    base: ANKLE_CHECK.base,
+    // the same composite handleEdge weighs: handle first, then getting past him
+    attack: { value: (a.ballHandling * 2 + a.acceleration + a.speed) / 4, scale: ANKLE_CHECK.scale },
+    defend: { value: d.perimeterDefense, scale: ANKLE_CHECK.scale },
+    min: ANKLE_CHECK.min,
+    max: ANKLE_CHECK.max
+  }).probability;
+}
+
 // How badly the finisher beat the man protecting the rim.
 function posterEdge(shooter, defender) {
   const a = shooter.attributes, d = defender.attributes;
@@ -408,7 +475,9 @@ function handleEdge(shooter, defender) {
 // Zone is what keeps poster and ankle disjoint: inside makes can only ever be
 // posters, outside makes only ever ankle breakers. There is no precedence rule
 // to get wrong, and validate-impactMoments.js pins that as a property.
-function classifyImpact(ev, shooter, defender) {
+// `seed` is the possession seed the caller is already using for its other
+// rolls. Deterministic, so a replayed game deals the same highlights.
+function classifyImpact(ev, shooter, defender, seed) {
   if (!ev) return null;
   if (ev.type === 'block') return 'block';
   if (ev.type !== 'shot' || !ev.made) return null;
@@ -420,7 +489,7 @@ function classifyImpact(ev, shooter, defender) {
     return posterEdge(shooter, defender) >= IMPACT_THRESHOLDS.poster ? 'poster' : null;
   }
   if (ev.zone === 'mid' || ev.zone === 'three') {
-    return handleEdge(shooter, defender) >= IMPACT_THRESHOLDS.ankle ? 'ankle' : null;
+    return roll01((seed || 0) * 613 + 29) < ankleChance(shooter, defender) ? 'ankle' : null;
   }
   return null;
 }
@@ -1106,7 +1175,7 @@ function createChoreographer(session) {
         const shooterPlayer = playerById[ev.playerId];
         const dunking = ev.zone === 'inside' && isDunker(shooterPlayer);
         const impactKind = ev.made
-          ? classifyImpact(ev, shooterPlayer, playerById[ev.defenderId])
+          ? classifyImpact(ev, shooterPlayer, playerById[ev.defenderId], pi * 101 + ei)
           : null;
 
         // Eligibility is unchanged — someone working on the ball against a
@@ -1680,6 +1749,8 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_TABLE: DRIBBLE_TABLE,
     posterEdge: posterEdge,
     handleEdge: handleEdge,
-    classifyImpact: classifyImpact
+    classifyImpact: classifyImpact,
+    ankleChance: ankleChance,
+    ANKLE_CHECK: ANKLE_CHECK
   };
 }

@@ -55,16 +55,72 @@ function checkPosterNeedsAllThreeConditions() {
     'a missed dunk is not a poster');
 }
 
-function checkAnkleBreakerIsOutsideOnly() {
-  assert.strictEqual(choreo.classifyImpact({ type: 'shot', made: true, zone: 'mid' }, eliteHandler, weakPerimeter), 'ankle',
-    'a big handle edge on a made mid-range is an ankle breaker');
-  assert.strictEqual(choreo.classifyImpact({ type: 'shot', made: true, zone: 'three' }, eliteHandler, weakPerimeter), 'ankle',
-    'the same applies from three');
-  assert.strictEqual(choreo.classifyImpact({ type: 'shot', made: true, zone: 'mid' }, eliteHandler, elitePerimeter), null,
-    'a defender who stays in front denies it');
-  assert.strictEqual(choreo.classifyImpact({ type: 'shot', made: false, zone: 'three' }, eliteHandler, weakPerimeter), null,
-    'a miss never fires — celebrating a brick would read as a bug');
+// How often a matchup fires across many possession seeds. The ankle breaker is
+// a skill CHECK now, so a single call answers nothing — the question is the
+// rate, not the verdict.
+function ankleRate(shooter, defender, zone) {
+  let n = 0;
+  const trials = 4000;
+  for (let seed = 0; seed < trials; seed++) {
+    if (choreo.classifyImpact({ type: 'shot', made: true, zone: zone || 'mid' }, shooter, defender, seed) === 'ankle') n += 1;
+  }
+  return n / trials;
 }
+
+function checkAnkleBreakerIsOutsideOnly() {
+  assert.ok(ankleRate(eliteHandler, weakPerimeter, 'mid') > 0.2,
+    'a big handle edge on a made mid-range should often be an ankle breaker');
+  assert.ok(ankleRate(eliteHandler, weakPerimeter, 'three') > 0.2,
+    'the same applies from three');
+  assert.ok(ankleRate(eliteHandler, elitePerimeter, 'mid') < 0.1,
+    'a defender who stays in front should rarely be beaten');
+  let missed = 0;
+  for (let seed = 0; seed < 500; seed++) {
+    if (choreo.classifyImpact({ type: 'shot', made: false, zone: 'three' }, eliteHandler, weakPerimeter, seed)) missed += 1;
+  }
+  assert.strictEqual(missed, 0, 'a miss never fires — celebrating a brick would read as a bug');
+}
+
+// THE reason this stopped being a threshold.
+//
+// `handleEdge >= 22` is fully deterministic on two fixed rating sets, so the
+// same two players always produced the same verdict. Measured over 30 real
+// games, every matchup that came up three or more times was all-or-nothing —
+// 100% of them. A handler at edge 22.5 broke his man's ankles on 3 of 3 made
+// jumpers; one at 21.5 never would, in any game, all season.
+function checkTheSameMatchupIsNotAlwaysTheSameAnswer() {
+  // Someone right on the old line: neither a certainty nor an impossibility.
+  const borderline = mkPlayer({ id: 'borderline', attributes: { ballHandling: 74, acceleration: 70, speed: 72 } });
+  const average = mkPlayer({ id: 'average', attributes: { perimeterDefense: 50 } });
+  const r = ankleRate(borderline, average);
+  assert.ok(r > 0.02 && r < 0.5,
+    'a middling matchup fires ' + (r * 100).toFixed(1) + '% of the time — a check, not a lookup');
+
+  // Neither end of the scale may be absolute. The bottom matters as much as the
+  // top: without a floor the arithmetic clamps a third of all matchups to
+  // exactly zero, which is the same defect facing the other way.
+  const bestCase = ankleRate(eliteHandler, weakPerimeter);
+  const worstCase = ankleRate(mkPlayer({ id: 'clumsy', attributes: { ballHandling: 25, acceleration: 30, speed: 30 } }),
+    elitePerimeter);
+  assert.ok(bestCase < 0.95, 'even the best matchup must not be automatic, got ' + bestCase.toFixed(3));
+  assert.ok(worstCase > 0, 'even the worst matchup must be possible, got ' + worstCase.toFixed(3));
+  assert.ok(bestCase > worstCase * 3,
+    'skill has to matter: best ' + bestCase.toFixed(3) + ' against worst ' + worstCase.toFixed(3));
+
+  // And it must be REPLAYABLE. This file is rebuilt from a stored event log
+  // every time a game is re-watched or seeked; a real rng here would deal a
+  // different highlight reel each time.
+  for (let seed = 0; seed < 50; seed++) {
+    const a = choreo.classifyImpact({ type: 'shot', made: true, zone: 'mid' }, eliteHandler, weakPerimeter, seed);
+    const b = choreo.classifyImpact({ type: 'shot', made: true, zone: 'mid' }, eliteHandler, weakPerimeter, seed);
+    assert.strictEqual(a, b, 'the same possession must classify the same way every time it is replayed');
+  }
+
+  console.log('checkTheSameMatchupIsNotAlwaysTheSameAnswer: OK (borderline ' +
+    (r * 100).toFixed(1) + '%, best ' + (bestCase * 100).toFixed(1) +
+    '%, worst ' + (worstCase * 100).toFixed(1) + '%)');
+}
+checkTheSameMatchupIsNotAlwaysTheSameAnswer();
 
 // The property that makes precedence impossible to get wrong.
 function checkPosterAndAnkleAreDisjoint() {
@@ -131,8 +187,12 @@ function checkRateStaysInBand() {
       const ev = [];
       engine.simulateGame(home, away, rng, { events: ev });
       games++;
-      ev.forEach(function (e) {
-        const kind = choreo.classifyImpact(e, byId[e.playerId], byId[e.defenderId]);
+      // A per-event seed, standing in for the possession seed the choreographer
+      // passes. Omitting it hands every event in every game the SAME roll, so
+      // an ankle breaker becomes all-or-nothing league-wide — which is how this
+      // first read 7.42/game against a true 4.40.
+      ev.forEach(function (e, ei) {
+        const kind = choreo.classifyImpact(e, byId[e.playerId], byId[e.defenderId], (i * 100 + g) * 977 + ei);
         if (kind) count[kind] += 1;
       });
     }

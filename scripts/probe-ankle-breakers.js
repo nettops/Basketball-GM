@@ -5,7 +5,14 @@
 // user seeing anything there are four, and a drop at any of them looks
 // identical from the outside — "I have not seen one in a while".
 //
-//   1. classified   — classifyImpact says 'ankle'
+//   1. the odds     — what the MATCHUPS are worth, summed straight off the
+//                     event log. An ankle breaker is a skill check, so the
+//                     honest denominator is an expected value, not a re-roll.
+//                     It is an UPPER BOUND, not a target: it walks every made
+//                     outside shot in the log, while the choreographer only
+//                     classifies the ones that reach a possession's play list.
+//                     Stage 2 landing a few percent under it is that
+//                     difference, not attrition. A large gap is worth chasing.
 //   2. marker       — an ankle impact marker reached a keyframe (drives the
 //                     freeze, the zoom, the flash)
 //   3. crossover    — the jab/cross/clear/recover choreography was built, and
@@ -42,8 +49,8 @@ TEAMS.forEach(function (t) {
 
 const n = {
   games: 0, madeShots: 0,
-  classified: 0, marker: 0, crossover: 0,
-  // Why a classified ankle never became a crossover.
+  expected: 0, marker: 0, crossover: 0,
+  // Why an ankle breaker never became a crossover.
   lostShooterOffFloor: 0, lostNoDefender: 0, lostDefenderOffFloor: 0, lostInside: 0
 };
 const visible = { 1: 0, 2: 0, 4: 0, 8: 0 };
@@ -57,14 +64,28 @@ for (let i = 0; i < TEAMS.length; i++) {
     const result = gameSim.simulateGame(home.id, away.id, makeRng(seed), { events: events });
     n.games++;
 
+    // Stage 1 is the independent denominator: how many ankle breakers the
+    // MATCHUPS in this game are worth, walked straight off the event log.
+    //
+    // It sums the odds rather than re-rolling them. An ankle breaker is a skill
+    // check now, drawn from roll01 on a possession seed the choreographer
+    // derives from its own grouping and its own plays filter — so a probe that
+    // re-rolls has two bad options: omit the seed, which hands every event in
+    // the league the same roll (it read 8.02/game against a true 4.04), or
+    // reimplement the indexing and drift from it. Expected value needs neither,
+    // and it checks the calibration as well as the plumbing.
+    //
+    // Being an expectation over a slightly wider population than the
+    // choreographer's, this sits a little above stage 2 by construction. See
+    // the header: the gap to watch for is a large one.
     events.forEach(function (e) {
       if (e.type === 'shot' && e.made) n.madeShots++;
-      if (choreo.classifyImpact(e, byId[e.playerId], byId[e.defenderId]) !== 'ankle') return;
-      n.classified++;
+      if (e.type !== 'shot' || !e.made) return;
+      if (e.zone !== 'mid' && e.zone !== 'three') return;
+      n.expected += choreo.ankleChance(byId[e.playerId], byId[e.defenderId]);
       // The crossover's own preconditions, counted so a shortfall names itself
       // rather than needing a second investigation.
       if (!e.defenderId) n.lostNoDefender++;
-      else if (e.zone === 'inside') n.lostInside++;
     });
 
     const kfs = choreo.buildTimeline({
@@ -109,9 +130,9 @@ const per = function (v) { return (v / n.games).toFixed(2); };
 console.log('games:               ' + n.games);
 console.log('made shots/game:     ' + per(n.madeShots));
 console.log('');
-console.log('1. classified:       ' + per(n.classified) + '/game');
-console.log('2. marker on a kf:   ' + per(n.marker) + '/game');
-console.log('3. crossover drawn:  ' + per(n.crossover) + '/game   <- what LOOKS like an ankle breaker');
+console.log('1. the odds are worth: ' + per(n.expected) + '/game');
+console.log('2. marker on a kf:     ' + per(n.marker) + '/game');
+console.log('3. crossover drawn:    ' + per(n.crossover) + '/game   <- what LOOKS like an ankle breaker');
 console.log('');
 console.log('4. survives the speed gate, per game:');
 [1, 2, 4, 8].forEach(function (sp) {
@@ -132,5 +153,4 @@ if (crossMs.length) {
   });
   console.log('');
 }
-console.log('classified but no defender on the event: ' + per(n.lostNoDefender) + '/game');
-console.log('classified but the shot was inside:      ' + per(n.lostInside) + '/game');
+console.log('eligible but no defender on the event: ' + per(n.lostNoDefender) + '/game');
