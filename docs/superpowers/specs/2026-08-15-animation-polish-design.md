@@ -185,6 +185,53 @@ rarely — above 900px/s (an ordinary catch runs 366) or on the push-off dribble
 inside a named move. Every dribble contacts the floor four times a second, and
 flattening on all of them is not an accent, it is a flicker.
 
+---
+
+## Round three: the last of the list
+
+### The court has one axis, and finding that out took two wrong versions
+
+Layups needed distinguishable finishes. The first classifier used 26px for
+"pulled up short of the rim" — which sounded reasonable and sat below the 10th
+percentile, so **88% of every finish in the game came out a floater**. The
+second used distance *and* lateral offset as two independent signals and
+produced **zero reverses**. Measuring settled it:
+
+```
+distance to the rim   p10 16.5   p25 44.0   p50 47.8   p75 50.6   p90 53.5
+lateral offset        p10  4.0   p25 41.0   p50 45.0   p75 48.0   p90 51.0
+|dx| to the rim       p10 16.0   p25 16.0   p50 16.0   p75 16.0   p90 16.0
+```
+
+Every finish at the rim gathers **exactly 16px** from the hoop along the court's
+long axis. `dist` is just `hypot(16, lateral)` and carries no information the
+lateral offset does not already have — so using both was double-counting one
+number, which is why the two rules came out mutually exclusive. What survives is
+one geometric signal (wide → reverse) and one situational one (going over a big
+→ floater). Settles at 66% standard, 21% reverse, 13% floater.
+
+### Contact was already being measured; nobody was reading it
+
+The view resolves overlapping sprites every frame by shoving them apart, then
+drew both as though nothing had touched. That shove *is* a measurement of
+contact. Over three games it is nonzero on 8.2% of player-frames, and of those
+p50 is 0.1px, p90 0.9px, p99 2.3px — so ordinary crowding is a tenth of a pixel
+and a real bump is past about one. The floor sits at p90-of-nonzero, which fires
+on ~0.8% of all player-frames.
+
+It is *held* for 180ms rather than drawn on the frame it happened: a shove is
+spiky, and a lean that follows it frame for frame is a flicker, not a bump.
+
+### Between the legs, which the lab was lying about
+
+There was no between-the-legs move — the animation lab was labelling the double
+move as one, so it looked like there was. It is the exact opposite of
+behind-the-back on both axes that matter: that one goes **wide and stays up**
+around square shoulders, this one goes **narrow and hard down** through a stance
+he has to open. Without the open stance it is a crossover with a lower bounce,
+which is the "same rectangles sliding sideways" failure the named moves exist to
+escape.
+
 ## What this does not do
 
 - No new frames were added to any pose, and no pose was redrawn for its own

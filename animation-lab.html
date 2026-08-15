@@ -169,13 +169,13 @@
     };
   }
 
-  function layupAnim() {
+  function layupAnim(finish) {
     const kfs = keyframes('close', [
       { phase: 'gather', ms: B.closeGather }, { phase: 'rise', ms: B.closeRise },
       { phase: 'release', ms: B.closeRelease }, { phase: 'land', ms: B.flightIn }
-    ], { side: 1 });
+    ], { side: 1, finish: finish });
     return {
-      label: 'Layup',
+      label: 'Layup — ' + finish,
       beat: B.closeGather + 'g / ' + B.closeRise + 'r / ' + B.closeRelease + 'rel',
       ms: totalMs(kfs),
       at: function (ms) {
@@ -183,11 +183,14 @@
         const L = s.lifts;
         const airborne = L.closerLift >= 3;
         const held = ms < B.closeGather + B.closeRise + B.closeRelease;
-        const cock = closeCock(L.closerLift);
+        const cock = closeCock(L.closerLift, finish);
         return {
           opts: {
             crouch: L.closerCrouch, facing: 1,
-            layup: airborne ? { side: 1, extend: Math.min(1, L.closerLift / CLOSE_LIFT.rise) } : null,
+            layup: airborne
+              ? { side: 1, finish: finish,
+                  extend: Math.min(1, L.closerLift / closeLiftTable(finish).rise) }
+              : null,
             dribbling: !airborne ? { phase: 0.4, side: 1, crossing: false } : null
           },
           lift: L.closerFoot,
@@ -246,7 +249,10 @@
             // The body's half of the hesitation — it coils under the held ball
             // and uncoils into the cut.
             crouch: HESI_CROUCH_PX * (now.hesi || 0),
-            dribbling: { phase: now.phase, side: now.sign, crossing: now.crossing }
+            dribbling: {
+              phase: now.phase, side: now.sign,
+              crossing: now.crossing, through: now.through
+            }
           },
           lift: 0,
           ball: {
@@ -343,9 +349,11 @@
   }
 
   const ANIMS = [
-    shotAnim(true), shotAnim(false), layupAnim(), dunkAnim(),
+    shotAnim(true), shotAnim(false),
+    layupAnim('standard'), layupAnim('reverse'), layupAnim('floater'), dunkAnim(),
     moveAnim('Crossover', 'cross', 4, B.isoSize),
-    moveAnim('Between the legs', 'double', 5, B.isoSize),
+    moveAnim('Double move', 'double', 5, B.isoSize),
+    moveAnim('Between the legs', 'legs', 4, B.isoSize),
     moveAnim('Behind the back', 'behind', 4, B.isoSize),
     moveAnim('Ankle breaker', 'ankle', ANKLE_BEATS, B.crossJab),
     moveAnim('Put-down', 'putdown', 2, B.liveDribble),

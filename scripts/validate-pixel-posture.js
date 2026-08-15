@@ -387,6 +387,165 @@ function checkOnlyOnePoseCanEverWin() {
     ' flag combinations, one winner each)');
 }
 
+function checkTheThreeLayupFinishesAreThreeDifferentPictures() {
+  // A reverse, a floater and a standard lay-in used to be one pose at one
+  // height with only the side read off the timeline. If any two of them still
+  // draw the same pixels, the variety is nominal.
+  function trace(finish, side) {
+    const out = [];
+    const ctx = { fillStyle: '', fillRect: function (x, y, w, h) { out.push([x, y, w, h].join(',')); } };
+    sprites.drawPlayerSprite(ctx, 50, 100, COLORS, '23',
+      { heightIn: 79, layup: { side: side, finish: finish, extend: 1 } });
+    return out.join('|');
+  }
+  const kinds = ['standard', 'floater', 'reverse'];
+  for (let i = 0; i < kinds.length; i++) {
+    for (let j = i + 1; j < kinds.length; j++) {
+      assert.notStrictEqual(trace(kinds[i], 1), trace(kinds[j], 1),
+        kinds[i] + ' and ' + kinds[j] + ' draw identical pixels');
+    }
+  }
+  // A REVERSE finishes on the FAR side — he has carried it under the rim —
+  // which means that for the same drive direction the ball hand is the
+  // opposite one from a standard lay-in. That, and not the extra pixel of
+  // reach, is what makes it a different move rather than a taller one.
+  function ballArmX(finish, side) {
+    // The reaching arm is the tallest rect drawn; its x is the hand.
+    let best = null;
+    const ctx = {
+      fillStyle: '',
+      fillRect: function (x, y, w, h) {
+        if (w === 2 && (!best || h > best.h)) best = { x: x, h: h };
+      }
+    };
+    sprites.drawPlayerSprite(ctx, 50, 100, COLORS, '23',
+      { heightIn: 79, layup: { side: side, finish: finish, extend: 1 } });
+    return best.x;
+  }
+  const stdRight = ballArmX('standard', 1);
+  const revRight = ballArmX('reverse', 1);
+  assert.notStrictEqual(stdRight, revRight,
+    'a reverse finishes on the same hand as a standard lay-in from the same drive');
+  assert.strictEqual(revRight, ballArmX('standard', -1),
+    'a reverse should finish on the hand a standard lay-in from the other side uses');
+
+  // Each finish reaches its own height, and the ordering is the point: a
+  // floater is a touch shot and must not rise as high as a lay-in, a reverse
+  // carries under and rises higher.
+  const rise = {};
+  kinds.forEach(function (k) { rise[k] = motion.closeLiftTable(k).rise; });
+  assert.ok(rise.floater < rise.standard,
+    'a floater rises as high as a standard lay-in — it is a touch shot');
+  assert.ok(rise.reverse > rise.standard, 'a reverse does not rise higher than a standard lay-in');
+  // ...and a floater gathers DEEPER, because it is lofted rather than driven.
+  assert.ok(motion.closeLiftTable('floater').gather < motion.closeLiftTable('standard').gather,
+    'a floater does not gather deeper than a standard lay-in');
+  // Every finish must still be airborne at its release, which is the defect
+  // the layup work existed to fix and is easy to reintroduce in a new table.
+  kinds.forEach(function (k) {
+    assert.ok(motion.closeLiftTable(k).release > 0,
+      'a ' + k + ' releases with its feet on the floor');
+  });
+  console.log('checkTheThreeLayupFinishesAreThreeDifferentPictures: OK (rise ' +
+    kinds.map(function (k) { return k + ' ' + rise[k]; }).join(', ') + ')');
+}
+
+function checkContactIsRareAndDecays() {
+  // Measured: the separator shoves somebody on 8.2% of player-frames, and of
+  // those p50 is 0.1px. Ordinary crowding must draw nothing at all or the
+  // whole floor is permanently flinching.
+  assert.strictEqual(motion.contactStrength(0.1), 0, 'ordinary crowding registers as contact');
+  assert.strictEqual(motion.contactStrength(0.9), 0, 'a p90 nudge registers as contact');
+  assert.ok(motion.contactStrength(2.3) > 0, 'a p99 shove does not register as contact');
+  assert.strictEqual(motion.contactStrength(8), 1, 'the hardest shove is not full strength');
+  // Decays to nothing, and starts at full — a bump is hardest when it lands.
+  assert.strictEqual(motion.contactDecay(0), 1, 'contact does not start at full strength');
+  assert.strictEqual(motion.contactDecay(motion.CONTACT_MS), 0, 'contact never ends');
+  assert.strictEqual(motion.contactDecay(9999), 0, 'a stale bump still leans the body');
+  let worst = 0, prev = motion.contactDecay(0);
+  for (let ms = 0; ms <= motion.CONTACT_MS; ms += 1000 / 60) {
+    const v = motion.contactDecay(ms);
+    worst = Math.max(worst, Math.abs(v - prev));
+    prev = v;
+  }
+  assert.ok(worst * motion.CONTACT_LEAN_PX < 0.6,
+    'the contact lean steps ' + (worst * motion.CONTACT_LEAN_PX).toFixed(2) + 'px in one frame');
+  console.log('checkContactIsRareAndDecays: OK (fires above ' + motion.CONTACT_MIN_PX +
+    'px, worst step ' + (worst * motion.CONTACT_LEAN_PX).toFixed(2) + 'px/frame)');
+}
+
+function checkOnlyTheLegsMoveGoesThroughTheLegs() {
+  // A crossover goes across his front and a behind-the-back goes round his
+  // back. Opening the stance for either is the pose contradicting the ball.
+  ['cross', 'behind', 'double', 'putdown', 'ankle', 'stepback'].forEach(function (mv) {
+    for (let u = 0; u <= 4; u += 0.02) {
+      const now = motion.dribbleNow(1, { move: mv, n: 4, u: u });
+      assert.strictEqual(now.through, 0,
+        mv + ' opens the stance at u=' + u.toFixed(2) + ' — only "legs" may');
+    }
+  });
+  let peak = 0, worst = 0, prev = null;
+  for (let u = 0; u <= 4; u += 1 / 60) {
+    const now = motion.dribbleNow(1, { move: 'legs', n: 4, u: u });
+    peak = Math.max(peak, now.through);
+    if (prev !== null) worst = Math.max(worst, Math.abs(now.through - prev));
+    prev = now.through;
+  }
+  assert.ok(peak > 0.9, 'the between-the-legs stance never fully opens (' + peak.toFixed(2) + ')');
+  assert.ok(worst < 0.2, 'the stance snaps open ' + worst.toFixed(2) + ' in one frame');
+  // ...and the ball genuinely goes low through the middle on that beat, or the
+  // open stance is a pose with nothing passing through it.
+  let lowest = 1;
+  for (let u = 1.5; u <= 2.5; u += 0.01) {
+    lowest = Math.min(lowest, motion.dribbleNow(1, { move: 'legs', n: 4, u: u }).phase);
+  }
+  assert.ok(lowest < 0.1, 'the ball never gets low enough to pass through the stance');
+  // The stance opening must actually change the drawn sprite.
+  function trace(through) {
+    const out = [];
+    const ctx = { fillStyle: '', fillRect: function (x, y, w, h) { out.push([x, y, w, h].join(',')); } };
+    sprites.drawPlayerSprite(ctx, 50, 100, COLORS, '23',
+      { heightIn: 79, dribbling: { phase: 0.05, side: 1, crossing: true, through: through } });
+    return out.join('|');
+  }
+  assert.notStrictEqual(trace(0), trace(1), 'opening the stance draws nothing different');
+  console.log('checkOnlyTheLegsMoveGoesThroughTheLegs: OK (peak ' + peak.toFixed(2) +
+    ', worst step ' + worst.toFixed(2) + ')');
+}
+
+function checkTempoRespondsToSkillAndPressure() {
+  const id = 'p42';
+  const base = motion.dribbleTempoFor(id);
+  // A better handler is quicker; a pressured one is quicker still.
+  assert.ok(motion.handlerTempo(id, 95, 0) < motion.handlerTempo(id, 40, 0),
+    'an elite handler does not dribble quicker than a poor one');
+  assert.ok(motion.handlerTempo(id, 50, 1) < motion.handlerTempo(id, 50, 0),
+    'being picked up does not quicken the dribble');
+  // ...but neither may swamp the per-player identity, and nothing may invert
+  // the period. A tempo at or below zero would divide by zero in the clock.
+  [30, 50, 70, 95].forEach(function (h) {
+    [0, 0.5, 1].forEach(function (p) {
+      const t = motion.handlerTempo(id, h, p);
+      assert.ok(t > 0.5 && t < 1.5, 'tempo out of sane range: ' + t);
+      assert.ok(Math.abs(t - base) < 0.3, 'situation swamped the player: ' + t + ' vs ' + base);
+    });
+  });
+  // Pressure is a ramp, not a cliff — a defender crossing an invisible line
+  // must not change the dribble's rhythm on one frame.
+  let worst = 0, prev = motion.pressureFrom(100);
+  for (let d = 100; d >= 0; d -= 1) {
+    const v = motion.pressureFrom(d);
+    worst = Math.max(worst, Math.abs(v - prev));
+    prev = v;
+  }
+  assert.ok(worst < 0.1, 'pressure steps ' + worst.toFixed(2) + ' for one pixel of closing');
+  assert.strictEqual(motion.pressureFrom(999), 0, 'a defender across the court is pressure');
+  assert.strictEqual(motion.pressureFrom(0), 1, 'a defender on his hip is not full pressure');
+  console.log('checkTempoRespondsToSkillAndPressure: OK (elite+pressed ' +
+    motion.handlerTempo(id, 95, 1).toFixed(3) + ' vs poor+free ' +
+    motion.handlerTempo(id, 40, 0).toFixed(3) + ')');
+}
+
 function checkPosesStayWithinTheSpriteBox() {
   // Every pose, at every height, has to stay inside the footprint the court
   // draw order and the collision separator assume. A pose that reaches three
@@ -436,5 +595,9 @@ checkTheWeightFollowsTheBallAndNeverTeleports();
 checkALeanNeverMovesTheFeet();
 checkTheLayupPoseIsItsOwnSilhouette();
 checkOnlyOnePoseCanEverWin();
+checkTheThreeLayupFinishesAreThreeDifferentPictures();
+checkContactIsRareAndDecays();
+checkOnlyTheLegsMoveGoesThroughTheLegs();
+checkTempoRespondsToSkillAndPressure();
 checkPosesStayWithinTheSpriteBox();
 console.log('All pixel posture validations passed');

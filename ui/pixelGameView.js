@@ -357,6 +357,10 @@ function renderPixelGame(container) {
   const prevFootById = {};
   // When each dunker last caught the rim, in playback ms.
   const rimHitAt = {};
+  // When each player was last shoved by another body, and how hard.
+  const contactAt = {};
+  // When each player last kicked up dust, so a long skid makes one puff.
+  const lastDustAt = {};
   let shakeStartMs = -Infinity;
   // A dunk landing gets its own, separate from the collision shake: see where
   // it is applied for why the two must not share a timer or an axis.
@@ -412,6 +416,30 @@ function renderPixelGame(container) {
         vy: 0.008 + (i % 3) * 0.01,
         t0: playbackMs,
         color: i % 2 ? '#f4ead8' : '#e8760e'
+      });
+    }
+  }
+
+  // FLOOR DUST, on the same particle system the net splash uses. A dunk landing
+  // was the one impact in the game that moved the camera, made a noise and
+  // compressed the body without disturbing a single pixel of the court under
+  // him.
+  //
+  // Deliberately meaner than the net splash: three specks, low and flat, in the
+  // hardwood's own colours rather than white — this is dust being kicked, not a
+  // net snapping, and anything brighter turns a landing into a firework. Only
+  // dunk landings and the hardest plants get it, which is the same discipline
+  // that keeps blocks out of the zoom tier.
+  function spawnFloorDust(x, y, dirX) {
+    for (let i = 0; i < 3; i++) {
+      particles.push({
+        x0: x + (i - 1) * 2, y0: y,
+        // Kicked out along the floor and barely up. `dirX` throws it the way
+        // he was travelling, so a man landing out of a run drags it with him.
+        vx: ((i - 1) * 0.018) + (dirX || 0) * 0.012,
+        vy: -0.004 - (i % 2) * 0.003,
+        t0: playbackMs,
+        color: i % 2 ? '#c9a97a' : '#a8894f'
       });
     }
   }
@@ -715,14 +743,35 @@ function renderPixelGame(container) {
     } else {
       if (dribbleMove) dribbleU = dribbleClockAfterMove(dribbleU, dribbleMove.move, dribbleMove.n);
       dribbleMove = null;
-      // ...at HIS tempo. Every player used to pound it out on the same
-      // metronome, which is the same tell the idle breathing already avoids by
-      // giving each man his own period. Derived from the id, so a replay
-      // dribbles the way the game did.
+      // ...at HIS tempo, in THIS situation. Every player used to pound it out
+      // on the same metronome, which is the same tell the idle breathing
+      // already avoids by giving each man his own period — and then every
+      // player kept his own rhythm regardless of whether he was being picked
+      // up full-court or walking it up alone.
+      //
+      // The nearest opponent is read off the smoothed bodies, which at this
+      // point in the frame still hold last frame's positions. That is fine and
+      // deliberate: a 16ms-old pressure reading cannot be seen, and moving the
+      // clock step after the springs would change the order the ball and the
+      // bodies are resolved in, which is a much larger thing to disturb.
+      let pressure = 0;
+      if (dribbleSmooth && dribbleHolder) {
+        const myTeam = teamById[dribbleHolder];
+        let nearest = Infinity;
+        Object.keys(smooth).forEach(function (id) {
+          if (id === dribbleHolder || teamById[id] === myTeam) return;
+          const o = smooth[id];
+          const d = Math.sqrt(Math.pow(o.x - dribbleSmooth.x, 2) +
+                              Math.pow(o.y - dribbleSmooth.y, 2));
+          if (d < nearest) nearest = d;
+        });
+        pressure = pressureFrom(nearest);
+      }
+      const holderAttrs = playerById[dribbleHolder] && playerById[dribbleHolder].attributes;
       dribbleU = stepDribbleClock(dribbleU, dtMsTimeline,
         !!(dribbleSmooth &&
            Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6),
-        dribbleTempoFor(dribbleHolder));
+        handlerTempo(dribbleHolder, holderAttrs && holderAttrs.ballHandling, pressure));
     }
     const dribbleState = dribbleSmooth ? dribbleNow(dribbleU, dribbleMove) : null;
 
@@ -827,6 +876,22 @@ function renderPixelGame(container) {
       }
     });
 
+    // CONTACT. The shove above is a measurement of two bodies meeting that
+    // nobody was reading — both were redrawn as though nothing had touched, so
+    // a crowded drive was sprites sliding through each other. Stamped here,
+    // after the clamp, so it reflects the shove actually applied.
+    ids.forEach(function (pid) {
+      const s = smooth[pid];
+      const dx = s.x - preSep[pid][0], dy = s.y - preSep[pid][1];
+      const strength = contactStrength(Math.sqrt(dx * dx + dy * dy));
+      if (strength <= 0) return;
+      const prev = contactAt[pid];
+      // Keep the HARDER of an in-flight bump and a new one, rather than letting
+      // a glancing touch reset a real collision's accent to almost nothing.
+      if (prev && contactDecay(playbackMs - prev.at) * prev.strength > strength) return;
+      contactAt[pid] = { at: playbackMs, strength: strength, dirX: dx >= 0 ? 1 : -1 };
+    });
+
     // sorted top-to-bottom so nearer sprites overlap farther ones
     ids.sort(function (i1, i2) { return smooth[i1].y - smooth[i2].y; });
 
@@ -894,6 +959,11 @@ function renderPixelGame(container) {
         // pull-up coming down four times a possession would be seasick, which
         // is the same reasoning that keeps blocks out of the zoom tier.
         if (!reduceMotion && kind === 'dunk' && speed < 8) landShakeStartMs = playbackMs;
+        // ...and the floor gives. Only the hardest landing kicks dust, so it
+        // stays an accent rather than a puff under every pull-up.
+        if (!reduceMotion && kind === 'dunk') {
+          spawnFloorDust(x, y, s.vx > 20 ? 1 : (s.vx < -20 ? -1 : 0));
+        }
       }
       // The squash outlives the beat it happened on, so it is added to whatever
       // bend the current phase already asks for.
@@ -908,14 +978,27 @@ function renderPixelGame(container) {
       // a sprint that simply ends into a sprint that is BROUGHT to an end. Only
       // on the floor: a body in the air has nothing to plant against.
       const braking = footLift > 0 ? 0 : brakingRate(s.vx, s.vy, s.ax || 0, s.ay || 0);
+      // A skid hard enough to fold him kicks the floor too. Rate limited per
+      // player, because braking is a per-frame quantity and a man stopping over
+      // six frames would otherwise spawn six puffs.
+      if (!reduceMotion && braking > PLANT_ACCEL_FULL &&
+          playbackMs - (lastDustAt[pid] || -Infinity) > 500) {
+        lastDustAt[pid] = playbackMs;
+        spawnFloorDust(x, y, s.vx >= 0 ? 1 : -1);
+      }
       // The hesitation's coil. The ball's hold was only ever a ball behaviour,
       // so the man selling the fake stood bolt upright through it; this is his
       // half of the same beat, and it uncoils into the cut rather than
       // straightening on one frame (see `hesi` in moveDribble).
       const hesiCoil = (dribbleState && pid === dribbleHolder && footLift === 0)
         ? HESI_CROUCH_PX * (dribbleState.hesi || 0) : 0;
+      // ...and the bump he just took. Only on the floor: two men colliding in
+      // mid-air is a different animation the game does not have.
+      const bump = contactAt[pid];
+      const bumpAmt = (bump && footLift === 0)
+        ? bump.strength * contactDecay(playbackMs - bump.at) : 0;
       const crouchPx = Math.max(0, -jumpLift) + landSquash + rimHit +
-        plantCrouch(braking) + hesiCoil;
+        plantCrouch(braking) + hesiCoil + CONTACT_CROUCH_PX * bumpAmt;
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       const dunkPose = isDunkerNow && jumpLift >= 3;
@@ -925,10 +1008,13 @@ function renderPixelGame(container) {
       const layupPose = isCloserNow && jumpLift >= 3
         ? {
             side: (closeMark && closeMark.side) || 1,
+            finish: (closeMark && closeMark.finish) || 'standard',
             // Full extension is reached at the top of the rise and held through
             // the release, so the arm arrives with the ball rather than after
-            // it.
-            extend: Math.max(0, Math.min(1, jumpLift / CLOSE_LIFT.rise))
+            // it. Measured against THIS finish's apex — a floater tops out at
+            // 6px and would otherwise never read as extended at all.
+            extend: Math.max(0, Math.min(1,
+              jumpLift / closeLiftTable(closeMark && closeMark.finish).rise))
           }
         : null;
       // ground shadow stays planted even when the sprite lifts
@@ -1003,7 +1089,10 @@ function renderPixelGame(container) {
         // stops reading as weight and starts reading as a fall.
         lean: Math.max(-MOMENTUM_LEAN_PX, Math.min(MOMENTUM_LEAN_PX,
           (pose === 'dribbling' ? dribbleLean(dribbleState) * (facingById[pid] || 1) : 0)
-          + (footLift > 0 ? 0 : momentumLean(s.ax || 0)))),
+          + (footLift > 0 ? 0 : momentumLean(s.ax || 0))
+          // Knocked the way he was shoved: the upper body goes with the
+          // contact while the feet stay where they were planted.
+          + (bump ? CONTACT_LEAN_PX * bumpAmt * bump.dirX : 0))),
         frame: Math.floor((playbackMs + phase) / stride) % 2,
         // each player breathes on his own period, so ten sprites never pulse
         // in unison — the give-away that it is one global timer
@@ -1022,7 +1111,8 @@ function renderPixelGame(container) {
           ? {
               phase: dribbleState.phase,
               side: dribbleState.sign * (facingById[pid] || 1),
-              crossing: dribbleState.crossing
+              crossing: dribbleState.crossing,
+              through: dribbleState.through
             }
           : null,
         highlight: isHolder,

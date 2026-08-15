@@ -224,21 +224,68 @@ instead, and the distribution went back to baseline to the decimal. Worth
 remembering that adding a marker to a timeline can move a number that has
 nothing to do with the feature.
 
+## Round three — the last of the list
+
+- [x] **Three layup finishes** (§4). Standard, reverse and floater, each with
+      its own lift table, extension and arm pose. A reverse finishes on the
+      hand *opposite* the side he drove from — that, not the extra pixel of
+      reach, is what makes it a different move. Settles at **66% standard, 21%
+      reverse, 13% floater**; took two wrong classifiers to get there (see
+      below).
+- [x] **Contact** (§7). The separation shove was already a measurement of two
+      bodies meeting and nothing read it. Fires above 1px of shove — p90 of the
+      nonzero shoves, ~0.8% of all player-frames — and is held 180ms rather
+      than drawn on the single spiky frame it happened.
+- [x] **Between the legs** (§5), which did not exist; the lab had been
+      labelling the double move as one. Narrow and hard down through a stance
+      the sprite opens for it, against behind-the-back's wide-and-up.
+      **214 over 40 games**, alongside behind 184 and cross 130.
+- [x] **Situational tempo** (§12). Handling skill and defensive pressure now
+      feed the dribble rhythm, not just the dribble count. An elite handler
+      being picked up runs 0.798 against a poor one left alone at 0.970.
+- [x] **Floor dust** (§7). On dunk landings and the hardest plants only, in the
+      hardwood's own colours — a brighter puff turns a landing into a firework.
+
+### Measured after round three
+
+| | baseline | now |
+|---|---|---|
+| `dunk.land` frozen | **100%** | **21%** |
+| `cross.clear` frozen | **76%** | **5%** |
+| layup finishes | 1 | 3 (66 / 21 / 13%) |
+| named dribble moves | 5 | **7** (+ between-the-legs, + stepback) |
+| dribble-count distribution | 44.3 / 25.4 / 16.7 / 13.6 | unchanged |
+
+### Two measurements that were wrong before they were right
+
+**The layup classifier, twice.** 26px for "short of the rim" was below the 10th
+percentile and made 88% of finishes floaters. Then distance-and-lateral as two
+signals produced zero reverses — because `|dx|` to the rim is a **constant 16px**
+for every finish in the game, so distance and lateral offset are the same number
+wearing two hats. Guessing a threshold in a coordinate system you have not
+measured is how both happened.
+
+**Contact needed no new measurement at all.** The number was already being
+computed every frame by the separation pass and thrown away.
+
 ## Not done
 
 - **`dunk.slam` is still 100% frozen** for its 90ms, and stays that way on
   purpose — see round two. It is the impact hold.
-- **The dribble tempo varies per player but not per SITUATION.** A man being
-  pressured full-court dribbles at the same rhythm as one walking it up, and
-  `ballHandling` does not feed the tempo at all — only the dribble *count*.
-- **No between-the-legs pose.** The `double` move's ball path goes through his
-  stance, but the legs do not open for it; at 10px wide the two frames that
-  would need are a real question rather than an obvious win.
-- **Contact on drives is not animated.** Two bodies meeting at the rim is a
-  collision the separation pass resolves silently — nobody absorbs a bump, and
-  the brief's "contact layup" is not built.
-- **No pixel particles beyond the net splash**, and no motion streaks on the
-  ball beyond the high-speed trail that already existed.
-- **The layup does not vary by finish.** A reverse, a floater and a scoop all
-  draw the same pose at the same height; only the side is read from the
-  choreographer.
+- **Contact does not change the OUTCOME**, only the drawing. A bumped shooter
+  leans and folds, but the sim already decided whether the shot went in; there
+  is no "contact layup" in the sense of a finish that plays differently because
+  it was contested by a body rather than a hand.
+- **No motion streaks on the ball beyond the high-speed trail.** The trail
+  fades in above 1x for legibility, which is a different job from a streak that
+  says "this pass was hard".
+- **Nobody reacts to a shot going in or out.** The crowd does, the rim does,
+  and the ten players on the floor do not — a made three and an air ball
+  produce identical body language from the shooter after the follow-through
+  ends.
+- **The defender's stance is not animated.** He slides, but there is no
+  defensive crouch, no hands-up, no closeout — the whole defensive half of
+  every possession is drawn with the idle and running poses.
+- **No fatigue in the animation.** A player in his 40th minute moves exactly
+  like one who just checked in, though the sim tracks the fatigue that would
+  drive it.

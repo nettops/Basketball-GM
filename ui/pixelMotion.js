@@ -78,9 +78,34 @@ function jumpLiftAt(kf) {
 // and — the point of the whole exercise — STILL IN THE AIR at the release, with
 // the descent handled after the ball has gone.
 const CLOSE_LIFT = { gather: -3, rise: 8, release: 9, land: 0 };
+
+// ...and the three ways of finishing one, which until now were one way drawn
+// three times. A reverse, a floater and a standard lay-in were the same pose at
+// the same height; only which side he went up on was read from the timeline.
+//
+// The differences are the ones that survive at this size:
+//   standard  the baseline.
+//   floater   a TOUCH shot. Deeper gather (he has to get under it), lower rise
+//             and an earlier release — he is lofting it over somebody, not
+//             rising through them, and a floater that jumps as high as a
+//             standard lay-in is just a standard lay-in.
+//   reverse   HIGHER and later. He carries it under the rim and finishes on
+//             the far side, so he is in the air longer and extends further.
+const CLOSE_LIFT_BY_FINISH = {
+  standard: CLOSE_LIFT,
+  floater: { gather: -4, rise: 6, release: 6, land: 0 },
+  reverse: { gather: -3, rise: 9, release: 11, land: 0 }
+};
+
+function closeLiftTable(finish) {
+  return CLOSE_LIFT_BY_FINISH[finish] || CLOSE_LIFT;
+}
+
 function closeLiftAt(kf) {
   const c = kf && kf.close;
-  return (c && CLOSE_LIFT[c.phase] !== undefined) ? CLOSE_LIFT[c.phase] : 0;
+  if (!c) return 0;
+  const table = closeLiftTable(c.finish);
+  return table[c.phase] !== undefined ? table[c.phase] : 0;
 }
 
 // How far above his own feet a player holds the ball at full extension, by
@@ -152,6 +177,7 @@ function resolveLifts(a, b, f, reduceMotion) {
   // The layup, on exactly the machinery the jumper uses.
   const closer = reduceMotion ? { id: null, lift: 0 }
     : resolveLeaper(a, b, f, closeLiftAt, 'close', DESCENT_MS.close);
+  const closeMark = (a.close && a.close.id ? a.close : (b.close || null));
 
   // The signed lifts stay exactly as they were — the ball reads them and its
   // path must not move. `*Foot` and `*Crouch` are the same numbers split for
@@ -165,7 +191,9 @@ function resolveLifts(a, b, f, reduceMotion) {
     jumperId: jumperId, jumperLift: jumperLift, jumpFollow: jumpFollow,
     jumperFoot: jumpPose.foot, jumperCrouch: jumpPose.crouch,
     closerId: closer.id, closerLift: closer.lift,
-    closerFoot: closePose.foot, closerCrouch: closePose.crouch
+    closerFoot: closePose.foot, closerCrouch: closePose.crouch,
+    closerFinish: (closeMark && closeMark.finish) || 'standard',
+    closerSide: (closeMark && closeMark.side) || 1
   };
 }
 
@@ -345,6 +373,49 @@ function dribbleTempoFor(playerId) {
   return 1 + (u * 2 - 1) * DRIBBLE_TEMPO_SPREAD;
 }
 
+// ...AND THE SITUATION, not just the man.
+//
+// Per-player tempo fixed one tell and left another: a handler being picked up
+// full-court pounded it out at exactly the rhythm of one walking it up, and
+// `ballHandling` fed the dribble COUNT and nothing about how it looked. Both
+// pull the same way in real basketball — a good handler keeps it quicker and
+// tighter, and a man being pressured keeps it quicker and lower — so both feed
+// the same number.
+//
+// Small on purpose, and smaller than the per-player spread. The tempo gate
+// between the set and moving periods is what put a 12px teleport in the ball's
+// path once already (see stepDribbleClock); anything that moves the period
+// around a lot is walking back toward that.
+const HANDLE_TEMPO_SPREAD = 0.08;
+const PRESSURE_TEMPO_SPREAD = 0.10;
+// How close a defender has to be to count as pressure, in stage px. A body is
+// 10px wide and the separation pass holds men 11px apart, so 26 is roughly
+// "close enough to reach in" without firing on everyone in the half-court.
+const PRESSURE_NEAR_PX = 26;
+const PRESSURE_FAR_PX = 60;
+
+// 0 when the nearest defender is off him, 1 when he is right up on him.
+function pressureFrom(distPx) {
+  if (typeof distPx !== 'number') return 0;
+  if (distPx <= PRESSURE_NEAR_PX) return 1;
+  if (distPx >= PRESSURE_FAR_PX) return 0;
+  return (PRESSURE_FAR_PX - distPx) / (PRESSURE_FAR_PX - PRESSURE_NEAR_PX);
+}
+
+// The whole tempo for a handler right now: who he is, how good he is, and how
+// hard he is being guarded. Multiplied rather than added so each factor is a
+// proportion of the period and none of them can drive it to zero.
+function handlerTempo(playerId, handleSkill, pressure) {
+  const h = typeof handleSkill === 'number' ? handleSkill : 50;
+  const p = Math.max(0, Math.min(1, pressure || 0));
+  // A 95-rated handler runs 7% quicker than the baseline, a 40-rated one 1.6%
+  // slower. Same gentleness as DRIBBLE_SKILL_SHIFT, and for the same reason:
+  // a cliff between two adjacent ratings is what went wrong last time.
+  const skill = 1 - ((h - 50) / 50) * HANDLE_TEMPO_SPREAD;
+  const press = 1 - p * PRESSURE_TEMPO_SPREAD;
+  return dribbleTempoFor(playerId) * skill * press;
+}
+
 // `tempo` scales the period: above 1 is a slower, heavier handle. Passed in
 // rather than looked up so this stays a pure function of its arguments.
 function stepDribbleClock(u, dtMs, holderMoving, tempo) {
@@ -448,6 +519,16 @@ function dribbleCrossings(move, n) {
   // the two are the same rectangles sliding sideways at this size, which is
   // what they were.
   if (move === 'behind') return [{ at: Math.floor(n / 2), wide: 15, low: 0, behind: 5 }];
+  // BETWEEN THE LEGS, which the game did not have — and which the animation lab
+  // was mislabelling the double move as, so it looked like it did.
+  //
+  // The opposite extreme from behind-the-back on both axes that matter: that
+  // one goes WIDE and stays UP, around a handler whose shoulders stay square.
+  // This one goes NARROW and hard DOWN, through the middle of a stance he has
+  // to open to make room for. `legs` is what tells the sprite to open it —
+  // without that it is a crossover with a lower bounce, which is exactly the
+  // "same rectangles sliding sideways" failure the named moves exist to escape.
+  if (move === 'legs') return [{ at: Math.floor(n / 2), wide: 5, low: 0.95, legs: true }];
   // THE STEPBACK, and the one thing that makes it different in kind from every
   // move above: the ball does NOT change hands. He rides it, plants, and pushes
   // away from the man — the separation is made with his feet, not by moving the
@@ -520,6 +601,11 @@ function moveDribble(move, u, n, from) {
   // upright while the ball hung in front of him, which is not what a hesitation
   // looks like from either end.
   let hesi = 0;
+  // How far through his own stance the ball is being driven, 0..1. Only a move
+  // that says `legs` reports it — a crossover goes across his front and a
+  // behind-the-back goes round his back, and opening the stance for either
+  // would be the pose contradicting the ball.
+  let through = 0;
 
   const crossings = dribbleCrossings(move, n);
   // TWO windows, not one, and the difference is the whole reason the first
@@ -590,6 +676,7 @@ function moveDribble(move, u, n, from) {
       sign = to * (2 * d);
     }
     phase = Math.max(0, Math.min(1, phase - active.low * mid * phase));
+    if (active.legs) through = mid;
     if (active.behind) {
       phase = Math.max(phase, 0.5 + 0.35 * mid);
       behind = active.behind * mid;
@@ -597,7 +684,7 @@ function moveDribble(move, u, n, from) {
   } else {
     sign = hand;
   }
-  return { sign: sign, side: side, phase: phase, behind: behind, crossing: !!active, hesi: hesi };
+  return { sign: sign, side: side, phase: phase, behind: behind, crossing: !!active, hesi: hesi, through: through };
 }
 
 // Where the free clock has to resume once a string is over.
@@ -639,7 +726,7 @@ function dribbleClockAfterMove(clock, move, n) {
 // the handoff continuous by construction.
 function dribbleNow(clock, move) {
   const free = dribbleHand(clock);
-  if (!move || !move.move) return { sign: free.sign, side: DRIBBLE_SIDE, phase: free.phase, behind: 0, crossing: free.crossing, hesi: 0 };
+  if (!move || !move.move) return { sign: free.sign, side: DRIBBLE_SIDE, phase: free.phase, behind: 0, crossing: free.crossing, hesi: 0, through: 0 };
   // The move starts in whichever hand the ball is already in. The free clock is
   // HELD for the duration of a string (see dribbleClockAfterMove), so this is
   // the hand it had when the string opened and it does not drift underneath the
@@ -665,6 +752,7 @@ function dribbleNow(clock, move) {
     // Blended at the ends like everything else, so the coil eases in with the
     // move rather than switching on when the string opens.
     hesi: scripted.hesi * w,
+    through: scripted.through * w,
     crossing: scripted.crossing && w > 0.5
   };
 }
@@ -693,6 +781,41 @@ function dribbleLean(now) {
   if (!now) return 0;
   const amp = now.crossing ? CROSS_LEAN_PX : DRIBBLE_LEAN_PX;
   return amp * now.sign;
+}
+
+// CONTACT. Two bodies meeting, which until now happened silently.
+//
+// The view already resolves overlapping sprites every frame by shoving them
+// apart — and then drew both of them as though nothing had touched, so a
+// crowded drive was players sliding through each other and popping out the
+// far side. That shove is a measurement of contact nobody was reading.
+//
+// Measured over three games, the shove the separator applies per player-frame:
+//
+//     nonzero on 8.2% of player-frames
+//     of those:  p50 0.1   p75 0.4   p90 0.9   p99 2.3   max 7.72 px
+//
+// So ordinary crowding is a tenth of a pixel and a real bump is past about one.
+// The floor sits at p90-of-nonzero, which is ~0.8% of all player-frames — often
+// enough to make the paint feel physical, rare enough to stay an accent.
+const CONTACT_MIN_PX = 1.0;
+const CONTACT_FULL_PX = 3.0;
+const CONTACT_MS = 180;
+const CONTACT_LEAN_PX = 2;
+const CONTACT_CROUCH_PX = 1.5;
+
+function contactStrength(shovePx) {
+  const s = shovePx || 0;
+  if (!(s > CONTACT_MIN_PX)) return 0;
+  return Math.min(1, (s - CONTACT_MIN_PX) / (CONTACT_FULL_PX - CONTACT_MIN_PX));
+}
+
+// Held briefly rather than drawn on the single frame the shove happened. A
+// shove is spiky — a body can be pushed hard on one frame and not at all on the
+// next — and a lean that follows it frame for frame is a flicker, not a bump.
+function contactDecay(ms) {
+  if (typeof ms !== 'number' || ms < 0 || ms >= CONTACT_MS) return 0;
+  return Math.pow(1 - ms / CONTACT_MS, 1.5);
 }
 
 // THE POSE PRIORITY, stated once.
@@ -828,8 +951,11 @@ function plantCrouch(braking) {
 function cockTo(lift, apex) { return Math.max(0, Math.min(1, lift / apex)); }
 function dunkCock(lift) { return cockTo(lift, DUNK_LIFT.rise); }
 function jumpCock(lift) { return cockTo(lift, JUMP_LIFT.rise); }
-// A marked layup gathers on its own rise, exactly like the other two finishes.
-function closeCock(lift) { return cockTo(lift, CLOSE_LIFT.rise); }
+// A marked layup gathers on its own rise, exactly like the other two finishes —
+// and against ITS OWN apex, because a floater tops out at 6px and a reverse at
+// 9. Measuring all three against the standard 8 would leave the floater's ball
+// permanently short of full extension and over-extend the reverse.
+function closeCock(lift, finish) { return cockTo(lift, closeLiftTable(finish).rise); }
 // An UNMARKED finish at the rim — a tip-in, a putback, anything under reduced
 // motion — is still a plain beat that happens to end with the ball gone, so its
 // gather runs on beat progress. Kept as its own function rather than folded in,
@@ -936,7 +1062,7 @@ function ballPosition(s) {
       : (marked ? s.lifts.closerLift : closeLift(s.f));
     const cock = mode === 'jump' ? jumpCock(s.lifts.jumperLift)
       : mode === 'dunk' ? dunkCock(s.lifts.dunkerLift)
-      : (marked ? closeCock(s.lifts.closerLift) : closeCockAtBeat(s.f));
+      : (marked ? closeCock(s.lifts.closerLift, s.lifts.closerFinish) : closeCockAtBeat(s.f));
     const off = heldBallOffset(mode, lift, cock, drib);
     let bx = hx + face * off.side;
     let by = hy - off.up;
@@ -1121,6 +1247,8 @@ if (typeof module !== 'undefined' && module.exports) {
     DUNK_LIFT: DUNK_LIFT,
     JUMP_LIFT: JUMP_LIFT,
     CLOSE_LIFT: CLOSE_LIFT,
+    CLOSE_LIFT_BY_FINISH: CLOSE_LIFT_BY_FINISH,
+    closeLiftTable: closeLiftTable,
     closeLiftAt: closeLiftAt,
     liftToPose: liftToPose,
     resolveLeaper: resolveLeaper,
@@ -1155,6 +1283,12 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_PERIOD_MOVING: DRIBBLE_PERIOD_MOVING,
     stepDribbleClock: stepDribbleClock,
     dribbleTempoFor: dribbleTempoFor,
+    handlerTempo: handlerTempo,
+    pressureFrom: pressureFrom,
+    HANDLE_TEMPO_SPREAD: HANDLE_TEMPO_SPREAD,
+    PRESSURE_TEMPO_SPREAD: PRESSURE_TEMPO_SPREAD,
+    PRESSURE_NEAR_PX: PRESSURE_NEAR_PX,
+    PRESSURE_FAR_PX: PRESSURE_FAR_PX,
     DRIBBLE_TEMPO_SPREAD: DRIBBLE_TEMPO_SPREAD,
     MOVE_BLEND_BEATS: MOVE_BLEND_BEATS,
     HESITATION_BEATS: HESITATION_BEATS,
@@ -1167,6 +1301,13 @@ if (typeof module !== 'undefined' && module.exports) {
     moveDribble: moveDribble,
     dribbleNow: dribbleNow,
     dribbleLean: dribbleLean,
+    CONTACT_MIN_PX: CONTACT_MIN_PX,
+    CONTACT_FULL_PX: CONTACT_FULL_PX,
+    CONTACT_MS: CONTACT_MS,
+    CONTACT_LEAN_PX: CONTACT_LEAN_PX,
+    CONTACT_CROUCH_PX: CONTACT_CROUCH_PX,
+    contactStrength: contactStrength,
+    contactDecay: contactDecay,
     POSE_ORDER: POSE_ORDER,
     posePriority: posePriority,
     ballSquash: ballSquash,

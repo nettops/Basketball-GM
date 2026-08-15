@@ -518,7 +518,7 @@ function checkEveryBeatOfAStringSaysWhichMoveItIs() {
   // And the marker must name a move ui/pixelMotion.js knows how to draw. A
   // typo here would fall through to the default crossover silently.
   const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
-  const known = { putdown: 1, cross: 1, behind: 1, double: 1, ankle: 1, stepback: 1 };
+  const known = { putdown: 1, cross: 1, behind: 1, double: 1, ankle: 1, stepback: 1, legs: 1 };
   kfs.forEach(function (kf) {
     if (!kf.drib) return;
     assert.ok(known[kf.drib.move], 'unknown move "' + kf.drib.move + '"');

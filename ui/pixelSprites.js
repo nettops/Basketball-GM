@@ -248,8 +248,14 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // `hipDrop` folds the knees on top of that, feet staying put.
     const legY = top + 18 - legT + hipDrop;
     const legH = 6 + legT - hipDrop;
-    ctx.fillRect(left + 2, legY + bob + idle, 2, Math.max(1, legH - bob - idle));
-    ctx.fillRect(left + 6, legY + bob2, 2, Math.max(1, legH - bob2 - idle));
+    // He opens his stance to put the ball through it. 2px each way on a 10px
+    // body is a wide base, and it is the pose half of between-the-legs — the
+    // ball going through a man standing with his feet together reads as the
+    // ball going through his shins.
+    const spread = Math.round(
+      ((opts.dribbling && opts.dribbling.through) || 0) * 2);
+    ctx.fillRect(left + 2 - spread, legY + bob + idle, 2, Math.max(1, legH - bob - idle));
+    ctx.fillRect(left + 6 + spread, legY + bob2, 2, Math.max(1, legH - bob2 - idle));
   }
   // shorts — ride the hips, so they come down with the knees but not with the
   // extra fold at the waist
@@ -278,13 +284,32 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     // `extend` (0..1) is how far through the reach he is, so the arm rises into
     // full extension over the rise and release beats instead of appearing at
     // full stretch on the frame the pose switches on.
-    const lead = (opts.layup.side || 1) >= 0;
+    const finish = opts.layup.finish || 'standard';
+    // A REVERSE finishes on the FAR side: he has carried it under the rim, so
+    // the ball hand is the one away from the direction he drove, which is the
+    // whole reason a reverse is a different picture rather than the same one at
+    // a different height.
+    const lead = finish === 'reverse'
+      ? (opts.layup.side || 1) < 0
+      : (opts.layup.side || 1) >= 0;
     const ext = Math.max(0, Math.min(1, opts.layup.extend === undefined ? 1 : opts.layup.extend));
-    const reach = Math.round(ext * 5);            // 0 at the gather, 5 at full stretch
+    // A floater is a TOUCH shot — the arm never straightens, it lofts. Reaching
+    // as far as a standard lay-in would make it the same pose with less lift
+    // under it, which is what all three used to be.
+    const maxReach = finish === 'floater' ? 3 : (finish === 'reverse' ? 6 : 5);
+    const reach = Math.round(ext * maxReach);
     ctx.fillRect(lx + (lead ? 8 : 0), topU + 3 - reach, 2, 7 + reach);
-    // off arm across the body, held in tight
-    ctx.fillRect(lx + (lead ? 3 : 5), topU + 10, 2, 2);
-    ctx.fillRect(lx + (lead ? 1 : 7), topU + 9, 2, 4);
+    if (finish === 'floater') {
+      // Both hands stay with it and the wrist is cocked over the top — a
+      // floater is released off the fingertips in front of the face, not from
+      // an extended arm above the head.
+      ctx.fillRect(lx + (lead ? 7 : 1), topU + 2 - reach, 2, 1);
+      ctx.fillRect(lx + (lead ? 0 : 8), topU + 6, 2, 6);
+    } else {
+      // off arm across the body, held in tight — the ball protection
+      ctx.fillRect(lx + (lead ? 3 : 5), topU + 10, 2, 2);
+      ctx.fillRect(lx + (lead ? 1 : 7), topU + 9, 2, 4);
+    }
   } else if (opts.stumbling) {
     // Arms flung out ASYMMETRICALLY and further than before — lead arm thrown
     // up and out, trail arm dropped behind. Both arms at the same height reads

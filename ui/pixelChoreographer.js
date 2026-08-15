@@ -168,6 +168,62 @@ function flightBeat(zone) {
   return zone === 'three' ? BEAT.flight3 : (zone === 'mid' ? BEAT.flightMid : BEAT.flightIn);
 }
 
+// WHICH KIND OF LAY-IN. Every finish at the rim that was not a dunk drew the
+// same pose at the same height; only the side he went up on came off the
+// timeline. These are the three that are distinguishable on a 24px body, and
+// each is chosen from the geometry that would actually produce it rather than
+// rolled for variety's sake.
+//
+//   floater   he pulled up short of the rim, or he is going over somebody
+//             materially taller. A touch shot.
+//   reverse   he attacked from a wide angle and is under the rim, so he carries
+//             it through and finishes on the far side.
+//   standard  everything else.
+//
+// `lateral` is the offset along the baseline-parallel axis (the court runs
+// left-right with the hoops on the x extremes, so lateral is y).
+// THE GEOMETRY HAS ONE AXIS, WHICH TOOK TWO WRONG VERSIONS TO FIND OUT.
+//
+// The first cut used 26px for "pulled up short of the rim", which sounded
+// reasonable and sat below the 10th percentile: 88% of every finish in the game
+// came out a floater. The second used distance AND lateral offset as two
+// signals, and produced zero reverses. Measuring is what settled it. Over
+// twelve games:
+//
+//     distance to the rim   p10 16.5   p25 44.0   p50 47.8   p75 50.6   p90 53.5
+//     lateral offset        p10  4.0   p25 41.0   p50 45.0   p75 48.0   p90 51.0
+//     |dx| to the rim       p10 16.0   p25 16.0   p50 16.0   p75 16.0   p90 16.0
+//
+// Every finish at the rim gathers EXACTLY 16px from the hoop along the court's
+// long axis. The only thing that varies is how far off the centre line he is —
+// so `dist` is just `hypot(16, lateral)` and carries no information the lateral
+// offset does not already have. Using both was double-counting one number, and
+// the two rules ended up mutually exclusive.
+//
+// What is left is one real geometric signal and one real situational one:
+//
+//   reverse  he is WIDE — top quartile of lateral offset, coming from deep on
+//            the baseline side, so he carries it under and finishes far side.
+//   floater  he is going over somebody materially taller. The geometry cannot
+//            say this and the height chart can.
+//
+// `dist` stays in the signature: it is degenerate in today's court, not
+// degenerate in principle, and a future shot spot that varies along x should
+// not have to rediscover this.
+const FLOATER_HEIGHT_EDGE = 4;
+const FLOATER_OVER_BIG_ROLL = 0.5;
+const REVERSE_LATERAL = 48;
+
+function layupFinish(dist, lateral, shooterHeightIn, defenderHeightIn, seed) {
+  const sh = shooterHeightIn || 78, dh = defenderHeightIn || 78;
+  // Going over a big. Rolled rather than automatic — a guard who CAN rise
+  // through a centre sometimes does, and a finish fully determined by the
+  // height chart stops being a decision.
+  if (dh - sh >= FLOATER_HEIGHT_EDGE && roll01(seed) < FLOATER_OVER_BIG_ROLL) return 'floater';
+  if (Math.abs(lateral) > REVERSE_LATERAL) return 'reverse';
+  return 'standard';
+}
+
 // Deterministic per-possession jitter for off-ball cuts — same idea as
 // shotSpot's jitter: variety without touching any rng.
 function cutJitter(seed, spread) {
@@ -1390,9 +1446,14 @@ function createChoreographer(session) {
           // The shape falls out of the count rather than being picked beside
           // it. Two dribbles cannot be a double move and eight cannot be a
           // put-down, so there is nothing left to get out of step.
+          // Three shapes share the middle band now: a crossover across his
+          // front, a behind-the-back around his back, and a between-the-legs
+          // through his stance. They are the three genuinely different pictures
+          // available at this size, so they split it evenly.
+          const midRoll = roll01(pi * 17 + ei);
           const moveKind = dribbles <= 2 ? 'putdown'
             : dribbles >= 7 ? 'double'
-              : (roll01(pi * 17 + ei) < 0.5 ? 'cross' : 'behind');
+              : (midRoll < 0.37 ? 'cross' : (midRoll < 0.71 ? 'behind' : 'legs'));
 
           // THE STEPBACK is a finishing move laid on the END of the handle, not
           // one of the shapes above — which is what it is in basketball too: he
@@ -1777,6 +1838,14 @@ function createChoreographer(session) {
           const closeBy = ev.playerId;
           const closeSide = hoop.x >= relSpot[0] ? 1 : -1;
           const closeLock = [ev.playerId, ev.defenderId];
+          // Which kind of lay-in, from where he is and who is in front of him.
+          const closeFinish = layupFinish(
+            Math.hypot(hoop.x - relSpot[0], hoop.y - relSpot[1]),
+            hoop.y - relSpot[1],
+            playerById[ev.playerId] && playerById[ev.playerId].heightIn,
+            playerById[ev.defenderId] && playerById[ev.defenderId].heightIn,
+            pi * 59 + ei);
+          const closeMeta = { id: closeBy, side: closeSide, finish: closeFinish };
           // The floor keeps playing through all three, locked on the two men the
           // moment belongs to — the same treatment the jump shot needed when it
           // measured a ten-man freeze frame through its rise.
@@ -1784,16 +1853,16 @@ function createChoreographer(session) {
             flowPositions(releasePos, closeLock, pi * 23 + ei, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '');
-          tagClose({ phase: 'gather', id: closeBy, side: closeSide });
+          tagClose(Object.assign({ phase: 'gather' }, closeMeta));
           push(BEAT.closeRise,
             flowPositions(releasePos, closeLock, pi * 29 + ei * 3, defenderIds),
             { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '');
-          tagClose({ phase: 'rise', id: closeBy, side: closeSide });
+          tagClose(Object.assign({ phase: 'rise' }, closeMeta));
           // release: ball leaves the hands, at the top of the finish rather than
           // with his feet already back on the floor
           push(BEAT.closeRelease, releasePos, { x: relSpot[0], y: relSpot[1] - 12, holder: null }, period, quarter, clock, '');
-          tagClose({ phase: 'release', id: closeBy, side: closeSide });
+          tagClose(Object.assign({ phase: 'release' }, closeMeta));
           // ...and flies to the rim while everyone crashes the glass — the
           // floor keeps moving for the whole flight instead of freezing
           push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
@@ -1803,7 +1872,7 @@ function createChoreographer(session) {
           // ...and he comes down on it. Without a 'land' phase the finisher was
           // still at full lift when the release beat ended and simply cut to
           // standing on the next frame.
-          tagClose({ phase: 'land', id: closeBy, side: closeSide });
+          tagClose(Object.assign({ phase: 'land' }, closeMeta));
           curPos = crashPos;
         }
         // missed shots rattle off the rim before the board scramble
@@ -1892,6 +1961,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // lengths the game plays at, rather than a copy that drifts the first time
     // one of them is retuned.
     BEAT: BEAT,
+    layupFinish: layupFinish,
     ANKLE_BEATS: ANKLE_BEATS,
     IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
     roll01: roll01,
