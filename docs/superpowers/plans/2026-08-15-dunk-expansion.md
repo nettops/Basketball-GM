@@ -89,6 +89,79 @@ backwards teleport on the one beat the eye is guaranteed to be on. The probe
 caught it as `dunk.slam` going from 100% frozen to 21%, which looked like an
 improvement and was a regression.
 
+## Follow-up: a fixed rim, and a ball he actually picks up
+
+Two defects found by watching the reel rather than by any check.
+
+**The ball started on the floor.** `dunkBallPath(style, 0)` returned `up: 0` for
+`power`, `straight`, `tomahawk` and `double` — the ball's route began at his
+feet. The route clock is pinned at 0 through the gather and the plant (that is
+deliberate; a gather is not ball travel), so for the whole windup nothing moved
+the ball at all and it sat on the ground bouncing until he was already climbing.
+He never picked it up.
+
+The check that should have caught it read `start.up < 14` — a **one-sided
+bound**, written to catch a route starting too high, and perfectly happy with
+0.0. Bounded both ways now.
+
+**The rim moved.** `DUNK_TERMINAL.up` measured from his FEET, so the finishing
+height rode on how high he jumped: 40px above the floor on a quickTwo, 48px on a
+threeSixtyWindmill. An 8px spread — a third of a body — on the one thing in the
+building that cannot move.
+
+What that took:
+
+- `RIM_ABOVE_FLOOR = 47`, and the terminal solved against the floor. Not a free
+  choice: the hand tops out `tall + 6` above the feet, the slam is at 0.82 of
+  peak lift, and the arm stretches a bounded few px.
+- `DUNK_ORIGIN = 12` — his hands — with each route **affinely remapped** from its
+  own `[start, end]` onto `[origin, rim]`. The first version added a decaying
+  correction instead, which started the ball at 12 and then let it *fall* back
+  onto the raw route; `straight` is deliberately near zero at halfway, so the
+  ball dropped 8px out of his hands right after he gathered it.
+- **The leap compensates for height.** A 6'0" guard finished 2px under a fixed
+  rim off the catalogue's median-body lifts. He jumps higher now and a 7'7"
+  centre jumps lower, which is why short players who dunk are the best leapers
+  in the gym.
+- **The arm reaches for the rim**, so the hand meets the ball instead of the
+  ball being assumed to sit on the hand. Driven off the ball's *live* position
+  first, which made a windmill's arm pump as the ball swung past — it tracks the
+  rim now, and on the slam frame they are the same place.
+- `MIN_DUNK_LIFT = 16`; `quickOne`, `quickTwo` and `twoHandPower` raised to it.
+  Quick is expressed in beats and hang, not in finishing under the hoop.
+
+Measured over 442 dunks in 8 games:
+
+```
+finish height above floor      47 min, 47 max   (rim 47)
+hand-to-ball gap               0.00px max
+ball at the gather             12.0px — his hands, never the floor
+height compensation            live across 6 body sizes (-2 to +3)
+distinct dunks / repeats       23 of 23 / 0
+```
+
+Two more near-duplicates fell out of sharing an origin, both caught by the
+separation check and both real: **cradle/tomahawk at 3.9px** — they were only
+ever distinguished by starting at different heights, so the cradle is a genuine
+hold-then-throw now — and **power/straight at 4.1px**, since re-basing every
+route shortened the vertical travel they had to differ in. `power` is
+front-loaded rather than linear, which is also what a ball coming up with the
+leap does. `double`'s pull deepened for the same reason; at −9 the reversal that
+is the entire point of a double clutch had shrunk to 4.3px.
+
+Closest pair is now **power/tomahawk at 5.6px**. Ball readability **3.16px/frame**
+— and that check was measuring the fallback path rather than the one the game
+draws, because it called `dunkBallPath` without the foot. Same failure as calling
+a seeded function without its seed.
+
+Three new checks: `checkEveryDunkFinishesAtTheSameRim`, `checkTheHandMeetsTheBall`,
+and the two-sided origin bound. 63 validators pass.
+
+One load-order trap worth recording: the choreographer is loaded by `index.html`
+*before* `ui/pixelSprites.js`, so a `const` capturing `spriteTallness` at load
+time would have found nothing, fallen back to zero, and given every player in the
+league a median-height leap forever with nothing failing. Resolved at call time.
+
 ## Not done
 
 - **Alley-oops.** `dunkPool` has the context and rules for them, and the beats

@@ -1121,7 +1121,13 @@ function renderPixelGame(container) {
         dunking: pose === 'dunking'
           ? (theDunk
               ? { hands: theDunk.hands, path: theDunk.path,
-                  takeoff: theDunk.takeoff, reverse: !!theDunk.reverse }
+                  takeoff: theDunk.takeoff, reverse: !!theDunk.reverse,
+                  // How far above his feet the RIM is, so the arm can stretch to
+                  // meet it — not where the ball is this instant. Driven off the
+                  // ball, a windmill's arm pumped up and down as the ball swung
+                  // round beside him. His hand is going to the rim for the whole
+                  // flight, and at the slam the two are the same place anyway.
+                  ballUp: RIM_ABOVE_FLOOR - lifts.dunkerFoot }
               : true)
           : false,
         backToCamera: pose === 'dunking' && spinBack,

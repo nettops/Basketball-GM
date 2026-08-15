@@ -176,10 +176,42 @@ function crouchSplit(crouch, legLen, torsoLen) {
   return { hip: hip, head: hip + waist };
 }
 
+// HOW FAR THE DUNKING ARM STRETCHES, at file scope so it can be tested.
+//
+// The rim is at a fixed height, so it is NOT a fixed distance above his feet —
+// it is the rim minus however high he got. A big leaper meets it with his arm
+// barely extended; a smaller one is at full stretch; a 7'7" centre has to come
+// DOWN to it. `standing` is the head-top height above the feet after any
+// crouch, and the hand naturally tops out DUNK_HAND_OVER above that.
+//
+// `ballUp` is the RIM's height above his feet, not the ball's this instant.
+// Driven off the ball, a windmill's arm pumped up and down as the ball swung
+// round beside him; his hand is reaching for the rim the whole way up, and on
+// the slam frame the rim is exactly where the ball is.
+// The base body, before spriteTallness's per-height delta. `spriteTallness`
+// returns that DELTA and not a total, which is worth stating because reading it
+// as a total put the hand 26px from the ball and the check caught it.
+const SPRITE_BODY_PX = 24;
+const DUNK_HAND_OVER = 6;
+const DUNK_REACH_MIN = -3, DUNK_REACH_MAX = 5;
+
+function dunkReach(standing, ballUp) {
+  if (typeof ballUp !== 'number') return 0;
+  const want = Math.round(ballUp - (standing + DUNK_HAND_OVER));
+  return Math.max(DUNK_REACH_MIN, Math.min(DUNK_REACH_MAX, want));
+}
+
+// Where the reaching hand actually ends up, in px above the feet — the same
+// number the draw path uses, so a check can compare it against the ball.
+function dunkHandHeight(heightIn, ballUp) {
+  const standing = SPRITE_BODY_PX + spriteTallness(heightIn);
+  return standing + DUNK_HAND_OVER + dunkReach(standing, ballUp);
+}
+
 function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   opts = opts || {};
   const left = Math.round(x) - 5;
-  const top = Math.round(y) - 24;
+  const top = Math.round(y) - SPRITE_BODY_PX;
   // Feet stay on the floor at `y` and the extra height goes UPWARD, into the
   // legs and then the whole upper body. Growing downward would sink a tall man
   // through the court; growing from the middle would leave him hovering.
@@ -302,14 +334,25 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     const ballSide = dkA.reverse
       ? (opts.facing || 0) < 0
       : (opts.facing || 0) >= 0;
+    // THE HAND GOES TO THE BALL. Once the rim is at a fixed height the ball is
+    // no longer a fixed distance above his feet — a big leaper meets it with
+    // his arm barely extended, a smaller one at full stretch, and a 7'7" centre
+    // has to come DOWN to it. Drawing one arm length for all of them put the
+    // ball off the end of his hand by up to 4px, which at this size is a hand.
+    //
+    // `dkA.ballUp` is the ball's height above his feet; the natural reach is
+    // `tall + 6` from the same origin, so the difference is the stretch. Bounded
+    // either way: an arm is not elastic, and the bound is what keeps a bad
+    // number from drawing a limb across the whole frame.
+    const dkReach = dunkReach(SPRITE_BODY_PX + tall - bend.head, dkA.ballUp);
     if (dkA.hands === 2) {
       // BOTH arms over the head. The single clearest silhouette difference
       // available on a body this wide, and the reason one- and two-hand dunks
       // are separate entries rather than one entry with a label.
-      ctx.fillRect(lx, topU - 5, 2, 13);
-      ctx.fillRect(lx + 8, topU - 5, 2, 13);
+      ctx.fillRect(lx, topU - 5 - dkReach, 2, 13 + dkReach);
+      ctx.fillRect(lx + 8, topU - 5 - dkReach, 2, 13 + dkReach);
     } else {
-      ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6, 2, 14);
+      ctx.fillRect(lx + (ballSide ? 8 : 0), topU - 6 - dkReach, 2, 14 + dkReach);
       ctx.fillRect(lx + (ballSide ? 0 : 8), topU + 3, 2, 7);
     }
   } else if (opts.layup) {
@@ -629,6 +672,9 @@ if (typeof module !== 'undefined' && module.exports) {
     CROUCH_MIN_TORSO: CROUCH_MIN_TORSO,
     crouchSplit: crouchSplit,
     drawPlayerSprite: drawPlayerSprite,
+    dunkReach: dunkReach,
+    dunkHandHeight: dunkHandHeight,
+    DUNK_HAND_OVER: DUNK_HAND_OVER,
     BALL_SQUASH_MIN: BALL_SQUASH_MIN,
     ballShape: ballShape,
     drawBall: drawBall

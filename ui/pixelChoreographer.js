@@ -103,6 +103,20 @@ const _DUNKS = (typeof module !== 'undefined' && module.exports)
   : { pickDunk: pickDunk, dunkTierFor: dunkTierFor, dunkBeats: dunkBeats,
       dunkRouteMarks: dunkRouteMarks, dunkLanding: dunkLanding };
 
+// How many px taller or shorter than a median body a given height draws. The
+// leap has to know, now that the rim is at a fixed height.
+//
+// Resolved at CALL time, not load time. index.html loads this file BEFORE
+// ui/pixelSprites.js, so a `const` captured at load would have found nothing,
+// fallen back to zero, and quietly given every player in the league a
+// median-height leap forever — with nothing failing.
+function _spriteTallness(heightIn) {
+  const mod = (typeof module !== 'undefined' && module.exports)
+    ? require('./pixelSprites.js')
+    : (typeof spriteTallness === 'function' ? { spriteTallness: spriteTallness } : null);
+  return mod ? mod.spriteTallness(heightIn) : 0;
+}
+
 const BEAT = {
   // Trimmed from 700/650/600. These three are the possession's dead air — the
   // walk up the floor, the flow into the set, the reset after a board — and
@@ -1800,7 +1814,12 @@ function createChoreographer(session) {
           // is watching.
           const dunkMeta = {
             id: dunkBy, dunk: theDunk, landing: landing,
-            contact: !!dunkCtx.contact, putback: !!dunkCtx.putback
+            contact: !!dunkCtx.contact, putback: !!dunkCtx.putback,
+            // How much taller or shorter than a median body he is, so the leap
+            // can compensate. The rim is at a fixed height and the catalogue's
+            // lifts are written for a median frame, so without this a short
+            // guard finishes under the hoop and a centre finishes over it.
+            tall: _spriteTallness(shooterPlayer && shooterPlayer.heightIn)
           };
           function dunkPhase(phase) {
             return Object.assign({ phase: phase, route: routeMarks[phase] }, dunkMeta);

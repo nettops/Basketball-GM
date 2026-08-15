@@ -41,8 +41,18 @@ const DUNK_LIFT = { gather: -2, rise: 16, slam: 13, land: 0 };
 //   hang    the top, HELD. A dunk that hangs is not a dunk that rises higher;
 //           it is one that stops rising for a while, which needs a phase of its
 //           own or the peak is a single frame the eye never lands on.
-function dunkLiftTable(dunk) {
-  const peak = (dunk && dunk.lift) || DUNK_LIFT.rise;
+// `tall` is the sprite's height delta from the league-median body (see
+// spriteTallness): -3 for a 6'0" guard, +5 for a 7'7" centre.
+//
+// IT HAS TO CHANGE THE LEAP, now that the rim is at a fixed height. The catalogue
+// says how high each dunk leaps, and those numbers were written for a median
+// body — so applied unchanged, a short guard came up 2px under the rim and
+// finished with the ball hanging off the end of his fingers, while a seven-footer
+// went well past it. A shorter man jumps higher to reach the same hoop; that is
+// not a fudge, it is the reason short players who dunk are the best leapers in
+// the building.
+function dunkLiftTable(dunk, tall) {
+  const peak = ((dunk && dunk.lift) || DUNK_LIFT.rise) - (tall || 0);
   const twoFoot = dunk && dunk.takeoff === 'two';
   return {
     // A two-foot gather loads deeper — that is what two feet are for.
@@ -59,7 +69,7 @@ function dunkLiftTable(dunk) {
 function dunkLiftAt(kf, dunk) {
   const d = kf && kf.dunk;
   if (!d) return 0;
-  const table = dunk ? dunkLiftTable(dunk) : DUNK_LIFT;
+  const table = dunk ? dunkLiftTable(dunk, d.tall) : DUNK_LIFT;
   return table[d.phase] !== undefined ? table[d.phase] : 0;
 }
 
@@ -1143,17 +1153,41 @@ function ballPosition(s) {
     // which is what keeps an un-marked dunk working.
     if (mode === 'dunk' && typeof s.dunkPath === 'function') {
       const t = s.lifts.dunkerRoute || 0;
-      const route = s.dunkPath(s.lifts.dunkerStyle || 'power', t);
-      // Blended out of the dribble over the first quarter of the route, for the
-      // same reason every other branch change in this file is: the ball is
-      // somewhere when the dunk starts, and snapping it onto the route would be
-      // the teleport this whole file is shaped to prevent.
-      const w = Math.max(0, Math.min(1, t / 0.25));
-      off = {
-        up: drib.up + (route.up - drib.up) * w,
-        side: drib.side + (route.side - drib.side) * w
-      };
-      behind = (route.back || 0) * w;
+      // The feet are handed over so the route can solve its terminal against the
+      // FLOOR — a rim is at a fixed height, and a terminal measured from his feet
+      // quietly moved the hoop by how high he jumped.
+      const route = s.dunkPath(s.lifts.dunkerStyle || 'power', t, s.lifts.dunkerFoot);
+      if (t > 0) {
+        // Blended out of the dribble over the first quarter of the route, for the
+        // same reason every other branch change in this file is: the ball is
+        // somewhere when the dunk starts, and snapping it onto the route would be
+        // the teleport this whole file is shaped to prevent.
+        const w = Math.max(0, Math.min(1, t / 0.25));
+        off = {
+          up: drib.up + (route.up - drib.up) * w,
+          side: drib.side + (route.side - drib.side) * w
+        };
+        behind = (route.back || 0) * w;
+      } else {
+        // THE GATHER, which did not exist. The route clock is pinned at 0 for
+        // the whole windup — that is deliberate, a gather is not ball travel —
+        // so for those two beats nothing moved the ball at all and it stayed
+        // down at dribble height, bouncing, until he was already climbing. He
+        // never picked it up.
+        //
+        // So bring it up into his hands across the gather and the plant, ending
+        // exactly where the route begins. The destination is read from the route
+        // itself rather than restated here, so the two cannot drift apart.
+        const startAt = s.dunkPath(s.lifts.dunkerStyle || 'power', 0, s.lifts.dunkerFoot);
+        const ph = (s.b.dunk && s.b.dunk.phase) || null;
+        const g = ph === 'gather' ? s.f * 0.55
+          : ph === 'plant' ? 0.55 + s.f * 0.45
+            : ph === 'rise' ? 1 : 0;
+        off = {
+          up: drib.up + (startAt.up - drib.up) * g,
+          side: drib.side + (startAt.side - drib.side) * g
+        };
+      }
     }
 
     let bx = hx + face * off.side;

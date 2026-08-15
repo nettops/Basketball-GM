@@ -560,12 +560,88 @@ function checkEveryDunkRouteEndsAtTheRim() {
       name + ' ends at (' + end.up.toFixed(1) + ',' + end.side.toFixed(1) +
       ') instead of the rim');
     assert.ok(Math.abs(end.back || 0) < 0.01, name + ' finishes behind him');
-    // ...and starts where the ball already is, so the blend out of the dribble
-    // has something continuous to blend into.
+    // ...and starts IN HIS HANDS. This was `start.up < 14`, a one-sided bound
+    // that was written to catch a route beginning too high and was therefore
+    // perfectly happy with `power`, `straight`, `tomahawk` and `double` all
+    // beginning at 0.0 — the ball on the FLOOR. He never picked it up: it lay
+    // at his feet through the whole gather and the whole plant and only left
+    // the ground once he was already climbing. Bounded both ways now.
     const start = dunks.dunkBallPath(name, 0);
-    assert.ok(start.up < 14, name + ' starts ' + start.up.toFixed(1) + 'px up — the ball is in his hand');
+    assert.ok(Math.abs(start.up - dunks.DUNK_ORIGIN.up) < 0.01,
+      name + ' starts ' + start.up.toFixed(1) + 'px up, not in his hands at ' +
+      dunks.DUNK_ORIGIN.up);
   });
-  console.log('checkEveryDunkRouteEndsAtTheRim: OK (' + dunks.DUNK_PATH_NAMES.length + ' routes)');
+  console.log('checkEveryDunkRouteEndsAtTheRim: OK (' + dunks.DUNK_PATH_NAMES.length +
+    ' routes, all from ' + dunks.DUNK_ORIGIN.up + 'px up)');
+}
+
+function checkEveryDunkFinishesAtTheSameRim() {
+  // A rim is at a fixed height. The terminal used to be measured from his FEET,
+  // which quietly meant the hoop moved with him: the ball finished 40px above
+  // the floor on a quickTwo and 48px on a threeSixtyWindmill, an 8px spread —
+  // a third of a body — on the one thing in the building that cannot move.
+  //
+  // Solved against the floor now, so this asserts the whole catalogue lands on
+  // one number, and that his HAND gets there too. A ball at the rim on the end
+  // of an arm that stops 4px short is not a dunk, it is a ball floating.
+  const heights = [];
+  dunks.DUNKS.forEach(function (d) {
+    const beats = dunks.dunkBeats(d, {});
+    const marks = dunks.dunkRouteMarks(beats);
+    // The slam is where the ball is handed to the rim, and he is already coming
+    // down by then — so the finishing foot is the slam's, not the peak.
+    const kfs = [{ t: 0, dunk: { phase: 'hang', id: 'p1', dunk: d, route: marks.hang, tall: 0 } },
+                 { t: beats.slam, dunk: { phase: 'slam', id: 'p1', dunk: d, route: 1, tall: 0 } }];
+    const lifts = motion.resolveLifts(kfs[0], kfs[1], 1, false);
+    const ball = dunks.dunkBallPath(d.path, lifts.dunkerRoute, lifts.dunkerFoot);
+    heights.push({ id: d.id, up: lifts.dunkerFoot + ball.up, foot: lifts.dunkerFoot });
+    // Reach: the hand tops out `tall + 6` above the feet on a 6'7" body, and the
+    // arm may stretch a bounded few px to meet the ball. MIN_DUNK_LIFT is what
+    // keeps that stretch inside the bound, so assert the catalogue honours it.
+    assert.ok(d.lift >= dunks.MIN_DUNK_LIFT,
+      d.id + ' leaps ' + d.lift + 'px, under the ' + dunks.MIN_DUNK_LIFT +
+      'px a fixed rim can be reached from — it would finish under the hoop');
+  });
+  const ups = heights.map(function (h) { return h.up; });
+  const spread = Math.max.apply(null, ups) - Math.min.apply(null, ups);
+  assert.ok(spread < 0.01,
+    'the rim moves: dunks finish between ' + Math.min.apply(null, ups).toFixed(1) +
+    'px and ' + Math.max.apply(null, ups).toFixed(1) + 'px above the floor');
+  assert.ok(Math.abs(ups[0] - dunks.RIM_ABOVE_FLOOR) < 0.01,
+    'dunks finish at ' + ups[0].toFixed(1) + ', not at the stated rim of ' +
+    dunks.RIM_ABOVE_FLOOR);
+  console.log('checkEveryDunkFinishesAtTheSameRim: OK (' + heights.length +
+    ' dunks, all at ' + dunks.RIM_ABOVE_FLOOR + 'px, feet ' +
+    Math.min.apply(null, heights.map(function (h) { return h.foot; })) + '-' +
+    Math.max.apply(null, heights.map(function (h) { return h.foot; })) + 'px)');
+}
+
+function checkTheHandMeetsTheBall() {
+  // The arm now stretches to wherever the ball is, because with a fixed rim the
+  // ball is no longer a fixed distance above his feet. Test the thing that
+  // actually matters: the drawn hand and the drawn ball are in the same place,
+  // across the height range — a 7'7" centre has to come DOWN to the rim and a
+  // 6'0" guard is at full stretch.
+  let worst = 0, worstAt = '';
+  [72, 79, 91].forEach(function (heightIn) {
+    dunks.DUNKS.forEach(function (d) {
+      // The leap compensates for height — a shorter man has to jump higher to
+      // reach the same rim — so the foot is solved the way resolveLifts does.
+      const tall = sprites.spriteTallness(heightIn);
+      const foot = Math.round((d.lift - tall) * 0.82);
+      const ballUp = dunks.dunkBallPath(d.path, 1, foot).up;
+      // Where the sprite puts the top of the reaching arm, in px above the feet.
+      const hand = sprites.dunkHandHeight(heightIn, ballUp);
+      const gap = Math.abs(hand - ballUp);
+      if (gap > worst) { worst = gap; worstAt = d.id + '@' + heightIn + '"'; }
+    });
+  });
+  // Within a pixel. The ball is 3px, so a 1px offset still overlaps the hand;
+  // 2px and it is visibly hanging off the end of his fingers.
+  assert.ok(worst <= 1.0,
+    'the ball is ' + worst.toFixed(1) + 'px off his hand on ' + worstAt);
+  console.log('checkTheHandMeetsTheBall: OK (worst gap ' + worst.toFixed(1) +
+    'px across 3 heights x ' + dunks.DUNKS.length + ' dunks)');
 }
 
 function checkNoTwoDunkRoutesAreTheSameRoute() {
@@ -612,11 +688,25 @@ function checkTheBallStaysReadableThroughEveryDunk() {
     const segs = [['rise', 0, marks.rise, beats.rise],
                   ['hang', marks.rise, marks.hang, beats.hang],
                   ['slam', marks.hang, 1, beats.slam]];
+    // WITH the foot, because that is the path the game draws. Called without it
+    // the route falls back to a terminal measured from his feet — a shorter
+    // climb than the real one — so the check was reporting a path nobody sees
+    // and was blind by up to a pixel a frame. Same failure as calling a seeded
+    // function without its seed.
+    const footAt = function (t) {
+      const table = { rise: d.lift, hang: d.lift, slam: Math.round(d.lift * 0.82) };
+      if (t <= marks.rise) return Math.round(d.lift * (1 - Math.pow(1 - t / Math.max(1e-6, marks.rise), 2)));
+      if (t <= marks.hang) return table.hang;
+      return Math.round(table.hang + (table.slam - table.hang) *
+        Math.pow((t - marks.hang) / Math.max(1e-6, 1 - marks.hang), 1.6));
+    };
     segs.forEach(function (seg) {
       const frames = Math.max(1, seg[3] / (1000 / 60));
       for (let k = 0; k < frames; k++) {
-        const a = dunks.dunkBallPath(d.path, seg[1] + (seg[2] - seg[1]) * (k / frames));
-        const b = dunks.dunkBallPath(d.path, seg[1] + (seg[2] - seg[1]) * ((k + 1) / frames));
+        const t1 = seg[1] + (seg[2] - seg[1]) * (k / frames);
+        const t2 = seg[1] + (seg[2] - seg[1]) * ((k + 1) / frames);
+        const a = dunks.dunkBallPath(d.path, t1, footAt(t1));
+        const b = dunks.dunkBallPath(d.path, t2, footAt(t2));
         const step = Math.hypot(b.up - a.up, b.side - a.side);
         if (step > worst) { worst = step; worstId = d.id + '/' + seg[0]; }
       }
@@ -742,6 +832,8 @@ checkTheLayupPoseIsItsOwnSilhouette();
 checkOnlyOnePoseCanEverWin();
 checkTheCatalogueIsInternallyHonest();
 checkEveryDunkRouteEndsAtTheRim();
+checkEveryDunkFinishesAtTheSameRim();
+checkTheHandMeetsTheBall();
 checkNoTwoDunkRoutesAreTheSameRoute();
 checkTheBallStaysReadableThroughEveryDunk();
 checkDunkSelectionRespectsItsContext();

@@ -54,7 +54,12 @@ const DUNK_PATHS = {
   // Straight up the side. The baseline, and what every dunk in the game used
   // to be.
   power: function (t) {
-    return { up: 30 * t, side: 4 * t, back: 0 };
+    // Slightly front-loaded, not linear. The ball comes up WITH the leap, so it
+    // is moving fastest early and easing as he reaches — and being above the
+    // diagonal is also what buys the separation from `straight`, which is below
+    // it. Straight lines through the middle are what made these two collide.
+    return { up: 30 * (1 - Math.pow(1 - t, 1.25)),
+             side: 4 * (1 - Math.pow(1 - t, 1.25)), back: 0 };
   },
   // QUICK. Differs from `power` in TIME, not in amplitude — the first version
   // differed only in how far it went and the two routes separated by 0.7px over
@@ -64,11 +69,11 @@ const DUNK_PATHS = {
   // and gets punched up at the last moment. Power rises steadily from the
   // gather; this one is still low at the halfway point and then goes.
   straight: function (t) {
-    // 1.8, not 2.4. The steeper version concentrated the whole 31px climb into
-    // the last few frames of an already-short dunk and the ball moved 5.8px per
-    // frame at the rim — the route was right and unreadable. This still leaves
-    // it visibly low at the halfway point, which is the thing that separates it
-    // from `power`, without the cliff at the end.
+    // 1.8, not 2.4. The steeper version concentrated the whole climb into the
+    // last few frames of an already-short dunk. Steepening it further to win
+    // back the separation lost when every route started sharing an origin just
+    // drove it into `cradle` instead — both became "flat, then late". The
+    // separation is bought on `power`'s side of the gap now.
     const late = Math.pow(t, 1.8);
     return { up: 31 * late, side: 4 * late, back: 0 };
   },
@@ -116,10 +121,23 @@ const DUNK_PATHS = {
   // moment. Reads as the ball disappearing into him and reappearing.
   cradle: function (t) {
     const tuck = Math.sin(Math.min(1, t / 0.6) * Math.PI);
+    // HELD, then thrown. This used to climb steadily — `12 + 20t + 4t²` — and
+    // was only distinguishable from a tomahawk because the two began at
+    // different heights, the tomahawk on the floor and this at the chest. Once
+    // every route started in his hands they collapsed to 3.9px apart, which is
+    // the near-duplicate the brief rules out, and the check caught it.
+    //
+    // So the difference is in the shape now, where it belongs: a cradle rocks
+    // the ball IN and keeps it there. Flat through the first half — the ball
+    // does not climb with him, which is the thing you notice — and then it goes.
+    // The rock is DOWN and IN, not just in: the ball drops toward the chest as
+    // he gathers it, which is what separates a cradle from a quick finish that
+    // also stays low. Held flat, then thrown.
+    const hold = Math.max(0, (t - 0.45) / 0.55);
     return {
-      up: 12 + 20 * t + 4 * t * t,
-      side: -3 * tuck + 6 * t * t,
-      back: 2 * tuck
+      up: 12 - 6 * tuck + 5 * t + 26 * Math.pow(hold, 1.4),
+      side: -5 * tuck + 6 * t * t,
+      back: 3 * tuck
     };
   },
   // DOUBLE CLUTCH. Up, pulled back DOWN, then up again. The only path that
@@ -128,7 +146,10 @@ const DUNK_PATHS = {
     const first = Math.sin(Math.min(1, t / 0.4) * Math.PI * 0.5);
     const pull = Math.sin(Math.max(0, Math.min(1, (t - 0.35) / 0.3)) * Math.PI);
     return {
-      up: 24 * first - 9 * pull + 16 * Math.pow(Math.max(0, (t - 0.55) / 0.45), 1.4),
+      // The pull has to be DEEP. Rebasing every route onto a shared origin
+      // scales each one's excursions down, and at -9 the reversal — the entire
+      // point of a double clutch — shrank to 4.3px and read as a hesitation.
+      up: 24 * first - 14 * pull + 16 * Math.pow(Math.max(0, (t - 0.55) / 0.45), 1.4),
       side: 3 * first + 3 * t * t,
       back: 0
     };
@@ -153,19 +174,69 @@ const DUNK_PATH_NAMES = Object.keys(DUNK_PATHS);
 // lives, and takes over only as it closes on the rim.
 const DUNK_TERMINAL = { up: 31, side: 4 };
 
-function dunkBallPath(style, t) {
+// THE RIM, at a FIXED height above the floor.
+//
+// `DUNK_TERMINAL.up` above measures from his FEET, which quietly meant the
+// hoop moved: the ball finished 40px up on a quickTwo and 48px up on a
+// threeSixtyWindmill, because the terminal rode on how high he had jumped.
+// Every dunk in a basketball game finishes at the same height — that is what a
+// rim is — so the terminal is now solved against the floor and the feet are
+// subtracted out. The relative terminal is kept as the fallback for callers
+// that cannot say where his feet are (an un-marked dunk, a probe).
+//
+// 47 is not a free choice. The hand tops out `tall + 6` above the feet, the
+// slam happens at 0.82 of peak lift, and the arm may stretch a few px — so the
+// rim has to sit where the LOWEST dunk in the catalogue can still reach it.
+// See MIN_DUNK_LIFT, which is the same constraint written from the other side.
+const RIM_ABOVE_FLOOR = 47;
+
+// WHERE THE BALL STARTS: in his hands, not on the floor.
+//
+// Every route was written as an offset from the feet and most of them began at
+// up=0 — so the ball sat on the floor through the entire gather and plant and
+// only left it once he was already climbing. He never picked it up. The routes
+// each describe a shape, and none of them was responsible for saying where the
+// shape begins, so nobody did.
+//
+// NOT a decaying correction, which is how this was first written and was wrong.
+// Adding `(ORIGIN - start) * fadeOut` starts the ball at 12 and then lets it
+// FALL back onto the raw route — and `straight` is deliberately still near zero
+// at the halfway point, so the ball dropped 8px out of his hands right after he
+// gathered it. The readability check caught it as the ball's worst frame going
+// from 3.2px to 4.1px, on `quickOne`, where nothing had got faster.
+//
+// The routes were all authored as a climb starting from zero. The fix is to say
+// so: remap each one affinely from its own [start, end] onto [origin, rim]. The
+// shape is preserved exactly — the eastbay still dips as far below its start,
+// the double clutch still reverses — but both ends are pinned, and no route can
+// disagree about where a dunk begins or finishes.
+const DUNK_ORIGIN = { up: 12 };
+
+function dunkBallPath(style, t, foot) {
   const fn = DUNK_PATHS[style] || DUNK_PATHS.power;
   const c = Math.max(0, Math.min(1, t));
   const raw = fn(c);
   const end = fn(1);
+  const start = fn(0);
   const k = c * c;
+  // Absolute when the caller can say where his feet are, relative when not.
+  const termUp = typeof foot === 'number' ? RIM_ABOVE_FLOOR - foot : DUNK_TERMINAL.up;
+  const span = end.up - start.up;
+  const scale = Math.abs(span) < 1 ? 1 : (termUp - DUNK_ORIGIN.up) / span;
   return {
-    up: raw.up + (DUNK_TERMINAL.up - end.up) * k,
+    up: DUNK_ORIGIN.up + (raw.up - start.up) * scale,
     side: raw.side + (DUNK_TERMINAL.side - end.side) * k,
     // He cannot finish behind himself either.
     back: (raw.back || 0) * (1 - k)
   };
 }
+
+// The lowest a dunk may leap and still reach a fixed rim. Solved, not picked:
+// the slam sits at 0.82 of peak lift and the hand reaches `tall + 6` above the
+// feet (30 on a 6'7" body), so 0.82*16 + 30 = 43.1, and the arm covers the last
+// few px. Anything lower and he finishes visibly under the rim, which is what
+// the old 11px quick dunks were doing.
+const MIN_DUNK_LIFT = 16;
 
 // ---------------------------------------------------------------------------
 // THE CATALOGUE.
@@ -182,9 +253,9 @@ function dunkBallPath(style, t) {
 const DUNKS = [
   // --- ordinary finishes. The bulk of the 57 dunks a game. ----------------
   { id: 'oneHandPower', hands: 1, path: 'power', takeoff: 'one', lift: 16, hang: 90, tier: 0, weight: 10 },
-  { id: 'twoHandPower', hands: 2, path: 'power', takeoff: 'two', lift: 15, hang: 100, tier: 0, weight: 10 },
-  { id: 'quickOne', hands: 1, path: 'straight', takeoff: 'one', lift: 12, hang: 40, tier: 0, weight: 8, quick: true },
-  { id: 'quickTwo', hands: 2, path: 'straight', takeoff: 'two', lift: 11, hang: 40, tier: 0, weight: 8, quick: true },
+  { id: 'twoHandPower', hands: 2, path: 'power', takeoff: 'two', lift: 16, hang: 100, tier: 0, weight: 10 },
+  { id: 'quickOne', hands: 1, path: 'straight', takeoff: 'one', lift: 16, hang: 40, tier: 0, weight: 8, quick: true },
+  { id: 'quickTwo', hands: 2, path: 'straight', takeoff: 'two', lift: 16, hang: 40, tier: 0, weight: 8, quick: true },
   { id: 'straightArm', hands: 1, path: 'straight', takeoff: 'one', lift: 17, hang: 120, tier: 0, weight: 5 },
 
   // --- tomahawks. The ball goes back before it goes forward. --------------
@@ -415,6 +486,9 @@ if (typeof module !== 'undefined' && module.exports) {
     DUNK_PATH_NAMES: DUNK_PATH_NAMES,
     dunkBallPath: dunkBallPath,
     DUNK_TERMINAL: DUNK_TERMINAL,
+    RIM_ABOVE_FLOOR: RIM_ABOVE_FLOOR,
+    DUNK_ORIGIN: DUNK_ORIGIN,
+    MIN_DUNK_LIFT: MIN_DUNK_LIFT,
     dunkById: dunkById,
     dunkTierFor: dunkTierFor,
     dunkRoll: dunkRoll,

@@ -72,6 +72,39 @@ gave fixed fractions to each phase (rise 0.62, hang 0.85). A quick finish hangs
 frame at the instant it reached the rim. Derived from the beats now, so a short
 phase simply gets less of the route.
 
+## The rim is a fixed height, and both ends of the route are stated
+
+Originally each route carried its own beginning and the terminal was measured
+from the finisher's feet. Both were wrong in the same way: **nobody was
+responsible for saying where a dunk starts and finishes**, so seven functions
+each answered it separately and none of them agreed.
+
+The consequences were invisible in the game and obvious the moment the routes
+were drawn side by side. The ball began at `up: 0` on four of the seven — on the
+floor — and stayed there through the whole windup, because the route clock does
+not start until the rise. And the finish rode on the leap, so the hoop was 40px
+up for a quick finish and 48px for a 360 windmill.
+
+So both ends are stated once, and every route is remapped affinely from its own
+`[start, end]` onto `[hands, rim]`. The shape is untouched — the eastbay still
+dips as far below its start, the double clutch still reverses — but no route can
+have an opinion about where a dunk begins or ends, because that is not a property
+of the route.
+
+Three things follow, and each of them is more honest than what it replaced:
+
+- **The leap depends on the player's height.** A fixed rim means a 6'0" guard has
+  to jump higher than a 7'7" centre to put his hand in the same place. The
+  catalogue's lifts are written for a median body and the height delta is applied
+  on top.
+- **The arm reaches.** The hand is no longer assumed to be where the ball is; it
+  goes to the rim, bounded, so a small leaper finishes at full stretch and a big
+  one barely extended.
+- **Two entries turned out to be near-duplicates** once they shared an origin.
+  `cradle` and `tomahawk` were separated mainly by starting at different heights,
+  which is not a difference in the dunk. Fixing the origin exposed it, and the
+  cradle earned its shape back.
+
 ## Beat lengths are computed, not chosen
 
 `PATH_RISE_MS` comes from each route's own peak speed against a 3.2px/frame
