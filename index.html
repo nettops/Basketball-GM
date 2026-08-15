@@ -155,6 +155,10 @@
   <script src="ui/legacyView.js"></script>
   <script src="ui/pixelChoreographer.js"></script>
   <script src="ui/pixelSprites.js"></script>
+  <!-- Reads spriteColorsForPlayer/safeSpriteColor/SPRITE_CARD_NO_TEAM from
+       pixelSprites.js at CALL time, not load time, but it is kept adjacent to
+       its only dependency so the pairing is obvious. -->
+  <script src="ui/pixelBust.js"></script>
   <script src="ui/pixelCourt.js"></script>
   <script src="ui/pixelAudio.js"></script>
   <script src="ui/pixelHud.js"></script>
