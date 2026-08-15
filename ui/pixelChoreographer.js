@@ -110,6 +110,12 @@ const BEAT = {
   // so it snaps, and the clear is longer so the daylight is on screen long
   // enough to register before the shot goes up.
   crossJab: 300, crossCut: 90, crossClear: 220,
+  // ...and how many beats that is. NOT the same number as the ankle breaker's
+  // dribble count, which is 4: the fourth is the gather he rises out of, and it
+  // belongs to the shot rather than to the handle. Telling the ball there were
+  // four beats when there are three walks its crossing onto the wrong one.
+  //
+  // (Declared just below, outside BEAT, since it is a count and not a duration.)
   // Inbound after a made basket. Short — a live ball inbound is quick, and
   // this fires after most made shots, so any longer and it drags the game.
   inboundSet: 340, inboundPass: 260,
@@ -130,6 +136,11 @@ const BEAT = {
   fbOutlet: 300, fbLanes: 400, fbAttack: 340,
   resolve: 500, bounce: 350, ft: 700
 };
+
+// How many beats the crossJab / crossCut / crossClear string is. See the note
+// beside those durations: this is deliberately not the ankle breaker's dribble
+// COUNT, which is one higher.
+const ANKLE_BEATS = 3;
 
 function flightBeat(zone) {
   return zone === 'three' ? BEAT.flight3 : (zone === 'mid' ? BEAT.flightMid : BEAT.flightIn);
@@ -715,6 +726,18 @@ function createChoreographer(session) {
     if (keyframes.length) keyframes[keyframes.length - 1].handle = meta;
   }
 
+  // Which move is playing, on EVERY beat of a string rather than only the
+  // first. `handle` stays a once-per-string marker because that is what
+  // scripts/probe-dribbles.js counts; this is the per-frame one, because the
+  // view is interpolating between two keyframes and has to know, on any frame,
+  // which move it is in the middle of and how far through.
+  //
+  // Without it the ball could only ever run its own metronome, which is exactly
+  // what it did: every named move drew the same 6.0px-wide dribble.
+  function tagDribble(move, n, i) {
+    if (keyframes.length) keyframes[keyframes.length - 1].drib = { move: move, n: n, i: i };
+  }
+
   // Where the ball is right now, if somebody is holding it.
   //
   // Every pass in the game used to be drawn as leaving from whoever the code
@@ -1234,13 +1257,23 @@ function createChoreographer(session) {
               (pi % 3 === 0) ? fillT(COMMENT.bringUp, pi + ei, { h: ln(me), team: teamNames[poss.team] }) : '');
           }
 
-          // ballLat offsets the BALL laterally from the handler. It is what makes
-          // a behind-the-back look different from a crossover at this size: in a
-          // crossover the body and the ball go the same way, so only the body
-          // reads; behind the back, the ball swings wide of a handler whose
-          // shoulders stay square. Without a separate ball path the two moves
-          // are the same three rectangles moving sideways.
-          function probe(offLat, offRim, seed, ballLat) {
+          // THE BALL IS NOT POSITIONED HERE, and a previous version of this
+          // spent twenty lines pretending otherwise.
+          //
+          // It carried a `ballLat` argument that pushed the ball 12px sideways
+          // for a behind-the-back, with a comment explaining that without a
+          // separate ball path a behind-the-back and a crossover are the same
+          // rectangles sliding sideways. The reasoning was right; the code did
+          // nothing at all. ui/pixelMotion.js draws a HELD ball at the holder's
+          // hand plus the dribble's own offset and never reads the keyframe —
+          // move the keyframe ball 800px and the drawn ball does not shift by
+          // 0.0001px. So the swing was computed, stored, and discarded, every
+          // behind-the-back in the game.
+          //
+          // The ball's path through a move now lives in pixelMotion, where the
+          // thing that draws it can see it, and the choreographer says only
+          // WHICH move is playing (see tagDribble below).
+          function probe(offLat, offRim, seed) {
             const spot = clampToCourt(sp[0] + lx * dir * offLat + (toRimX / rl) * offRim,
               sp[1] + ly * dir * offLat + (toRimY / rl) * offRim);
             const p = Object.assign({}, clear);
@@ -1250,11 +1283,7 @@ function createChoreographer(session) {
               p[him][1] + ly * dir * offLat * 0.6);
             // the four men who cleared out do not stand and watch him work
             const flowed = flowPositions(p, [me, him], pi * 37 + seed, defenderIds);
-            const bl = ballLat || 0;
-            const ball = bl
-              ? clampToCourt(spot[0] + lx * dir * bl, spot[1] + ly * dir * bl)
-              : spot;
-            push(BEAT.isoSize, flowed, { x: ball[0], y: ball[1], holder: me }, period, quarter, clock, '');
+            push(BEAT.isoSize, flowed, { x: spot[0], y: spot[1], holder: me }, period, quarter, clock, '');
             return flowed;
           }
 
@@ -1276,14 +1305,13 @@ function createChoreographer(session) {
             const late = (moveKind === 'double' && d >= dribbles - 2);
             const amp = (moveKind === 'putdown' ? 5 : 11 - (d % 3) * 2) + (late ? 4 : 0);
             const rim = 2 + (d % 3) * 2;
-            // Behind the back: the BALL takes the long way round a handler
-            // whose shoulders stay square. Without a separate ball path the two
-            // moves are the same rectangles sliding sideways at this size.
-            const ballLat = (moveKind === 'behind' && (d % 2) === 1) ? -12 : 0;
-            back = probe(side * amp, rim, d + 1, ballLat);
+            back = probe(side * amp, rim, d + 1);
             // the marker goes on the first beat of the string, one per string,
             // which is what scripts/probe-dribbles.js counts
             if (d === 0) tagHandle({ n: dribbles, move: moveKind });
+            // ...and this one goes on every beat, because the ball's path is a
+            // per-frame question
+            tagDribble(moveKind, dribbles, d);
           }
           // and back to the spot the sim says he shot from
           const attack = Object.assign({}, back);
@@ -1367,14 +1395,20 @@ function createChoreographer(session) {
           // at the roll. Marked here so the probe counts it once, in the same
           // place it counts every other string.
           tagHandle({ n: dribbles, move: 'ankle' });
+          // The ball's own path across these three beats. The move is named for
+          // a crossover and, until this, the ball stayed in one hand through
+          // most of them: measured at 0.64 hand changes per ankle breaker.
+          tagDribble('ankle', ANKLE_BEATS, 0);
           // cut back hard; he keeps going the wrong way
           const cut = step(-12, 26);
           push(BEAT.crossCut, cut, { x: cut[handler][0], y: cut[handler][1], holder: handler },
             period, quarter, clock, '', '', 'squeak', null, null, { phase: 'cross', by: handler, on: victim });
+          tagDribble('ankle', ANKLE_BEATS, 1);
           // and rise into the shot with the separation already open
           const clear = step(0, 30);
           push(BEAT.crossClear, clear, { x: sp[0], y: sp[1], holder: handler },
             period, quarter, clock, '', '', '', null, null, { phase: 'clear', by: handler, on: victim });
+          tagDribble('ankle', ANKLE_BEATS, 2);
           // the defender STAYS beaten for the rest of the possession — leaving
           // him displaced is what makes the shot look uncontested
           shotPos[victim] = clear[victim];

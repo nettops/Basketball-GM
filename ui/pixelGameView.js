@@ -439,6 +439,9 @@ function renderPixelGame(container) {
   // derived from absolute time gets RETROACTIVELY rewritten every time it does
   // — 446 twelve-pixel hand-swaps a game. See stepDribbleClock.
   let dribbleU = 0;
+  // The named move playing right now, or null. Read off the keyframe every
+  // frame rather than remembered across them, so seeking lands correctly.
+  let dribbleMove = null;
   let lastSnapRendered = null;  // avoids rebuilding the info strip every frame
   let refX = PIXEL_STAGE.w / 2;
   let refY = PIXEL_STAGE.court.y + PIXEL_STAGE.court.h - 12;
@@ -618,27 +621,36 @@ function renderPixelGame(container) {
       ? crossA.by : null;
     const crossFlashId = (crossA && crossA.phase === 'clear') ? crossA.on : null;
 
-    // The live dribble, for whoever has the ball. Read from the SAME
-    // dribbleHand the ball's own position comes from, so the pumping arm and
-    // the ball can never disagree about which hand has it. Computed here
-    // rather than from ballPosition below only because the sprite loop runs
-    // first — the inputs are identical.
-    //
-    // The clock is advanced exactly once per frame, here, before anything reads
-    // it. Advancing it in two places would let the ball and the arm run at
-    // different tempos, which is the one thing sharing dribbleHand is for.
     // Timeline milliseconds this frame is worth. Clamped so a backgrounded tab
     // does not fast-forward on return; shared by the dribble clock and the body
     // springs so the ball and the bodies can never disagree about how much time
     // passed.
     const dtMsTimeline = Math.min(140, realDt * speed);
 
+    // The live dribble, for whoever has the ball. Resolved ONCE here and read by
+    // both the ball and the sprite's pumping arm, so they can never disagree
+    // about which hand has it. Computed before the sprite loop only because the
+    // sprite loop runs first; the inputs are identical.
+    //
+    // `drib` is the choreographer's per-beat marker: which named move is
+    // playing and how far through it we are. While one is playing the free
+    // clock is HELD — the move IS the dribble, and a metronome running
+    // underneath it would drag the ball's starting hand around mid-move — and
+    // when the string ends the clock resumes an era on, in the hand the move
+    // actually finished in.
     const dribbleHolder = fr.a.ball.holder;
     const dribbleSmooth = dribbleHolder && smooth[dribbleHolder];
-    dribbleU = stepDribbleClock(dribbleU, dtMsTimeline,
-      !!(dribbleSmooth &&
-         Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6));
-    const dribbleState = dribbleSmooth ? dribbleHand(dribbleU) : null;
+    const dribMark = fr.a.drib && dribbleHolder ? fr.a.drib : null;
+    if (dribMark) {
+      dribbleMove = { move: dribMark.move, n: dribMark.n, u: dribMark.i + fr.f };
+    } else {
+      if (dribbleMove) dribbleU = dribbleClockAfterMove(dribbleU, dribbleMove.move, dribbleMove.n);
+      dribbleMove = null;
+      dribbleU = stepDribbleClock(dribbleU, dtMsTimeline,
+        !!(dribbleSmooth &&
+           Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6));
+    }
+    const dribbleState = dribbleSmooth ? dribbleNow(dribbleU, dribbleMove) : null;
 
     const ids = Object.keys(fr.a.pos).filter(function (id) { return fr.b.pos[id]; });
     const onCourtNow = {};
@@ -890,7 +902,7 @@ function renderPixelGame(container) {
           hand: throwerHand,
           facing: facingById[thrower] || 1,
           shotComing: shotComingAt(kfIndex - 1),
-          reduceMotion: reduceMotion, dribbleU: dribbleU
+          reduceMotion: reduceMotion, dribbleU: dribbleU, dribbleMove: dribbleMove
         }) : null
       };
     }
@@ -906,7 +918,7 @@ function renderPixelGame(container) {
       hand: catcherHand,
       facing: facingById[catcher] || 1,
       shotComing: shotComingAt(kfIndex + 1),
-      reduceMotion: reduceMotion, dribbleU: dribbleU
+      reduceMotion: reduceMotion, dribbleU: dribbleU, dribbleMove: dribbleMove
     }) : null;
     const bp = ballPosition({
       a: fr.a, b: fr.b, f: fr.f,
@@ -916,7 +928,7 @@ function renderPixelGame(container) {
       lifts: lifts,
       shotComing: shotComing,
       reduceMotion: reduceMotion,
-      dribbleU: dribbleU,
+      dribbleU: dribbleU, dribbleMove: dribbleMove,
       launch: launch,
       arrival: arrival
     });

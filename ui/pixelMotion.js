@@ -459,14 +459,27 @@ function ballPosition(s) {
     const hx = s.hand.x, hy = s.hand.y;
     const face = (s.facing || 1) >= 0 ? 1 : -1;
     // Where the dribble has it RIGHT NOW. Every held branch blends out of
-    // this, so no branch change can move the ball on its own.
-    const drib = dribbleBall(s.dribbleU || 0);
+    // this, so no branch change can move the ball on its own. `s.dribbleMove`
+    // is the named move playing, if any — the SAME value the sprite's arm is
+    // handed, so the two cannot disagree about which hand has it.
+    const now = dribbleNow(s.dribbleU || 0, s.dribbleMove);
+    const drib = {
+      up: 1 + now.phase * DRIBBLE_RISE,
+      side: now.side * now.sign,
+      behind: now.behind,
+      bouncePhase: now.phase
+    };
 
     if (mode === 'dribble') {
+      // `behind` carries the ball UP-SCREEN, which in this faked top-down
+      // projection is the far side of him — so a behind-the-back goes around
+      // his back rather than across his front. It moves the shadow with it:
+      // this is the ball travelling on the floor, not the ball getting higher,
+      // and leaving the shadow put would read as the second.
       return {
         bx: hx + face * drib.side,
-        by: hy - drib.up,
-        groundY: hy, mode: mode, bouncePhase: drib.bouncePhase
+        by: hy - drib.behind - drib.up,
+        groundY: hy - drib.behind, mode: mode, bouncePhase: drib.bouncePhase
       };
     }
 
@@ -635,7 +648,7 @@ function launchPoint(s) {
     // of a formula, meaningless for a clock, and actively wrong here: the ball
     // has to leave from where the dribble actually had it, or the flight starts
     // with the snap this whole file exists to prevent.
-    dribbleU: s.dribbleU
+    dribbleU: s.dribbleU, dribbleMove: s.dribbleMove
   });
 }
 
@@ -653,7 +666,7 @@ function arrivalPoint(s) {
     holder: s.b.ball.holder, hand: s.hand, facing: s.facing,
     lifts: resolveLifts(s.b, c, 0, s.reduceMotion),
     shotComing: s.shotComing, reduceMotion: s.reduceMotion,
-    dribbleU: s.dribbleU
+    dribbleU: s.dribbleU, dribbleMove: s.dribbleMove
   });
 }
 

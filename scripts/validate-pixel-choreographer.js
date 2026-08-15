@@ -474,6 +474,65 @@ function checkImpactMarkerCarriesTheCheck() {
 }
 checkImpactMarkerCarriesTheCheck();
 
+function checkEveryBeatOfAStringSaysWhichMoveItIs() {
+  // `handle` marks a string ONCE, which is what the count probe wants. The ball
+  // needs the answer on every frame instead: it is being drawn between two
+  // keyframes and has to know which move it is in the middle of and how far
+  // through. Without a per-beat marker the ball can only run its own metronome
+  // — which is exactly what it did, so a crossover, a behind-the-back and a
+  // double move all drew an identical 6.0px-wide dribble.
+  const tl = choreo.buildTimeline(buildSession(31).session);
+  const kfs = tl.keyframes;
+  let strings = 0;
+  kfs.forEach(function (kf, i) {
+    if (!kf.handle) return;
+    strings += 1;
+    assert.ok(kfs[i].drib, 'a ' + kf.handle.move + ' string opens with no move marker');
+    // The BEAT count, off the marker. Deliberately not `handle.n`, which is the
+    // number of dribbles he put on the floor: an ankle breaker counts four of
+    // those but choreographs three beats, the fourth being the gather he rises
+    // out of. Reading the dribble count as a beat count walks the crossover
+    // onto a beat that does not exist.
+    const n = kfs[i].drib.n;
+    for (let d = 0; d < n && i + d < kfs.length; d++) {
+      const drib = kfs[i + d].drib;
+      assert.ok(drib, 'beat ' + d + ' of a ' + kf.handle.move + ' string carries no move marker');
+      assert.strictEqual(drib.move, kf.handle.move,
+        'beat ' + d + ' says "' + drib.move + '" where the string says "' + kf.handle.move + '"');
+      assert.strictEqual(drib.n, n, 'beat ' + d + ' disagrees about the string length');
+      assert.strictEqual(drib.i, d, 'beat ' + d + ' is indexed ' + drib.i + ' — the ball reads ' +
+        'this as how far through the move it is, so an index that skips lands the crossover ' +
+        'on the wrong beat');
+    }
+    // And the beat after the string must NOT still claim to be in it, or the
+    // ball keeps running a move that finished.
+    const after = kfs[i + n];
+    if (after && after.drib) {
+      assert.strictEqual(after.drib.i, 0,
+        'the beat after a ' + kf.handle.move + ' string is still marked as beat ' +
+        after.drib.i + ' of one');
+    }
+  });
+  assert.ok(strings > 5, 'expected several dribble strings in the fixture, got ' + strings);
+
+  // And the marker must name a move ui/pixelMotion.js knows how to draw. A
+  // typo here would fall through to the default crossover silently.
+  const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
+  const known = { putdown: 1, cross: 1, behind: 1, double: 1, ankle: 1 };
+  kfs.forEach(function (kf) {
+    if (!kf.drib) return;
+    assert.ok(known[kf.drib.move], 'unknown move "' + kf.drib.move + '"');
+    const crossings = motion.dribbleCrossings(kf.drib.move, kf.drib.n);
+    crossings.forEach(function (c) {
+      assert.ok(c.at > 0 && c.at < kf.drib.n,
+        kf.drib.move + ' with ' + kf.drib.n + ' beats puts a crossing at beat ' + c.at +
+        ', outside the string — it would be blended away to nothing');
+    });
+  });
+  console.log('checkEveryBeatOfAStringSaysWhichMoveItIs: OK (' + strings + ' strings)');
+}
+checkEveryBeatOfAStringSaysWhichMoveItIs();
+
 function checkDribbleRoll() {
   // roll01 must be equidistributed. Everything else in the choreographer picks
   // with modular arithmetic -- `(pi * 7 + ei) % 5` -- which is fine for a coin

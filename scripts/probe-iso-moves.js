@@ -14,7 +14,11 @@
 //   switches      how many times the ball changes hands during the string
 //   reversals     how many times the BODY changes lateral direction
 //   kf ball off   how far the choreographer put the ball from the handler in
-//                 the keyframe -- which is the offset 'behind' relies on
+//                 the keyframe. Expected to be ZERO now and a regression guard
+//                 that it stays so: a held ball is drawn at the hand plus the
+//                 dribble's own offset and never reads its keyframe, so a
+//                 non-zero figure here is a ball path being computed and
+//                 thrown away. It read 12.2 for behind-the-back for months.
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const rq = function (f) { return require(path.join(ROOT, f)); };
@@ -70,7 +74,7 @@ function lateralAxis(kfs, from, to, id) {
 // handler and the ball did.
 function walk(kfs, from, to, id) {
   const smooth = {};
-  let dribbleU = 0;
+  let dribbleU = 0, move = null;
   const ids = {};
   for (let i = Math.max(0, from - 2); i <= to && i < kfs.length; i++) {
     Object.keys(kfs[i].pos).forEach(function (p) { ids[p] = 1; });
@@ -98,14 +102,21 @@ function walk(kfs, from, to, id) {
       if (i < from) continue;
       const holder = a.ball.holder;
       const hand = (holder && smooth[holder]) || null;
-      dribbleU = motion.stepDribbleClock(dribbleU, FRAME_MS,
-        !!(hand && Math.hypot(hand.vx, hand.vy) > 6));
+      const mark = a.drib && holder ? a.drib : null;
+      if (mark) {
+        move = { move: mark.move, n: mark.n, u: mark.i + f };
+      } else {
+        if (move) dribbleU = motion.dribbleClockAfterMove(dribbleU, move.move, move.n);
+        move = null;
+        dribbleU = motion.stepDribbleClock(dribbleU, FRAME_MS,
+          !!(hand && Math.hypot(hand.vx, hand.vy) > 6));
+      }
       if (!hand || holder !== id) continue;
       const bp = motion.ballPosition({
         a: a, b: b, f: f, holder: holder, hand: hand, facing: 1,
         lifts: motion.resolveLifts(a, b, f, false),
         shotComing: false, reduceMotion: false,
-        dribbleU: dribbleU, launch: null, arrival: null
+        dribbleU: dribbleU, dribbleMove: move, launch: null, arrival: null
       });
       bodyLat.push(hand.x * ax[0] + hand.y * ax[1]);
       // the ball's offset from his OWN centre, along the same axis
@@ -190,7 +201,10 @@ for (let g = 0; g < GAMES; g++) {
     if (!h || !h.n) continue;
     const id = kfs[i].ball.holder;
     if (!id) continue;
-    const to = Math.min(kfs.length - 1, i + h.n);
+    // Beats, not dribbles — an ankle breaker counts four of the second and
+    // choreographs three of the first.
+    const beats = (kfs[i].drib && kfs[i].drib.n) || h.n;
+    const to = Math.min(kfs.length - 1, i + beats);
     const w = walk(kfs, i, to, id);
     if (w.bodyLat.length < 4) continue;
     const b = bucket(h.move || 'none');
