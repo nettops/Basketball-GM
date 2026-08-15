@@ -44,9 +44,31 @@ const SEASON_RESULT_LABEL = {
   '4': 'Won the championship'
 };
 
+// Reputation is written only by dialogue scenes and read only by the career
+// view. It is deliberately NOT consumed by the simulation: it records how the
+// press has been handled, and is not a rating that moves free agency.
+const REPUTATION_DEFAULT = 50;
+
+function clampReputation(value) {
+  if (typeof value !== 'number' || !isFinite(value)) return REPUTATION_DEFAULT;
+  return Math.max(0, Math.min(100, value));
+}
+
+// Banded rather than bare, so a 3-point swing reads as something and so the
+// number is not mistaken for a rating the engine consumes.
+function reputationBand(value) {
+  const v = clampReputation(value);
+  if (v < 25) return 'Stonewalled';
+  if (v < 45) return 'Divisive';
+  if (v < 65) return 'Known Quantity';
+  if (v < 85) return 'Respected';
+  return 'Institution';
+}
+
 function createGmCareer(name, teamId, startYear) {
   return {
     name: name || 'GM',
+    reputation: REPUTATION_DEFAULT,
     // A LIST from day one. Shipping with a single stint, but multi-team careers
     // are a planned follow-up and this shape means they need no save migration.
     tenures: [{ teamId: teamId, startYear: startYear, endYear: null }],
@@ -70,6 +92,9 @@ function ensureGmCareer(gameState) {
   if (!Array.isArray(c.milestones)) c.milestones = [];
   if (!Array.isArray(c.chronicle)) c.chronicle = [];
   if (!c.name) c.name = 'GM';
+  // Both backfills a save predating the field and repairs a corrupt one —
+  // clampReputation returns the default for undefined and for a non-number.
+  c.reputation = clampReputation(c.reputation);
   return c;
 }
 
@@ -142,7 +167,7 @@ function recordSeason(career, leagueYear, teamId, wins, losses, bracket) {
 // noise, which is exactly why script.js caps it at 200 entries and discards the
 // rest. This keeps only career-grade moments, so fifty seasons is a few hundred
 // short strings.
-const CHRONICLE_KINDS = { SEASON: 'season', MILESTONE: 'milestone', AWARD: 'award', DRAFT: 'draft', RECORD: 'record' };
+const CHRONICLE_KINDS = { SEASON: 'season', MILESTONE: 'milestone', AWARD: 'award', DRAFT: 'draft', RECORD: 'record', PRESS: 'press' };
 
 function addChronicle(career, leagueYear, kind, text) {
   if (!career) return null;
@@ -285,6 +310,9 @@ if (typeof module !== 'undefined' && module.exports) {
     SEASON_RESULT_LABEL: SEASON_RESULT_LABEL,
     createGmCareer: createGmCareer,
     ensureGmCareer: ensureGmCareer,
+    clampReputation: clampReputation,
+    reputationBand: reputationBand,
+    REPUTATION_DEFAULT: REPUTATION_DEFAULT,
     tenureCovers: tenureCovers,
     regularSeasonRecord: regularSeasonRecord,
     recordSeason: recordSeason

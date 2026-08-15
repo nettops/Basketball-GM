@@ -307,4 +307,61 @@ function checkBracketCompletenessIsShared() {
 }
 checkBracketCompletenessIsShared();
 
+function checkReputationDefaultsAndClamps() {
+  const career = gmCareer.createGmCareer('Test GM', 'BOS', 2026);
+  assert.strictEqual(career.reputation, 50, 'a new career starts neutral');
+
+  assert.strictEqual(gmCareer.clampReputation(150), 100, 'clamps high');
+  assert.strictEqual(gmCareer.clampReputation(-20), 0, 'clamps low');
+  assert.strictEqual(gmCareer.clampReputation(72), 72, 'passes through in range');
+  assert.strictEqual(gmCareer.clampReputation('nonsense'), 50, 'a non-number falls back to neutral');
+  assert.strictEqual(gmCareer.clampReputation(undefined), 50, 'undefined falls back to neutral');
+  assert.strictEqual(gmCareer.clampReputation(NaN), 50, 'NaN falls back to neutral');
+  console.log('checkReputationDefaultsAndClamps: OK');
+}
+checkReputationDefaultsAndClamps();
+
+function checkReputationBackfillsOldSaves() {
+  // A save written before this feature has a career with no reputation field
+  // at all. ensureGmCareer is what save.js runs on load.
+  const gameState = { userTeamId: 'BOS', leagueYear: 2029, gmCareer: { name: 'Old GM', tenures: [], seasons: [] } };
+  assert.strictEqual(gmCareer.ensureGmCareer(gameState).reputation, 50, 'an old save backfills to neutral');
+
+  gameState.gmCareer.reputation = 81;
+  assert.strictEqual(gmCareer.ensureGmCareer(gameState).reputation, 81, 'an existing value survives');
+
+  gameState.gmCareer.reputation = 'garbage';
+  assert.strictEqual(gmCareer.ensureGmCareer(gameState).reputation, 50, 'a corrupt value is repaired');
+  console.log('checkReputationBackfillsOldSaves: OK');
+}
+checkReputationBackfillsOldSaves();
+
+function checkReputationBands() {
+  assert.strictEqual(gmCareer.reputationBand(0), 'Stonewalled');
+  assert.strictEqual(gmCareer.reputationBand(24), 'Stonewalled');
+  assert.strictEqual(gmCareer.reputationBand(25), 'Divisive');
+  assert.strictEqual(gmCareer.reputationBand(50), 'Known Quantity');
+  assert.strictEqual(gmCareer.reputationBand(70), 'Respected');
+  assert.strictEqual(gmCareer.reputationBand(100), 'Institution');
+  // Every value in range must produce a band — no gaps between boundaries.
+  for (let v = 0; v <= 100; v++) {
+    const band = gmCareer.reputationBand(v);
+    assert.ok(typeof band === 'string' && band.length > 0, 'no band for ' + v);
+  }
+  console.log('checkReputationBands: OK');
+}
+checkReputationBands();
+
+function checkPressIsANamedChronicleKind() {
+  // Dialogue writes chronicle entries. Passing a bare string would put a kind
+  // in the log that nothing else in the game knows how to render or filter.
+  assert.strictEqual(gmCareer.CHRONICLE_KINDS.PRESS, 'press', 'press is a named kind');
+  const career = gmCareer.createGmCareer('Test GM', 'BOS', 2026);
+  const entry = gmCareer.addChronicle(career, 2027, gmCareer.CHRONICLE_KINDS.PRESS, 'Said a thing.');
+  assert.strictEqual(entry.kind, 'press');
+  assert.strictEqual(career.chronicle.length, 1);
+  console.log('checkPressIsANamedChronicleKind: OK');
+}
+checkPressIsANamedChronicleKind();
+
 console.log('All gmCareer validations passed');

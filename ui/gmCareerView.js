@@ -84,6 +84,11 @@ function renderGmCareer(container) {
         '<div class="kpi-sub">' + pct + '% won</div></div>' +
       '<div class="kpi-tile"><div class="kpi-label">Championships</div><div class="kpi-value">' + totals.titles + '</div></div>' +
       '<div class="kpi-tile"><div class="kpi-label">Playoff Trips</div><div class="kpi-value">' + totals.playoffAppearances + '</div></div>' +
+      // Banded, with the raw number underneath: the band is what the value
+      // MEANS, and nothing in the simulation reads either one.
+      '<div class="kpi-tile"><div class="kpi-label">Reputation</div>' +
+        '<div class="kpi-value">' + escapeHtml(reputationBand(career.reputation)) + '</div>' +
+        '<div class="kpi-sub">' + Math.round(career.reputation) + ' / 100</div></div>' +
     '</div>' +
 
     '<div class="panel"><div class="panel-header">Trophy Room</div><div class="panel-body">' +
