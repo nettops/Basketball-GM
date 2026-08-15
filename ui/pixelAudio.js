@@ -99,6 +99,10 @@ function playPixelSfx(name) {
     // quietest voice by far: it fires several times a second, so it sits
     // under the action rather than competing with it
     case 'dribble': sfxNoise(a, 0.05, 'lowpass', 380, 0.8, 0.06); break;
+    // The dialogue typewriter. Fires every third character, so it is kept
+    // short and quiet for the same reason 'dribble' is — anything longer
+    // turns a line of text into a buzz.
+    case 'blip':    sfxTone(a, 620, 0.03, 'square', 0.035); break;
   }
 }
 

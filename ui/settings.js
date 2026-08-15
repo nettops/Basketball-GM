@@ -83,6 +83,11 @@ function renderSettings(container) {
     '<label class="toggle-row"><input type="checkbox" id="settings-auto-expansion-enabled"' +
     (GameState.settings.autoExpansionEnabled ? ' checked' : '') +
     '> Auto-Expansion (a new team can occasionally join the league once every market is healthy)</label>' +
+    // Tested for `=== false` rather than truthiness: an absent setting means
+    // ON, so an existing save gets the feature without a migration.
+    '<label class="toggle-row"><input type="checkbox" id="settings-dialogue-scenes"' +
+    (GameState.settings.dialogueScenes === false ? '' : ' checked') +
+    '> Interviews (a halftime word with your coach, and a reporter after the final buzzer)</label>' +
   '</div></div>';
 
   if (GameState.playMode !== 'spectator') {
@@ -135,6 +140,13 @@ function renderSettings(container) {
       GameState.settings.pauseOn[e.target.getAttribute('data-pause-on-key')] = e.target.checked;
     });
   });
+
+  const dialogueScenesInput = document.getElementById('settings-dialogue-scenes');
+  if (dialogueScenesInput) {
+    dialogueScenesInput.addEventListener('change', function (e) {
+      GameState.settings.dialogueScenes = e.target.checked;
+    });
+  }
 
   const disableCapInput = document.getElementById('settings-disable-cap');
   if (disableCapInput) {
