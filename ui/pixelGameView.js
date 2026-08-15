@@ -968,7 +968,18 @@ function renderPixelGame(container) {
       // The squash outlives the beat it happened on, so it is added to whatever
       // bend the current phase already asks for.
       const land = landedAt[pid];
-      const landSquash = land ? landingSquash(playbackMs - land.at, land.kind) : 0;
+      // WHICH landing. ui/pixelDunks.js has been classifying every dunk into
+      // stumble / heavy / light / balance since it was written and the answer
+      // has been stamped on every keyframe of the string and read by nobody:
+      // four landings computed, one landing drawn.
+      const landStyle = (dunkMark && dunkMark.landing) || 'balance';
+      const landSquash = land
+        ? landingSquash(playbackMs - land.at, land.kind, landStyle) : 0;
+      // ...and a stumble carries him sideways while he sorts his feet out. The
+      // other three land under control and get nothing, which is the point of
+      // having four.
+      const landLean = land
+        ? landingLean(playbackMs - land.at, land.kind, landStyle, s.vx || 0) : 0;
       // ...and the dunker's own half of the rim collision, which happens in the
       // air and so cannot ride the landing channel. Stamped once when the slam
       // phase opens, the same way the landing is stamped once on contact.
@@ -1042,6 +1053,34 @@ function renderPixelGame(container) {
               jumpLift / closeLiftTable(closeMark && closeMark.finish).rise))
           }
         : null;
+      // THE APPROACH — the euro step and the spin, which happen on the floor
+      // before any of the above. `approachLiftAt` returns null for every phase
+      // that is not one of theirs, which is how a normal finish stays untouched.
+      const apPhase = isCloserNow && closeMark && closeMark.approach ? closeMark.phase : null;
+      const apKind = apPhase ? closeMark.approach : null;
+      // How far through the WHOLE approach he is: each phase carries its own
+      // share, so the two beats read as one continuous move rather than two.
+      // Each phase owns half the move, so the two beats read as one turn
+      // rather than two separate ones that both start from zero.
+      const apU = apPhase
+        ? Math.max(0, Math.min(1, ((closeMark.step || 0) - 0.5) + fr.f * 0.5))
+        : 0;
+      let turning = null, euroLean = 0;
+      if (apKind === 'spin') {
+        // Legs lead, torso follows — see spinTurn. Drawn as four states rather
+        // than an angle, because a body ten px across has no intermediate one.
+        const t = spinTurn(apU);
+        const legs = turnFacing(t.legs, (closeMark && closeMark.side) || 1);
+        const torso = turnFacing(t.torso, (closeMark && closeMark.side) || 1);
+        turning = { legs: legs.facing };
+        spinFacing = torso.facing;
+        spinBack = torso.back;
+      } else if (apKind === 'euro') {
+        // The weight goes one way and then the other, and the torso is what
+        // says so — a euro drawn with an upright body is a man sidestepping.
+        euroLean = (apPhase === 'euroOne' ? -1 : 1) *
+          ((closeMark && closeMark.side) || 1) * EURO_LEAN_PX;
+      }
       // ground shadow stays planted even when the sprite lifts
       ctx.fillStyle = 'rgba(0,0,0,0.28)';
       ctx.fillRect(Math.round(x) - 4, Math.round(y) - 1, 8, 2);
@@ -1117,7 +1156,10 @@ function renderPixelGame(container) {
           + (footLift > 0 ? 0 : momentumLean(s.ax || 0))
           // Knocked the way he was shoved: the upper body goes with the
           // contact while the feet stay where they were planted.
-          + (bump ? CONTACT_LEAN_PX * bumpAmt * bump.dirX : 0))),
+          + (bump ? CONTACT_LEAN_PX * bumpAmt * bump.dirX : 0)
+          // ...and the euro's weight transfer, which IS the move.
+          + euroLean + landLean)),
+        turning: turning,
         frame: Math.floor((playbackMs + phase) / stride) % 2,
         // each player breathes on his own period, so ten sprites never pulse
         // in unison — the give-away that it is one global timer

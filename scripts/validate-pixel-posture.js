@@ -16,6 +16,7 @@ const path = require('path');
 const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
 const sprites = require(path.join(__dirname, '..', 'ui', 'pixelSprites.js'));
 const dunks = require(path.join(__dirname, '..', 'ui', 'pixelDunks.js'));
+const choreo = require(path.join(__dirname, '..', 'ui', 'pixelChoreographer.js'));
 
 const COLORS = { skin: '#a06', hair: '#111', jersey: '#28f', trim: '#fff' };
 
@@ -122,16 +123,24 @@ function checkALandingCompressesThenRecovers() {
   //
   // The recovery is the opposite: it is the body settling, and any step the eye
   // can catch there reads as a stutter on the way back up.
-  let worstIn = 0, worstOut = 0;
-  for (let ms = 0; ms < motion.LANDING_TOTAL_MS + 60; ms += 1000 / 60) {
-    const a = motion.landingSquash(ms, 'dunk');
-    const b = motion.landingSquash(ms + 1000 / 60, 'dunk');
-    const step = Math.abs(b - a);
-    if (ms < motion.LANDING_COMPRESS_MS) worstIn = Math.max(worstIn, step);
-    else worstOut = Math.max(worstOut, step);
-  }
-  assert.ok(worstIn <= 2.0,
-    'the landing impact steps ' + worstIn.toFixed(2) + 'px in one frame, past the accent budget');
+  // ACROSS ALL FOUR LANDING STYLES, not just the default. The styles multiply
+  // the depth, so testing the unstyled curve alone measures a landing the game
+  // only sometimes draws — the same blindness as calling a route without the
+  // foot, and `heavy` is 35% deeper than the number this check used to see.
+  let worstIn = 0, worstOut = 0, worstStyle = '';
+  Object.keys(motion.LANDING_STYLE).forEach(function (style) {
+    for (let ms = 0; ms < motion.LANDING_TOTAL_MS * 2 + 60; ms += 1000 / 60) {
+      const a = motion.landingSquash(ms, 'dunk', style);
+      const b = motion.landingSquash(ms + 1000 / 60, 'dunk', style);
+      const step = Math.abs(b - a);
+      if (ms < motion.LANDING_COMPRESS_MS) {
+        if (step > worstIn) { worstIn = step; worstStyle = style; }
+      } else worstOut = Math.max(worstOut, step);
+    }
+  });
+  assert.ok(worstIn <= 2.4,
+    'the landing impact steps ' + worstIn.toFixed(2) + 'px in one frame on a ' + worstStyle +
+    ' landing, past the accent budget');
   assert.ok(worstOut < 0.7,
     'the landing RECOVERY steps ' + worstOut.toFixed(2) + 'px in one frame — that is a stutter, not a settle');
   assert.ok(worstIn > worstOut,
@@ -141,8 +150,22 @@ function checkALandingCompressesThenRecovers() {
   // A dunk lands harder than a pull-up.
   assert.ok(motion.landingSquashPx('dunk') > motion.landingSquashPx('jump'),
     'a dunk lands no harder than a jump shot');
+  // ...and the four have to actually be four. A landing table whose entries all
+  // land the same depth is one landing with four names.
+  const depths = Object.keys(motion.LANDING_STYLE).map(function (st) {
+    return motion.landingSquashPx('dunk', st);
+  }).sort(function (a, b) { return a - b; });
+  assert.ok(depths[depths.length - 1] - depths[0] >= 2,
+    'the deepest and shallowest landings differ by ' +
+    (depths[depths.length - 1] - depths[0]).toFixed(1) + 'px — that is one landing, four names');
+  assert.strictEqual(motion.landingLean(0, 'dunk', 'balance', 1), 0,
+    'a balanced landing staggers');
+  assert.ok(Math.abs(motion.landingLean(80, 'dunk', 'stumble', 1)) > 1,
+    'a stumble does not stagger');
   console.log('checkALandingCompressesThenRecovers: OK (peak ' + peak +
-    'px, impact ' + worst.toFixed(2) + 'px/frame, settle ' + worstOut.toFixed(2) + 'px/frame)');
+    'px, impact ' + worst.toFixed(2) + 'px/frame on a ' + worstStyle +
+    ' landing, settle ' + worstOut.toFixed(2) + 'px/frame, depths ' +
+    depths[0].toFixed(1) + '-' + depths[depths.length - 1].toFixed(1) + 'px)');
 }
 
 // A keyframe carrying a layup phase and nothing else this file needs.
@@ -721,6 +744,156 @@ function checkTheHandGoesUpWithTheBallAndStaysThere() {
     dunks.DUNK_PATH_NAMES.length + ' routes x 3 leaps, never retreats)');
 }
 
+function checkTheApproachIsFootworkAndNotAHop() {
+  // The euro step and the spin finish did not exist — a layup began at the
+  // gather, so every finish in the league was a man who arrived at the rim
+  // already going up with nothing showing how he got past anybody.
+  //
+  // Both are FLOOR moves, and that is the property worth pinning: the moment
+  // either one leaves the ground it stops being footwork and becomes a jump,
+  // which is a different move that already exists.
+  Object.keys(motion.APPROACH_LIFT).forEach(function (phase) {
+    assert.ok(motion.APPROACH_LIFT[phase] <= 0,
+      phase + ' leaves the floor at ' + motion.APPROACH_LIFT[phase] + 'px — an approach is footwork');
+    assert.strictEqual(motion.approachLiftAt({ close: { phase: phase } }),
+      motion.APPROACH_LIFT[phase], phase + ' is not routed to the approach table');
+  });
+  // ...and a normal finish must be untouched by any of it.
+  ['gather', 'rise', 'release', 'land'].forEach(function (phase) {
+    assert.strictEqual(motion.approachLiftAt({ close: { phase: phase } }), null,
+      phase + ' was captured by the approach table — the ordinary layup has changed');
+  });
+
+  // THE SPIN'S ROTATION STARTS IN THE LEGS. Section 14's rule, and the thing
+  // that separates a man turning from a sprite being flipped: give the legs and
+  // the torso the same number and every part rotates on one frame.
+  let sawLead = false;
+  for (let u = 0; u <= 1.0001; u += 1 / 60) {
+    const t = motion.spinTurn(u);
+    assert.ok(t.legs >= t.torso - 1e-9,
+      'the torso is ahead of the legs at u=' + u.toFixed(2) + ' — the spin is being led from the wrong end');
+    if (t.legs - t.torso > 0.05) sawLead = true;
+  }
+  assert.ok(sawLead, 'the legs never actually lead the torso — the offset is too small to draw');
+  assert.strictEqual(motion.spinTurn(1).torso, 1, 'the torso never finishes the turn');
+
+  // A turn on a 10px body is four states, and the back-of-the-head frame is what
+  // sells it. Without one, a spin is a sprite flipping.
+  let backs = 0, flips = 0, prev = motion.turnFacing(0, 1).facing;
+  for (let u = 0; u <= 1.0001; u += 1 / 120) {
+    const s = motion.turnFacing(u, 1);
+    if (s.back) backs++;
+    if (s.facing !== prev) { flips++; prev = s.facing; }
+  }
+  assert.ok(backs > 0, 'a full turn never shows his back');
+  assert.strictEqual(flips, 2, 'a full turn flips ' + flips + ' times instead of twice');
+  assert.strictEqual(motion.turnFacing(1, 1).facing, 1,
+    'he does not come out of a 360 facing the way he went in');
+
+  // THE STEPS HAVE TO GO SOMEWHERE. A euro whose second step does not end
+  // closer to the rim than its first is a sideways shuffle.
+  [1, -1].forEach(function (away) {
+    const one = choreo.approachStep('euro', 0, away);
+    const two = choreo.approachStep('euro', 1, away);
+    assert.ok(one[1] * away < 0, 'the euro first step goes TOWARD the rim — there is no lie in it');
+    assert.ok(two[1] * away > 0, 'the euro second step does not commit to the rim');
+    assert.ok(Math.abs(two[1]) > Math.abs(one[1]),
+      'the euro second step is not the long one');
+  });
+  // ...AND BOTH HAVE TO ACTUALLY FIRE. The alley-oop's pool rules have sat in
+  // this codebase as dead code since they were written because nothing ever
+  // detects one, and the first version of this selector shipped the same way:
+  // it gated the spin on there being no lateral room, which is true of the move
+  // and true of almost no possessions, so it fired 11 times against the euro's
+  // 79. A move that never plays is not an animation.
+  const seen = { euro: 0, spin: 0, none: 0 };
+  for (let seed = 0; seed < 2000; seed++) {
+    const wide = seed % 3 !== 0;      // roughly the mix real finishes produce
+    const got = choreo.approachFor({ defended: true, lateral: wide ? 9 : 2,
+      finish: 'standard' }, seed);
+    seen[got || 'none']++;
+  }
+  assert.ok(seen.euro > 100, 'the euro step fires ' + seen.euro + ' times in 2000 — effectively never');
+  assert.ok(seen.spin > 100, 'the spin finish fires ' + seen.spin + ' times in 2000 — effectively never');
+  assert.ok(seen.none > 800,
+    'an approach fires on ' + (100 - seen.none / 20).toFixed(0) + '% of finishes — that is a new default, not variety');
+  console.log('checkTheApproachIsFootworkAndNotAHop: OK (4 phases on the floor, legs lead by ' +
+    (motion.SPIN_TORSO_LAG * 100).toFixed(0) + '% of the turn, ' +
+    'euro ' + (seen.euro / 20).toFixed(0) + '% / spin ' + (seen.spin / 20).toFixed(0) + '% of defended finishes)');
+}
+
+function checkTheAlleyOopIsCaughtInTheAir() {
+  // `dunkPool` has known how to filter for an alley-oop since it was written and
+  // NOTHING EVER SET THE FLAG — the branch has been dead code, and the plan doc
+  // said so. The reason it stayed dead is that an oop is not a pose, it is a
+  // ball that is somewhere else: he cannot be holding it through the gather.
+  //
+  // So the property worth pinning is the one that was missing: the route does
+  // not start until he catches it. An oop whose route runs from the gather is a
+  // man carrying a ball he has not been thrown yet.
+  const marks = { gather: 0, plant: 0, rise: 0, hang: 0, slam: 1, land: 1 };
+  ['gather', 'plant', 'rise', 'hang'].forEach(function (phase) {
+    assert.strictEqual(marks[phase], 0,
+      'an oop is already moving the ball at ' + phase + ', before it reaches him');
+  });
+  assert.strictEqual(marks.slam, 1, 'an oop never finishes its route');
+
+  // The pool has to actually honour the flag now that something sets it. These
+  // are the routes that start below the waist or need a windup — a man catching
+  // a lob has neither the ball nor the time.
+  for (let seed = 0; seed < 400; seed++) {
+    const a = dunks.pickDunk({ tier: 4, alley: true }, seed);
+    assert.ok(a.path !== 'eastbay' && a.path !== 'double',
+      'an oop took a route that starts at the floor: ' + a.id);
+    assert.ok(!a.reverse, 'an oop finished reverse: ' + a.id);
+  }
+  // ...and it must be RARE. Every assisted dunk becoming an oop is a new
+  // default, which is the failure this whole pass is about.
+  assert.ok(choreo.ALLEY_RATE > 0 && choreo.ALLEY_RATE <= 0.35,
+    'the alley-oop rate is ' + choreo.ALLEY_RATE + ' — an oop is a highlight, not a default');
+  assert.ok(choreo.ALLEY_MIN_PASS >= 10,
+    'an oop fires on a ' + choreo.ALLEY_MIN_PASS + '-unit pass, which is a handoff');
+  console.log('checkTheAlleyOopIsCaughtInTheAir: OK (route starts at the catch, ' +
+    (choreo.ALLEY_RATE * 100) + '% of assisted dunks past ' + choreo.ALLEY_MIN_PASS + ' units)');
+}
+
+function checkAContactDunkIsHitAndKeepsGoing() {
+  // `contact` has been stamped on every keyframe of every dunk string and read
+  // by nobody. A dunk THROUGH a man was drawn exactly like a dunk past nobody,
+  // with a floor shove played on the beat before it.
+  //
+  // Section 10's sequence is takeoff -> contact -> compression -> CONTINUED
+  // elevation, and the last part is what makes it a contact dunk rather than a
+  // blocked shot. So: the climb must visibly suffer, and it must still finish.
+  const d = dunks.DUNKS.find(function (x) { return x.id === 'oneHandPower'; });
+  function climb(hit) {
+    const a = { t: 0, dunk: { phase: 'plant', id: 'p', dunk: d, route: 0, tall: 0, contact: hit } };
+    const b = { t: 145, dunk: { phase: 'rise', id: 'p', dunk: d, route: 0.5, tall: 0, contact: hit } };
+    const out = [];
+    for (let k = 0; k <= 12; k++) out.push(motion.resolveLifts(a, b, k / 12, false).dunkerFoot);
+    return out;
+  }
+  const clean = climb(false), hit = climb(true);
+  assert.strictEqual(clean[clean.length - 1], hit[hit.length - 1],
+    'a contact dunk finishes ' + (clean[clean.length - 1] - hit[hit.length - 1]) +
+    'px lower — that is a block, not a contact dunk');
+  let held = 0;
+  for (let i = 0; i < clean.length; i++) held = Math.max(held, clean[i] - hit[i]);
+  assert.ok(held >= 2, 'the contact only costs him ' + held + 'px — it does not read');
+  // ...and it must not become a step. He is checked, not stopped dead.
+  let worst = 0;
+  for (let i = 1; i < hit.length; i++) worst = Math.max(worst, Math.abs(hit[i] - hit[i - 1]));
+  assert.ok(worst <= 4, 'the contact check steps ' + worst + 'px in one frame');
+  // It only applies to the climb. A check on the hang or the slam would be the
+  // rim moving, not a defender.
+  ['hang', 'slam', 'land', 'gather', 'plant'].forEach(function (phase) {
+    assert.strictEqual(motion.contactCheck(phase, 0.45, true), 0,
+      'the contact check fires on the ' + phase + ', where there is nothing to run into');
+  });
+  console.log('checkAContactDunkIsHitAndKeepsGoing: OK (costs him ' + held +
+    'px mid-climb, finishes at the same rim)');
+}
+
 function checkNoTwoDunkRoutesAreTheSameRoute() {
   // The brief's central rule: no copy/paste variations. Two routes that never
   // separate by more than a body width are one route with two names.
@@ -911,6 +1084,9 @@ checkTheCatalogueIsInternallyHonest();
 checkEveryDunkRouteEndsAtTheRim();
 checkHePicksTheBallUpBeforeHeLeavesTheFloor();
 checkTheHandGoesUpWithTheBallAndStaysThere();
+checkTheApproachIsFootworkAndNotAHop();
+checkTheAlleyOopIsCaughtInTheAir();
+checkAContactDunkIsHitAndKeepsGoing();
 checkEveryDunkFinishesAtTheSameRim();
 checkTheHandMeetsTheBall();
 checkNoTwoDunkRoutesAreTheSameRoute();

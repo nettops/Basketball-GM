@@ -137,6 +137,15 @@ const BEAT = {
   // Quicker than a dunk's 170/150 gather-and-rise on purpose: a layup is laid
   // in off two steps, not exploded into.
   closeGather: 150, closeRise: 130, closeRelease: 90,
+  // THE APPROACH. A finish used to begin at the gather, so every layup in the
+  // league was a man who arrived at the rim already going up — nothing showed
+  // him getting past anybody.
+  //
+  // The euro's second step is the LONG one and gets the longer beat: the move is
+  // a lie in one direction and a commitment in the other, and giving them equal
+  // time makes it a shuffle. The spin's turn is slower than its exit for the
+  // same reason — you sell the turn and then you are gone.
+  euroOne: 130, euroTwo: 190, spinTurn: 210, spinOut: 110,
   // Dunk beats. The rise is short and the hang is shorter — a leap that takes
   // as long as a jump shot's flight reads as floating, not exploding.
   dunkGather: 170, dunkRise: 150, dunkSlam: 90, dunkLand: 130,
@@ -236,6 +245,69 @@ function flightBeat(zone) {
 const FLOATER_HEIGHT_EDGE = 4;
 const FLOATER_OVER_BIG_ROLL = 0.5;
 const REVERSE_LATERAL = 48;
+
+// WHICH APPROACH he uses to get past the man, or none.
+//
+// Context first, roll second — the same rule the dunk catalogue picks by, and
+// for the same reason: an approach that fires on every layup is not variety, it
+// is a new default. Most finishes get nothing, which is what a layup mostly is.
+//
+//   euro   needs a body to go around AND room to go around it. It is a lateral
+//          move, so a finish taken straight down the middle has nowhere to put
+//          the two steps and they read as a stumble.
+//   spin   needs a man close, and it is the move you use when you have NO room —
+//          you turn your back on him rather than go round. So it wants the
+//          opposite condition to the euro, which is why they do not compete for
+//          the same possessions.
+//
+// A floater is neither: it is a shot you take because you could not get there,
+// and putting a euro step in front of one says he beat his man and then settled
+// for a runner.
+// An oop needs the ball to have been in the AIR. A dish from two feet away is a
+// handoff; anything under this is choreographed as one and looks like a man
+// being handed a ball he then dunks.
+const ALLEY_MIN_PASS = 14;
+// One in five assisted dunks from range. An oop is a specific play, and firing
+// on every assisted dunk would make it the default rather than the highlight.
+const ALLEY_RATE = 0.2;
+// Lobs arc. Left to the distance formula a short lob tops out at the 32px
+// ceiling and reads as a moon ball; this is a lob you can catch above the rim.
+const ALLEY_ARC = 18;
+const APPROACH_EURO_LATERAL = 6;
+// Measured, not guessed. The first split gated the spin on there being NO
+// lateral room, which is true of the move and turned out to be true of almost no
+// possessions: it fired 11 times against the euro's 79 over eight games, so half
+// the work was effectively shelf art. A spin is available from anywhere — it is
+// just the only thing available when you are walled off — so it keeps a base
+// rate everywhere and a much higher one when he is hemmed in.
+const APPROACH_RATE = { euro: 0.24, spinWide: 0.12, spinTight: 0.34 };
+
+function approachFor(ctx, seed) {
+  if (!ctx || !ctx.defended) return null;
+  if (ctx.finish === 'floater') return null;
+  const roll = roll01(seed);
+  const wide = Math.abs(ctx.lateral || 0) >= APPROACH_EURO_LATERAL;
+  if (!wide) return roll < APPROACH_RATE.spinTight ? 'spin' : null;
+  if (roll < APPROACH_RATE.euro) return 'euro';
+  return roll < APPROACH_RATE.euro + APPROACH_RATE.spinWide ? 'spin' : null;
+}
+
+function approachBeats(kind) {
+  return kind === 'euro' ? ['euroOne', 'euroTwo'] : ['spinTurn', 'spinOut'];
+}
+
+// Where each step puts him, relative to where he gathers. `away` is the side the
+// rim is on, so the first move is always AGAINST it — that is the lie.
+function approachStep(kind, index, away) {
+  const s = away >= 0 ? 1 : -1;
+  if (kind === 'euro') {
+    // out one way, then a longer stride back across. The second step ends
+    // closer to the rim than the first, or he has gone sideways for nothing.
+    return index === 0 ? [-3 * s, -4 * s] : [2 * s, 5 * s];
+  }
+  // the spin carries him AROUND: away from the man, then back in on the far side
+  return index === 0 ? [-2 * s, -3 * s] : [3 * s, 4 * s];
+}
 
 function layupFinish(dist, lateral, shooterHeightIn, defenderHeightIn, seed) {
   const sh = shooterHeightIn || 78, dh = defenderHeightIn || 78;
@@ -1802,12 +1874,30 @@ function createChoreographer(session) {
             contact: impactKind === 'poster' || (onBall && ev.zone === 'inside'),
             putback: lastOrebBy === ev.playerId,
             runway: runway,
+            // THE ALLEY-OOP, which has been dead code since the pool rules for
+            // it were written: `dunkPool` has known how to filter for one all
+            // along and nothing ever set the flag.
+            //
+            // The signal is an assisted dunk where the passer is far enough away
+            // for the ball to have been in the air — a dish from two feet is a
+            // handoff, not a lob. Not every assisted dunk: an oop is a specific
+            // play, and firing on all of them would make it the new default.
+            alley: !!(ev.assistPlayerId && shotPos[ev.assistPlayerId] &&
+              Math.hypot(shotPos[ev.assistPlayerId][0] - relSpot[0],
+                shotPos[ev.assistPlayerId][1] - relSpot[1]) >= ALLEY_MIN_PASS &&
+              roll01(pi * 97 + ei * 11) < ALLEY_RATE),
             lastId: lastDunkById[ev.playerId] || null
           };
           const theDunk = _DUNKS.pickDunk(dunkCtx, pi * 67 + ei * 13 + 5);
           lastDunkById[ev.playerId] = theDunk.id;
           const dunkBeatsMs = _DUNKS.dunkBeats(theDunk, dunkCtx);
-          const routeMarks = _DUNKS.dunkRouteMarks(dunkBeatsMs);
+          // An oop's route does not start until he CATCHES it. Through the
+          // gather, the plant and the rise the ball is not in his hands at all —
+          // it is in the air — so the whole route is spent between the catch and
+          // the rim rather than being a climb he never made.
+          const routeMarks = dunkCtx.alley
+            ? { gather: 0, plant: 0, rise: 0, hang: 0, slam: 1, land: 1 }
+            : _DUNKS.dunkRouteMarks(dunkBeatsMs);
           const landing = _DUNKS.dunkLanding(theDunk, dunkCtx);
           // Everything the view needs to draw THIS dunk, stamped on every phase
           // of the string so a seek into the middle of one still knows what it
@@ -1819,7 +1909,8 @@ function createChoreographer(session) {
             // can compensate. The rim is at a fixed height and the catalogue's
             // lifts are written for a median frame, so without this a short
             // guard finishes under the hoop and a centre finishes over it.
-            tall: _spriteTallness(shooterPlayer && shooterPlayer.heightIn)
+            tall: _spriteTallness(shooterPlayer && shooterPlayer.heightIn),
+            alley: !!dunkCtx.alley
           };
           function dunkPhase(phase) {
             return Object.assign({ phase: phase, route: routeMarks[phase] }, dunkMeta);
@@ -1829,8 +1920,21 @@ function createChoreographer(session) {
           // ENDS, so the rise keyframe is the apex — arming there put the camera
           // in only after he was already up. On the gather it covers the whole
           // ascent, which is the part worth magnifying.
+          // WHO HAS THE BALL, and where it is. On an oop it is not him: the
+          // passer still has it through the gather, it is in the air across the
+          // plant and the rise, and he catches it at the top. `s.arrival` in
+          // ui/pixelMotion.js already lands a caught ball in the HAND rather
+          // than at the catcher's feet, so the catch needs no special case —
+          // it needs the holder to change on the right keyframe, which is the
+          // whole thing that was missing.
+          const oopFrom = dunkCtx.alley && shotPos[ev.assistPlayerId]
+            ? shotPos[ev.assistPlayerId] : null;
+          const oopMid = oopFrom
+            ? [(oopFrom[0] + relSpot[0]) / 2, (oopFrom[1] + relSpot[1]) / 2] : null;
           push(dunkBeatsMs.gather, flowPositions(releasePos, dunkLock, pi * 19 + ei, defenderIds),
-            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            oopFrom
+              ? { x: oopFrom[0], y: oopFrom[1], holder: ev.assistPlayerId }
+              : { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', '', null,
             Object.assign(dunkPhase('gather'),
               { zoomTo: impactKind === 'poster' ? impactAt : null }));
@@ -1838,10 +1942,18 @@ function createChoreographer(session) {
           // load — the frame everything is about to reverse from. The ten-phase
           // structure named it and there was nowhere for it to live.
           push(dunkBeatsMs.plant, flowPositions(releasePos, dunkLock, pi * 71 + ei, defenderIds),
-            { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
+            oopMid
+              // in the air, halfway, carrying its own arc so the distance
+              // formula does not lob a short lob at the 32px ceiling
+              ? { x: oopMid[0], y: oopMid[1], holder: null, arc: ALLEY_ARC }
+              : { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
             period, quarter, clock, '', '', 'squeak', null, dunkPhase('plant'));
           push(dunkBeatsMs.rise, risePos,
-            { x: rimX, y: hoop.y, holder: ev.playerId },
+            oopFrom
+              // still in the air, arriving at him. The holder changes on the
+              // HANG, which is the catch.
+              ? { x: relSpot[0], y: relSpot[1], holder: null, arc: ALLEY_ARC }
+              : { x: rimX, y: hoop.y, holder: ev.playerId },
             period, quarter, clock, '', '', '', null, dunkPhase('rise'));
           // THE HANG. The top, held. A peak that lasts one frame is a peak the
           // eye never lands on, and how long he holds it is most of what makes a
@@ -1934,6 +2046,35 @@ function createChoreographer(session) {
             playerById[ev.defenderId] && playerById[ev.defenderId].heightIn,
             pi * 59 + ei);
           const closeMeta = { id: closeBy, side: closeSide, finish: closeFinish };
+          // WHICH APPROACH, if any. Context first, the same way the dunk
+          // catalogue picks: a euro needs a body to go around and room to go
+          // around it, a spin needs a man close enough to turn his back on.
+          // Most finishes get neither, which is correct — a layup that euro-steps
+          // every time is the repetition this pass exists to remove.
+          const closeApproach = approachFor({
+            defended: !!ev.defenderId,
+            zone: ev.zone,
+            lateral: Math.abs(hoop.y - relSpot[1]),
+            finish: closeFinish
+          }, pi * 71 + ei * 7);
+          if (closeApproach) {
+            // He has to actually MOVE, or this is a pose change rather than
+            // getting past someone. The steps go out and then across, and the
+            // defender holds his ground — which is what being beaten looks like.
+            const beats = approachBeats(closeApproach);
+            const away = closeSide;
+            beats.forEach(function (ph, k) {
+              const step = approachStep(closeApproach, k, away);
+              const at = Object.assign({}, releasePos);
+              at[closeBy] = clampToCourt(relSpot[0] + step[0], relSpot[1] + step[1]);
+              push(BEAT[ph],
+                flowPositions(at, closeLock, pi * 83 + ei * 5 + k, defenderIds),
+                { x: at[closeBy][0], y: at[closeBy][1], holder: ev.playerId },
+                period, quarter, clock, '');
+              tagClose(Object.assign({ phase: ph, approach: closeApproach,
+                step: (k + 1) / beats.length }, closeMeta));
+            });
+          }
           // The floor keeps playing through all three, locked on the two men the
           // moment belongs to — the same treatment the jump shot needed when it
           // measured a ten-man freeze frame through its rise.
@@ -2058,6 +2199,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // restating the numbers.
     BEAT: BEAT,
     layupFinish: layupFinish,
+    approachFor: approachFor,
+    ALLEY_MIN_PASS: ALLEY_MIN_PASS,
+    ALLEY_RATE: ALLEY_RATE,
+    approachBeats: approachBeats,
+    approachStep: approachStep,
+    APPROACH_RATE: APPROACH_RATE,
     ANKLE_BEATS: ANKLE_BEATS,
     IMPACT_THRESHOLDS: IMPACT_THRESHOLDS,
     roll01: roll01,

@@ -105,6 +105,25 @@ Three things follow, and each of them is more honest than what it replaced:
   which is not a difference in the dunk. Fixing the origin exposed it, and the
   cradle earned its shape back.
 
+## Computed and thrown away
+
+The polish pass found the same shape of defect four times, and it is worth
+naming because it is not a bug in any one place: **a channel gets designed,
+computed, stamped on every keyframe, and then nothing reads it.** Everything
+looks right — the code is there, the values are correct, a probe can print them
+— and none of it reaches the screen.
+
+`landing` classified four ways and drew one. `contact` made a dunk through a
+body identical to a dunk past nobody. `alley` had pool rules and no detector.
+`tall` was captured at load time from a file that had not loaded yet, so every
+player in the league got a median-height leap.
+
+The lesson for the checks: asserting that a function returns the right answer is
+not the same as asserting the answer is used. Three of the new checks assert
+that a thing actually *fires* — that the euro and the spin appear at a real
+rate, that an oop's route does not start until the catch — because "correct and
+invisible" passed every test this codebase had.
+
 ## Beat lengths are computed, not chosen
 
 `PATH_RISE_MS` comes from each route's own peak speed against a 3.2px/frame

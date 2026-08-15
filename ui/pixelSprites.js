@@ -349,6 +349,23 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     const lead = (opts.layup.side || 1) >= 0;
     ctx.fillRect(left + (lead ? 6 : 2), topU + 16, 2, 4);   // driven knee
     ctx.fillRect(left + (lead ? 2 : 6), topU + 19, 2, 5);   // trail leg hanging
+  } else if (opts.turning) {
+    // A SPIN, drawn from the feet up.
+    //
+    // Section 14's rule is that the rotation is initiated by the lower body and
+    // carried through the torso — so the legs take their own facing here, and
+    // the view hands them one that runs AHEAD of the torso's. That only reads if
+    // the legs are asymmetric to begin with, which is why this is a stride and
+    // not the symmetric standing pair: with two identical legs there is nothing
+    // for a turn to do to them and the whole offset is invisible.
+    //
+    // Feet stay on the floor. A spin is a pivot, not a hop, and the frame the
+    // feet leave the ground is the frame it stops being footwork.
+    const lead = (opts.turning.legs || 1) >= 0;
+    const footY = top + 24;
+    const pivotH = Math.max(3, 6 + legT - hipDrop);
+    ctx.fillRect(left + (lead ? 5 : 3), footY - pivotH, 2, pivotH);          // planted pivot
+    ctx.fillRect(left + (lead ? 1 : 7), footY - pivotH + 1, 2, pivotH - 1);  // trail, coming round
   } else if (opts.stumbling) {
     // Legs splayed WIDE and buckling. The old pose was symmetric — both legs
     // the same length at the same height — which reads as a wide defensive

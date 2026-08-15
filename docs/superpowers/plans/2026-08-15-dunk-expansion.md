@@ -162,21 +162,105 @@ One load-order trap worth recording: the choreographer is loaded by `index.html`
 time would have found nothing, fallen back to zero, and given every player in the
 league a median-height leap forever with nothing failing. Resolved at call time.
 
+## Follow-up: the polish pass, and four channels nobody was reading
+
+Started with an audit rather than a change: every dunk walked on its real
+timeline at 60fps, measuring per-frame body movement, per-frame ball movement,
+pose change as *drawn pixels*, and airborne frames where nothing moved at all.
+
+Four defects came out of it, none of which any existing check was looking for:
+
+| | before | after |
+|---|---|---|
+| worst pose change in one frame | **179px** of a ~240px sprite | 123px, and it is the body moving |
+| takeoff extension | **1 frame** of 9 | 2+ frames, on the shortest beat in the catalogue |
+| ball at the takeoff | **fell 5px** out of his hands | continuous by construction |
+| airborne frames with nothing moving | **20%** | 1% |
+
+**Leaving the floor was a switch.** The airborne pose engaged the instant the
+lift crossed 3px. `rising` is a channel on the phase clock now and the pose is
+drawn *at* it; arms and legs ride different curves off it, so going up the arms
+lead and coming down the legs reach for the floor first.
+
+**There was no extension.** One ease spanned the folded plant and the apex and
+decided for itself how long he spends driving off the floor. Split at the floor,
+with the share swept against two budgets (extension ≥2 frames, body ≤4px/frame)
+rather than picked.
+
+**The arm was on the wrong clock** — fully overhead while the ball was still at
+his chest. Rendered frame by frame it read as a pole beside his head. It follows
+the ball's *running maximum* now, which is also why a windmill's arm no longer
+pumps as the ball orbits.
+
+**The ball fell out of his hands.** Two blends fought at the takeoff: the windup
+had carried it up from the dribble, and the first frame of the rise re-blended
+*from the dribble* at nearly full weight and yanked it back down.
+
+### Four things that were computed and thrown away
+
+This turned out to be the theme. Each had been written, stamped on every
+keyframe, and read by nobody:
+
+- **`landing`** — four landing styles classified per dunk, one landing drawn.
+  They differ by depth and recovery now (2.4px/183ms light to 5.4px/300ms
+  heavy), and a stumble staggers 2px while the other three do not.
+- **`contact`** — a dunk *through* a man was drawn exactly like a dunk past
+  nobody. It costs him 3px mid-climb and he finishes at the same rim, which is
+  the difference between a contact dunk and a blocked one.
+- **`alley`** — `dunkPool` has known how to filter for an oop since it was
+  written. The ball is in the *air* now: passer → flight → flight → caught at
+  the hang → slam. 12.9% of dunks, and the pool rules are live at last.
+- **`tall`** — see the fixed-rim section above.
+
+### Built, because they did not exist
+
+The brief listed Euro steps and spin finishes among "animations I have added";
+they were not in the codebase. Both are now, as an **approach** on the layup
+string — a finish used to begin at the gather, so every layup in the league was
+a man who arrived at the rim already going up.
+
+- **Euro**: two steps, opposite ways, the second one longer and on the longer
+  beat. The torso leans into each.
+- **Spin**: the rotation starts in the legs and reaches the torso 16% later, and
+  the legs are drawn as a stride so that offset has something to show.
+
+Both stay on the floor by construction — the moment either leaves the ground it
+stops being footwork.
+
+Measured over 8 games: **66 euro / 52 spin** in 366 finishes, worst floor
+movement 1.30 units/frame — *less* than the stepback (1.58) or the dunk rise
+(2.04) that already shipped.
+
+The first version of the selector shipped as near-dead code: it gated the spin on
+there being no lateral room, which is true of the move and true of almost no
+possessions, so it fired 11 times against the euro's 79. The check asserts both
+fire now, because "computed and never read" is the failure this whole section is
+about.
+
+### Checks added
+
+`checkHePicksTheBallUpBeforeHeLeavesTheFloor`,
+`checkTheHandGoesUpWithTheBallAndStaysThere`,
+`checkTheApproachIsFootworkAndNotAHop`,
+`checkTheAlleyOopIsCaughtInTheAir`,
+`checkAContactDunkIsHitAndKeepsGoing`.
+
+Two existing checks were **measuring paths the game does not draw**: the ball
+readability check called `dunkBallPath` without the foot (the relative fallback,
+not the rendered route), and the landing check tested only the unstyled curve
+while `heavy` is 35% deeper. Both now test what ships. Same class as
+CLAUDE.md's "a validator that calls a seeded function without its seed is lying."
+
 ## Not done
 
-- **Alley-oops.** `dunkPool` has the context and rules for them, and the beats
-  are written, but nothing detects one: it needs the choreographer to model a
-  pass that is caught in the air, which is a ball-flight change rather than an
-  animation one. The pool branch is dead code until that exists, and is left in
-  place deliberately rather than deleted.
 - **Ball-handling into dunks** (section 8) — crossover→takeoff→dunk as a
   continuous motion. The dribble string and the dunk string are still separate
   events with a beat between them.
-- **Euro steps and spin finishes** (sections 10/11) and the wider layup
-  expansion (section 9). The layup has three finishes from the previous pass;
-  the euro/pro-hop/hand-switch family is untouched.
-- **Contact is rare** (13 in 8 games) because it keys off the poster marker and
-  on-ball inside shots. The contact *animation* is built and correct; what is
-  missing is more situations recognising themselves as contact.
+- **The pro-hop and the hand-switch.** The euro and the spin are built; the rest
+  of that family is not.
+- **Contact is still rare** (13 in 8 games) because it keys off the poster
+  marker and on-ball inside shots. The animation is built, correct and now
+  actually drawn — what is missing is more situations recognising themselves as
+  contact.
 - **Approach direction** does not vary the dunk. `runway` is used, the angle is
   not.

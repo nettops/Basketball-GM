@@ -164,6 +164,30 @@ function dunkGatherProgress(phase, f) {
   return phase === 'rise' ? 1 : 0;
 }
 
+// THE HIT, taken in mid-air, which is what a contact dunk actually is.
+//
+// Contact was modelled only as a floor bump — a crouch and a lean between two
+// men standing on the ground — so a dunk THROUGH somebody was drawn exactly like
+// a dunk past nobody, with a shove played on the beat before it. `contact` has
+// been stamped on every keyframe of the string and read by no one.
+//
+// Section 10's sequence is takeoff -> contact -> compression -> CONTINUED
+// elevation -> finish, and the continued elevation is the whole point: he gets
+// checked and goes anyway. So this is a dip in the climb rather than a cap on
+// it — he still reaches the same rim, he just gets there having been hit.
+const CONTACT_CHECK_PX = 2.4;
+const CONTACT_CHECK_AT = 0.45;      // how far up the rise it lands
+const CONTACT_CHECK_WIDTH = 0.28;
+
+function contactCheck(phase, f, hit) {
+  if (!hit || phase !== 'rise') return 0;
+  const d = (f - CONTACT_CHECK_AT) / CONTACT_CHECK_WIDTH;
+  if (d <= -1 || d >= 1) return 0;
+  // A cosine lobe: he is checked into it and drives back out of it, and neither
+  // edge is a frame the eye can catch as a step.
+  return CONTACT_CHECK_PX * Math.cos(d * Math.PI * 0.5);
+}
+
 function dunkLiftAt(kf, dunk) {
   const d = kf && kf.dunk;
   if (!d) return 0;
@@ -262,9 +286,67 @@ function closeLiftTable(finish) {
   return CLOSE_LIFT_BY_FINISH[finish] || CLOSE_LIFT;
 }
 
+// THE APPROACH — how he got past the man, which the game had no animation for
+// at all. A finish used to begin at the gather, so every layup in the league was
+// a man who materialised at the rim already going up.
+//
+// Two of them, and they are different movements rather than one mirrored:
+//
+//   euro   TWO STEPS, opposite ways. The whole move is the weight going one
+//          direction and then the other, so it is worth two beats and the second
+//          step is the long one. He stays low: a euro that leaves the floor is a
+//          jump, and the reason it works is that it does not.
+//   spin   ONE continuous rotation, and it is his own momentum carrying him
+//          round rather than a step. He dips as he turns his back and comes out
+//          of it rising, which is the beat a spin actually has.
+//
+// The lifts are small and NEGATIVE on purpose — an approach is played out on the
+// floor, and anything airborne here would fight the finish that follows it.
+const APPROACH_LIFT = {
+  euroOne: -2, euroTwo: -4, spinTurn: -3, spinOut: -1
+};
+
+function approachLiftAt(kf) {
+  const c = kf && kf.close;
+  if (!c) return 0;
+  return APPROACH_LIFT[c.phase] !== undefined ? APPROACH_LIFT[c.phase] : null;
+}
+
+// HOW FAR ROUND HE IS, 0..1 over the whole spin.
+//
+// Section 14's rule is that the rotation starts in the lower body and arrives in
+// the torso, so this returns BOTH and they are deliberately out of step. Give
+// them the same number and every part of the sprite turns on the same frame,
+// which is the rigid-sprite look the section exists to rule out.
+// How far the torso leans into a euro's weight transfer. 2px on a 10px body:
+// the same budget MOMENTUM_LEAN_PX runs to, because past that a lean stops
+// reading as weight and starts reading as a man falling over.
+const EURO_LEAN_PX = 2;
+const SPIN_TORSO_LAG = 0.16;
+
+function spinTurn(u) {
+  const legs = Math.max(0, Math.min(1, u));
+  const torso = Math.max(0, Math.min(1, (u - SPIN_TORSO_LAG) / (1 - SPIN_TORSO_LAG)));
+  return { legs: legs, torso: torso };
+}
+
+// A turn drawn on a body ten pixels across is four states, not an angle: facing
+// one way, back to the camera, facing the other, back again. `back` is what
+// sells it — without the back-of-the-head frame a spin is a sprite flipping,
+// which reads as a glitch rather than as a man turning.
+function turnFacing(u, from) {
+  const q = (Math.max(0, Math.min(1, u)) * 4) % 4;
+  const back = (q >= 0.75 && q < 1.25) || (q >= 2.75 && q < 3.25);
+  const flipped = q >= 1.25 && q < 2.75;
+  return { facing: flipped ? -(from || 1) : (from || 1), back: back };
+}
+
 function closeLiftAt(kf) {
   const c = kf && kf.close;
   if (!c) return 0;
+  // The approach phases come first and have their own (floor-level) heights.
+  const ap = approachLiftAt(kf);
+  if (ap !== null) return ap;
   const table = closeLiftTable(c.finish);
   return table[c.phase] !== undefined ? table[c.phase] : 0;
 }
@@ -322,7 +404,11 @@ function resolveLifts(a, b, f, reduceMotion) {
   let dunkerLift = 0, dunkerRoute = 0, dunkerRising = 0, dunkerAir = 0;
   if (dunkerId && !reduceMotion) {
     const la = dunkLiftAt(a, dunk), lb = dunkLiftAt(b, dunk);
-    dunkerLift = Math.round(dunkTakeoff(la, lb, f));
+    // ...minus whatever the body in his way cost him. Subtracted from the climb
+    // rather than capping it: he is checked and keeps going, which is the
+    // difference between a contact dunk and a blocked one.
+    dunkerLift = Math.round(dunkTakeoff(la, lb, f) -
+      contactCheck((b.dunk && b.dunk.phase) || null, f, dunkMark && dunkMark.contact));
     // The ball's own clock through the route. Linear: the route functions carry
     // their own easing, and easing this too would double it.
     const ra = dunkRouteAt(a), rb = dunkRouteAt(b);
@@ -395,23 +481,59 @@ const LANDING_COMPRESS_MS = 70;
 const LANDING_RECOVER_MS = 190;
 const LANDING_SQUASH_PX = { dunk: 4, jump: 2, close: 3 };
 
-function landingSquashPx(kind) {
-  return LANDING_SQUASH_PX[kind] !== undefined ? LANDING_SQUASH_PX[kind] : LANDING_SQUASH_PX.jump;
+// HOW HE CAME DOWN, which the game has been deciding and then throwing away.
+//
+// ui/pixelDunks.js's dunkLanding() has been classifying every dunk into one of
+// these four since it was written, the choreographer stamps the answer on every
+// keyframe of the string — and nothing has ever read it. Four landings were
+// computed and one landing was drawn, which is section 18's complaint exactly.
+//
+// The multipliers are on the DEPTH and the RECOVERY, not on new poses: a heavy
+// landing is the same movement absorbed harder and held longer, and that is
+// what actually separates them at this size. `lean` is the only addition, and
+// only two of the four have one — a man who lands balanced does not stagger.
+const LANDING_STYLE = {
+  heavy: { depth: 1.35, recover: 1.30, lean: 0 },
+  balance: { depth: 1.0, recover: 1.0, lean: 0 },
+  light: { depth: 0.6, recover: 0.7, lean: 0 },
+  // He did not get his feet under him: shallower into the floor because he never
+  // set to absorb it, longer to sort out, and carried sideways while he does.
+  stumble: { depth: 0.85, recover: 1.7, lean: 2 }
+};
+
+function landingStyle(style) {
+  return LANDING_STYLE[style] || LANDING_STYLE.balance;
+}
+
+function landingSquashPx(kind, style) {
+  const base = LANDING_SQUASH_PX[kind] !== undefined
+    ? LANDING_SQUASH_PX[kind] : LANDING_SQUASH_PX.jump;
+  return base * landingStyle(style).depth;
+}
+
+// Which way the stagger carries him, decaying over the recovery. Zero for the
+// two landings that are under control, which is most of them.
+function landingLean(ms, kind, style, dirX) {
+  const st = landingStyle(style);
+  if (!st.lean || typeof ms !== 'number' || ms < 0) return 0;
+  const total = LANDING_COMPRESS_MS + LANDING_RECOVER_MS * st.recover;
+  if (ms >= total) return 0;
+  return st.lean * (1 - ms / total) * ((dirX || 0) >= 0 ? 1 : -1);
 }
 
 // Returns the knee bend, in pixels, `ms` after the feet touched. Zero before
 // contact and zero once recovered, so a caller can hold a stale stamp forever
 // and simply get nothing — which is what makes it safe to seek into.
-function landingSquash(ms, kind) {
+function landingSquash(ms, kind, style) {
   if (typeof ms !== 'number' || ms < 0) return 0;
-  const peak = landingSquashPx(kind);
+  const peak = landingSquashPx(kind, style);
   if (ms < LANDING_COMPRESS_MS) {
     // Into the floor. Eased out so the deepest point is approached rather than
     // hit on one frame — a linear ramp here reads as a stutter at this size.
     const f = ms / LANDING_COMPRESS_MS;
     return peak * (1 - Math.pow(1 - f, 2));
   }
-  const g = (ms - LANDING_COMPRESS_MS) / LANDING_RECOVER_MS;
+  const g = (ms - LANDING_COMPRESS_MS) / (LANDING_RECOVER_MS * landingStyle(style).recover);
   if (g >= 1) return 0;
   // Back up, unhurried. Slower out than in is the whole point: it is the
   // difference between absorbing a landing and rebounding off the floor.
@@ -1481,6 +1603,8 @@ if (typeof module !== 'undefined' && module.exports) {
     DUNK_AIR: DUNK_AIR,
     dunkAirAt: dunkAirAt,
     dunkTakeoff: dunkTakeoff,
+    contactCheck: contactCheck,
+    CONTACT_CHECK_PX: CONTACT_CHECK_PX,
     dunkGatherProgress: dunkGatherProgress,
     EXTEND_SHARE: EXTEND_SHARE,
     DUNK_ROUTE_T: DUNK_ROUTE_T,
@@ -1490,6 +1614,12 @@ if (typeof module !== 'undefined' && module.exports) {
     CLOSE_LIFT_BY_FINISH: CLOSE_LIFT_BY_FINISH,
     closeLiftTable: closeLiftTable,
     closeLiftAt: closeLiftAt,
+    APPROACH_LIFT: APPROACH_LIFT,
+    approachLiftAt: approachLiftAt,
+    spinTurn: spinTurn,
+    turnFacing: turnFacing,
+    SPIN_TORSO_LAG: SPIN_TORSO_LAG,
+    EURO_LEAN_PX: EURO_LEAN_PX,
     liftToPose: liftToPose,
     resolveLeaper: resolveLeaper,
     DESCENT_MS: DESCENT_MS,
@@ -1497,6 +1627,9 @@ if (typeof module !== 'undefined' && module.exports) {
     LANDING_RECOVER_MS: LANDING_RECOVER_MS,
     LANDING_TOTAL_MS: LANDING_TOTAL_MS,
     LANDING_SQUASH_PX: LANDING_SQUASH_PX,
+    LANDING_STYLE: LANDING_STYLE,
+    landingStyle: landingStyle,
+    landingLean: landingLean,
     landingSquash: landingSquash,
     justLanded: justLanded,
     RIM_HIT_MS: RIM_HIT_MS,
