@@ -346,14 +346,47 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
   }
 }
 
+// BALL DEFORMATION, on a ball three pixels across.
+//
+// There is exactly one honest move available at this size: drop a pixel off the
+// axis being squashed and keep the other. A 3x3 ball travelling fast horizontally
+// becomes 3 wide and 2 tall; one travelling fast vertically becomes 2 wide and
+// 3 tall. Anything subtler is sub-pixel and would need smoothing, which is the
+// one thing the whole sprite system refuses to do.
+//
+// So it is used sparingly and only where the eye is already reading speed: a
+// hard pass, a shot on its way down, a dribble driven into the floor. `squash`
+// is 0..1 and anything under half draws the round ball, because a deformation
+// that flickers on and off between frames is worse than none.
+const BALL_SQUASH_MIN = 0.5;
+
+// Which axis to flatten, from the direction of travel. Returns { w, h } in
+// pixels for the ball's body.
+function ballShape(squash, vx, vy) {
+  if (!(squash >= BALL_SQUASH_MIN)) return { w: 3, h: 3 };
+  return Math.abs(vx || 0) >= Math.abs(vy || 0) ? { w: 3, h: 2 } : { w: 2, h: 3 };
+}
+
 // spin (radians) rotates the seam stripe so the ball visibly tumbles in
 // flight instead of sliding through the air as a static blob.
-function drawBall(ctx, x, y, spin) {
+//
+// `deform` is optional { squash, vx, vy } — see ballShape. Omitted, the ball is
+// round, which is what every caller that does not care about impact wants.
+function drawBall(ctx, x, y, spin, deform) {
   const bx = Math.round(x);
   const by = Math.round(y);
+  const shape = deform ? ballShape(deform.squash, deform.vx, deform.vy) : { w: 3, h: 3 };
   ctx.fillStyle = '#e8760e';
-  ctx.fillRect(bx - 1, by - 1, 3, 3);
+  // Kept centred on (bx, by) as it flattens, so a squashing ball does not drift
+  // sideways — the deformation has to be free of positional consequence or it
+  // becomes another thing that moves the ball without meaning to.
+  const ox = shape.w === 3 ? -1 : 0;
+  const oy = shape.h === 3 ? -1 : 0;
+  ctx.fillRect(bx + ox, by + oy, shape.w, shape.h);
   ctx.fillStyle = '#8a4207';
+  // A flattened ball has no room for a seam; drawing one fills it in solid and
+  // it stops reading as a ball at all.
+  if (shape.w !== 3 || shape.h !== 3) return;
   if (spin === undefined) {
     ctx.fillRect(bx, by - 1, 1, 3);
     return;
@@ -519,6 +552,8 @@ if (typeof module !== 'undefined' && module.exports) {
     CROUCH_MIN_TORSO: CROUCH_MIN_TORSO,
     crouchSplit: crouchSplit,
     drawPlayerSprite: drawPlayerSprite,
+    BALL_SQUASH_MIN: BALL_SQUASH_MIN,
+    ballShape: ballShape,
     drawBall: drawBall
   };
 }

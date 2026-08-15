@@ -106,6 +106,11 @@ function playPixelSfx(name) {
     // event, and one voice for both makes the dunk sound weightless.
     case 'land':     sfxNoise(a, 0.09, 'lowpass', 240, 0.9, 0.09); break;
     case 'landHard': sfxNoise(a, 0.15, 'lowpass', 170, 1.0, 0.17); sfxTone(a, 90, 0.12, 'square', 0.07, 55); break;
+    // A hand on the iron. Distinct from 'dunk' (the ball going through) and
+    // from 'clang' (a miss off the rim) — this is the metal being grabbed, and
+    // it fires on the animation frame his hand reaches it rather than at the
+    // beat boundary near it.
+    case 'rim':      sfxTone(a, 430, 0.13, 'triangle', 0.09, 250); sfxNoise(a, 0.07, 'bandpass', 2400, 4, 0.07); break;
     // The dialogue typewriter. Fires every third character, so it is kept
     // short and quiet for the same reason 'dribble' is — anything longer
     // turns a line of text into a buzz.

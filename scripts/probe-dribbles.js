@@ -71,6 +71,7 @@ const buckets = { '0': 0, '2': 0, '4-6': 0, '7+': 0 };
 const moves = {};
 let eligibleTotal = 0, durationTotal = 0, beatsTotal = 0;
 let handleBeats = 0;
+let stepbacks = 0;
 
 const rng = makeRng(20260810);
 for (let g = 0; g < GAMES; g++) {
@@ -100,6 +101,15 @@ for (let g = 0; g < GAMES; g++) {
     moves[kf.handle.move || 'none'] = (moves[kf.handle.move || 'none'] || 0) + 1;
     handleBeats += kf.handle.n;
   });
+  // The stepback is counted off its OWN marker, not off `handle`.
+  //
+  // It is choreography laid on the end of a handle rather than a handle of its
+  // own, and marking it as a second string made every stepback possession count
+  // twice in the distribution above — which dropped the no-dribble share from
+  // 44.3% to 36.5% against a 50% target and read exactly like the roll drifting.
+  tl.keyframes.forEach(function (kf) {
+    if (kf.step && kf.step.phase === 'plant') stepbacks += 1;
+  });
   // Everything eligible that did NOT get a marker put up a shot without
   // dribbling. That is the 0 bucket, and it is inferred from the difference
   // rather than stamped, so a choreographer that silently stopped marking
@@ -122,5 +132,6 @@ rows.forEach(function (k) {
 console.log('');
 console.log('moves      ' + JSON.stringify(moves));
 console.log('dribbles put on the floor  ' + (handleBeats / GAMES).toFixed(1) + '/game');
+console.log('stepbacks  ' + (stepbacks / GAMES).toFixed(2) + '/game (finishing move, not a handle)');
 console.log('timeline   ' + (durationTotal / GAMES / 1000).toFixed(1) + 's/game at 1x, ' +
   (beatsTotal / GAMES).toFixed(0) + ' beats');

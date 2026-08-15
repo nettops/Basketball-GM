@@ -117,6 +117,74 @@ coming down drives the picture down once and lets it settle.
 
 ---
 
+---
+
+## Round two: the remaining sections
+
+### One mechanism for momentum, not three
+
+The brief asks separately for the stepback's upper body fighting the backward
+push, the sprint-to-stop plant, and the lean through a change of direction.
+They are the same event — a body whose feet have changed what they are doing
+before the rest of him has caught up — so they are one rule. Three bespoke ones
+would be three chances for a player to lean two ways at once.
+
+The numbers are measured, not chosen. Sampling every player on every frame
+through the real spring over three games:
+
+```
+acceleration   p50 63    p90 798   p99 2949   p99.9 5443   max 37789 px/s²
+speed          p50 13    p90 255   p99 620 (the step ceiling)
+```
+
+`LEAN_ACCEL_FULL` sits at p99, so the top 1% of direction changes lean all the
+way and the ordinary drift that makes up half of all frames leans by a
+thirtieth of a pixel — which rounds to nothing and draws nothing. The plant
+threshold sits between p90 and p99.9 for the same reason.
+
+### The stepback, which did not exist
+
+Not one of the existing shapes: it is a finishing move laid on the **end** of
+the handle, which is what it is in basketball. Two beats — a 220ms plant where
+he drives *in* past the shot spot with his man going with him, then a 120ms
+push back to it while his man does not. Going in first is what makes the
+retreat legible; a man who walks backwards from where he already stood has not
+stepped back from anything.
+
+Its ball path needed a genuinely new idea. Every entry in `dribbleCrossings`
+was a hand change with a shape attached, and a stepback's defining feature is
+that the ball does **not** change hands — the separation is made with the feet.
+Hence `noSwitch`: shape the ball here, but this is not a crossing. `handSwitchCount`
+exists because `dribbleClockAfterMove` must count hand changes rather than
+crossings, or resuming the free clock re-introduces the uninvited second hand
+change that function was written to prevent.
+
+### The slam stays frozen; the landing does not
+
+`dunk.slam` measures 100% of players motionless and stays that way. That 90ms
+is the impact hold — the beat where a previous version teleported nine men into
+rebounding spots at 209px/s — and it is the one place in the game where a freeze
+*is* the effect. The 130ms landing beat after it had no such excuse and now
+flows, with the dunker and the man he went over locked so a poster's victim
+stays driven back.
+
+### Pose priority, stated once
+
+The order was real but was never written down: half in the if-chain inside
+`drawPlayerSprite`, half in a growing pile of negations at the call site
+(`!shooting && !isJumperNow && !dunkPose && !layupPose && !jumpFollow`). That is
+the shape a state conflict arrives in — not a wrong rule, but one place out of
+five that did not get updated. `posePriority` resolves it in one call, and the
+validator walks all 128 flag combinations.
+
+### Deformation on a three-pixel ball
+
+There is exactly one honest move at this size: drop a pixel off the axis being
+squashed. So the question is entirely *when* to spend it, and the answer is
+rarely — above 900px/s (an ordinary catch runs 366) or on the push-off dribble
+inside a named move. Every dribble contacts the floor four times a second, and
+flattening on all of them is not an accent, it is a flicker.
+
 ## What this does not do
 
 - No new frames were added to any pose, and no pose was redrawn for its own

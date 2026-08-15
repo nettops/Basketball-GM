@@ -344,6 +344,49 @@ function checkTheLayupPoseIsItsOwnSilhouette() {
   console.log('checkTheLayupPoseIsItsOwnSilhouette: OK');
 }
 
+function checkOnlyOnePoseCanEverWin() {
+  // Section 11 of the brief asks for an explicit priority. The risk it is
+  // guarding against is not a wrong order — it is FIVE call sites having to
+  // agree, which is how the view used to do it: every pose was gated behind a
+  // growing pile of `!shooting && !isJumperNow && !dunkPose && ...`, so adding
+  // a sixth pose meant remembering to exclude it from all five.
+  //
+  // Every combination of flags, exhaustively: exactly one pose out, and it is
+  // always the highest-priority flag that is set.
+  const FLAGS = ['dunking', 'layup', 'following', 'shooting', 'stumbling', 'dribbling', 'moving'];
+  for (let mask = 0; mask < (1 << FLAGS.length); mask++) {
+    const bag = {};
+    FLAGS.forEach(function (f, i) { if (mask & (1 << i)) bag[f] = true; });
+    const won = motion.posePriority(bag);
+    assert.ok(motion.POSE_ORDER.indexOf(won) !== -1, 'posePriority invented "' + won + '"');
+    if (mask === 0) {
+      assert.strictEqual(won, 'idle', 'a player with no flags is not idle');
+      continue;
+    }
+    // The winner must be set...
+    assert.ok(bag[won], 'posePriority chose "' + won + '", which was not set');
+    // ...and nothing above it in the order may be.
+    for (let i = 0; i < motion.POSE_ORDER.indexOf(won); i++) {
+      assert.ok(!bag[motion.POSE_ORDER[i]],
+        '"' + motion.POSE_ORDER[i] + '" outranks "' + won + '" but lost');
+    }
+  }
+  // The order the brief specifies: DUNK > SHOOT > LAYUP > DRIBBLE > WALK > IDLE.
+  // Layup sits above the generic shooting pose here rather than below it, and
+  // that is deliberate — "SHOOT" in the brief means the jump shot, and a layup
+  // that lost to it would be drawn with the two-arms-up pose it spent this
+  // whole pass escaping.
+  const order = motion.POSE_ORDER;
+  const rank = function (n) { return order.indexOf(n); };
+  assert.ok(rank('dunking') < rank('layup'), 'a dunk does not outrank a layup');
+  assert.ok(rank('layup') < rank('shooting'), 'the layup pose lost to the generic shooting pose');
+  assert.ok(rank('shooting') < rank('dribbling'), 'a man rising into a shot is still dribbling');
+  assert.ok(rank('dribbling') < rank('moving'), 'a running handler drops his dribble');
+  assert.strictEqual(order[order.length - 1], 'idle', 'idle is not the fallback');
+  console.log('checkOnlyOnePoseCanEverWin: OK (' + (1 << FLAGS.length) +
+    ' flag combinations, one winner each)');
+}
+
 function checkPosesStayWithinTheSpriteBox() {
   // Every pose, at every height, has to stay inside the footprint the court
   // draw order and the collision separator assume. A pose that reaches three
@@ -392,5 +435,6 @@ checkEveryLeapIsSeenToLand();
 checkTheWeightFollowsTheBallAndNeverTeleports();
 checkALeanNeverMovesTheFeet();
 checkTheLayupPoseIsItsOwnSilhouette();
+checkOnlyOnePoseCanEverWin();
 checkPosesStayWithinTheSpriteBox();
 console.log('All pixel posture validations passed');

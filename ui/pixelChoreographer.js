@@ -148,6 +148,11 @@ const BEAT = {
   // Isolation, and live dribbling. A size-up beat is short so two of them read
   // as probing rather than as jogging in a circle.
   isoClear: 400, isoSize: 240, isoAttack: 280, liveDribble: 230,
+  // The stepback, two beats. The plant is the longer of the two on purpose:
+  // the whole move is a lie about where he is going, and the lie needs time to
+  // be believed before the push sells it. The push itself is the fastest beat
+  // in the isolation — separation is made in an instant or not at all.
+  stepbackPlant: 220, stepbackPush: 120,
   // Fast break. Short beats covering a lot of floor — that ratio IS the break;
   // the same distance over the half-court beats would read as a jog.
   fbOutlet: 300, fbLanes: 400, fbAttack: 340,
@@ -813,6 +818,14 @@ function createChoreographer(session) {
     if (keyframes.length) keyframes[keyframes.length - 1].close = meta;
   }
 
+  // Stepback phase ('plant' | 'push') plus who is stepping back and which way.
+  // Its own channel rather than a new phase on `cross`, because the view reads
+  // `cross` to decide who is stumbling and who leaves streaks, and a stepback
+  // beats nobody — it makes space against a man who is still on his feet.
+  function tagStep(meta) {
+    if (keyframes.length) keyframes[keyframes.length - 1].step = meta;
+  }
+
   // Which move is playing, on EVERY beat of a string rather than only the
   // first. `handle` stays a once-per-string marker because that is what
   // scripts/probe-dribbles.js counts; this is the per-frame one, because the
@@ -1381,6 +1394,20 @@ function createChoreographer(session) {
             : dribbles >= 7 ? 'double'
               : (roll01(pi * 17 + ei) < 0.5 ? 'cross' : 'behind');
 
+          // THE STEPBACK is a finishing move laid on the END of the handle, not
+          // one of the shapes above — which is what it is in basketball too: he
+          // works, then he steps back into the shot. So it does not compete with
+          // moveKind for the string; it appends two beats after it.
+          //
+          // Only off a real string (he has to have driven the man somewhere to
+          // step back FROM) and only into a jumper. A stepback layup is not a
+          // thing, and a stepback in front of a man who never moved is just a
+          // player wandering backwards.
+          const stepBack = dribbles >= 4 &&
+            (ev.zone === 'mid' || ev.zone === 'three') &&
+            him && clear[him] &&
+            roll01(pi * 23 + ei * 5) < 0.35;
+
           // One beat per dribble, so the marker is not a claim the beats fail
           // to back up. The string alternates sides on a decaying amplitude and
           // creeps toward the rim.
@@ -1400,12 +1427,63 @@ function createChoreographer(session) {
             // per-frame question
             tagDribble(moveKind, dribbles, d);
           }
-          // and back to the spot the sim says he shot from
-          const attack = Object.assign({}, back);
-          attack[me] = sp;
-          push(BEAT.isoAttack, attack, { x: sp[0], y: sp[1], holder: me }, period, quarter, clock, '');
-          shotPos[me] = sp;
-          if (back[him]) shotPos[him] = back[him];
+          if (stepBack) {
+            // PLANT. He drives IN past the spot the sim says he shot from, and
+            // his man goes with him — that closing step is the thing the push
+            // is about to punish. Going in first is what makes the retreat
+            // legible: a man who simply walks backwards from where he already
+            // stood has not stepped back from anything.
+            const driveIn = Object.assign({}, back);
+            driveIn[me] = clampToCourt(sp[0] + (toRimX / rl) * 11, sp[1] + (toRimY / rl) * 11);
+            if (driveIn[him]) {
+              driveIn[him] = clampToCourt(driveIn[me][0] + (toRimX / rl) * 7,
+                driveIn[me][1] + (toRimY / rl) * 7);
+            }
+            push(BEAT.stepbackPlant,
+              flowPositions(driveIn, [me, him], pi * 47 + ei * 3, defenderIds),
+              { x: driveIn[me][0], y: driveIn[me][1], holder: me }, period, quarter, clock, '');
+            // DELIBERATELY NO `tagHandle` HERE, and the reason is a metric.
+            //
+            // `handle` is the possession's dribble-COUNT marker — one per
+            // possession, and what scripts/probe-dribbles.js divides by to
+            // report the 50/25/15/10 distribution the sim rolls. Marking the
+            // stepback as a second string made every stepback possession count
+            // twice, which pushed the no-dribble share from 44.3% to 36.5%
+            // against a 50% target: a reporting artefact that looked exactly
+            // like the roll having drifted.
+            //
+            // The stepback is choreography laid on top of the handle, not a
+            // second handle. It is counted off its own `step` marker instead.
+            tagStep({ phase: 'plant', id: me, on: him });
+            // The ball rides its own path across these two beats — one hard
+            // push-off dribble that never changes hands. See the `stepback`
+            // entry in dribbleCrossings for why that is the whole point.
+            tagDribble('stepback', 2, 0);
+
+            // PUSH. He goes back to the shot spot; his man does NOT come with
+            // him, and that gap is the move. `squeak` is the foot plant, the
+            // same voice the ankle breaker's cut uses.
+            const away = Object.assign({}, driveIn);
+            away[me] = sp;
+            push(BEAT.stepbackPush,
+              flowPositions(away, [me, him], pi * 53 + ei * 7, defenderIds),
+              { x: sp[0], y: sp[1], holder: me }, period, quarter, clock, '', '', 'squeak');
+            tagStep({ phase: 'push', id: me, on: him });
+            tagDribble('stepback', 2, 1);
+            // He is already standing on the shot spot, so the attack beat below
+            // would be a beat of nothing. The separation persists into the shot,
+            // which is the point of having made it.
+            back = away;
+            shotPos[me] = sp;
+            if (away[him]) shotPos[him] = away[him];
+          } else {
+            // and back to the spot the sim says he shot from
+            const attack = Object.assign({}, back);
+            attack[me] = sp;
+            push(BEAT.isoAttack, attack, { x: sp[0], y: sp[1], holder: me }, period, quarter, clock, '');
+            shotPos[me] = sp;
+            if (back[him]) shotPos[him] = back[him];
+          }
         }
 
         // Ball screen. There was no screen anywhere in the timeline — the one
@@ -1629,11 +1707,25 @@ function createChoreographer(session) {
           push(BEAT.dunkRise, risePos,
             { x: rimX, y: hoop.y, holder: ev.playerId },
             period, quarter, clock, '', '', '', null, { phase: 'rise', id: dunkBy });
+          // THE SLAM STAYS FROZEN, and that is not an oversight to be tidied up
+          // later. 90ms with the whole floor held is the impact hold: the eye
+          // is nailed to the rim, and this beat is where the previous version
+          // teleported nine men into rebounding spots at 209px/sec — two body
+          // widths, seven times faster than the rise around it. It is the one
+          // beat in the game where a freeze is the effect.
           push(BEAT.dunkSlam, landPos, { x: hoop.x, y: hoop.y, holder: null },
             period, quarter, clock, madeLabel, shotComment, 'dunk', impactMarker, { phase: 'slam', id: dunkBy });
-          push(BEAT.dunkLand, landPos, { x: hoop.x, y: hoop.y + 7, holder: null },
+          // THE LANDING DOES NOT. By here the ball is through the net and play
+          // is restarting, and holding a second beat merely because the slam
+          // before it is held turns a 90ms accent into a 220ms stall — measured
+          // at 100% of players motionless for the whole 130ms. The dunker and
+          // the man he went over stay locked (a poster's victim has to STAY
+          // driven back, or the reaction that made it a poster quietly undoes
+          // itself); everybody else gets on with the game.
+          const dunkLandPos = flowPositions(landPos, dunkLock, pi * 43 + ei * 7, defenderIds);
+          push(BEAT.dunkLand, dunkLandPos, { x: hoop.x, y: hoop.y + 7, holder: null },
             period, quarter, clock, '', '', '', null, { phase: 'land', id: dunkBy });
-          curPos = landPos;
+          curPos = dunkLandPos;
         } else if (ev.zone === 'mid' || ev.zone === 'three') {
           // The jump shot, with an actual jump in it. Measured before this: the
           // whole motion occupied 3-4 frames (48-64ms) because it lived inside

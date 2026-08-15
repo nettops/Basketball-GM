@@ -229,6 +229,30 @@ function justLanded(prevFoot, foot) {
   return typeof prevFoot === 'number' && prevFoot > 0 && foot <= 0;
 }
 
+// RIM CONTACT. The one impact in the game that happens in mid-air.
+//
+// A dunk's slam beat already drops the body 3px (lift 16 -> 13) and rattles the
+// rim, but the DUNKER did not react to the thing he just hit — he descended at
+// the same rate whether he had thrown it down or floated past. This is his
+// half of that collision: a fast fold as he catches the rim and pulls down
+// through it, gone before he starts to fall.
+//
+// Much shorter than a landing and not a landing curve reused, because the two
+// are opposite events. A landing is weight arriving on a fixed floor and has to
+// settle out of it slowly. This is weight being driven THROUGH something, and
+// the recovery is the leap continuing — so it snaps back rather than easing.
+const RIM_HIT_MS = 120;
+const RIM_HIT_PX = 3;
+
+function rimHitSquash(ms) {
+  if (typeof ms !== 'number' || ms < 0 || ms >= RIM_HIT_MS) return 0;
+  const f = ms / RIM_HIT_MS;
+  // A single hump: nothing at contact, hardest a third of the way in, gone by
+  // the end. Starting at zero is what keeps it from popping on the frame it
+  // arms, the same rule the landing follows.
+  return RIM_HIT_PX * Math.sin(Math.pow(f, 0.6) * Math.PI);
+}
+
 // WHERE A HELD BALL SITS, and the one idea that governs all of it.
 //
 // A ball a player is about to shoot has exactly two anchor points: it is in
@@ -287,8 +311,46 @@ const DRIBBLE_PERIOD_MOVING = 95;
 // decides how fast it runs FROM NOW ON. The unit is bounces, not milliseconds,
 // so the rest of this file can talk about "half a bounce either side" and mean
 // it whatever the tempo is doing.
-function stepDribbleClock(u, dtMs, holderMoving) {
-  return u + dtMs / (Math.PI * (holderMoving ? DRIBBLE_PERIOD_MOVING : DRIBBLE_PERIOD_SET));
+// EVERY PLAYER DRIBBLED AT THE SAME RHYTHM, which sat oddly beside the idle
+// breathing three files away that deliberately gives each man his own period so
+// ten sprites never pulse in unison. A quick guard and a slow big pounding it
+// out at an identical 140ms metronome is the same tell, on the beat the eye
+// actually watches.
+//
+// Derived from the player id rather than rolled, for the reason everything in
+// this file is: a replay has to look like the game it is replaying, and an rng
+// draw here would make the same possession dribble differently on a second
+// viewing. It also never touches the game rng, which decides outcomes.
+//
+// Deliberately narrow. ±12% is a fifth of the gap between the set and moving
+// tempos, so it reads as personality rather than as the tempo gate flickering —
+// and the gate is what put a 12px teleport in the ball's path once already.
+const DRIBBLE_TEMPO_SPREAD = 0.12;
+
+function dribbleTempoFor(playerId) {
+  if (!playerId) return 1;
+  const s = String(playerId);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) | 0;
+  // AVALANCHE, and it is not optional. A plain rolling hash of a short string
+  // like "p12" leaves the high bits nearly constant, so the first version of
+  // this produced tempos spanning 0.880 to 0.941 across four hundred ids —
+  // every player slower than the baseline, and the whole league within six
+  // percent of each other. The variation existed in the arithmetic and not on
+  // the screen. Same mixing the choreographer's roll01 uses, for the same
+  // reason.
+  h = (Math.imul(h ^ (h >>> 16), 2246822507) ^ (h >>> 13)) >>> 0;
+  h = (Math.imul(h ^ (h >>> 15), 3266489909)) >>> 0;
+  const u = (h >>> 8) / 16777216;
+  return 1 + (u * 2 - 1) * DRIBBLE_TEMPO_SPREAD;
+}
+
+// `tempo` scales the period: above 1 is a slower, heavier handle. Passed in
+// rather than looked up so this stays a pure function of its arguments.
+function stepDribbleClock(u, dtMs, holderMoving, tempo) {
+  const base = holderMoving ? DRIBBLE_PERIOD_MOVING : DRIBBLE_PERIOD_SET;
+  const t = typeof tempo === 'number' && tempo > 0 ? tempo : 1;
+  return u + dtMs / (Math.PI * base * t);
 }
 
 // Which side of the body the ball is on, and how far through the bounce it is.
@@ -386,7 +448,29 @@ function dribbleCrossings(move, n) {
   // the two are the same rectangles sliding sideways at this size, which is
   // what they were.
   if (move === 'behind') return [{ at: Math.floor(n / 2), wide: 15, low: 0, behind: 5 }];
+  // THE STEPBACK, and the one thing that makes it different in kind from every
+  // move above: the ball does NOT change hands. He rides it, plants, and pushes
+  // away from the man — the separation is made with his feet, not by moving the
+  // ball across his body. Every other entry in this table is a hand change with
+  // a shape attached, so `noSwitch` exists to say "shape the ball here, but
+  // this is not a crossing".
+  //
+  // Driven hard into the floor (`low` 0.85, the hardest in the table) because
+  // that push-off dribble is what he shoves against to go backwards, and kept
+  // narrow — a stepback that swings the ball wide is a crossover.
+  if (move === 'stepback') return [{ at: Math.floor(n / 2), wide: 7, low: 0.85, noSwitch: true }];
   return [{ at: Math.floor(n / 2), wide: 10, low: 0.65 }];
+}
+
+// How many of a move's crossings actually change hands. `dribbleClockAfterMove`
+// needs this rather than the raw count: resuming the free clock in the wrong
+// hand is the "second, uninvited hand change" defect that function exists to
+// prevent, and a stepback would trigger it by having a crossing that is not one.
+function handSwitchCount(move, n) {
+  const cs = dribbleCrossings(move, n);
+  let k = 0;
+  for (let i = 0; i < cs.length; i++) if (!cs[i].noSwitch) k += 1;
+  return k;
 }
 
 // THE HESITATION. How long the ball hangs at the top of its bounce before a
@@ -402,12 +486,21 @@ const HESITATION_HOLD = 0.72;
 // ...and how much of the front of that window is spent easing up INTO the hold,
 // so the ball rises into it rather than stepping up to it on one frame.
 const HESITATION_EASE = 0.12;
+// ...and how much of the BACK of it the body spends uncoiling into the move.
+// The ball has no equivalent: it drops out of the hold in one frame, and that
+// snap is the point. See where `hesi` is computed.
+const HESITATION_RELEASE = 0.1;
 
 // How much of the string is spent easing into and out of the scripted path.
 // The move must not simply replace the free dribble: the ball is somewhere when
 // the string starts, and teleporting it to wherever the script wants it is the
 // branch-change snap this file exists to prevent.
 const MOVE_BLEND_BEATS = 0.5;
+
+// How deep the coil goes at the top of a hesitation. Small — he is gathering,
+// not squatting — but on a 24px body one pixel of sink under a held ball is
+// the difference between a man waiting and a man about to go.
+const HESI_CROUCH_PX = 1.5;
 
 // `u` is beats into the string, `from` the hand the ball is ALREADY in when the
 // string opens. Returns the same shape dribbleHand does, plus `behind`, an
@@ -421,6 +514,12 @@ const MOVE_BLEND_BEATS = 0.5;
 function moveDribble(move, u, n, from) {
   let phase = Math.abs(Math.sin(Math.PI * u));
   let side = DRIBBLE_SIDE, sign, behind = 0;
+  // How deep into the hesitation he is, 0..1. Reported out so the BODY can
+  // coil with the ball instead of standing straight through it: the hold was
+  // only ever a ball behaviour, so a defender watched a man stand perfectly
+  // upright while the ball hung in front of him, which is not what a hesitation
+  // looks like from either end.
+  let hesi = 0;
 
   const crossings = dribbleCrossings(move, n);
   // TWO windows, not one, and the difference is the whole reason the first
@@ -441,7 +540,7 @@ function moveDribble(move, u, n, from) {
   let active = null, near = null, d = 0, dNear = 0, passed = 0;
   for (let i = 0; i < crossings.length; i++) {
     const c = crossings[i];
-    if (u > c.at) passed += 1;
+    if (u > c.at && !c.noSwitch) passed += 1;
     const dd = u - c.at;
     if (Math.abs(dd) <= 1) { near = c; dNear = dd; }
     if (Math.abs(dd) <= 0.5) { active = c; d = dd; }
@@ -464,16 +563,32 @@ function moveDribble(move, u, n, from) {
       const ease = Math.max(0, Math.min(1,
         (HESITATION_BEATS - backFromSwitch) / HESITATION_EASE));
       phase = Math.max(phase, HESITATION_HOLD * ease);
+      // The BALL's hold ends abruptly — it simply drops into the move, and that
+      // snap is the move starting. The BODY cannot: `ease` goes 0 -> 1 and then
+      // cliffs to zero the instant the switch window opens, so a crouch driven
+      // straight off it would coil, hold, and then straighten in a single
+      // frame. Fading the last tenth of a beat is the uncoil, which is the half
+      // of "slow, pause, explode" that a hold on its own cannot say.
+      const releaseFade = Math.min(1, backFromSwitch / HESITATION_RELEASE);
+      hesi = ease * releaseFade;
     }
   }
 
   if (active) {
-    // The hand this crossing ENDS in. Before the plant `hand` is still the old
-    // one and after it is already the new one, so the target flips with d --
-    // which is what keeps sign continuous across the middle.
-    const to = d > 0 ? hand : -hand;
-    sign = to * (2 * d);
     const mid = 1 - Math.abs(2 * d);   // 1 at the plant, 0 at the edges of the switch
+    if (active.noSwitch) {
+      // A stepback drives the ball down without moving it across him. `sign`
+      // holds the hand it is already in, which is also exactly what the bounces
+      // either side of this window hold — so the path stays continuous without
+      // the sweep the other moves need.
+      sign = hand;
+    } else {
+      // The hand this crossing ENDS in. Before the plant `hand` is still the old
+      // one and after it is already the new one, so the target flips with d --
+      // which is what keeps sign continuous across the middle.
+      const to = d > 0 ? hand : -hand;
+      sign = to * (2 * d);
+    }
     phase = Math.max(0, Math.min(1, phase - active.low * mid * phase));
     if (active.behind) {
       phase = Math.max(phase, 0.5 + 0.35 * mid);
@@ -482,7 +597,7 @@ function moveDribble(move, u, n, from) {
   } else {
     sign = hand;
   }
-  return { sign: sign, side: side, phase: phase, behind: behind, crossing: !!active };
+  return { sign: sign, side: side, phase: phase, behind: behind, crossing: !!active, hesi: hesi };
 }
 
 // Where the free clock has to resume once a string is over.
@@ -505,7 +620,11 @@ function moveDribble(move, u, n, from) {
 function dribbleClockAfterMove(clock, move, n) {
   const N = DRIBBLE_HAND_BOUNCES;
   const startCycle = Math.round(clock / N);
-  const odd = dribbleCrossings(move, n).length % 2;
+  // Counted over HAND SWITCHES, not crossings. A stepback has a crossing that
+  // deliberately does not change hands, and counting it here would resume the
+  // free clock in the wrong hand — the uninvited second hand change this
+  // function exists to prevent, arriving through the back door.
+  const odd = handSwitchCount(move, n) % 2;
   return (startCycle + (odd ? 1 : 2)) * N + 1;
 }
 
@@ -520,7 +639,7 @@ function dribbleClockAfterMove(clock, move, n) {
 // the handoff continuous by construction.
 function dribbleNow(clock, move) {
   const free = dribbleHand(clock);
-  if (!move || !move.move) return { sign: free.sign, side: DRIBBLE_SIDE, phase: free.phase, behind: 0, crossing: free.crossing };
+  if (!move || !move.move) return { sign: free.sign, side: DRIBBLE_SIDE, phase: free.phase, behind: 0, crossing: free.crossing, hesi: 0 };
   // The move starts in whichever hand the ball is already in. The free clock is
   // HELD for the duration of a string (see dribbleClockAfterMove), so this is
   // the hand it had when the string opened and it does not drift underneath the
@@ -543,6 +662,9 @@ function dribbleNow(clock, move) {
     side: DRIBBLE_SIDE + (scripted.side - DRIBBLE_SIDE) * w,
     phase: base.phase + (scripted.phase - base.phase) * w,
     behind: scripted.behind * w,
+    // Blended at the ends like everything else, so the coil eases in with the
+    // move rather than switching on when the string opens.
+    hesi: scripted.hesi * w,
     crossing: scripted.crossing && w > 0.5
   };
 }
@@ -571,6 +693,128 @@ function dribbleLean(now) {
   if (!now) return 0;
   const amp = now.crossing ? CROSS_LEAN_PX : DRIBBLE_LEAN_PX;
   return amp * now.sign;
+}
+
+// THE POSE PRIORITY, stated once.
+//
+// The order was real but it was never written down: it lived half in the
+// if-chain inside drawPlayerSprite and half in a growing pile of negations at
+// the call site — `!shooting && !isJumperNow && !dunkPose && !layupPose &&
+// !jumpFollow` — where every new pose meant remembering to exclude it from
+// every earlier one. That is the shape a state conflict arrives in: not as a
+// wrong rule, but as one place out of five that did not get updated.
+//
+// Highest first. A man dunking is not also dribbling; a man in his
+// follow-through is not also taking a jump shot.
+const POSE_ORDER = [
+  'dunking',    // at the rim, ball overhead
+  'layup',      // airborne finish, one knee driven
+  'following',  // jump-shot follow-through, hand still up
+  'shooting',   // rising into a shot, both arms up
+  'stumbling',  // beaten off the dribble
+  'dribbling',  // working the ball
+  'moving',     // running
+  'idle'
+];
+
+// Takes a flag bag and returns the ONE pose that wins. Everything the view
+// draws is derived from this, so two poses cannot be live at once by
+// construction rather than by five call sites agreeing.
+function posePriority(flags) {
+  const f = flags || {};
+  for (let i = 0; i < POSE_ORDER.length; i++) {
+    const name = POSE_ORDER[i];
+    if (name === 'idle') return 'idle';
+    if (f[name]) return name;
+  }
+  return 'idle';
+}
+
+// WHEN THE BALL DEFORMS, which is: rarely.
+//
+// A 3px ball has exactly one deformation available (see ballShape), so the
+// question is entirely about when to spend it. Two moments earn it.
+//
+// SPEED. Measured over four games, ball travel runs ~366px/s on an ordinary
+// catch and ~100px/s through a shot's flight. The threshold sits at 900 so an
+// ordinary pass stays round and only a ball genuinely driven across the floor
+// flattens — which is the whole discipline the brief asks for: impact reads
+// stronger because the normal animation is controlled.
+//
+// A HARD BOUNCE, and only a hard one. Every dribble contacts the floor about
+// four times a second, and flattening on all of them is not an accent, it is a
+// flicker the eye reads as a rendering fault. So this is reserved for the
+// push-off dribbles inside a named move, where the handler is genuinely driving
+// it into the floor.
+const BALL_SQUASH_SPEED = 900;
+const BALL_BOUNCE_PHASE = 0.12;
+
+function ballSquash(vx, vy, hardBounce, bouncePhase) {
+  const speed = Math.sqrt((vx || 0) * (vx || 0) + (vy || 0) * (vy || 0));
+  let s = Math.min(1, speed / BALL_SQUASH_SPEED);
+  if (hardBounce && typeof bouncePhase === 'number' && bouncePhase < BALL_BOUNCE_PHASE) {
+    // Hardest exactly at the floor and easing off it, so the flatten arrives
+    // with the contact rather than lingering on the way back up.
+    s = Math.max(s, 1 - bouncePhase / BALL_BOUNCE_PHASE);
+  }
+  return s;
+}
+
+// MOMENTUM: the body reacting to its own change of speed.
+//
+// This is one mechanism doing the job of three things the brief asks for
+// separately — the stepback's upper body fighting the backward push, the
+// sprint-to-stop plant, and the lean through a change of direction. They are
+// all the same event: a body whose feet have changed what they are doing before
+// the rest of him has caught up. Writing them as one is not a shortcut; three
+// bespoke rules would be three chances for a player to lean two ways at once.
+//
+// THE NUMBERS ARE MEASURED, not chosen. Over three games, sampling every
+// player on every frame through the real spring:
+//
+//     acceleration   p50 63    p90 798   p99 2949   p99.9 5443   max 37789
+//     speed          p50 13    p90 255   p99 620 (the step ceiling)
+//
+// So `LEAN_ACCEL_FULL` sits at p99: the top 1% of direction changes lean all
+// the way, and the ordinary drift that makes up half of all frames leans by
+// about a thirtieth of a pixel, which rounds to nothing and draws nothing.
+const LEAN_ACCEL_FULL = 3000;
+const MOMENTUM_LEAN_PX = 2;
+
+// He leans INTO the acceleration — forward as he pushes off, back as he brakes.
+// (Getting this backwards is the classic version of this effect looking wrong
+// without anyone being able to say why.)
+function momentumLean(ax) {
+  const k = Math.max(-1, Math.min(1, (ax || 0) / LEAN_ACCEL_FULL));
+  return MOMENTUM_LEAN_PX * k;
+}
+
+// How hard he is BRAKING, as opposed to accelerating: the component of
+// acceleration opposing the direction he is actually travelling. A plant is a
+// deceleration, and using raw acceleration magnitude here would have players
+// crouching as they launch into a sprint.
+//
+// Below a real speed there is nothing to plant against — a man drifting at
+// 13px/s who stops has not stopped, he has stood still — so the whole thing is
+// gated on moving first.
+const PLANT_MIN_SPEED = 40;
+const PLANT_ACCEL_MIN = 1800;
+const PLANT_ACCEL_FULL = 5000;
+const PLANT_CROUCH_PX = 2;
+
+function brakingRate(vx, vy, ax, ay) {
+  const sp = Math.sqrt(vx * vx + vy * vy);
+  if (sp < PLANT_MIN_SPEED) return 0;
+  return Math.max(0, -((ax * vx + ay * vy) / sp));
+}
+
+// ...and what that braking does to his knees. Between p90 and p99.9 of the
+// measured distribution, so an ordinary change of pace does nothing and a hard
+// stop folds him.
+function plantCrouch(braking) {
+  if (!(braking > PLANT_ACCEL_MIN)) return 0;
+  const f = Math.min(1, (braking - PLANT_ACCEL_MIN) / (PLANT_ACCEL_FULL - PLANT_ACCEL_MIN));
+  return PLANT_CROUCH_PX * f;
 }
 
 // How far through his gather a leaper is: 0 with his feet down, 1 at the top.
@@ -887,6 +1131,9 @@ if (typeof module !== 'undefined' && module.exports) {
     LANDING_SQUASH_PX: LANDING_SQUASH_PX,
     landingSquash: landingSquash,
     justLanded: justLanded,
+    RIM_HIT_MS: RIM_HIT_MS,
+    RIM_HIT_PX: RIM_HIT_PX,
+    rimHitSquash: rimHitSquash,
     landingSquashPx: landingSquashPx,
     closeCockAtBeat: closeCockAtBeat,
     JUMP_FOLLOW_MAX_MS: JUMP_FOLLOW_MAX_MS,
@@ -907,14 +1154,33 @@ if (typeof module !== 'undefined' && module.exports) {
     DRIBBLE_PERIOD_SET: DRIBBLE_PERIOD_SET,
     DRIBBLE_PERIOD_MOVING: DRIBBLE_PERIOD_MOVING,
     stepDribbleClock: stepDribbleClock,
+    dribbleTempoFor: dribbleTempoFor,
+    DRIBBLE_TEMPO_SPREAD: DRIBBLE_TEMPO_SPREAD,
     MOVE_BLEND_BEATS: MOVE_BLEND_BEATS,
     HESITATION_BEATS: HESITATION_BEATS,
     HESITATION_HOLD: HESITATION_HOLD,
     HESITATION_EASE: HESITATION_EASE,
+    HESITATION_RELEASE: HESITATION_RELEASE,
+    HESI_CROUCH_PX: HESI_CROUCH_PX,
     dribbleCrossings: dribbleCrossings,
+    handSwitchCount: handSwitchCount,
     moveDribble: moveDribble,
     dribbleNow: dribbleNow,
     dribbleLean: dribbleLean,
+    POSE_ORDER: POSE_ORDER,
+    posePriority: posePriority,
+    ballSquash: ballSquash,
+    BALL_SQUASH_SPEED: BALL_SQUASH_SPEED,
+    BALL_BOUNCE_PHASE: BALL_BOUNCE_PHASE,
+    momentumLean: momentumLean,
+    brakingRate: brakingRate,
+    plantCrouch: plantCrouch,
+    LEAN_ACCEL_FULL: LEAN_ACCEL_FULL,
+    MOMENTUM_LEAN_PX: MOMENTUM_LEAN_PX,
+    PLANT_MIN_SPEED: PLANT_MIN_SPEED,
+    PLANT_ACCEL_MIN: PLANT_ACCEL_MIN,
+    PLANT_ACCEL_FULL: PLANT_ACCEL_FULL,
+    PLANT_CROUCH_PX: PLANT_CROUCH_PX,
     DRIBBLE_LEAN_PX: DRIBBLE_LEAN_PX,
     CROSS_LEAN_PX: CROSS_LEAN_PX,
     dribbleClockAfterMove: dribbleClockAfterMove,

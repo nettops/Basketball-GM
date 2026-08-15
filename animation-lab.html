@@ -243,6 +243,9 @@
           opts: {
             facing: 1, moving: false,
             lean: dribbleLean(now),
+            // The body's half of the hesitation — it coils under the held ball
+            // and uncoils into the cut.
+            crouch: HESI_CROUCH_PX * (now.hesi || 0),
             dribbling: { phase: now.phase, side: now.sign, crossing: now.crossing }
           },
           lift: 0,
@@ -250,7 +253,10 @@
             x: now.side * now.sign, y: -(1 + now.phase * DRIBBLE_RISE) - now.behind,
             behind: now.behind
           },
-          phase: inMove ? ('beat ' + (Math.floor(u) + 1) + (now.crossing ? ' — crossing' : '')) : 'free dribble'
+          phase: inMove
+            ? ('beat ' + (Math.floor(u) + 1) +
+               (now.crossing ? ' — crossing' : (now.hesi > 0.2 ? ' — hesitating' : '')))
+            : 'free dribble'
         };
       }
     };
@@ -343,6 +349,7 @@
     moveAnim('Behind the back', 'behind', 4, B.isoSize),
     moveAnim('Ankle breaker', 'ankle', ANKLE_BEATS, B.crossJab),
     moveAnim('Put-down', 'putdown', 2, B.liveDribble),
+    moveAnim('Stepback', 'stepback', 2, B.stepbackPlant),
     landingAnim(), stopAnim(), gaitAnim('Sprint', true, true),
     gaitAnim('Jog', true, false), gaitAnim('Idle', false, false),
     stumbleAnim()
@@ -394,7 +401,17 @@
     drawPlayerSprite(ctx, FOOT_X, FOOT_Y - (s.lift || 0), COLORS, '23', opts);
 
     if (s.ball) {
-      drawBall(ctx, FOOT_X + s.ball.x, FOOT_Y - (s.lift || 0) + s.ball.y);
+      const bxNow = FOOT_X + s.ball.x, byNow = FOOT_Y - (s.lift || 0) + s.ball.y;
+      // Same deformation the game applies, from the ball's own drawn velocity.
+      const pb = cell.prevBall;
+      const dv = pb ? { vx: (bxNow - pb.x) * 60, vy: (byNow - pb.y) * 60 } : { vx: 0, vy: 0 };
+      cell.prevBall = { x: bxNow, y: byNow };
+      drawBall(ctx, bxNow, byNow, undefined,
+        { squash: ballSquash(dv.vx, dv.vy, !!(s.opts.dribbling && s.opts.dribbling.crossing),
+                             s.opts.dribbling ? s.opts.dribbling.phase : null),
+          vx: dv.vx, vy: dv.vy });
+    } else {
+      cell.prevBall = null;
     }
     cell.phaseEl.textContent = s.phase || '';
   }

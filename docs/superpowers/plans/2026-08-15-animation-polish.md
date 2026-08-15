@@ -160,23 +160,85 @@ floated above it.
 
 ---
 
+## Round two — the remaining sections
+
+- [x] **Unfreeze the dunk landing** (§6). The 90ms slam stays frozen on purpose
+      — it is the impact hold, and the beat where an earlier version teleported
+      nine men into rebounding spots at 209px/s. The 130ms landing beat after it
+      had no such excuse. Measured **100% frozen → 21%**.
+- [x] **Rim contact** (§6/7). `rimHitSquash` — a 120ms fold as he catches the
+      iron, on its own curve rather than the landing's, because a landing is
+      weight arriving on a fixed floor and this is weight driven *through*
+      something. Plus a `rim` audio voice on the frame his hand gets there.
+- [x] **The stepback** (§5), which did not exist in any form. Two beats,
+      counted at **8.45/game**. Its ball path needed `noSwitch` — the first
+      entry in `dribbleCrossings` that shapes the ball without changing hands.
+- [x] **Hesitation footwork** (§5). The hold was only ever a ball behaviour, so
+      the man selling the fake stood bolt upright through it. `hesi` is now
+      reported out of `moveDribble` and coils the body — with its own release
+      fade, because the ball's hold ends abruptly (that snap is the move
+      starting) and a body driven off the same number would straighten in one
+      frame.
+- [x] **Momentum, as one mechanism** (§9/10/11). Stepback body English,
+      sprint-to-stop plant and direction-change lean are the same event, so
+      they are one rule: lean into your own acceleration, fold when braking.
+      Thresholds taken from a measured distribution (p99 = 2949px/s²), not
+      picked.
+- [x] **Ball deformation** (§7/8). One pixel off the squashed axis — the only
+      honest move on a 3px ball — spent only above 900px/s or on the push-off
+      dribble inside a named move.
+- [x] **Per-player tempo** (§12). ±12% off the player id, deterministic so a
+      replay dribbles the way the game did.
+- [x] **Pose priority** (§11). `posePriority` resolves one winner from a flag
+      bag; the validator walks all 128 combinations.
+- [x] **Camera** (§14). A directional *drag* on a hard crossover — not a shake,
+      because nothing collided — on its own timer and axis, decaying from an
+      immediate peak. The opposite shape to the landing's half sine, because a
+      landing is an arrival and a cut is a departure.
+
+### Measured after round two
+
+| family | baseline | round one | round two |
+|---|---|---|---|
+| `dunk.land` frozen | **100%** | 100% | **21%** |
+| `dunk.slam` frozen | 100% | 100% | 100% *(deliberate)* |
+| `cross.clear` frozen | 76% | 5% | 5% |
+| `cross.cross` frozen | 76% | 5% | 5% |
+| `cross.jab` frozen | 29% | 3% | 3% |
+
+`probe-dribbles`: distribution unchanged from baseline at 44.3 / 25.4 / 16.7 /
+13.6, dribbles on the floor 253.7/game, timeline 1004.6s/game.
+
+### The stepback broke a metric, and that is worth recording
+
+Marking the stepback with `tagHandle` — which looked right, since it is a named
+move with beats — made every stepback possession count **twice** in
+`probe-dribbles`, because `handle` is the possession's dribble-count marker and
+the probe divides by it. The no-dribble share fell from 44.3% to 36.5% against a
+50% target, which reads exactly like the sim's roll having drifted. Nothing was
+wrong with the roll.
+
+The fix was to stop calling it a handle: a stepback is choreography laid on the
+*end* of a handle, not a second one. It is counted off its own `step` marker
+instead, and the distribution went back to baseline to the decimal. Worth
+remembering that adding a marker to a timeline can move a number that has
+nothing to do with the feature.
+
 ## Not done
 
-- **`dunk.slam` is still 100% frozen** for its 90ms. Unlike the crossover this
-  looks deliberate — the choreographer holds the floor near the rim so the
-  separation pass cannot shove the dunker off the hoop (see the note beside
-  `separatePositions`), and 90ms is short enough to read as an impact hold. It
-  was left alone rather than changed without understanding why it is that way.
-- **Anticipation on the dribble is still carried by the ball**, not the body.
-  The hesitation hold that already existed is what sells a crossover; the torso
-  follows the ball rather than leading it, so there is no wind-up in the hips
-  before a move.
-- **Per-player animation tempo is still uniform.** A quick guard and a slow big
-  gather at the same speed, which sits oddly beside the idle breathing that
-  deliberately gives each player his own period. Same gap the dribble-moves plan
-  closed with.
-- **Stepbacks and hesitations have no dedicated footwork.** They exist in the
-  ball path (`HESITATION_BEATS`) but the body does not plant and push back; the
-  brief asked for that and it is not built.
-- **No squash/stretch on the ball itself**, and no pixel particles or motion
-  streaks beyond the crossover streaks that already existed.
+- **`dunk.slam` is still 100% frozen** for its 90ms, and stays that way on
+  purpose — see round two. It is the impact hold.
+- **The dribble tempo varies per player but not per SITUATION.** A man being
+  pressured full-court dribbles at the same rhythm as one walking it up, and
+  `ballHandling` does not feed the tempo at all — only the dribble *count*.
+- **No between-the-legs pose.** The `double` move's ball path goes through his
+  stance, but the legs do not open for it; at 10px wide the two frames that
+  would need are a real question rather than an obvious win.
+- **Contact on drives is not animated.** Two bodies meeting at the rim is a
+  collision the separation pass resolves silently — nobody absorbs a bump, and
+  the brief's "contact layup" is not built.
+- **No pixel particles beyond the net splash**, and no motion streaks on the
+  ball beyond the high-speed trail that already existed.
+- **The layup does not vary by finish.** A reverse, a floater and a scoop all
+  draw the same pose at the same height; only the side is read from the
+  choreographer.

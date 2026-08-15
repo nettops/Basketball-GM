@@ -355,11 +355,18 @@ function renderPixelGame(container) {
   // Each player's foot lift on the previous drawn frame, so a landing can be
   // caught as the transition it is.
   const prevFootById = {};
+  // When each dunker last caught the rim, in playback ms.
+  const rimHitAt = {};
   let shakeStartMs = -Infinity;
   // A dunk landing gets its own, separate from the collision shake: see where
   // it is applied for why the two must not share a timer or an axis.
   let landShakeStartMs = -Infinity;
   const LAND_SHAKE_MS = 110;
+  // The crossover's camera nudge — a directional drag, not a shake. See where
+  // it is armed for why the two are different effects.
+  let crossNudgeStartMs = -Infinity;
+  let crossNudgeDir = 1;
+  const CROSS_NUDGE_MS = 200;
   let hitchMs = 0;              // freeze-frame remaining (real ms, unscaled)
   let lastEffectKfT = -1;
   let lastQuarterSeen = 1;
@@ -447,6 +454,9 @@ function renderPixelGame(container) {
   let excitementIsHome = true;  // which side the arena is reacting for
   let lastBallActor = null;     // last player to hold the ball
   let lastBouncePhase = 1;      // for detecting dribble floor contact
+  // The ball's drawn position last frame, for its own screen velocity. Reset
+  // with the trail on a seek, so a jump does not read as a 4000px/s pass.
+  let prevBallDraw = null;
   // The dribble clock, in bounces. Owned here rather than derived from
   // playbackMs because the tempo changes with the handler's speed, and a phase
   // derived from absolute time gets RETROACTIVELY rewritten every time it does
@@ -508,6 +518,28 @@ function renderPixelGame(container) {
       }
       if (!reduceMotion && (BIG_PLAY_LABELS.indexOf(fr.a.text) !== -1 && fr.a.text !== 'Steal!' && fr.a.text !== 'Three-pointer!')) {
         shakeStartMs = playbackMs;
+      }
+      // RIM CONTACT. Keyframes sit at beat ENDS, so the slam beat runs from the
+      // rise keyframe to the slam keyframe and the ball is through the net the
+      // moment this one becomes current — which is also the moment his hand is
+      // on the iron. Stamped here rather than in the sprite loop because it is
+      // a keyframe crossing, not a per-frame transition like a landing.
+      if (fr.a.dunk && fr.a.dunk.phase === 'slam' && fr.a.dunk.id && !reduceMotion) {
+        rimHitAt[fr.a.dunk.id] = playbackMs;
+        if (speed <= 4) playPixelSfx('rim');
+      }
+      // A HARD CROSSOVER nudges the camera the way he went. Not a shake — a
+      // shake is a collision, and nothing collided; this is the picture being
+      // dragged a pixel by the cut, which is why it is a single directional
+      // push that decays rather than a ringing sine. Armed only on the cut beat
+      // of an ankle breaker, which is ~1.7 a game, so it stays an accent.
+      if (fr.a.cross && fr.a.cross.phase === 'cross' && !reduceMotion && speed < 8) {
+        crossNudgeStartMs = playbackMs;
+        // Which way he cut, from where the two men are standing: the handler
+        // has just gone one way and left his man the other, so the sign of the
+        // gap between them IS the direction of the move.
+        const hp = fr.a.pos[fr.a.cross.by], vp = fr.a.pos[fr.a.cross.on];
+        crossNudgeDir = (hp && vp) ? (hp[0] >= vp[0] ? 1 : -1) : 1;
       }
       if (isMakeKeyframe(fr.a)) {
         if (!reduceMotion) {
@@ -595,6 +627,14 @@ function renderPixelGame(container) {
     if (landAge >= 0 && landAge < LAND_SHAKE_MS) {
       shakeY += Math.round(Math.sin((landAge / LAND_SHAKE_MS) * Math.PI) * 2);
     }
+    // The crossover's drag. Peaks immediately and eases back, so the picture
+    // gets pulled by the cut and then recovers — the opposite shape to the
+    // landing's half sine, because a landing is an arrival and this is a
+    // departure.
+    const crossAge = playbackMs - crossNudgeStartMs;
+    if (crossAge >= 0 && crossAge < CROSS_NUDGE_MS) {
+      shakeX += Math.round(crossNudgeDir * 2 * Math.pow(1 - crossAge / CROSS_NUDGE_MS, 2));
+    }
     ctx.save();
     ctx.translate(shakeX, shakeY);
     // Snap zoom on a highlight. Inside the shake transform and before the
@@ -675,9 +715,14 @@ function renderPixelGame(container) {
     } else {
       if (dribbleMove) dribbleU = dribbleClockAfterMove(dribbleU, dribbleMove.move, dribbleMove.n);
       dribbleMove = null;
+      // ...at HIS tempo. Every player used to pound it out on the same
+      // metronome, which is the same tell the idle breathing already avoids by
+      // giving each man his own period. Derived from the id, so a replay
+      // dribbles the way the game did.
       dribbleU = stepDribbleClock(dribbleU, dtMsTimeline,
         !!(dribbleSmooth &&
-           Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6));
+           Math.sqrt(dribbleSmooth.vx * dribbleSmooth.vx + dribbleSmooth.vy * dribbleSmooth.vy) > 6),
+        dribbleTempoFor(dribbleHolder));
     }
     const dribbleState = dribbleSmooth ? dribbleNow(dribbleU, dribbleMove) : null;
 
@@ -723,7 +768,17 @@ function renderPixelGame(container) {
           omega: 15 + (pid.charCodeAt(0) % 5) * 0.9 // slight per-player variation
         };
       }
+      // Acceleration, for the lean and the plant. Taken across the SAME step
+      // the spring just integrated rather than between drawn frames, because
+      // dtTimeline is what the spring actually moved through — at 8x a drawn
+      // frame is eight times the timeline, and dividing by the wrong one scales
+      // every player's lean by the playback speed.
+      const preVx = s.vx, preVy = s.vy;
       stepSpring(s, tx, ty, dtTimeline);
+      if (dtTimeline > 0) {
+        s.ax = (s.vx - preVx) / dtTimeline;
+        s.ay = (s.vy - preVy) / dtTimeline;
+      }
       onCourtNow[pid] = true;
     });
 
@@ -844,7 +899,23 @@ function renderPixelGame(container) {
       // bend the current phase already asks for.
       const land = landedAt[pid];
       const landSquash = land ? landingSquash(playbackMs - land.at, land.kind) : 0;
-      const crouchPx = Math.max(0, -jumpLift) + landSquash;
+      // ...and the dunker's own half of the rim collision, which happens in the
+      // air and so cannot ride the landing channel. Stamped once when the slam
+      // phase opens, the same way the landing is stamped once on contact.
+      const rimHit = (isDunkerNow && rimHitAt[pid])
+        ? rimHitSquash(playbackMs - rimHitAt[pid]) : 0;
+      // ...and the plant. A man stopping hard folds into it, which is what turns
+      // a sprint that simply ends into a sprint that is BROUGHT to an end. Only
+      // on the floor: a body in the air has nothing to plant against.
+      const braking = footLift > 0 ? 0 : brakingRate(s.vx, s.vy, s.ax || 0, s.ay || 0);
+      // The hesitation's coil. The ball's hold was only ever a ball behaviour,
+      // so the man selling the fake stood bolt upright through it; this is his
+      // half of the same beat, and it uncoils into the cut rather than
+      // straightening on one frame (see `hesi` in moveDribble).
+      const hesiCoil = (dribbleState && pid === dribbleHolder && footLift === 0)
+        ? HESI_CROUCH_PX * (dribbleState.hesi || 0) : 0;
+      const crouchPx = Math.max(0, -jumpLift) + landSquash + rimHit +
+        plantCrouch(braking) + hesiCoil;
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       const dunkPose = isDunkerNow && jumpLift >= 3;
@@ -899,33 +970,55 @@ function renderPixelGame(container) {
         ctx.fillStyle = 'rgba(255,255,255,0.42)';
         ctx.fillRect(Math.round(x) - 7, Math.round(y) - 26, 14, 28);
       }
+      // ONE decision about which pose he is in, resolved by posePriority
+      // instead of by a pile of negations that every new pose had to be added
+      // to. `handling` is the one non-pose question left: he can be dribbling
+      // and running at once, and only the priority decides which the arms
+      // belong to.
+      const handling = !!(dribbleState && pid === dribbleHolder);
+      const pose = posePriority({
+        dunking: dunkPose,
+        layup: !!layupPose,
+        following: isJumperNow && jumpFollow,
+        shooting: shooting || (isJumperNow && jumpLift > -1),
+        stumbling: !reduceMotion && pid === stumbleId,
+        dribbling: handling,
+        moving: moving
+      });
       drawPlayerSprite(ctx, x, y - footLift, colorsById[pid], p ? p.jerseyNumber : '', {
         heightIn: p ? p.heightIn : null,
         crouch: crouchPx,
-        layup: layupPose,
-        // The handler's weight rides over the ball. Only the man actually
-        // dribbling leans — a lean on a body with no ball beside it is just the
-        // sprite standing crooked.
-        lean: (dribbleState && pid === dribbleHolder && !shooting && !isJumperNow &&
-               !dunkPose && !layupPose && !jumpFollow)
-          ? dribbleLean(dribbleState) * (facingById[pid] || 1)
-          : 0,
+        layup: pose === 'layup' ? layupPose : null,
+        // TWO leans, added and then clamped.
+        //
+        // The handler's weight rides over the ball (only the man actually
+        // dribbling — a ball-lean on a body with no ball beside it is just the
+        // sprite standing crooked). Everyone on the floor also leans into his
+        // own acceleration, which is where the stepback's fight against the
+        // backward push comes from, and the body English through a hard change
+        // of direction, and the plant at the end of a sprint.
+        //
+        // Clamped rather than summed freely: a handler crossing over while
+        // braking hard can otherwise ask for 4px of lean on a 10px body, which
+        // stops reading as weight and starts reading as a fall.
+        lean: Math.max(-MOMENTUM_LEAN_PX, Math.min(MOMENTUM_LEAN_PX,
+          (pose === 'dribbling' ? dribbleLean(dribbleState) * (facingById[pid] || 1) : 0)
+          + (footLift > 0 ? 0 : momentumLean(s.ax || 0)))),
         frame: Math.floor((playbackMs + phase) / stride) % 2,
         // each player breathes on his own period, so ten sprites never pulse
         // in unison — the give-away that it is one global timer
         idleFrame: Math.floor((playbackMs + phase * 11) / (760 + (phase % 7) * 90)) % 2,
         // rising into the shot reads as arms-up; after the ball is gone he
         // holds the follow-through, which is what a jumper actually looks like
-        shooting: shooting || (isJumperNow && !jumpFollow && jumpLift > -1),
-        following: isJumperNow && jumpFollow,
-        dunking: dunkPose,
-        stumbling: !reduceMotion && pid === stumbleId,
+        shooting: pose === 'shooting',
+        following: pose === 'following',
+        dunking: pose === 'dunking',
+        stumbling: pose === 'stumbling',
         // Only while he is actually handling it — a man gathering into a shot,
         // rising, or going up to dunk is not dribbling any more, and those
         // poses own the arms. The ball's own facing is applied here so `side`
         // reaches the sprite in screen space.
-        dribbling: (dribbleState && pid === dribbleHolder && !shooting && !isJumperNow &&
-                    !dunkPose && !jumpFollow)
+        dribbling: pose === 'dribbling'
           ? {
               phase: dribbleState.phase,
               side: dribbleState.sign * (facingById[pid] || 1),
@@ -1022,11 +1115,29 @@ function renderPixelGame(container) {
       arrival: arrival
     });
     const bx = bp.bx, by = bp.by, groundY = bp.groundY;
+    // The ball's own screen velocity, for the deformation. Taken between drawn
+    // frames rather than off the keyframes, because what deforms is the thing
+    // on screen — a held ball riding a sprinting handler is genuinely moving
+    // fast even though its keyframe barely changes.
+    let ballVx = 0, ballVy = 0;
+    if (prevBallDraw && realDt > 0) {
+      ballVx = (bx - prevBallDraw.x) * 1000 / realDt;
+      ballVy = (by - prevBallDraw.y) * 1000 / realDt;
+    }
+    prevBallDraw = { x: bx, y: by };
     // thud on the floor contact, keyed off the same phase the eye sees
     if (bp.bouncePhase !== null) {
       if (speed <= 2 && bp.bouncePhase < 0.12 && lastBouncePhase >= 0.12) playPixelSfx('dribble');
       lastBouncePhase = bp.bouncePhase;
     }
+    // Flattened only when it has earned it: genuinely fast, or driven into the
+    // floor as part of a named move. See ballSquash for why an ordinary dribble
+    // bounce deliberately does not qualify.
+    const hardBounce = !!(dribbleState && dribbleState.crossing);
+    const ballDeform = reduceMotion ? null : {
+      squash: ballSquash(ballVx, ballVy, hardBounce, bp.bouncePhase),
+      vx: ballVx, vy: ballVy
+    };
     if (bp.mode === 'flight') {
       ballSpin += (Math.abs(fr.b.ball.x - fr.a.ball.x) > 2 ? 0.6 : 0.25) * (fr.b.ball.x >= fr.a.ball.x ? 1 : -1);
     }
@@ -1074,7 +1185,7 @@ function renderPixelGame(container) {
 
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round(bx) - 1, Math.round(groundY), 3, 1);
-    drawBall(ctx, bx, by, holder ? undefined : ballSpin);
+    drawBall(ctx, bx, by, holder ? undefined : ballSpin, ballDeform);
 
     // Referee: trails the play along the baseline side, always a step behind
     // the ball, which is both what officials do and a cheap way to keep the
@@ -1429,6 +1540,7 @@ function renderPixelGame(container) {
     // of leavers; the final frame is a still, so suppress both.
     suppressEntries = true;
     particles.length = 0;
+    prevBallDraw = null;
     leavers.length = 0;
     showFinal();
   });
