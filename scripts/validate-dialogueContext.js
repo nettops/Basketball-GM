@@ -312,4 +312,37 @@ function checkRecentSceneRingBuffer() {
 }
 checkRecentSceneRingBuffer();
 
+const dialogueBox = rq('ui/dialogueBox.js');
+
+function checkTheBoxDegradesWithoutADom() {
+  // This module is required by a node validator that has no DOM, exactly the
+  // way ui/pixelSprites.js is. It must not throw at load or at call.
+  assert.strictEqual(dialogueBox.dialogueBoxIsOpen(), false, 'nothing is open without a DOM');
+  assert.strictEqual(
+    dialogueBox.runDialogue({ id: 'x', lines: [{ emotion: 'neutral', text: 'hi' }], choices: [{ text: 'ok' }] }, {}, function () {}),
+    false, 'runDialogue reports it could not open rather than throwing');
+  assert.doesNotThrow(function () { dialogueBox.closeDialogueBox(); }, 'closing nothing is safe');
+  console.log('checkTheBoxDegradesWithoutADom: OK');
+}
+checkTheBoxDegradesWithoutADom();
+
+function checkMalformedScenesAreRefused() {
+  // A scene with no lines or no choices would open a box the user cannot
+  // dismiss. Refusing is the caller's cue to fall through.
+  [null, {}, { lines: [], choices: [] },
+   { lines: [{ emotion: 'neutral', text: 'x' }], choices: [] },
+   { lines: [], choices: [{ text: 'x' }] }].forEach(function (bad) {
+    assert.strictEqual(dialogueBox.runDialogue(bad, {}, function () {}), false,
+      'refused: ' + JSON.stringify(bad));
+  });
+  console.log('checkMalformedScenesAreRefused: OK');
+}
+checkMalformedScenesAreRefused();
+
+function checkTypewriterSpeedIsTheSpeccedValue() {
+  assert.strictEqual(dialogueBox.DIALOGUE_CHAR_MS, 28, 'the spec fixes this at 28ms/char');
+  console.log('checkTypewriterSpeedIsTheSpeccedValue: OK');
+}
+checkTypewriterSpeedIsTheSpeccedValue();
+
 console.log('All dialogue context validations passed');

@@ -159,6 +159,17 @@
        pixelSprites.js at CALL time, not load time, but it is kept adjacent to
        its only dependency so the pairing is obvious. -->
   <script src="ui/pixelBust.js"></script>
+  <!-- The dialogue trio. Pure data and predicates first; depends on nothing. -->
+  <script src="dialogueScenes.js"></script>
+  <!-- Captures teams/league/gmCareer/names/faces into its data block at LOAD
+       time, so every one of them must already be defined above. -->
+  <script src="dialogueContext.js"></script>
+  <!-- Captures drawPixelBust/bustScale/bustColorsFor/BUST from pixelBust.js
+       and interpolate from dialogueScenes.js at LOAD time, so it must come
+       after BOTH. Loaded earlier this threw on every page load and left the
+       whole module uninitialised — the same failure gameCoach.js hit when it
+       was placed before simEngineBoxScore.js. -->
+  <script src="ui/dialogueBox.js"></script>
   <script src="ui/pixelCourt.js"></script>
   <script src="ui/pixelAudio.js"></script>
   <script src="ui/pixelHud.js"></script>
