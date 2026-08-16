@@ -95,7 +95,7 @@ checkJerseyNumberPopularity();
 function checkLongestCurrentTenures() {
   const player = leagueModule.getTeamRoster('BOS')[0];
   const history = careerHistoryModule.ensureCareerHistory(player);
-  history.teamHistory = [{ team: 'Boston Celtics', teamId: 'BOS', startSeason: 2040, endSeason: null, seasons: 12, totalGames: 900 }];
+  history.teamHistory = [{ team: 'Boston Harbormen', teamId: 'BOS', startSeason: 2040, endSeason: null, seasons: 12, totalGames: 900 }];
 
   const tenures = frivolitiesModule.computeLongestCurrentTenures(5);
   assert.ok(tenures.some(function (t) { return t.player.id === player.id && t.seasons === 12; }));

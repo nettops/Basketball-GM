@@ -46,7 +46,7 @@ function checkTeams() {
     assert.strictEqual(t.record.wins, 0);
     assert.strictEqual(t.record.losses, 0);
   });
-  assert.strictEqual(teams.getTeamById('BOS').name, 'Boston Celtics');
+  assert.strictEqual(teams.getTeamById('BOS').name, 'Boston Harbormen');
   assert.strictEqual(teams.getTeamById('nonexistent'), undefined);
   console.log('checkTeams: OK');
 }

@@ -366,7 +366,7 @@ function relocateTeam(teamId, details) {
   return { success: true, team: team };
 }
 
-const AUTO_EXPANSION_CITY_NAMES = ['Seattle Sasquatch', 'Vancouver Voyagers', 'Kansas City Kings', 'St. Louis Statesmen', 'Louisville Legends'];
+const AUTO_EXPANSION_CITY_NAMES = ['Seattle Sasquatch', 'Vancouver Voyagers', 'Kansas City Cattlemen', 'St. Louis Statesmen', 'Louisville Legends'];
 const AUTO_EXPANSION_MAX_TEAMS = 32;
 const AUTO_EXPANSION_MIN_AVG_FAN_HAPPINESS = 70;
 const AUTO_EXPANSION_CHANCE_WHEN_ELIGIBLE = 0.15;

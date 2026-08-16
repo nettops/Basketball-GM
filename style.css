@@ -680,7 +680,7 @@ table { border-collapse: collapse; width: 100%; }
   letter-spacing: .2em; font-size: 10.5px; color: var(--text-mute); }
 .fs-city { font-family: var(--font-cond); font-size: 19px; text-transform: uppercase;
   letter-spacing: .12em; color: var(--text-dim); margin-bottom: -3px; }
-/* 64px is a ceiling, not a size: "Timberwolves" needs 569px at 64px and only
+/* 64px is a ceiling, not a size: "Sidewinders" needs 569px at 64px and only
    had 492px, so it was the one nickname in the league that got clipped. A fixed
    size would break again on a narrower panel, or on whatever an expansion team
    ends up being called. */

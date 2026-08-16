@@ -864,7 +864,7 @@ function checkRealScenesFireOnRealContexts() {
   // fallback is all anyone will ever see.
   const blownLead = {
     moment: 'postgame', role: 'gm', userWon: false, userLost: true, margin: 6,
-    teamName: 'Celtics', opponentName: 'Lakers', leadBlown: 11,
+    teamName: 'Harbormen', opponentName: 'Monarchs', leadBlown: 11,
     topScorerName: 'J. Tatum', topScorerPoints: 31, userScore: 104, opponentScore: 110,
     isPlayoff: false, streak: -2, seasonWins: 20, seasonLosses: 15
   };
@@ -885,7 +885,7 @@ function checkEffectsAreReturnedNotApplied() {
         s.id + ': effect is null or a function');
       if (typeof c.effect === 'function') {
         const ctx = {
-          moment: s.moment, role: s.roles[0], teamName: 'Celtics', opponentName: 'Lakers',
+          moment: s.moment, role: s.roles[0], teamName: 'Harbormen', opponentName: 'Monarchs',
           margin: 6, leadBlown: 11, topScorerName: 'J. Tatum', topScorerPoints: 31,
           userWon: false, userLost: true, userScore: 104, opponentScore: 110,
           trailing: true, leading: false, isPlayoff: false, streak: -2,
@@ -1352,7 +1352,7 @@ function checkEffectsClampAndApply() {
   career.reputation = 50;
 
   const player = { id: 'p1', status: { morale: 50 } };
-  const ctx = { moment: 'postgame', role: 'gm', teamId: 'BOS', roster: [player], opponentName: 'Lakers' };
+  const ctx = { moment: 'postgame', role: 'gm', teamId: 'BOS', roster: [player], opponentName: 'Monarchs' };
 
   dc.applyDialogueEffect(state, { reputation: 3 }, ctx);
   assert.strictEqual(state.gmCareer.reputation, 53, 'reputation moved');

@@ -201,7 +201,7 @@ function checkSlotStorageLifecycle() {
 
   const list = saveModule.listSaves();
   assert.ok(!list[0].empty, 'a filled slot should not carry a truthy empty flag');
-  assert.strictEqual(list[0].teamName, 'Boston Celtics');
+  assert.strictEqual(list[0].teamName, 'Boston Harbormen');
   assert.strictEqual(list[0].name, 'My Dynasty');
   assert.strictEqual(list[1].empty, true, 'slot 2 should remain untouched');
   assert.strictEqual(list[5].slotId, 'autosave');

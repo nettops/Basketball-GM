@@ -20,7 +20,7 @@ const HALFTIME_KEYS = [
 function fullContext(over) {
   return Object.assign({
     moment: 'halftime', role: 'gm', margin: 14,
-    teamName: 'Boston Celtics', opponentName: 'Los Angeles Lakers',
+    teamName: 'Boston Harbormen', opponentName: 'Los Angeles Monarchs',
     trailing: true, leading: false,
     topScorerName: 'Jayson Tatum', topScorerPoints: 12,
     userScore: 48, opponentScore: 62, isPlayoff: false

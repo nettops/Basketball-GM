@@ -61,7 +61,7 @@ DAL win-now, HOU win-now, MEM retooling, NOP rebuilding, SAS rebuilding
 
 For each team object, add the field, e.g.:
 ```js
-{ id: 'BOS', name: 'Boston Celtics', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#007A33', secondary: '#BA9653' }, prestige: 88, fanHappiness: 80, ownerHappiness: 80, chemistry: 75, timeline: 'win-now', record: { wins: 0, losses: 0 }, draftPicks: [] },
+{ id: 'BOS', name: 'Boston Harbormen', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#007A33', secondary: '#BA9653' }, prestige: 88, fanHappiness: 80, ownerHappiness: 80, chemistry: 75, timeline: 'win-now', record: { wins: 0, losses: 0 }, draftPicks: [] },
 ```
 (Insert `timeline: '...'` after `chemistry` and before `record` on all 30 lines, using the assignments listed above.)
 

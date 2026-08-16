@@ -793,7 +793,7 @@ function checkSeasonChronicleTextIsFrozenAtWriteTime() {
   const R = gmCareer.SEASON_RESULT;
   const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
   const row = { leagueYear: 2028, teamId: 'BOS', wins: 62, losses: 20, result: R.CHAMPION };
-  const e = gmCareer.recordSeasonChronicle(c, row, 'Boston Celtics');
+  const e = gmCareer.recordSeasonChronicle(c, row, 'Boston Harbormen');
   assert.strictEqual(e.kind, 'season');
   assert.strictEqual(e.text, '62-20. Won the championship.',
     'the line reads as a sentence and carries the record');
@@ -803,7 +803,7 @@ function checkSeasonChronicleTextIsFrozenAtWriteTime() {
   // rendered line could claim you won the 2028 title with a team that did not
   // exist until 2034.
   const miss = gmCareer.recordSeasonChronicle(c,
-    { leagueYear: 2031, teamId: 'BOS', wins: 30, losses: 52, result: R.MISSED }, 'Boston Celtics');
+    { leagueYear: 2031, teamId: 'BOS', wins: 30, losses: 52, result: R.MISSED }, 'Boston Harbormen');
   assert.strictEqual(miss.text, '30-52. Missed the playoffs.');
   console.log('checkSeasonChronicleTextIsFrozenAtWriteTime: OK');
 }
@@ -812,10 +812,10 @@ checkSeasonChronicleTextIsFrozenAtWriteTime();
 function checkChronicleGetsOneSeasonLinePerYear() {
   const c = gmCareer.createGmCareer('Cory', 'BOS', 2026);
   gmCareer.recordSeason(c, 2026, 'BOS', 58, 24, fakeBracket());
-  gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Celtics');
+  gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Harbormen');
   // Re-running the same season must not double the line, the same way
   // recordSeason does not double the row.
-  const again = gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Celtics');
+  const again = gmCareer.recordSeasonChronicle(c, c.seasons[0], 'Boston Harbormen');
   assert.strictEqual(again, null, 'a year already chronicled returns null');
   assert.strictEqual(c.chronicle.filter(function (e) { return e.kind === 'season'; }).length, 1);
   console.log('checkChronicleGetsOneSeasonLinePerYear: OK');

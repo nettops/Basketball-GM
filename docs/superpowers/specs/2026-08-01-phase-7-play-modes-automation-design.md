@@ -79,7 +79,7 @@ New buttons/logic in `ui/simControls.js` (existing Next Game/Next Day/Sim to End
 ## 7. Live Feed
 
 New `ui/liveFeed.js` rendering `GameState.feed` (array of `{ day, leagueYear, text }`, capped at the 200 most recent entries via `.shift()` when exceeded). Feed view added to `BUILT_VIEWS` and `NAV_ITEMS`. Entries pushed from:
-- `league.js`'s existing `onDayComplete` hook — one entry per day summarizing that day's games (`"Lakers 112, Celtics 108"`) for games involving the user's team (GM/Commissioner) or all games (Spectator, capped to a "N games played" summary line per day to avoid flooding 15 games/day into the feed).
+- `league.js`'s existing `onDayComplete` hook — one entry per day summarizing that day's games (`"Monarchs 112, Harbormen 108"`) for games involving the user's team (GM/Commissioner) or all games (Spectator, capped to a "N games played" summary line per day to avoid flooding 15 games/day into the feed).
 - `trade.js`'s `executeTrade` — one entry per executed trade.
 - `freeAgency.js`'s `signPlayer` / `freeAgencyBidding.js`'s `finalizeBidding` — one entry per signing.
 - `draft.js`'s `runDraft` (per pick) — one entry per pick.

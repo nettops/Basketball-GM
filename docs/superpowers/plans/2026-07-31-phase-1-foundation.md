@@ -208,7 +208,7 @@ git commit -m "feat: project scaffold and shared data constants"
 ```js
 {
   id: 'BOS',                          // 3-letter abbreviation, unique, used as teamId on players
-  name: 'Boston Celtics',
+  name: 'Boston Harbormen',
   conference: 'Eastern',              // must be in CONFERENCES
   division: 'Atlantic',               // must be in DIVISIONS[conference]
   colors: { primary: '#007A33', secondary: '#BA9653' },
@@ -226,46 +226,46 @@ git commit -m "feat: project scaffold and shared data constants"
 ```js
 const TEAMS = [
   // Eastern Conference — Atlantic
-  { id: 'BOS', name: 'Boston Celtics', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#007A33', secondary: '#BA9653' }, prestige: 88, fanHappiness: 80, ownerHappiness: 80, chemistry: 75, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'BKN', name: 'Brooklyn Nets', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#000000', secondary: '#FFFFFF' }, prestige: 45, fanHappiness: 50, ownerHappiness: 55, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'NYK', name: 'New York Knicks', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#006BB6', secondary: '#F58426' }, prestige: 80, fanHappiness: 75, ownerHappiness: 70, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'PHI', name: 'Philadelphia 76ers', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#006BB6', secondary: '#ED174C' }, prestige: 70, fanHappiness: 60, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'TOR', name: 'Toronto Raptors', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 55, fanHappiness: 60, ownerHappiness: 60, chemistry: 65, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'BOS', name: 'Boston Harbormen', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#007A33', secondary: '#BA9653' }, prestige: 88, fanHappiness: 80, ownerHappiness: 80, chemistry: 75, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'BKN', name: 'Brooklyn Ironworks', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#000000', secondary: '#FFFFFF' }, prestige: 45, fanHappiness: 50, ownerHappiness: 55, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'NYK', name: 'New York Empire', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#006BB6', secondary: '#F58426' }, prestige: 80, fanHappiness: 75, ownerHappiness: 70, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'PHI', name: 'Philadelphia Keystones', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#006BB6', secondary: '#ED174C' }, prestige: 70, fanHappiness: 60, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'TOR', name: 'Toronto Sentinels', conference: 'Eastern', division: 'Atlantic', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 55, fanHappiness: 60, ownerHappiness: 60, chemistry: 65, record: { wins: 0, losses: 0 }, draftPicks: [] },
 
   // Eastern Conference — Central
-  { id: 'CHI', name: 'Chicago Bulls', conference: 'Eastern', division: 'Central', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 55, fanHappiness: 55, ownerHappiness: 55, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'CLE', name: 'Cleveland Cavaliers', conference: 'Eastern', division: 'Central', colors: { primary: '#860038', secondary: '#FDBB30' }, prestige: 78, fanHappiness: 75, ownerHappiness: 75, chemistry: 74, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'DET', name: 'Detroit Pistons', conference: 'Eastern', division: 'Central', colors: { primary: '#C8102E', secondary: '#1D42BA' }, prestige: 60, fanHappiness: 65, ownerHappiness: 65, chemistry: 68, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'IND', name: 'Indiana Pacers', conference: 'Eastern', division: 'Central', colors: { primary: '#002D62', secondary: '#FDBB30' }, prestige: 68, fanHappiness: 65, ownerHappiness: 65, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'MIL', name: 'Milwaukee Bucks', conference: 'Eastern', division: 'Central', colors: { primary: '#00471B', secondary: '#EEE1C6' }, prestige: 75, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'CHI', name: 'Chicago Blaze', conference: 'Eastern', division: 'Central', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 55, fanHappiness: 55, ownerHappiness: 55, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'CLE', name: 'Cleveland Ironmen', conference: 'Eastern', division: 'Central', colors: { primary: '#860038', secondary: '#FDBB30' }, prestige: 78, fanHappiness: 75, ownerHappiness: 75, chemistry: 74, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'DET', name: 'Detroit Dynamos', conference: 'Eastern', division: 'Central', colors: { primary: '#C8102E', secondary: '#1D42BA' }, prestige: 60, fanHappiness: 65, ownerHappiness: 65, chemistry: 68, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'IND', name: 'Indiana Motors', conference: 'Eastern', division: 'Central', colors: { primary: '#002D62', secondary: '#FDBB30' }, prestige: 68, fanHappiness: 65, ownerHappiness: 65, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'MIL', name: 'Milwaukee Barons', conference: 'Eastern', division: 'Central', colors: { primary: '#00471B', secondary: '#EEE1C6' }, prestige: 75, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
 
   // Eastern Conference — Southeast
-  { id: 'ATL', name: 'Atlanta Hawks', conference: 'Eastern', division: 'Southeast', colors: { primary: '#E03A3E', secondary: '#C1D32F' }, prestige: 55, fanHappiness: 55, ownerHappiness: 55, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'CHA', name: 'Charlotte Hornets', conference: 'Eastern', division: 'Southeast', colors: { primary: '#1D1160', secondary: '#00788C' }, prestige: 42, fanHappiness: 45, ownerHappiness: 50, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'MIA', name: 'Miami Heat', conference: 'Eastern', division: 'Southeast', colors: { primary: '#98002E', secondary: '#F9A01B' }, prestige: 76, fanHappiness: 70, ownerHappiness: 72, chemistry: 74, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'ORL', name: 'Orlando Magic', conference: 'Eastern', division: 'Southeast', colors: { primary: '#0077C0', secondary: '#C4CED4' }, prestige: 68, fanHappiness: 65, ownerHappiness: 65, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'WAS', name: 'Washington Wizards', conference: 'Eastern', division: 'Southeast', colors: { primary: '#002B5C', secondary: '#E31837' }, prestige: 38, fanHappiness: 45, ownerHappiness: 50, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'ATL', name: 'Atlanta Firebirds', conference: 'Eastern', division: 'Southeast', colors: { primary: '#E03A3E', secondary: '#C1D32F' }, prestige: 55, fanHappiness: 55, ownerHappiness: 55, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'CHA', name: 'Charlotte Crown', conference: 'Eastern', division: 'Southeast', colors: { primary: '#1D1160', secondary: '#00788C' }, prestige: 42, fanHappiness: 45, ownerHappiness: 50, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'MIA', name: 'Miami Tarpons', conference: 'Eastern', division: 'Southeast', colors: { primary: '#98002E', secondary: '#F9A01B' }, prestige: 76, fanHappiness: 70, ownerHappiness: 72, chemistry: 74, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'ORL', name: 'Orlando Solar', conference: 'Eastern', division: 'Southeast', colors: { primary: '#0077C0', secondary: '#C4CED4' }, prestige: 68, fanHappiness: 65, ownerHappiness: 65, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'WAS', name: 'Washington Monuments', conference: 'Eastern', division: 'Southeast', colors: { primary: '#002B5C', secondary: '#E31837' }, prestige: 38, fanHappiness: 45, ownerHappiness: 50, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
 
   // Western Conference — Northwest
-  { id: 'DEN', name: 'Denver Nuggets', conference: 'Western', division: 'Northwest', colors: { primary: '#0E2240', secondary: '#FEC524' }, prestige: 82, fanHappiness: 75, ownerHappiness: 75, chemistry: 76, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'MIN', name: 'Minnesota Timberwolves', conference: 'Western', division: 'Northwest', colors: { primary: '#0C2340', secondary: '#236192' }, prestige: 70, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'OKC', name: 'Oklahoma City Thunder', conference: 'Western', division: 'Northwest', colors: { primary: '#007AC1', secondary: '#EF3B24' }, prestige: 88, fanHappiness: 82, ownerHappiness: 82, chemistry: 78, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'POR', name: 'Portland Trail Blazers', conference: 'Western', division: 'Northwest', colors: { primary: '#E03A3E', secondary: '#000000' }, prestige: 45, fanHappiness: 50, ownerHappiness: 55, chemistry: 58, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'UTA', name: 'Utah Jazz', conference: 'Western', division: 'Northwest', colors: { primary: '#002B5C', secondary: '#F9A01B' }, prestige: 40, fanHappiness: 48, ownerHappiness: 52, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'DEN', name: 'Denver Summit', conference: 'Western', division: 'Northwest', colors: { primary: '#0E2240', secondary: '#FEC524' }, prestige: 82, fanHappiness: 75, ownerHappiness: 75, chemistry: 76, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'MIN', name: 'Minnesota Loons', conference: 'Western', division: 'Northwest', colors: { primary: '#0C2340', secondary: '#236192' }, prestige: 70, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'OKC', name: 'Oklahoma City Twisters', conference: 'Western', division: 'Northwest', colors: { primary: '#007AC1', secondary: '#EF3B24' }, prestige: 88, fanHappiness: 82, ownerHappiness: 82, chemistry: 78, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'POR', name: 'Portland Pioneers', conference: 'Western', division: 'Northwest', colors: { primary: '#E03A3E', secondary: '#000000' }, prestige: 45, fanHappiness: 50, ownerHappiness: 55, chemistry: 58, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'UTA', name: 'Utah Arches', conference: 'Western', division: 'Northwest', colors: { primary: '#002B5C', secondary: '#F9A01B' }, prestige: 40, fanHappiness: 48, ownerHappiness: 52, chemistry: 55, record: { wins: 0, losses: 0 }, draftPicks: [] },
 
   // Western Conference — Pacific
-  { id: 'GSW', name: 'Golden State Warriors', conference: 'Western', division: 'Pacific', colors: { primary: '#1D428A', secondary: '#FFC72C' }, prestige: 78, fanHappiness: 70, ownerHappiness: 72, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'LAC', name: 'LA Clippers', conference: 'Western', division: 'Pacific', colors: { primary: '#C8102E', secondary: '#1D428A' }, prestige: 62, fanHappiness: 58, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'LAL', name: 'Los Angeles Lakers', conference: 'Western', division: 'Pacific', colors: { primary: '#552583', secondary: '#FDB927' }, prestige: 85, fanHappiness: 75, ownerHappiness: 75, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'PHX', name: 'Phoenix Suns', conference: 'Western', division: 'Pacific', colors: { primary: '#1D1160', secondary: '#E56020' }, prestige: 62, fanHappiness: 58, ownerHappiness: 58, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'SAC', name: 'Sacramento Kings', conference: 'Western', division: 'Pacific', colors: { primary: '#5A2D81', secondary: '#63727A' }, prestige: 58, fanHappiness: 60, ownerHappiness: 60, chemistry: 65, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'GSW', name: 'Golden State Miners', conference: 'Western', division: 'Pacific', colors: { primary: '#1D428A', secondary: '#FFC72C' }, prestige: 78, fanHappiness: 70, ownerHappiness: 72, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'LAC', name: 'LA Surf', conference: 'Western', division: 'Pacific', colors: { primary: '#C8102E', secondary: '#1D428A' }, prestige: 62, fanHappiness: 58, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'LAL', name: 'Los Angeles Monarchs', conference: 'Western', division: 'Pacific', colors: { primary: '#552583', secondary: '#FDB927' }, prestige: 85, fanHappiness: 75, ownerHappiness: 75, chemistry: 72, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'PHX', name: 'Phoenix Sidewinders', conference: 'Western', division: 'Pacific', colors: { primary: '#1D1160', secondary: '#E56020' }, prestige: 62, fanHappiness: 58, ownerHappiness: 58, chemistry: 60, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'SAC', name: 'Sacramento Gold', conference: 'Western', division: 'Pacific', colors: { primary: '#5A2D81', secondary: '#63727A' }, prestige: 58, fanHappiness: 60, ownerHappiness: 60, chemistry: 65, record: { wins: 0, losses: 0 }, draftPicks: [] },
 
   // Western Conference — Southwest
-  { id: 'DAL', name: 'Dallas Mavericks', conference: 'Western', division: 'Southwest', colors: { primary: '#00538C', secondary: '#B8C4CA' }, prestige: 68, fanHappiness: 62, ownerHappiness: 62, chemistry: 64, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'HOU', name: 'Houston Rockets', conference: 'Western', division: 'Southwest', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 74, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'MEM', name: 'Memphis Grizzlies', conference: 'Western', division: 'Southwest', colors: { primary: '#5D76A9', secondary: '#12173F' }, prestige: 62, fanHappiness: 60, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'NOP', name: 'New Orleans Pelicans', conference: 'Western', division: 'Southwest', colors: { primary: '#0C2340', secondary: '#C8102E' }, prestige: 50, fanHappiness: 52, ownerHappiness: 55, chemistry: 58, record: { wins: 0, losses: 0 }, draftPicks: [] },
-  { id: 'SAS', name: 'San Antonio Spurs', conference: 'Western', division: 'Southwest', colors: { primary: '#C4CED4', secondary: '#000000' }, prestige: 65, fanHappiness: 65, ownerHappiness: 65, chemistry: 68, record: { wins: 0, losses: 0 }, draftPicks: [] }
+  { id: 'DAL', name: 'Dallas Wranglers', conference: 'Western', division: 'Southwest', colors: { primary: '#00538C', secondary: '#B8C4CA' }, prestige: 68, fanHappiness: 62, ownerHappiness: 62, chemistry: 64, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'HOU', name: 'Houston Apollos', conference: 'Western', division: 'Southwest', colors: { primary: '#CE1141', secondary: '#000000' }, prestige: 74, fanHappiness: 68, ownerHappiness: 68, chemistry: 70, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'MEM', name: 'Memphis Rhythm', conference: 'Western', division: 'Southwest', colors: { primary: '#5D76A9', secondary: '#12173F' }, prestige: 62, fanHappiness: 60, ownerHappiness: 60, chemistry: 62, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'NOP', name: 'New Orleans Krewe', conference: 'Western', division: 'Southwest', colors: { primary: '#0C2340', secondary: '#C8102E' }, prestige: 50, fanHappiness: 52, ownerHappiness: 55, chemistry: 58, record: { wins: 0, losses: 0 }, draftPicks: [] },
+  { id: 'SAS', name: 'San Antonio Vaqueros', conference: 'Western', division: 'Southwest', colors: { primary: '#C4CED4', secondary: '#000000' }, prestige: 65, fanHappiness: 65, ownerHappiness: 65, chemistry: 68, record: { wins: 0, losses: 0 }, draftPicks: [] }
 ];
 
 function getTeamById(teamId) {
@@ -298,7 +298,7 @@ function checkTeams() {
     assert.strictEqual(t.record.wins, 0);
     assert.strictEqual(t.record.losses, 0);
   });
-  assert.strictEqual(teams.getTeamById('BOS').name, 'Boston Celtics');
+  assert.strictEqual(teams.getTeamById('BOS').name, 'Boston Harbormen');
   assert.strictEqual(teams.getTeamById('nonexistent'), undefined);
   console.log('checkTeams: OK');
 }
@@ -1032,7 +1032,7 @@ Expected: all four `OK` lines plus `All validations passed`, with `checkPlayers:
 
 Use the `run` skill (or open `index.html` directly in a browser) and walk through:
 1. Page loads with a 30-team grid, no browser console errors.
-2. Click any team card (e.g. the Lakers). The view switches to the Dashboard: team name in the team's primary color, record "0-0", a roster size between 12 and 15, a payroll figure less than the salary cap figure (or clearly marked "over" if not), chemistry/fan/owner happiness numbers all between 1 and 100.
+2. Click any team card (e.g. the Monarchs). The view switches to the Dashboard: team name in the team's primary color, record "0-0", a roster size between 12 and 15, a payroll figure less than the salary cap figure (or clearly marked "over" if not), chemistry/fan/owner happiness numbers all between 1 and 100.
 3. Click "Roster" in the nav bar. A table of that team's real players appears, sorted by OVR descending by default. Click the "Name" column header — the table re-sorts alphabetically. Click "OVR" again — sort direction flips (ascending).
 4. Click "Standings" in the nav bar. All 30 real team names appear, grouped under their correct conference and division headers, each showing "0" wins and "0" losses.
 5. Click "Schedule" (or any other not-yet-built nav item). The placeholder view "Coming in a later phase." renders instead of a blank or broken page.

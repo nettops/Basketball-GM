@@ -408,7 +408,7 @@ function checkEffectsClampAndApply() {
   career.reputation = 50;
 
   const player = { id: 'p1', status: { morale: 50 } };
-  const ctx = { moment: 'postgame', role: 'gm', teamId: 'BOS', roster: [player], opponentName: 'Lakers' };
+  const ctx = { moment: 'postgame', role: 'gm', teamId: 'BOS', roster: [player], opponentName: 'Monarchs' };
 
   dc.applyDialogueEffect(state, { reputation: 3 }, ctx);
   assert.strictEqual(state.gmCareer.reputation, 53, 'reputation moved');

@@ -4,12 +4,12 @@ const path = require('path');
 const news = require(path.join(__dirname, '..', 'ui', 'leagueNews.js'));
 
 function checkCategorizeFeedEntry() {
-  assert.strictEqual(news.categorizeFeedEntry('Trade: Boston Celtics get Player A; Sacramento Kings get Player B'), 'trade');
-  assert.strictEqual(news.categorizeFeedEntry('Auto-traded with Sacramento Kings'), 'trade');
-  assert.strictEqual(news.categorizeFeedEntry("Player X signs with Boston Celtics ($5,000,000/yr, 2 yrs)"), 'freeagency');
-  assert.strictEqual(news.categorizeFeedEntry('Jayson Tatum (Boston Celtics) injured: Two Weeks'), 'injury');
-  assert.strictEqual(news.categorizeFeedEntry('Brooklyn Nets 117, Boston Celtics 120'), 'game');
-  assert.strictEqual(news.categorizeFeedEntry('Boston Celtics wins the 2026 championship!'), 'league');
+  assert.strictEqual(news.categorizeFeedEntry('Trade: Boston Harbormen get Player A; Sacramento Gold get Player B'), 'trade');
+  assert.strictEqual(news.categorizeFeedEntry('Auto-traded with Sacramento Gold'), 'trade');
+  assert.strictEqual(news.categorizeFeedEntry("Player X signs with Boston Harbormen ($5,000,000/yr, 2 yrs)"), 'freeagency');
+  assert.strictEqual(news.categorizeFeedEntry('Jayson Tatum (Boston Harbormen) injured: Two Weeks'), 'injury');
+  assert.strictEqual(news.categorizeFeedEntry('Brooklyn Ironworks 117, Boston Harbormen 120'), 'game');
+  assert.strictEqual(news.categorizeFeedEntry('Boston Harbormen wins the 2026 championship!'), 'league');
   assert.strictEqual(news.categorizeFeedEntry('Jayson Tatum wins MVP for 2026.'), 'league');
   console.log('checkCategorizeFeedEntry: OK');
 }

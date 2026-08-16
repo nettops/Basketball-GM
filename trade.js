@@ -76,7 +76,7 @@ function evaluateTrade(proposal, userTeamId, evaluateUserLeg) {
   return { accepted: accepted, legs: legs };
 }
 
-// Every team's side of the deal, e.g. "Boston Celtics get Player A; Sacramento
+// Every team's side of the deal, e.g. "Boston Harbormen get Player A; Sacramento
 // Kings get Player B". Built from proposal.assignments (fromTeamId/toTeamId),
 // not the players' now-updated teamId, so it's accurate regardless of when
 // it's called relative to the teamId mutation below.

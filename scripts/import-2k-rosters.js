@@ -88,7 +88,7 @@ function headroomAgeFactor(age) {
 }
 
 // 2K team name -> game team id, matched on the unique nickname so
-// "LA Clippers" vs "Los Angeles Clippers" cannot break it.
+// "LA Surf" vs "Los Angeles Clippers" cannot break it.
 const teamIdByNickname = {};
 TEAMS.forEach(t => { teamIdByNickname[t.name.split(' ').pop()] = t.id; });
 

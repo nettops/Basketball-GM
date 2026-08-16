@@ -35,7 +35,7 @@ function fullContext(moment, role) {
   return {
     moment: moment, role: role || 'gm',
     userWon: false, userLost: true, margin: 6,
-    teamName: 'Celtics', opponentName: 'Lakers', leadBlown: 11,
+    teamName: 'Harbormen', opponentName: 'Monarchs', leadBlown: 11,
     topScorerName: 'J. Tatum', topScorerPoints: 31,
     userScore: 104, opponentScore: 110, isPlayoff: false,
     streak: -2, seasonWins: 20, seasonLosses: 15,

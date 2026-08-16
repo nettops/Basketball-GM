@@ -113,7 +113,7 @@ Global: custom scrollbars, visible `:focus-visible` rings, and a `@media (prefer
 
 ```
 ┌──────────────┬────────────────────────────────────────┐
-│  NBA GM      │  [logo] Boston Celtics    41-22        │  #app-topbar
+│  NBA GM      │  [logo] Boston Harbormen    41-22        │  #app-topbar
 │              │  SEASON 2026 · DAY 63 · $142M/$154M ▓▓░│
 │  ── TEAM ──  ├────────────────────────────────────────┤
 │   Dashboard  │                                        │

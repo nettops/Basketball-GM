@@ -44,11 +44,25 @@ ZenGM (basketball-gm) — https://github.com/zengm-games/zengm
 
 
 --------------------------------------------------------------------------
-A NOTE ON THE ROSTER DATA
+A NOTE ON TEAMS, LOGOS AND ROSTER DATA
 --------------------------------------------------------------------------
 
-players-2026.js and related data files contain real player names, team names
-and attribute ratings. Names of real people, real NBA teams and their marks
-are the property of their respective owners and are used here descriptively.
-No claim of ownership is made over them, and no endorsement or affiliation is
-implied.
+TEAMS ARE FICTIONAL. The thirty clubs in teams.js are invented. Each keeps a
+real city, because market size and prestige are modelled against real market
+realities and would be arbitrary numbers attached to invented places — but no
+club name, nickname or mark belongs to any real team.
+
+NO LOGOS ARE DISTRIBUTED. assets/logos/ ships empty by design. The UI renders
+a colored badge built from each team's own palette, and will use a logo file
+only if someone adds one themselves. See assets/logos/README.md.
+
+ROSTER DATA IS REAL. players-2026.js contains real player names together with
+attribute ratings. Those names belong to the players themselves; the ratings
+are this project's own assessments, not any league's or publisher's. They are
+used descriptively, no ownership of any person's name or likeness is claimed,
+and no endorsement or affiliation with any player, club or league is implied
+or should be inferred.
+
+Anyone redistributing this, or building anything commercial on it, should
+satisfy themselves about that last paragraph independently. A licence covers
+copyright in the code; it does not grant rights in anybody's name.

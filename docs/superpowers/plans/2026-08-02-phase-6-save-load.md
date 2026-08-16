@@ -406,7 +406,7 @@ console.log(saveModule.listSaves().every(s => s.empty));
 const r1 = saveModule.saveToSlot(1, 'My Dynasty', gs);
 console.log(r1.success);
 const list = saveModule.listSaves();
-console.log(list[0].empty === false, list[0].teamName === 'Boston Celtics', list[1].empty, list[5].slotId === 'autosave' && list[5].empty);
+console.log(list[0].empty === false, list[0].teamName === 'Boston Harbormen', list[1].empty, list[5].slotId === 'autosave' && list[5].empty);
 
 const loadResult = saveModule.loadFromSlot(1, {});
 console.log(loadResult.success);
@@ -574,7 +574,7 @@ function checkSlotStorageLifecycle() {
 
   const list = saveModule.listSaves();
   assert.strictEqual(list[0].empty, false);
-  assert.strictEqual(list[0].teamName, 'Boston Celtics');
+  assert.strictEqual(list[0].teamName, 'Boston Harbormen');
   assert.strictEqual(list[0].name, 'My Dynasty');
   assert.strictEqual(list[1].empty, true, 'slot 2 should remain untouched');
   assert.strictEqual(list[5].slotId, 'autosave');
