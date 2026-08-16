@@ -213,22 +213,6 @@ select { cursor: pointer; }
    left the Main menu button floating directly under the last hub instead of
    pinned to the bottom. */
 #nav-bar { padding: 8px 0 16px; display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
-.nav-item {
-  display: block; width: 100%; text-align: left;
-  padding: 7px 18px;
-  background: none; border: none; border-left: 3px solid transparent;
-  border-radius: 0;
-  color: var(--text-dim); font-size: .875rem;
-}
-.nav-item:hover:not(:disabled) {
-  background: var(--surface-3); border-color: transparent;
-  border-left-color: var(--line-strong); color: var(--text);
-}
-.nav-item.active {
-  background: var(--accent-soft);
-  border-left-color: var(--accent);
-  color: var(--text); font-weight: 650;
-}
 
 /* ---------- Topbar ---------- */
 .topbar {
@@ -245,7 +229,6 @@ select { cursor: pointer; }
      the meta on a single line from 380px to 1200px. */
   flex-wrap: wrap;
 }
-.topbar-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .identity-text { min-width: 0; }
 .identity-name { font-size: 1.05rem; font-weight: 700; white-space: nowrap; }
 /* Defensive, matching .identity-name above: a conference/division label should
@@ -253,12 +236,6 @@ select { cursor: pointer; }
    this box at its natural width, and removing this changes nothing at any
    width from 380px up. It guards the phrase if that layout changes again. */
 .identity-meta { font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--text-mute); white-space: nowrap; }
-.identity-record {
-  margin-left: 8px; padding-left: 14px;
-  border-left: 1px solid var(--line);
-  font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums;
-}
-.identity-record span { color: var(--text-mute); margin: 0 2px; }
 
 .topbar-status { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
 .status-chip { display: flex; flex-direction: column; gap: 1px; min-width: 54px; }
@@ -787,9 +764,6 @@ table { border-collapse: collapse; width: 100%; }
 .morale-chip.morale-neutral { color: var(--text-mute); }
 .morale-chip.morale-unhappy { color: var(--loss); }
 
-.leaders-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.leaders-grid .data-table { margin-top: 6px; }
-
 .headline-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .headline-list li { font-size: .85rem; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .headline-list li:last-child { border-bottom: none; padding-bottom: 0; }
@@ -942,7 +916,6 @@ table { border-collapse: collapse; width: 100%; }
   background: transparent; border-color: transparent; color: var(--text-mute);
 }
 .pixel-nudge-x:hover:not(:disabled) { color: var(--text, #e8e8e8); border-color: #4a5262; }
-.pixel-nudge-run { border-color: #d8a13c; }
 .pixel-nudge-text { color: var(--text, #e8e8e8); }
 
 /* Leave-a-live-game confirmation (ui/pixelHud.js). Overlays the court like
@@ -1157,8 +1130,6 @@ table { border-collapse: collapse; width: 100%; }
 .banner-label { font-size: 0.62rem; letter-spacing: 0.14em; opacity: 0.85; }
 .banner-large .banner-year { font-size: 1.8rem; }
 .champ-scene { max-width: 520px; margin: 24px auto; }
-.select-name { margin: 10px 0 14px; display: flex; gap: 8px; align-items: center; justify-content: center; }
-.select-name input { padding: 6px 8px; }
 
 /* ---------- Broadcast chrome (2026-08-14 re-skin) ---------- */
 
