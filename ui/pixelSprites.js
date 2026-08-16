@@ -349,6 +349,20 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
     const lead = (opts.layup.side || 1) >= 0;
     ctx.fillRect(left + (lead ? 6 : 2), topU + 16, 2, 4);   // driven knee
     ctx.fillRect(left + (lead ? 2 : 6), topU + 19, 2, 5);   // trail leg hanging
+  } else if (opts.defending) {
+    // A STANCE: wide base, knees bent, feet on the floor. The width is what
+    // reads at this size — a 10px body sat down into a 12px base is instantly
+    // a different silhouette from the same body standing, and it is the only
+    // change that survives being one of ten sprites on a court.
+    //
+    // `depth` runs 1 on the ball to 0 on the weak side, so the man guarding the
+    // play is deepest and nobody forty feet away is drawn crouching.
+    const dp = Math.max(0, Math.min(1, opts.defending.depth || 0));
+    const wide = Math.round(dp * 2);
+    const footY = top + 24;
+    const legH = Math.max(3, 6 + legT - hipDrop - Math.round(dp * 2));
+    ctx.fillRect(left + 1 - wide, footY - legH, 2, legH);
+    ctx.fillRect(left + 7 + wide, footY - legH, 2, legH);
   } else if (opts.turning) {
     // A SPIN, drawn from the feet up.
     //
@@ -501,6 +515,30 @@ function drawPlayerSprite(ctx, x, y, colors, number, opts) {
       ctx.fillRect(lx + (lead ? 3 : 5), topU + 10, 2, 2);
       ctx.fillRect(lx + (lead ? 1 : 7), topU + 9, 2, 4);
     }
+  } else if (opts.defending) {
+    // ACTIVE HANDS. A stance with the arms hanging is a man standing with his
+    // knees bent; the hands are what say he is guarding somebody. Held out and
+    // low by default — that is where a defender's hands actually live — and
+    // ONE of them goes up to contest, on the side the shooter is.
+    //
+    // One, not both: two arms up is the shooting pose, and a defender who is
+    // drawn shooting is worse than a defender who is drawn idle.
+    const dfd = opts.defending;
+    const dp = Math.max(0, Math.min(1, dfd.depth || 0));
+    const cn = Math.max(0, Math.min(1, dfd.contest || 0));
+    const out = Math.round(dp * 2);
+    const up = (dfd.side || 1) >= 0;
+    // The raised arm comes back IN as it goes up. Held out wide AND raised it
+    // left a gap between the shoulder and the limb, and a 2px bar floating
+    // beside the head reads as a pole rather than as an arm — the same defect
+    // the dunking arm had before it was put on the ball's clock. Hands are wide
+    // when they are low, because that is where a defender's hands live; a
+    // contest is straight up.
+    const cOut = Math.round(out * (1 - cn));
+    const cy = Math.round(topU + 9 - cn * 15);
+    const ch = Math.max(2, Math.round(5 + bodyT + cn * 8));
+    ctx.fillRect(lx + (up ? 8 + cOut : -cOut), cy, 2, ch);
+    ctx.fillRect(lx + (up ? -out : 8 + out), topU + 9, 2, 5 + bodyT);
   } else if (opts.stumbling) {
     // Arms flung out ASYMMETRICALLY and further than before — lead arm thrown
     // up and out, trail arm dropped behind. Both arms at the same height reads

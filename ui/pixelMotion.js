@@ -1131,6 +1131,44 @@ function contactDecay(ms) {
 //
 // Highest first. A man dunking is not also dribbling; a man in his
 // follow-through is not also taking a jump shot.
+// THE DEFENSIVE STANCE, which did not exist.
+//
+// Half of every possession is a man guarding somebody, and all of it was drawn
+// with the idle pose and the running pose — the same two shapes as a man
+// standing on the weak side with nothing to do. Five sprites per team doing
+// nothing recognisable is the largest single block of unanimated basketball in
+// the game, and it is on screen the entire time.
+//
+// Two numbers, both derived rather than stored:
+//
+//   depth    how far he is sitting down in it. Deepest on the ball, easing off
+//            with distance — a man forty feet from the play is not in a stance,
+//            he is standing, and drawing him crouched is as wrong as drawing
+//            the on-ball defender upright.
+//   contest  a hand up. Only when the man he is near is actually going up.
+//
+// He also has to STOP defending to run: you do not slide the length of the
+// floor. Past a jog the stance releases and the running pose takes over, which
+// is what the speed term does.
+const DEFEND_ON_BALL_PX = 26;      // inside this he is guarding the ball
+const DEFEND_FAR_PX = 74;          // beyond this he is just standing
+const DEFEND_MAX_SPEED = 70;       // px/s past which he is running, not sliding
+const CONTEST_PX = 30;             // near enough for a hand to matter
+
+function defenseStance(distToBall, speed, shooterUp) {
+  const d = typeof distToBall === 'number' ? distToBall : Infinity;
+  if (d >= DEFEND_FAR_PX) return { depth: 0, contest: 0 };
+  // Released by speed: a sprinting defender is a runner.
+  const s = Math.max(0, Math.min(1, 1 - (Math.abs(speed || 0) / DEFEND_MAX_SPEED)));
+  const near = d <= DEFEND_ON_BALL_PX ? 1
+    : 1 - (d - DEFEND_ON_BALL_PX) / (DEFEND_FAR_PX - DEFEND_ON_BALL_PX);
+  const depth = Math.max(0, Math.min(1, near * s));
+  // The hand goes up only if there is something to contest, and only from
+  // close enough that it would bother the shooter.
+  const contest = shooterUp && d <= CONTEST_PX ? Math.max(0, Math.min(1, s)) : 0;
+  return { depth: depth, contest: contest };
+}
+
 const POSE_ORDER = [
   'dunking',    // at the rim, ball overhead
   'layup',      // airborne finish, one knee driven
@@ -1138,6 +1176,11 @@ const POSE_ORDER = [
   'shooting',   // rising into a shot, both arms up
   'stumbling',  // beaten off the dribble
   'dribbling',  // working the ball
+  // Below dribbling because a defender never has the ball, and ABOVE moving
+  // because a man in a stance is doing something more specific than travelling.
+  // The speed term in defenseStance is what keeps a sprinting defender out of
+  // it — otherwise every man running the floor in transition slides up it.
+  'defending',  // in a stance, guarding somebody
   'moving',     // running
   'idle'
 ];
@@ -1682,6 +1725,10 @@ if (typeof module !== 'undefined' && module.exports) {
     contactStrength: contactStrength,
     contactDecay: contactDecay,
     POSE_ORDER: POSE_ORDER,
+    defenseStance: defenseStance,
+    DEFEND_ON_BALL_PX: DEFEND_ON_BALL_PX,
+    DEFEND_FAR_PX: DEFEND_FAR_PX,
+    CONTEST_PX: CONTEST_PX,
     posePriority: posePriority,
     ballSquash: ballSquash,
     BALL_SQUASH_SPEED: BALL_SQUASH_SPEED,

@@ -1126,6 +1126,18 @@ function renderPixelGame(container) {
       // and running at once, and only the priority decides which the arms
       // belong to.
       const handling = !!(dribbleState && pid === dribbleHolder);
+      // THE DEFENSIVE HALF OF EVERY POSSESSION, which was drawn with the idle
+      // and running poses and nothing else. `lastOffenseTeam` and the live ball
+      // position are already tracked up in the spring loop for the shading, so
+      // everything this needs was on hand — it was simply never asked for.
+      const onD = !!(teamById[pid] && lastOffenseTeam && teamById[pid] !== lastOffenseTeam);
+      const dBall = onD
+        ? Math.hypot(ballRef.x - (s.x || 0), ballRef.y - (s.y || 0)) : Infinity;
+      // Something to contest: whoever has it is rising into a finish.
+      const goingUp = !!(fr.a.jump || fr.a.dunk || fr.a.close);
+      const stance = onD
+        ? defenseStance(dBall, Math.hypot(s.vx || 0, s.vy || 0), goingUp)
+        : { depth: 0, contest: 0 };
       const pose = posePriority({
         dunking: dunkPose,
         layup: !!layupPose,
@@ -1133,6 +1145,7 @@ function renderPixelGame(container) {
         shooting: shooting || (isJumperNow && jumpLift > -1),
         stumbling: !reduceMotion && pid === stumbleId,
         dribbling: handling,
+        defending: stance.depth > 0.05,
         moving: moving
       });
       drawPlayerSprite(ctx, x, y - footLift, colorsById[pid], p ? p.jerseyNumber : '', {
@@ -1168,6 +1181,11 @@ function renderPixelGame(container) {
         // holds the follow-through, which is what a jumper actually looks like
         shooting: pose === 'shooting',
         following: pose === 'following',
+        defending: pose === 'defending'
+          ? { depth: stance.depth, contest: stance.contest,
+              // he shows his hands on the side the ball is
+              side: ballRef.x >= (s.x || 0) ? 1 : -1 }
+          : false,
         dunking: pose === 'dunking'
           ? (theDunk
               ? { hands: theDunk.hands, path: theDunk.path,

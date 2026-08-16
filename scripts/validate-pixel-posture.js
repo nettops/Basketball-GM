@@ -377,7 +377,10 @@ function checkOnlyOnePoseCanEverWin() {
   //
   // Every combination of flags, exhaustively: exactly one pose out, and it is
   // always the highest-priority flag that is set.
-  const FLAGS = ['dunking', 'layup', 'following', 'shooting', 'stumbling', 'dribbling', 'moving'];
+  // Every flag in POSE_ORDER, not a hand-kept subset — the list drifted the
+  // moment `defending` was added and the check went on passing over 128
+  // combinations of the seven it still knew about.
+  const FLAGS = motion.POSE_ORDER.filter(function (n) { return n !== 'idle'; });
   for (let mask = 0; mask < (1 << FLAGS.length); mask++) {
     const bag = {};
     FLAGS.forEach(function (f, i) { if (mask & (1 << i)) bag[f] = true; });
@@ -894,6 +897,85 @@ function checkAContactDunkIsHitAndKeepsGoing() {
     'px mid-climb, finishes at the same rim)');
 }
 
+function checkTheNewMovesAreNotSilent() {
+  // I SHIPPED THESE MUTE. The euro step, the spin and the alley-oop were built
+  // with '' in the sound slot of every keyframe, which put three silent moves
+  // next to a dunk that squeaks on its own plant and thumps on its own slam.
+  // Nothing failed, because no check had an opinion about audio.
+  //
+  // The property is simple and worth pinning: a move that is footwork makes a
+  // footwork sound, and a ball that crosses the lane in the air is heard
+  // leaving and heard arriving.
+  const voices = require('fs').readFileSync(
+    path.join(__dirname, '..', 'ui', 'pixelAudio.js'), 'utf8');
+  ['lob', 'catch', 'squeak'].forEach(function (name) {
+    assert.ok(voices.indexOf("case '" + name + "'") !== -1,
+      "ui/pixelAudio.js has no voice for '" + name + "'");
+  });
+  const cho = require('fs').readFileSync(
+    path.join(__dirname, '..', 'ui', 'pixelChoreographer.js'), 'utf8');
+  // The approach beats fire a squeak, the lob fires on the throw and the catch
+  // on the hang — the keyframe the ball actually changes hands on.
+  assert.ok(/period, quarter, clock, '', '', 'squeak'\)/.test(cho),
+    'the approach beats are silent again');
+  assert.ok(cho.indexOf("oopFrom ? 'lob' : ''") !== -1,
+    'the lob leaves the hand in silence');
+  assert.ok(cho.indexOf("oopFrom ? 'catch' : ''") !== -1,
+    'the catch is silent — and it is the one that has to land on the hands');
+  console.log('checkTheNewMovesAreNotSilent: OK (footwork squeaks, the lob is heard both ends)');
+}
+
+function checkTheDefenceIsActuallyGuardingSomebody() {
+  // Half of every possession is a man guarding somebody and all of it was drawn
+  // with the idle pose and the running pose — the same two shapes as a man on
+  // the weak side with nothing to do. Five sprites a team, on screen the whole
+  // time: the largest block of unanimated basketball in the game.
+  //
+  // Three properties, and each of them is a way the first version could have
+  // been wrong.
+  //
+  // DEEPEST ON THE BALL. A man forty feet from the play is standing, not
+  // crouching, and drawing him sat down is as wrong as drawing the on-ball
+  // defender upright.
+  const onBall = motion.defenseStance(8, 0, false);
+  const help = motion.defenseStance(45, 0, false);
+  const far = motion.defenseStance(motion.DEFEND_FAR_PX + 5, 0, false);
+  assert.ok(onBall.depth > help.depth && help.depth > far.depth,
+    'the stance does not ease off with distance: ' +
+    [onBall.depth, help.depth, far.depth].join(' / '));
+  assert.strictEqual(far.depth, 0, 'a man on the far side of the floor is in a stance');
+  assert.strictEqual(onBall.depth, 1, 'the on-ball defender is not fully in it');
+
+  // IT RELEASES TO RUN. You do not slide the length of the floor, and a
+  // transition defender drawn sliding is worse than one drawn running.
+  assert.strictEqual(motion.defenseStance(8, 400, true).depth, 0,
+    'a sprinting defender is still in a stance');
+  let prev = 1;
+  for (let sp = 0; sp <= 120; sp += 5) {
+    const d = motion.defenseStance(8, sp, false).depth;
+    assert.ok(d <= prev + 1e-9, 'the stance deepens as he speeds up');
+    prev = d;
+  }
+
+  // A HAND ONLY WHEN THERE IS SOMETHING TO CONTEST, and only from close enough
+  // to matter. A permanent hand-up is a pose, not a reaction.
+  assert.strictEqual(motion.defenseStance(8, 0, false).contest, 0,
+    'he contests a man who is not going up');
+  assert.ok(motion.defenseStance(8, 0, true).contest > 0, 'he never contests');
+  assert.strictEqual(motion.defenseStance(motion.CONTEST_PX + 10, 0, true).contest, 0,
+    'he contests from too far away to bother anybody');
+
+  // ...and the pose has to sit BELOW the ball-handling poses and ABOVE running,
+  // or a defender who picks the ball up is still drawn guarding.
+  const order = motion.POSE_ORDER;
+  assert.ok(order.indexOf('defending') > order.indexOf('dribbling'),
+    'a man with the ball can be drawn defending');
+  assert.ok(order.indexOf('defending') < order.indexOf('moving'),
+    'the stance never wins over running, so it never draws');
+  console.log('checkTheDefenceIsActuallyGuardingSomebody: OK (deep on the ball, ' +
+    'released by speed, hand up only on a shot)');
+}
+
 function checkNoTwoDunkRoutesAreTheSameRoute() {
   // The brief's central rule: no copy/paste variations. Two routes that never
   // separate by more than a body width are one route with two names.
@@ -1046,6 +1128,12 @@ function checkPosesStayWithinTheSpriteBox() {
     { p: { shooting: true }, air: false }, { p: { following: true, facing: 1 }, air: false },
     { p: { dunking: true, facing: 1 }, air: true }, { p: { dunking: true, facing: -1 }, air: true },
     { p: { layup: { side: 1, extend: 1 } }, air: true },
+    // The stance, at both ends of its range and mid-contest. It is a GROUNDED
+    // pose and gets no airborne allowance: a defender is standing on the floor.
+    { p: { defending: { depth: 1, contest: 0, side: 1 } }, air: false },
+    { p: { defending: { depth: 1, contest: 1, side: 1 } }, air: false },
+    { p: { defending: { depth: 1, contest: 1, side: -1 } }, air: false },
+    { p: { defending: { depth: 0.2, contest: 0, side: 1 } }, air: false },
     { p: { layup: { side: -1, extend: 0.5 } }, air: true },
     { p: { stumbling: true }, air: false }, { p: { crouch: 5 }, air: false },
     { p: { crouch: 3, lean: 2 }, air: false },
@@ -1087,6 +1175,8 @@ checkTheHandGoesUpWithTheBallAndStaysThere();
 checkTheApproachIsFootworkAndNotAHop();
 checkTheAlleyOopIsCaughtInTheAir();
 checkAContactDunkIsHitAndKeepsGoing();
+checkTheNewMovesAreNotSilent();
+checkTheDefenceIsActuallyGuardingSomebody();
 checkEveryDunkFinishesAtTheSameRim();
 checkTheHandMeetsTheBall();
 checkNoTwoDunkRoutesAreTheSameRoute();

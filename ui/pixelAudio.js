@@ -95,6 +95,16 @@ function playPixelSfx(name) {
     case 'block':   sfxNoise(a, 0.13, 'lowpass', 700, 0.9, 0.24); break;
     case 'squeak':  sfxNoise(a, 0.10, 'highpass', 3200, 2.5, 0.09); break;
     case 'whistle': sfxTone(a, 2700, 0.28, 'square', 0.05, 2500); break;
+    // A LOB LEAVING THE HAND, and the HANDS CLOSING ON IT at the other end.
+    //
+    // Passes had no voice at all, which was survivable while the ball simply
+    // changed owner between two men standing still — and stopped being so the
+    // moment an alley-oop put it in the air for a third of a second with
+    // everybody watching it. Two sounds because they are two events: the throw
+    // is soft and airy, the catch is a slap and it is the one that has to land
+    // on the same frame as the hands.
+    case 'lob':      sfxNoise(a, 0.13, 'bandpass', 700, 0.6, 0.05); break;
+    case 'catch':    sfxNoise(a, 0.06, 'bandpass', 1500, 1.6, 0.11); break;
     case 'buzzer':  sfxTone(a, 210, 0.75, 'square', 0.10); break;
     // quietest voice by far: it fires several times a second, so it sits
     // under the action rather than competing with it

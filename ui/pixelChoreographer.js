@@ -1935,9 +1935,14 @@ function createChoreographer(session) {
             oopFrom
               ? { x: oopFrom[0], y: oopFrom[1], holder: ev.assistPlayerId }
               : { x: relSpot[0], y: relSpot[1], holder: ev.playerId },
-            period, quarter, clock, '', '', '', null,
+            period, quarter, clock, '', '', oopFrom ? 'lob' : '', null,
+            // The camera goes to an OOP as well as to a poster. It is the other
+            // finish that is worth leaning in for, and it is the one where the
+            // interesting thing (a ball crossing the lane) happens somewhere
+            // other than under the rim.
             Object.assign(dunkPhase('gather'),
-              { zoomTo: impactKind === 'poster' ? impactAt : null }));
+              { zoomTo: impactKind === 'poster' ? impactAt
+                  : (oopFrom ? { x: relSpot[0], y: relSpot[1] } : null) }));
           // THE PLANT. His foot against the floor, at the deepest point of the
           // load — the frame everything is about to reverse from. The ten-phase
           // structure named it and there was nowhere for it to live.
@@ -1967,7 +1972,12 @@ function createChoreographer(session) {
           // out from under him); everybody else keeps playing.
           push(dunkBeatsMs.hang, hangPos,
             { x: rimX, y: hoop.y, holder: ev.playerId },
-            period, quarter, clock, '', '', '', null, dunkPhase('hang'));
+            // THE CATCH. The hang is the keyframe the ball changes hands on for
+            // an oop — that is what makes it an oop rather than a dunk with a
+            // pass in front of it — so the slap of hands on ball belongs here
+            // and nowhere else.
+            period, quarter, clock, '', '', oopFrom ? 'catch' : '', null,
+            dunkPhase('hang'));
           // THE SLAM STAYS FROZEN, and that is not an oversight to be tidied up
           // later. 90ms with the whole floor held is the impact hold: the eye
           // is nailed to the rim, and this beat is where the previous version
@@ -2070,7 +2080,11 @@ function createChoreographer(session) {
               push(BEAT[ph],
                 flowPositions(at, closeLock, pi * 83 + ei * 5 + k, defenderIds),
                 { x: at[closeBy][0], y: at[closeBy][1], holder: ev.playerId },
-                period, quarter, clock, '');
+                // FOOTWORK HAS A SOUND, and both of these are footwork — a
+                // euro's plant and a pivot are shoe against floor, which is
+                // exactly what `squeak` is for. Built silent first, which put
+                // a mute move next to a dunk that squeaks on its own plant.
+                period, quarter, clock, '', '', 'squeak');
               tagClose(Object.assign({ phase: ph, approach: closeApproach,
                 step: (k + 1) / beats.length }, closeMeta));
             });
