@@ -42,14 +42,43 @@ const SAVE_SLOT_COUNT = 5;
 // applySavedState below, and a v2 save gets a career opened at its CURRENT
 // year rather than a fabricated history back to 2026.
 const SAVE_FORMAT_VERSION = 3;
-const SAVE_INDEX_KEY = 'nba-gm-save-index';
+
+// Storage keys carry the app's name, so renaming the app to "lets hoop!"
+// renames them — and a renamed key is an ORPHANED save, not a migrated one.
+// localStorage has no rename; the old entries simply stop being looked for and
+// the player's leagues appear to have been deleted.
+//
+// So both names are known here. Reads fall back to the legacy key and write
+// the entry back under the new one (see readSaveIndex / loadGame), which
+// migrates a save the first time it is touched rather than requiring a
+// migration pass that a returning player might never trigger. The legacy names
+// are frozen strings and must never be "tidied up" to match the new ones.
+const SAVE_INDEX_KEY = 'letshoop-save-index';
+const LEGACY_SAVE_INDEX_KEY = 'nba-gm-save-index';
 
 // Only mutable fields — id/name/conference/division/colors never change and
 // don't need round-tripping through a save.
 const TEAM_SAVE_FIELDS = ['prestige', 'fanHappiness', 'ownerHappiness', 'chemistry', 'timeline', 'marketSize', 'record', 'draftPicks', 'allTimeWins', 'allTimeLosses', 'lastSeasonWins', 'finances', 'coach', 'strategy', 'retiredNumbers', 'startingFive'];
 
 function saveSlotKey(slotId) {
+  return slotId === 'autosave' ? 'letshoop-save-autosave' : 'letshoop-save-' + slotId;
+}
+
+function legacySaveSlotKey(slotId) {
   return slotId === 'autosave' ? 'nba-gm-save-autosave' : 'nba-gm-save-' + slotId;
+}
+
+// Reads a slot under its current key, falling back to the pre-rename one and
+// promoting it if that is where the data still lives. The legacy entry is left
+// in place rather than deleted: a copy costs a few KB and means downgrading to
+// an older build does not lose the league.
+function readSlotRaw(slotId) {
+  const current = _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
+  if (current !== null && current !== undefined) return current;
+  const legacy = _SAVE_DATA.storage.getItem(legacySaveSlotKey(slotId));
+  if (legacy === null || legacy === undefined) return legacy;
+  _SAVE_DATA.storage.setItem(saveSlotKey(slotId), legacy);
+  return legacy;
 }
 
 // Only used by applySavedState below, for teams it doesn't already have a
@@ -395,7 +424,13 @@ function applySavedState(payload, gameState) {
 
 function readSaveIndex() {
   try {
-    const raw = _SAVE_DATA.storage.getItem(SAVE_INDEX_KEY);
+    let raw = _SAVE_DATA.storage.getItem(SAVE_INDEX_KEY);
+    if (!raw) {
+      // Pre-rename index. Promote it so the very next write lands on the new
+      // key and every later read takes the fast path above.
+      raw = _SAVE_DATA.storage.getItem(LEGACY_SAVE_INDEX_KEY);
+      if (raw) _SAVE_DATA.storage.setItem(SAVE_INDEX_KEY, raw);
+    }
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
@@ -440,7 +475,7 @@ function saveToSlot(slotId, name, gameState) {
 }
 
 function loadFromSlot(slotId, gameState) {
-  const raw = _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
+  const raw = readSlotRaw(slotId);
   if (!raw) return { success: false, reason: 'No save found in that slot.' };
   let payload;
   try {
@@ -456,6 +491,9 @@ function loadFromSlot(slotId, gameState) {
 
 function deleteSlot(slotId) {
   _SAVE_DATA.storage.removeItem(saveSlotKey(slotId));
+  // The legacy copy too, or a deleted league reappears the next time
+  // readSlotRaw falls back to it.
+  _SAVE_DATA.storage.removeItem(legacySaveSlotKey(slotId));
   const index = readSaveIndex().filter(function (entry) { return entry.slotId !== slotId; });
   writeSaveIndex(index);
 }
@@ -464,7 +502,7 @@ function deleteSlot(slotId) {
 // Blob/URL.createObjectURL for a file download (same pattern as
 // ui/careerLedger.js's CSV export).
 function getRawSlotPayload(slotId) {
-  return _SAVE_DATA.storage.getItem(saveSlotKey(slotId));
+  return readSlotRaw(slotId);
 }
 
 // Writes an already-serialized payload directly to a slot — shared by
@@ -488,7 +526,7 @@ function importPayloadToSlot(slotId, payload) {
 // doesn't touch the live GameState at all, so cloning the slot you're
 // currently playing doesn't affect your current session.
 function cloneSlot(sourceSlotId, targetSlotId, newName) {
-  const raw = _SAVE_DATA.storage.getItem(saveSlotKey(sourceSlotId));
+  const raw = readSlotRaw(sourceSlotId);
   if (!raw) return { success: false, reason: 'No save found in that slot.' };
   let payload;
   try {
@@ -606,6 +644,14 @@ if (typeof module !== 'undefined' && module.exports) {
     SAVE_FORMAT_VERSION: SAVE_FORMAT_VERSION,
     TEAM_SAVE_FIELDS: TEAM_SAVE_FIELDS,
     saveSlotKey: saveSlotKey,
+    // Exported so the legacy-key migration can be TESTED. Seeding a
+    // pre-rename save means writing under the old key, which needs the
+    // storage object itself; without this the one path that can silently eat
+    // somebody's leagues would have no coverage at all.
+    legacySaveSlotKey: legacySaveSlotKey,
+    LEGACY_SAVE_INDEX_KEY: LEGACY_SAVE_INDEX_KEY,
+    SAVE_INDEX_KEY: SAVE_INDEX_KEY,
+    _storage: _SAVE_DATA.storage,
     serializeGameState: serializeGameState,
     applySavedState: applySavedState,
     validateSavePayload: validateSavePayload,

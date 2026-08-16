@@ -1,4 +1,4 @@
-# NBA GM Simulator — working notes
+# lets hoop! — working notes
 
 A basketball GM simulation that runs entirely in the browser. No build step, no
 bundler, no `package.json`. `index.html` loads ~120 plain `<script>` tags in
@@ -13,7 +13,7 @@ need a real origin):
 python scripts/devserver.py 8137
 ```
 
-In Claude Code, `preview_start` with `{name: "nba-gm"}` starts that same server
+In Claude Code, `preview_start` with `{name: "lets-hoop"}` starts that same server
 from `.claude/launch.json` and opens the preview.
 
 ## The module pattern — read this before editing any file

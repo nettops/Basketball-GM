@@ -37,6 +37,59 @@ function makeFakeGameState(overrides) {
   }, overrides || {});
 }
 
+// Runs HERE, before the checks below, and not at the end of the file: several
+// of them call applySavedState, which replaces PLAYERS_2026 in place and
+// leaves the league empty. A save serialized after that has no players in
+// it, and validateSavePayload rejects it on load for a reason that has
+// nothing to do with what this check is about.
+// Renaming the app renamed the localStorage keys, and localStorage has no
+// rename — it only has "write somewhere else and stop looking here". Get this
+// wrong and every league anybody has ever played simply stops existing, with
+// no error to notice: the slot list comes back empty and looks like a fresh
+// install. That is the worst failure this file can catch, so it catches it.
+function checkASaveMadeBeforeTheRenameStillLoads() {
+  const s = require(path.join(__dirname, '..', 'save.js'));
+  const gs = makeFakeGameState();
+
+  // Write a genuine save through the real API, then move it to where a
+  // pre-rename build would have left it. Hand-building the payload instead
+  // would test a shape the game never actually writes.
+  s.saveToSlot(2, 'Pre-rename League', gs);
+  const realPayload = s.getRawSlotPayload(2);
+  const realIndex = JSON.stringify(s.listSaves());
+
+  s._storage.setItem(s.legacySaveSlotKey(2), realPayload);
+  s._storage.setItem(s.LEGACY_SAVE_INDEX_KEY, realIndex);
+  s._storage.removeItem(s.saveSlotKey(2));
+  s._storage.removeItem(s.SAVE_INDEX_KEY);
+
+  const listed = s.listSaves();
+  assert.ok(listed.some(function (e) { return e.slotId === 2; }),
+    'a league saved before the rename must still appear in the slot list');
+
+  const loaded = {};
+  const res = s.loadFromSlot(2, loaded);
+  assert.ok(res.success, 'and must still load: ' + (res.reason || ''));
+  assert.strictEqual(loaded.userTeamId, gs.userTeamId, 'with its team intact');
+
+  // Promoted on the way through, so the next read takes the current key and
+  // the fallback is a one-time cost rather than forever.
+  assert.ok(s._storage.getItem(s.saveSlotKey(2)),
+    'reading a legacy slot must migrate it onto the new key');
+  assert.ok(s._storage.getItem(s.SAVE_INDEX_KEY),
+    'and migrate the index with it');
+
+  // Deleting has to reach BOTH copies, or the league rises from the dead the
+  // next time the legacy fallback runs.
+  s.deleteSlot(2);
+  assert.ok(!s._storage.getItem(s.legacySaveSlotKey(2)),
+    'deleting a migrated save must delete the pre-rename copy too');
+  assert.ok(!s.loadFromSlot(2, {}).success, 'and it must stay deleted');
+
+  console.log('checkASaveMadeBeforeTheRenameStillLoads: OK');
+}
+checkASaveMadeBeforeTheRenameStillLoads();
+
 // Box scores are kept for the USER's games (so ui/schedule.js's expandable box
 // score still works after a reload) and dropped for everyone else's (so a save
 // doesn't carry ~1230 games' worth of player lines). Dropping them wholesale is
@@ -686,5 +739,6 @@ function checkAnOldSaveWithoutDialogueStateLoads() {
   console.log('checkAnOldSaveWithoutDialogueStateLoads: OK');
 }
 checkAnOldSaveWithoutDialogueStateLoads();
+
 
 console.log('All save/load validations passed');

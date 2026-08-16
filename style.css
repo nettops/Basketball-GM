@@ -198,6 +198,14 @@ select { cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 .sidebar-brand span { color: var(--accent); }
+/* The mark is pixel art, so it must never be smoothed — image-rendering keeps
+   the blocks square at whatever size the rail is. The word-mark underneath is
+   the fallback the img's onerror reveals, so a checkout with no brand file
+   still reads "lets hoop!" rather than showing a broken image. */
+.brand-mark {
+  display: block; width: 100%; max-width: 92px; height: auto; margin: 0 auto;
+  image-rendering: pixelated;
+}
 
 /* Eight rail icons, vertical stack. */
 /* flex:1 so the column fills the sidebar's full height — without it the rail is

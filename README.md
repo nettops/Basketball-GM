@@ -1,4 +1,4 @@
-# NBA GM Simulator
+# lets hoop!
 
 A comprehensive basketball general manager simulation game with season-by-season career history tracking, player comparisons, and advanced roster management.
 

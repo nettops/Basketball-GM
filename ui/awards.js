@@ -4,9 +4,14 @@ const AWARD_LABELS = {
   roy: 'Rookie of the Year',
   sixthMoy: 'Sixth Man of the Year',
   mip: 'Most Improved Player',
-  allNba1: 'All-NBA First Team',
-  allNba2: 'All-NBA Second Team',
-  allNba3: 'All-NBA Third Team'
+  // Labels only. The KEYS stay 'allNba1'..'allNba3' on purpose — they are
+  // written into player.awardsWon and every save ever made holds them, so
+  // renaming the key would erase the award history of anyone who has already
+  // played a season. What a player reads is this string; what the save holds
+  // is an internal id nobody sees.
+  allNba1: 'All-League First Team',
+  allNba2: 'All-League Second Team',
+  allNba3: 'All-League Third Team'
 };
 
 const AWARD_DISPLAY_ORDER = ['mvp', 'dpoy', 'roy', 'sixthMoy', 'mip', 'allNba1', 'allNba2', 'allNba3'];

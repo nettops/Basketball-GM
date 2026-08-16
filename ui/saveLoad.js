@@ -16,7 +16,7 @@ function downloadSaveFile(slotId, teamNameForFilename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'nba-gm-save-' + (teamNameForFilename || 'league').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.json';
+  link.download = 'letshoop-save-' + (teamNameForFilename || 'league').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.json';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
