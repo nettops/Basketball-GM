@@ -976,7 +976,13 @@ function renderPixelGame(container) {
       // stumble / heavy / light / balance since it was written and the answer
       // has been stamped on every keyframe of the string and read by nobody:
       // four landings computed, one landing drawn.
-      const landStyle = (dunkMark && dunkMark.landing) || 'balance';
+      // Read straight off the frame rather than through `dunkMark`, which is
+      // not declared until seventy lines below this. `ui-smoke` and all 63
+      // validators passed with the reference in place — the temporal dead zone
+      // only bites when a dunk is actually on screen, which is a thing only the
+      // running game does.
+      const landMark = (fr.a.dunk && fr.a.dunk.id ? fr.a.dunk : (fr.b.dunk || null));
+      const landStyle = (landMark && landMark.landing) || 'balance';
       const landSquash = land
         ? landingSquash(playbackMs - land.at, land.kind, landStyle) : 0;
       // ...and a stumble carries him sideways while he sorts his feet out. The
