@@ -201,19 +201,6 @@ function setPanelAccent(el, team) {
   el.style.setProperty('--tc-ink', hexLuminance(accent) >= ACCENT_INK_FLIP ? '#0B0E14' : '#FFFFFF');
 }
 
-// 1st/2nd/3rd/4th, and 11th/12th/13th — the exceptions that catch naive
-// implementations. Written out rather than clever so it reads at a glance.
-function ordinal(n) {
-  const tens = n % 100;
-  if (tens >= 11 && tens <= 13) return n + 'th';
-  switch (n % 10) {
-    case 1: return n + 'st';
-    case 2: return n + 'nd';
-    case 3: return n + 'rd';
-    default: return n + 'th';
-  }
-}
-
 function millions(value) {
   return '$' + Math.round(value / 1e6) + 'M';
 }
@@ -228,7 +215,6 @@ function timelineLabel(timeline) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     renderTeamSelect: renderTeamSelect,
-    ordinal: ordinal,
     millions: millions,
     timelineLabel: timelineLabel
   };
