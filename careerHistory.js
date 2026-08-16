@@ -168,10 +168,6 @@ function recordContractInHistory(player, season, salary, yearsRemaining, teamId,
   return record;
 }
 
-function getSeasonBreakdown(player, season) {
-  return ensureCareerHistory(player).seasonByYear[season] || null;
-}
-
 function getTeamBreakdown(player, teamId) {
   return ensureCareerHistory(player).teamHistory.filter(function (t) { return t.teamId === teamId; });
 }
@@ -214,7 +210,6 @@ if (typeof module !== 'undefined' && module.exports) {
     recordInjuryReturn: recordInjuryReturn,
     recordContractInHistory: recordContractInHistory,
     checkAndUpdateCareerHighs: checkAndUpdateCareerHighs,
-    getSeasonBreakdown: getSeasonBreakdown,
     getTeamBreakdown: getTeamBreakdown,
     getCareerProgressionTrend: getCareerProgressionTrend,
     queryHistoryByFilters: queryHistoryByFilters

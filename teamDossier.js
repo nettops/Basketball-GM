@@ -45,10 +45,6 @@ function getRosterRanks() {
   return _dossierRanks;
 }
 
-// Exposed for tests and for any future screen that invalidates the league (an
-// expansion draft would change every rank).
-function resetRosterRanks() { _dossierRanks = null; }
-
 function capStatus(payroll, capLevel) {
   if (payroll > getEffectiveLuxuryTaxLine(capLevel)) {
     return { level: 'bad', label: 'Over the tax line' };
@@ -105,7 +101,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getTeamDossier: getTeamDossier,
     getRosterRanks: getRosterRanks,
-    resetRosterRanks: resetRosterRanks,
     rosterStrength: rosterStrength,
     teamVerdict: teamVerdict,
     capStatus: capStatus

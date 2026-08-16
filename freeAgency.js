@@ -376,27 +376,6 @@ function evaluateResign(player, team, offer, rng) {
   };
 }
 
-// Bounds on what a team may offer its own expiring player. Same shape as
-// checkOffer so the panel can treat them alike.
-function checkResignOffer(team, player, salary, years, rng) {
-  const ask = resignAsk(player, rng);
-  const max = Math.round(ask.salary * RESIGN_MAX_PREMIUM);
-  if (_FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
-    return { ok: false, reason: 'Roster is full (' + ROSTER_MAX + ' players).', ask: ask, max: max };
-  }
-  if (!(salary >= ask.salary)) {
-    return { ok: false, reason: 'He is asking $' + ask.salary.toLocaleString() + '.', ask: ask, max: max };
-  }
-  if (salary > max) {
-    return { ok: false, reason: 'You cannot go above $' + max.toLocaleString() +
-      ' to re-sign your own player.', ask: ask, max: max };
-  }
-  if (!(years >= 1 && years <= MAX_CONTRACT_YEARS)) {
-    return { ok: false, reason: 'Contracts run 1 to ' + MAX_CONTRACT_YEARS + ' years.', ask: ask, max: max };
-  }
-  return { ok: true, reason: null, ask: ask, max: max };
-}
-
 // Commits a re-signing. Separate from signPlayer only in that the player is
 // already on the roster, so signPlayer's own 're_signing' branch finally
 // becomes reachable — it never could be before, because teamId was always
@@ -648,7 +627,6 @@ if (typeof module !== 'undefined' && module.exports) {
     resignAsk: resignAsk,
     bestMarketAlternative: bestMarketAlternative,
     evaluateResign: evaluateResign,
-    checkResignOffer: checkResignOffer,
     applyResign: applyResign,
     runResigningWindow: runResigningWindow,
     autoExerciseResignRights: autoExerciseResignRights,

@@ -89,14 +89,6 @@ const REF_COLORS = { skin: '#d9b38c', hair: '#2b2b2b', jersey: '#e8e8e8', trim: 
 const _replayHistory = [];
 const REPLAY_LIMIT = 8;
 
-function setWatchSession(session) {
-  _watchSession = session;
-  if (session) {
-    _replayHistory.unshift(session);
-    if (_replayHistory.length > REPLAY_LIMIT) _replayHistory.length = REPLAY_LIMIT;
-  }
-}
-
 // A live session is a game that has NOT happened yet: the view steps it while
 // playing it back. It only enters the replay history once it is complete,
 // because until then there is no result to replay.
@@ -1815,7 +1807,6 @@ function renderPixelGame(container) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    setWatchSession: setWatchSession,
     setLiveWatchSession: setLiveWatchSession,
     finishPendingPixelGame: finishPendingPixelGame,
     isLiveWatchPending: isLiveWatchPending,
