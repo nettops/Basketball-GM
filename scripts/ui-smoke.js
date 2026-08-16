@@ -581,8 +581,22 @@ const UI_SMOKE = (function () {
     const results = [];
     const startView = GameState.currentView;
 
-    const hubs = Array.from(document.querySelectorAll('#nav-bar .rail-item'));
-    results.push(ok('nav:hub-count', hubs.length === 7, hubs.length + ' hubs'));
+    // [data-hub], not bare .rail-item: the Main menu exit button carries the
+    // same rail-item class for styling (ui/nav.js:195) but is not a hub.
+    // Counting it read 8 here — and worse, the reachability loop below clicked
+    // it, which opens the "Leave this career?" overlay. Nothing dismissed it,
+    // so every later group hit-tested against a modal and the whole dock group
+    // reported its controls unreachable.
+    const hubs = Array.from(document.querySelectorAll('#nav-bar .rail-item[data-hub]'));
+    // Derived rather than a literal: which hubs render depends on play mode and
+    // career state (renderNav skips any hub whose views all filter out), so the
+    // count legitimately moves. A hardcoded 7 went stale the moment hub-career
+    // was added. Same arguments script.js:789 passes renderNav.
+    const expectedHubs = NAV_HUBS.filter(function (h) {
+      return visibleHubViews(h, GameState.playMode, GameState.gameMode, !!GameState.playerLegacy).length > 0;
+    }).length;
+    results.push(ok('nav:hub-count', hubs.length === expectedHubs,
+      hubs.length + ' hubs, expected ' + expectedHubs));
     results.push(ok('nav:hubs-reachable', hubs.every(isHitTestable),
       hubs.filter(function (h) { return !isHitTestable(h); })
         .map(function (h) { return h.textContent; }).join(', ') || null));
@@ -620,9 +634,9 @@ const UI_SMOKE = (function () {
     // fires its listener, so a cached loop looks like it works while
     // asserting against elements no longer on the page.
     const reachable = [];
-    const hubCount = document.querySelectorAll('#nav-bar .rail-item').length;
+    const hubCount = document.querySelectorAll('#nav-bar .rail-item[data-hub]').length;
     for (let i = 0; i < hubCount; i++) {
-      document.querySelectorAll('#nav-bar .rail-item')[i].click();
+      document.querySelectorAll('#nav-bar .rail-item[data-hub]')[i].click();
       reachable.push(GameState.currentView);
       document.querySelectorAll('#view-tabs .view-tab').forEach(function (t) {
         reachable.push(t.getAttribute('data-view'));
