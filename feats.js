@@ -92,7 +92,30 @@
 // mid-band for hugeScoring [1,6], with the best night still 75. doubleAt
 // 12 -> 11 in the same pass: capping the alpha's shot volume shaved the
 // points leg of triple-doubles to 38 against the [40,120] floor.
-var FEAT_TUNING = { bigScoring: 58, hugeScoring: 68, doubleAt: 11, fiveAt: 5 };
+// And re-measured once more for the 15.4s possession clock. This is the
+// largest move the bars have taken, and it is not a calibration drift: league
+// scoring fell from ~135 a team to ~111, so a career night is simply a smaller
+// number now. The best single night across five seasons is 59-62, where it used
+// to be 75 — leaving hugeScoring at 68 made it unreachable, and it fired 3
+// times against a 15-40 band for bigScoring.
+//
+// Swept on the live season path across five seeds (20260812 / 4242 / 555 /
+// 8888 / 7), nights at or above:
+//   46 -> 55 43 47 46 44     54 -> 13  5  7  5  7
+//   48 -> 33 27 30 30 27     56 ->  7  4  4  3  3
+//   50 -> 23 15 18 23 21     58 ->  3  3  2  2  1
+//   52 -> 16 11 11 12 11     60 ->  1  1  1  1  0
+//
+// bigScoring counts nights at-or-above `big` but below `huge`, so 48/58 gives
+// 30 / 24 / 28 / 28 / 26 big — dead centre of [15,40] — and 3 / 3 / 2 / 2 / 1
+// huge, inside [1,6] on every seed. 50 was rejected because one season read 12,
+// under the floor; 56 because one read 7 huge, over the ceiling.
+//
+// doubleAt 11 -> 10 in the same pass, and this one was NOT optional: at 11 the
+// triple-double count read 26 / 31 / 17 / 17 / 14 against a [40,120] floor, so
+// the old bar was already failing. 10 gives 60 / 73 / 41 / 51 / 43; 9 gives
+// 129 / 145 / 107 / 124 / 107 and breaks the ceiling on two seeds.
+var FEAT_TUNING = { bigScoring: 48, hugeScoring: 58, doubleAt: 10, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

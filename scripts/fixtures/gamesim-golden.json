@@ -3,72 +3,72 @@
     "seed": 1,
     "home": "BOS",
     "away": "LAL",
-    "homeScore": 149,
-    "awayScore": 151,
-    "boxChecksum": 148312,
-    "playByPlayLength": 351
+    "homeScore": 109,
+    "awayScore": 110,
+    "boxChecksum": 126860,
+    "playByPlayLength": 315
   },
   {
     "seed": 2,
     "home": "DEN",
     "away": "MIA",
-    "homeScore": 122,
-    "awayScore": 129,
-    "boxChecksum": 113560,
-    "playByPlayLength": 372
+    "homeScore": 106,
+    "awayScore": 126,
+    "boxChecksum": 107079,
+    "playByPlayLength": 301
   },
   {
     "seed": 3,
     "home": "OKC",
     "away": "NYK",
-    "homeScore": 132,
-    "awayScore": 135,
-    "boxChecksum": 124345,
-    "playByPlayLength": 358
+    "homeScore": 107,
+    "awayScore": 108,
+    "boxChecksum": 111715,
+    "playByPlayLength": 301
   },
   {
     "seed": 4,
     "home": "MIL",
     "away": "PHI",
-    "homeScore": 122,
-    "awayScore": 116,
-    "boxChecksum": 149583,
-    "playByPlayLength": 363
+    "homeScore": 114,
+    "awayScore": 122,
+    "boxChecksum": 143494,
+    "playByPlayLength": 298
   },
   {
     "seed": 5,
     "home": "GSW",
     "away": "DAL",
-    "homeScore": 143,
-    "awayScore": 144,
-    "boxChecksum": 157424,
-    "playByPlayLength": 371
+    "homeScore": 113,
+    "awayScore": 120,
+    "boxChecksum": 131079,
+    "playByPlayLength": 316
   },
   {
     "seed": 6,
     "home": "CLE",
     "away": "MEM",
-    "homeScore": 134,
-    "awayScore": 105,
-    "boxChecksum": 121814,
-    "playByPlayLength": 369
+    "homeScore": 109,
+    "awayScore": 107,
+    "boxChecksum": 115021,
+    "playByPlayLength": 318
   },
   {
     "seed": 7,
     "home": "SAS",
     "away": "HOU",
-    "homeScore": 138,
-    "awayScore": 133,
-    "boxChecksum": 147412,
-    "playByPlayLength": 360
+    "homeScore": 126,
+    "awayScore": 119,
+    "boxChecksum": 122700,
+    "playByPlayLength": 284
   },
   {
     "seed": 8,
     "home": "ORL",
     "away": "IND",
-    "homeScore": 141,
-    "awayScore": 138,
-    "boxChecksum": 149083,
-    "playByPlayLength": 370
+    "homeScore": 104,
+    "awayScore": 95,
+    "boxChecksum": 116918,
+    "playByPlayLength": 291
   }
 ]

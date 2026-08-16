@@ -362,12 +362,26 @@ function simulatedSeason() {
   return _season;
 }
 
-// The measured pre-ultimates figure, from five seeds: 134.45 / 134.78 / 134.99 /
-// 135.01 / 135.09, mean 134.86. The tolerance is wider than that run-to-run
-// spread (0.64) and far tighter than anything that would move the balance
-// properties this protects.
-const LEAGUE_SCORING_BASELINE = 134.86;
-const LEAGUE_SCORING_TOLERANCE = 1.5;
+// The measured pre-ultimates figure, re-measured on the 15.4s clock by raising
+// gateOverall to 101 so nobody holds an ultimate, five seeds: 111.03 / 110.55 /
+// 110.79 / 110.46 / 110.26, mean 110.62, spread 0.77. The same five seeds with
+// ultimates on run 111.71 / 111.59 / 111.46 / 111.69 / 111.94, mean 111.68.
+//
+// So the delta is +1.06, and it is worth saying plainly that it GREW: at the
+// old pace it was +0.26 on a base of 134.86 (0.19%), and it is now +0.96% —
+// five times as large in relative terms. Fewer possessions mean each shot a
+// takeover reassigns is a bigger share of the game, so the holder's efficiency
+// edge over the team-mate he displaces buys more. The constraint still holds
+// in the sense that matters — a takeover is worth ~13 points to its holder and
+// about one point to the league — but it holds with less margin than it did,
+// and a further pace cut is the thing that would break it.
+//
+// The tolerance is sized to clear that delta plus the run-to-run spread
+// (1.06 + 0.77 = 1.83) rather than being carried over unchanged; at the old
+// 1.5 this would pass with 0.44 to spare, which is thinner than the seed noise
+// it is supposed to tolerate.
+const LEAGUE_SCORING_BASELINE = 110.62;
+const LEAGUE_SCORING_TOLERANCE = 2.0;
 
 // THE GOVERNING CONSTRAINT. Takeovers redistribute scoring toward stars; they
 // must not add scoring to the league. Every balance property already measured —

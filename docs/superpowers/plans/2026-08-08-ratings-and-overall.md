@@ -61,9 +61,9 @@ Every task is judged against these. Baseline column is measured at HEAD (Task 1 
 | distinct attribute shapes | **17** (8 archetypes + 9 clamp artifacts) | ≥ 370 of 380 | n/a |
 | per-player 3PA share p05→p95 | 22.8% → 35.5% (13 pts) | **~48 pts** | 4.5% → 71.6% (67 pts) |
 | shot volume spread, FGA/36 best:worst | **1.4x** | **~2.5x** | 2.9x (usage%) |
-| league 3P% | 38.8% | 35–37% | 36.3% |
-| league FG% | 49.2% | 46–49% | — |
-| pts/game/team | 101.4 | ~~108–118~~ **96–112** | 114 (at ~100 poss) |
+| league 3P% | 38.8% | ~~35–37%~~ **36–38%** | 36.3% |
+| league FG% | 49.2% | ~~46–49%~~ **47.5–49%** | — |
+| pts/game/team | 101.4 | ~~108–118~~ ~~96–112~~ **99–115** | 114 (at ~100 poss) |
 | synergy "shooter" qualifying share | **61.6%** | 15–25% | — |
 | synergy "rebounder" qualifying share | **70.8%** | 15–25% | — |
 | `overall` → minutes | saturating (correct, keep) | keep | saturating |
@@ -81,6 +81,21 @@ arithmetic one. Left open deliberately.
 
 The lesson generalises: a target copied from a real-world number is only valid
 if the *denominator* it implies also matches. Check pace before importing rate.
+
+**Reopened and settled, 2026-08-16.** The paragraph above left the pace question
+open, and it was later answered twice. First by pushing
+`POSSESSION_BASE_SECONDS` down to 12.5s for a deliberately arcade 130–140, then
+by settling at **15.4s** for the three bands now in the table: 99–115 points,
+47.5–49% FG, 36–38% from three. Measured on a full season: **111.2 / 48.15 /
+37.15**.
+
+Two things are worth carrying forward from doing it. Pace is the only lever
+that moves scoring without dragging the percentages with it — across 16s down
+to 11s, points ran 105.8 → 153.0 while points-per-possession never left
+1.186–1.189. And *because* it is the only such lever, the percentages then have
+to be solved separately: the slower clock left FG% at 47.0 and 3P% at 36.1,
+both on or under their floor, so the per-zone bases were re-solved on top of
+it. Getting three bands at once is a two-step, not one.
 
 ---
 

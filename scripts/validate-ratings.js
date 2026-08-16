@@ -286,12 +286,24 @@ function checkOverallPredictsProduction() {
   }
 
   const acc = {};
-  // 1920, not the original 960: the 2K27 sheets are less one-dimensional
-  // than the archetype-generated ones (see the refit note on
-  // OVERALL_COEFFICIENTS), so per-player plus/minus needs more games before
-  // the correlation estimate settles — at 960 this read 0.563 purely from
-  // sampling noise while the 3000-game fit measured 0.705.
-  for (let i = 0; i < 1920; i++) {
+  // 3840, having already gone 960 -> 1920, and for the same reason both times:
+  // this correlation is ATTENUATED by noise in the y variable, so too small a
+  // sample does not just scatter the estimate, it biases it downward.
+  //
+  // The 15.4s possession clock is what forced the second doubling. Plus/minus
+  // per minute is a point differential, and a slower clock puts fewer
+  // possessions inside the same minute — so the signal shrinks linearly while
+  // its noise shrinks only as a square root, and 1920 games stopped being
+  // enough information. Measured at 1920 on the new clock, four seeds read
+  // 0.479 / 0.542 / 0.470 / 0.536 — straddling the 0.50 bar, and the OLD bases
+  // straddled it too (0.497 on one seed). The bar was inside its own sampling
+  // noise and would have failed at random.
+  //
+  // At 3840 with the minutes filter scaled to match, the same seeds read
+  // 0.554 / 0.601 / 0.635 / 0.629, and at 4800 they read 0.586 / 0.658 / 0.648.
+  // The correlation was never lost; the estimate of it was. Costs ~39s against
+  // ~20s, which is the price of an assertion that means something.
+  for (let i = 0; i < 3840; i++) {
     if (i % 30 === 0) scramble();
     const home = TEAMS[i % TEAMS.length];
     const away = TEAMS[(i + 11) % TEAMS.length];
@@ -305,7 +317,10 @@ function checkOverallPredictsProduction() {
   }
   PLAYERS_2026.forEach(function (p) { p.teamId = originalTeam[p.id]; });
 
-  const ids = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 800; });
+  // Scaled with the game count (800 -> 1600) so this still selects the same
+  // ~300 rotation players. Leaving it at 800 would have admitted deep bench
+  // players whose per-minute rate is mostly noise, undoing half the gain.
+  const ids = Object.keys(acc).filter(function (id) { return byId[id] && acc[id].min >= 1600; });
   const x = ids.map(function (id) { return ratings.computeOverall(byId[id]); });
   const y = ids.map(function (id) { return acc[id].pm / acc[id].min; });
   const n = x.length;

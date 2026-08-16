@@ -36,20 +36,25 @@ const OVERTIME_SECONDS = 5 * 60;
 // POSSESSIONS_PER_TEAM exactly, so switching from a fixed possession count to a
 // real clock did not re-scale scoring. It has now been moved deliberately.
 //
-// 12.5s puts a team at ~114 possessions and ~135 points a game, the middle of
-// the 130-140 target. PACE is the right lever for a change this size and shot
-// difficulty is the wrong one: measured across 3 seasons at each setting, from
-// 16s down to 11s, points ran 105.8 -> 153.0 while points-per-possession never
-// left 1.186-1.189 and FG% never left 48.1-48.2. The game just plays faster;
-// every shot is exactly as hard as it was. Raising the shot bases instead would
-// have had to lift FG% from 48% to about 61% to get here, which would also have
-// pushed most shots into the SHOT_MAX 0.72 ceiling and flattened the gap
-// between a great shooter and an average one.
+// 15.4s is the current setting, and it exists to hold THREE numbers at once:
+// a team scores 99-115 a game, shoots 47.5-49% from the field, and 36-38% from
+// three. Measured over 30 games it lands 108.4 points, 48.8% FG, 37.7% from
+// three — every band on its own merits, and none of them fighting the others.
 //
-// Known consequence, accepted: average margin goes 11.7 -> 13.3 points and
-// games inside 5 drop from 29.3% to 27.6%, because five points is a smaller
-// share of a bigger score.
-const POSSESSION_BASE_SECONDS = 12.5;
+// PACE is the only lever that can do that, because it is the one knob that
+// moves scoring without touching how hard a shot is. Measured across 3 seasons
+// at each setting from 16s down to 11s, points ran 105.8 -> 153.0 while
+// points-per-possession never left 1.186-1.189 and FG% never left 48.1-48.2.
+// Points track 1679/seconds almost exactly over that whole range, which is what
+// made 15.4 a solve rather than a search. Reaching for the shot bases instead
+// would have moved the very percentages the other two bands pin down: there is
+// no value of SHOT_TUNING.base that both drops scoring to 108 and leaves FG% at
+// 48.8, since dropping one drops the other.
+//
+// It was 12.5s when the target was 130-140 points. That target is gone; this
+// one replaces it. Every seeded score in the league moves, which is why both
+// golden fixtures are regenerated in the same commit.
+const POSSESSION_BASE_SECONDS = 15.4;
 const POSSESSION_VARIANCE_SECONDS = 5;
 
 const TIMEOUTS_PER_GAME = 7;

@@ -469,7 +469,18 @@ var SHOT_TUNING = {
   // And -0.0065 more after the rawOverall refit against the capped engine:
   // the new fit reordered rotations toward stronger lineups and scoring rose
   // to 136.79 on the ultimates validator's seeds. Same sensitivity.
-  base: { three: 0.3134, mid: 0.4034, inside: 0.5434 },
+  // Re-solved when the design target became three bands at once — 99-115
+  // points, 47.5-49% FG, 36-38% from three. Pace (POSSESSION_BASE_SECONDS 12.5
+  // -> 15.4) carried the points; it cannot touch percentages, so the bases
+  // carry those. At the old values the slower clock left FG% at 47.0 and 3P% at
+  // 36.1 — points right, both percentages sitting on or under their floor.
+  //
+  // Solved by simulation, not algebra, the same way sweep-shot-balance.js does
+  // it: aim at the MIDDLE of each band so seed noise cannot push either out.
+  // The solver oscillates inside its own noise from the second iteration on
+  // (+/-0.3pp of 3P% at 400 games), so these are the centre of that cluster
+  // rather than one lucky iterate.
+  base: { three: 0.3235, mid: 0.4175, inside: 0.5575 },
   // skillDiv was 292 and defDiv 292. Both moved for reasons that are NOT the
   // same, which is why they are no longer equal:
   //

@@ -206,13 +206,17 @@ function referenceShot(base, shoot, def, offSyn, defSyn, shooterEnergy, defender
 }
 
 function checkShotSpecMatchesTheOriginal() {
-  // Mirrored BY HAND when the bases were trimmed 0.019 for the 2K27 face-value
-  // roster (raw 2K attributes score hotter than the old mean-50 league; A/B on
-  // identical seeds read 140.54 vs the 134.86 target before the trim), a
-  // further 0.0064 when PICK_POWER.shooter was re-anchored and star volume
-  // concentration lifted league scoring ~1.9 above the baseline, and 0.0065
-  // more when the rawOverall refit's stronger rotations lifted it again.
-  const zones = [['three', 0.3134], ['mid', 0.4034], ['inside', 0.5434]];
+  // The bases are READ, not mirrored. They used to be hand-copied here, and the
+  // copy had to be re-typed every time a balance pass moved them — four times
+  // so far, each one failing this check first and teaching nothing, because a
+  // stale constant in the test is not drift in the formula. What this test is
+  // actually for is the SHAPE of shotSpec: base plus skill over 400, minus
+  // defence over 1000, plus synergy, plus trait over 300, clamped. The base is
+  // an input to that shape, so it comes from the engine and balance passes go
+  // through here silently.
+  const zones = ['three', 'mid', 'inside'].map(function (z) {
+    return [z, poss.SHOT_TUNING.base[z]];
+  });
   let worst = 0;
   zones.forEach(function (z) {
     for (let s = 0; s <= 100; s += 10) {

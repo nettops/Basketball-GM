@@ -43,26 +43,29 @@ function checkSynergyStillDiscriminates() {
     }).join(', ') + ')');
 }
 
-// Every league rate here is anchored on a measured real-NBA value EXCEPT
-// points per team, which is a deliberate design target and is not trying to be
-// realistic at all. This game aims at a high-scoring 130-140, reached by pace:
-// ~114 possessions a team against the real league's ~100, at a normal 48% from
-// the field. See POSSESSION_BASE_SECONDS in gameSim.js.
+// These four ARE the design target, stated as the numbers a season is supposed
+// to produce: 99-115 points a team, 47.5-49% from the field, 36-38% from three.
+// They are checked together on purpose, because they constrain each other — the
+// reason pace is the scoring lever is that it is the only one that moves points
+// without dragging the two percentages along with it. See
+// POSSESSION_BASE_SECONDS in gameSim.js for the measurement behind 15.4s.
 //
-// The band below is DELIBERATELY the design target itself rather than a loose
-// window around whatever the engine currently produces. Measured 134.7-135.3
-// across independent samples, so it sits mid-band with ~5 points of headroom
-// each way — tight enough that drift fails it, wide enough that seed noise
-// (~0.6) cannot.
+// The bands below are DELIBERATELY the target itself rather than a loose window
+// around whatever the engine currently produces. Measured 108.5-108.9 across
+// independent samples, so scoring sits mid-band with real headroom each way —
+// tight enough that drift fails it, wide enough that seed noise (~0.6) cannot.
+// FG% and 3P% are stated exactly as asked and have about a point of slack each,
+// which is the tightest of the three; that is intended, since they are the pair
+// a change to shot difficulty would move first.
 function checkLeagueRatesAreRealistic() {
   const s = report.sim;
-  assert.ok(s.fgPct >= 45 && s.fgPct <= 50, 'league FG% out of band: ' + s.fgPct.toFixed(1));
-  assert.ok(s.tpPct >= 34 && s.tpPct <= 38,
+  assert.ok(s.fgPct >= 47.5 && s.fgPct <= 49, 'league FG% out of band: ' + s.fgPct.toFixed(1));
+  assert.ok(s.tpPct >= 36 && s.tpPct <= 38,
     'league 3P% out of band (NBA 2025: 36.3): ' + s.tpPct.toFixed(1));
   assert.ok(s.tpaShare >= 26 && s.tpaShare <= 34,
     'league 3PA share out of band: ' + s.tpaShare.toFixed(1) + '%');
-  assert.ok(s.ptsPerTeam >= 130 && s.ptsPerTeam <= 140,
-    'points per team outside the 130-140 design target: ' + s.ptsPerTeam.toFixed(1));
+  assert.ok(s.ptsPerTeam >= 99 && s.ptsPerTeam <= 115,
+    'points per team outside the 99-115 design target: ' + s.ptsPerTeam.toFixed(1));
   console.log('checkLeagueRatesAreRealistic: OK (FG% ' + s.fgPct.toFixed(1) +
     ', 3P% ' + s.tpPct.toFixed(1) + ', 3PA ' + s.tpaShare.toFixed(1) +
     '%, ' + s.ptsPerTeam.toFixed(1) + ' pts)');

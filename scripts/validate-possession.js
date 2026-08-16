@@ -30,17 +30,16 @@ checkEngineRegistered();
 // breakage; the rate bound catches a league that has genuinely drifted cold or
 // hot; the tail is allowed to exist.
 //
-// Re-anchored when the possession clock moved to 12.5s and the league median
-// went 101 -> 135. These are NOT the old numbers widened until the new league
-// fitted: they were re-derived from 2,460 measured team-scores at the new pace
-// (min 83, p1 104, median 135, p99 165, max 181) and they are TIGHTER relative
-// to the median than the bounds they replace — sane was 0.59x-1.63x of the
-// median and is now 0.70x-1.30x, hard was 0.45x-1.88x and is now 0.52x-1.70x.
-// Under 1% of scores fall outside the sane band, so the 2% budget below is
-// genuine headroom for detecting drift rather than something normal variation
-// already consumes.
-const SCORE_HARD_MIN = 70, SCORE_HARD_MAX = 230;
-const SCORE_SANE_MIN = 95, SCORE_SANE_MAX = 175;
+// Re-anchored twice, the same way both times: measure 2,460 team-scores at the
+// new pace, then scale the bounds so they keep their RELATIVE width. At 12.5s
+// the median was 135; at 15.4s it is 109 (min 68, p1 80, median 109, p99 139,
+// max 159). Sane stays 0.70x-1.30x of the median and hard stays 0.52x-1.70x,
+// so this is a re-derivation and not the old numbers widened until the new
+// league fitted. 0.77% of scores fall outside the sane band, so the 2% budget
+// below is genuine headroom for detecting drift rather than something normal
+// variation already consumes.
+const SCORE_HARD_MIN = 57, SCORE_HARD_MAX = 185;
+const SCORE_SANE_MIN = 76, SCORE_SANE_MAX = 142;
 const SCORE_OUTLIER_BUDGET = 0.02;   // at most 2% may sit outside the sane band
 
 function checkBoxScoreConsistency() {
@@ -101,11 +100,10 @@ function checkBoxScoreConsistency() {
   assert.ok(outliers.length <= Math.ceil(scores.length * SCORE_OUTLIER_BUDGET),
     outliers.length + ' of ' + scores.length + ' team-scores outside ' +
     SCORE_SANE_MIN + '-' + SCORE_SANE_MAX + ' (budget ' + (SCORE_OUTLIER_BUDGET * 100) + '%): ' + outliers.join(', '));
-  // Was 90-125 around a measured ~101. Re-anchored to the 12.5s possession
-  // clock: measured 135 over 2,460 team-scores and 139 in this validator's own
-  // smaller sample, so the band brackets both with headroom while being
-  // RELATIVELY tighter than before (0.91x-1.09x of centre, against 0.89x-1.24x).
-  assert.ok(median >= 125 && median <= 150,
+  // Was 90-125 around ~101, then 125-150 around 135. Now anchored on the 15.4s
+  // clock: 109 over 2,460 team-scores. The band holds the same relative width
+  // it took on at the last re-anchor (0.93x-1.11x of centre).
+  assert.ok(median >= 101 && median <= 121,
     'league median team score has drifted: ' + median);
   console.log('checkBoxScoreConsistency: OK (median ' + median + ', ' + outliers.length + ' outliers)');
 }
