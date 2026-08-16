@@ -1,6 +1,5 @@
 const ENGINE_LABELS = {
   boxscore: 'Team Rating + Box Score',
-  scoreonly: 'Score Only (coming in a later phase)',
   possession: 'Possession-by-Possession (slower, more granular)'
 };
 
@@ -55,10 +54,6 @@ function renderSettings(container) {
     html += '<label class="toggle-row' + (available ? '' : ' is-disabled') + '"><input type="radio" name="sim-engine" value="' +
       engineName + '"' + checked + disabled + '> ' + ENGINE_LABELS[engineName] + '</label>';
   });
-  const workerAvailable = typeof isWorkerSimAvailable === 'function' && isWorkerSimAvailable();
-  html += '<label class="toggle-row' + (workerAvailable ? '' : ' is-disabled') + '"><input type="checkbox" id="settings-worker-sim"' +
-    (GameState.settings.useWorkerSim ? ' checked' : '') + (workerAvailable ? '' : ' disabled') + '> Simulate games on a background thread ' +
-    '(keeps the app responsive during long fast-forwards' + (workerAvailable ? '' : ' — not supported in this browser') + ')</label>';
   html += '</div>';
 
   html += '<div class="panel"><div class="panel-header">League Rules</div><div class="panel-body">' +
@@ -175,12 +170,6 @@ function renderSettings(container) {
     GameState.settings.lotteryFormat = e.target.value;
   });
 
-  const workerSimInput = document.getElementById('settings-worker-sim');
-  if (workerSimInput) {
-    workerSimInput.addEventListener('change', function (e) {
-      GameState.settings.useWorkerSim = e.target.checked;
-    });
-  }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
