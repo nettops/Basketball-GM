@@ -164,19 +164,16 @@ function getPlayerAverages(player) {
 }
 
 // godMode.js requires league.js back (getTeamRoster), so this is resolved
-// lazily like _simDeps()/_workerDeps() to avoid a load-order deadlock.
+// lazily like _simDeps() to avoid a load-order deadlock.
 function _godModeDeps() {
   return (typeof require !== 'undefined')
     ? require('./godMode.js')
     : { applyAutoWin: applyAutoWin };
 }
 
-// Shared by simulateDate (sync) and simulateDateAsync (worker-backed) —
-// everything AFTER a game's result is known (bookkeeping: score recording,
-// finances, season stats, fatigue, morale, injuries) is identical either
-// way; only HOW `result` was obtained differs between the two callers. A
-// single shared implementation means the two paths can't drift out of sync
-// with each other over time.
+// Everything AFTER a game's result is known: score recording, finances,
+// season stats, fatigue, morale, injuries. Split out from simulateDate so the
+// day loop reads as "get a result, then book it" rather than one long body.
 function applyGameResult(game, result, deps, season, dayIndex, leagueYear, playingTeamIds, newInjuries, rng) {
   _godModeDeps().applyAutoWin(game.homeTeamId, game.awayTeamId, result, rng);
   game.played = true;
@@ -306,45 +303,6 @@ function simulateDate(season, dayIndex, settings, rng, onDayComplete, watchOptio
   return todaysGames;
 }
 
-// Worker-backed twin of simulateDate — see simWorkerClient.js's module
-// comment for the full rationale and the correctness argument for why
-// dispatching games to the worker strictly one-at-a-time (never in
-// parallel) keeps this bit-for-bit equivalent to the synchronous path.
-// Browser-only (simWorkerClient.js's isWorkerSimAvailable/simulateGameViaWorker
-// aren't defined for Node) and always opt-in — ui/simControls.js only calls
-// this when GameState.settings.useWorkerSim is on AND a Worker is available;
-// every existing caller of simulateDate/simulateThroughDate is completely
-// unaffected by this function's mere existence.
-function _workerDeps() {
-  return (typeof require !== 'undefined')
-    ? require('./simWorkerClient.js')
-    : { simulateGameViaWorker: simulateGameViaWorker };
-}
-
-async function simulateDateAsync(season, dayIndex, settings, rng, onDayComplete) {
-  const deps = _simDeps();
-  const worker = _workerDeps();
-  const leagueYear = (settings && settings.leagueYear) || 2026;
-  const todaysGames = season.games.filter(function (g) { return g.day === dayIndex && !g.played; });
-  const playingTeamIds = {};
-  const newInjuries = [];
-
-  for (let i = 0; i < todaysGames.length; i++) {
-    const game = todaysGames[i];
-    const result = await worker.simulateGameViaWorker(game.homeTeamId, game.awayTeamId, rng, settings, getTeamRoster, _LEAGUE_DATA.teams.getTeamById);
-    applyGameResult(game, result, deps, season, dayIndex, leagueYear, playingTeamIds, newInjuries, rng);
-  }
-
-  _LEAGUE_DATA.teams.TEAMS.forEach(function (team) {
-    if (!playingTeamIds[team.id]) {
-      deps.fatigue.decayFatigueForRest(team.id, 1);
-    }
-  });
-
-  if (onDayComplete) onDayComplete(dayIndex, todaysGames, newInjuries);
-  return todaysGames;
-}
-
 function getNextGameDay(season, teamId, afterDay) {
   const upcoming = season.games
     .filter(function (g) { return !g.played && g.day > afterDay && (g.homeTeamId === teamId || g.awayTeamId === teamId); })
@@ -367,16 +325,6 @@ function simulateThroughDate(season, currentDay, targetDay, settings, rng, onDay
   return day;
 }
 
-// Worker-backed twin of simulateThroughDate — see simulateDateAsync above.
-async function simulateThroughDateAsync(season, currentDay, targetDay, settings, rng, onDayComplete) {
-  let day = currentDay;
-  while (day < targetDay) {
-    day += 1;
-    await simulateDateAsync(season, day, settings, rng, onDayComplete);
-  }
-  return day;
-}
-
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     SEASON_STAT_KEYS: SEASON_STAT_KEYS,
@@ -387,10 +335,8 @@ if (typeof module !== 'undefined' && module.exports) {
     accumulateSeasonStats: accumulateSeasonStats,
     getPlayerAverages: getPlayerAverages,
     simulateDate: simulateDate,
-    simulateDateAsync: simulateDateAsync,
     getNextGameDay: getNextGameDay,
     simulateNextDay: simulateNextDay,
-    simulateThroughDate: simulateThroughDate,
-    simulateThroughDateAsync: simulateThroughDateAsync
+    simulateThroughDate: simulateThroughDate
   };
 }
