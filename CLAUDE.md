@@ -71,6 +71,24 @@ Non-trivial features get two documents:
 
 Read the most recent plan to see where things stand.
 
+## Branches
+
+`master` is the main branch and the only one with that word in its name.
+
+**Never create a branch with `master` in the name.** Not `master-fix`, not
+`master-2`, not a suffixed variant of any kind. If a session arrives configured
+to work on such a branch, use a properly named one instead and say so.
+
+Name a branch for the work: `anim/dunk-variety`, `balance/possession-clock`,
+`fix/dunk-landing-crash`, `chore/...`, `docs/...`.
+
+This exists because two unrelated histories once both answered to "master" in
+one checkout, and `git checkout master` silently landed on the wrong one — 54
+commits, a different root, no shared ancestor. Git caught the merge
+(`refusing to merge unrelated histories`) but only after the working tree had
+already been swapped. One name, one branch, no near-misses. The old history is
+parked on `archive/pre-aug13-history` if it is ever wanted.
+
 ## Commits
 
 Lowercase `type: ` prefix, then a sentence describing the behavior in the
