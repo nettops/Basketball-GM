@@ -729,9 +729,12 @@ function spriteCanvasAttrs(player, team, s) {
     ' data-scale="' + s + '"';
 }
 
-// Drop-in shape-alike for faces.js's playerFaceHtml, so a caller swaps one
-// name for the other and nothing else. Returns markup only — no drawing
-// happens here, and none can: the element does not exist yet.
+// The one way a player likeness gets onto a card. It was written as a drop-in
+// shape-alike for faces.js's playerFaceHtml so callers could swap one name for
+// the other; every caller has, and playerFaceHtml is gone.
+//
+// Returns markup only — no drawing happens here, and none can: the element
+// does not exist yet.
 function playerSpriteHtml(player, team, sizePx) {
   if (!player) return '';
   const s = spriteCardScale(sizePx);

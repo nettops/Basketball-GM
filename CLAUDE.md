@@ -86,6 +86,7 @@ test: probe where ankle breakers actually go
 
 `.gitignore` excludes a ~79MB vendored directory (zengm, facesjs, and others)
 kept locally for reading. **A fresh clone will not have it**, and that is fine
-— nothing at runtime depends on it. The one script that reads it,
-`scripts/build-face-svgs.js`, has its output (`faceSvgs.js`) committed. Don't
-try to regenerate face SVGs from a checkout that lacks `reference/facesjs`.
+— nothing in this repo depends on it, at runtime or at build time. No script
+reads it any more: `scripts/build-face-svgs.js` was the last one, and it and
+its output `faceSvgs.js` are both gone. Players are drawn by
+`ui/pixelSprites.js`; the SVG portraits it curated were never rendered.

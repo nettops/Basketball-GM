@@ -1,10 +1,12 @@
 # Vendored upstream projects, kept locally for reading only (zengm, facesjs,
 # export-faces, universal-draft-lottery-simulator). ~79MB, each with its own
-# nested .git, and no runtime code depends on them — compositeRatings.js,
-# draftLotteryFormats.js and faceSvgs.js only cite them in comments as the
-# source of an approach. scripts/build-face-svgs.js is the one script that
-# reads reference/facesjs, and its output (faceSvgs.js) is committed, so the
-# game builds and runs without this directory present.
+# nested .git, and nothing in this repo depends on them. compositeRatings.js
+# and draftLotteryFormats.js cite them in comments as the source of an
+# APPROACH, which is all that connection ever was.
+#
+# No script reads this directory any more. scripts/build-face-svgs.js did — it
+# curated facesjs artwork into faceSvgs.js — and both are deleted, because the
+# game draws players with ui/pixelSprites.js and never rendered those faces.
 reference/
 
 node_modules/

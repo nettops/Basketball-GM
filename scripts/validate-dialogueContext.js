@@ -13,7 +13,6 @@ rq('data.js');
 rq('rng.js');
 rq('names.js');
 rq('ratings.js');
-rq('faceSvgs.js');
 rq('faces.js');
 rq('teams.js');
 const gmCareer = rq('gmCareer.js');
