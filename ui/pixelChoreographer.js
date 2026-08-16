@@ -2004,8 +2004,17 @@ function createChoreographer(session) {
             // usually a help defender who gets run through. Measured over 442
             // dunks, the nearest OPPONENT is inside 14px on 22% of them while
             // the nominal defender almost never is.
-            contact: impactKind === 'poster' ||
-              nearestOpponentPx(shotPos, defenderIds, relSpot) <= CONTACT_RIM_PX,
+            // THE SIM'S ANSWER, when it has one. It rolls contact now and puts
+            // it on the event, so the finish that is drawn through a body is the
+            // same finish that was resolved through one — these used to be two
+            // independent guesses that agreed only by accident.
+            //
+            // The positional fallback stays for events that predate the flag
+            // (a replayed save, a fixture) rather than being deleted.
+            contact: typeof ev.contact === 'boolean'
+              ? (ev.contact || impactKind === 'poster')
+              : (impactKind === 'poster' ||
+                 nearestOpponentPx(shotPos, defenderIds, relSpot) <= CONTACT_RIM_PX),
             putback: lastOrebBy === ev.playerId,
             runway: runway,
             // The ANGLE he attacked from, not just the distance. Lateral

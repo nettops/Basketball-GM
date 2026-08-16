@@ -636,7 +636,48 @@ function urgencyBonus(scoreDiff, period) {
   return Math.max(-URGENCY_TUNING.cap, Math.min(URGENCY_TUNING.cap, raw));
 }
 
-function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus, scoreDiff, period) {
+// FINISHING THROUGH A BODY.
+//
+// Contact has been drawn since the animation pass and has never meant anything:
+// the sprite compressed and kept climbing, and the sim had already decided the
+// shot went in for reasons that had nothing to do with a man being in the way.
+// Worse, the two disagreed about WHEN — the animation inferred contact from
+// positions the choreographer invented after the fact, so a finish drawn
+// through a defender was resolved as an ordinary one and vice versa.
+//
+// So the sim decides it, and the drawing reads what the sim decided.
+//
+// HOW OFTEN. Interior defence puts a body on you; the sim already has a rating
+// for exactly that. Nothing else is invented.
+const CONTACT_TUNING = {
+  // Solved backwards from the animation's own rate. A defender at the league's
+  // median interior D should produce contact on about one inside shot in six,
+  // which is what the choreographer was already drawing before this existed.
+  base: 0.06,
+  perDefPoint: 0.0022,
+  cap: 0.32,
+  // WHAT IT COSTS. Eight points of make probability is a real penalty — the
+  // difference between a clean look and one through a chest — but it is scaled
+  // by how good a finisher he is, because "finishes through contact" is a skill
+  // and a sim in which it is not is a sim where the rating is decorative. An
+  // elite interior scorer keeps most of it; a guard who should not be there
+  // loses nearly all of it.
+  penalty: 0.08,
+  finisherRelief: 0.6          // of the penalty, at a 99 inside composite
+};
+
+function contactChance(defComposite) {
+  const d = typeof defComposite === 'number' ? defComposite : 50;
+  return Math.max(0, Math.min(CONTACT_TUNING.cap,
+    CONTACT_TUNING.base + d * CONTACT_TUNING.perDefPoint));
+}
+
+function contactPenalty(shootComposite) {
+  const s = Math.max(0, Math.min(99, typeof shootComposite === 'number' ? shootComposite : 50));
+  return -CONTACT_TUNING.penalty * (1 - CONTACT_TUNING.finisherRelief * (s / 99));
+}
+
+function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, traitBonus, defTraitBonus, scoreDiff, period, contact) {
   return {
     kind: 'shot',
     base: SHOT_TUNING.base[zone],
@@ -657,7 +698,11 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
       // shooter's chance. Routed by zone in traits.js's defenseQualityBonus, so
       // a perimeter stopper does nothing to a shot at the rim.
       { label: 'defensive badges', value: -(defTraitBonus || 0) / DEF_TRAIT_DIV },
-      { label: 'urgency', value: urgencyBonus(scoreDiff, period) }
+      { label: 'urgency', value: urgencyBonus(scoreDiff, period) },
+      // Named like every other modifier so the UI can show "contact -5.6%"
+      // rather than folding it invisibly into the base, and so the check the
+      // event carries explains itself.
+      { label: 'contact', value: contact ? contactPenalty(shootComposite) : 0 }
     ],
     min: SHOT_MIN, max: SHOT_MAX
   };
@@ -684,7 +729,7 @@ function shotSpec(zone, shootComposite, defComposite, offenseSynergy, defenseSyn
 // Routed by zone in traits.js (shotQualityBonus), so this only fires for the
 // shot the trait is actually about, and it arrives as a NAMED modifier so the
 // UI can show "badges +1.0%" rather than folding it invisibly into one float.
-function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, scoreDiff, period) {
+function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult, scoreDiff, period, contact) {
   const shootKey = zone === 'three' ? 'shootingThree' : (zone === 'mid' ? 'shootingMid' : 'shootingInside');
   const defKey = zone === 'inside' ? 'defenseInterior' : 'defensePerimeter';
   return shotSpec(zone,
@@ -693,7 +738,7 @@ function shotMakeSpecFor(shooter, defender, zone, offenseSynergy, defenseSynergy
     offenseSynergy, defenseSynergy, shooterEnergyMult, defenderEnergyMult,
     _POSS_DATA.traits.shotQualityBonus(shooter, zone),
     _POSS_DATA.traits.defenseQualityBonus(defender, zone),
-    scoreDiff, period);
+    scoreDiff, period, contact);
 }
 
 // Sibling wrappers to shotMakeSpecFor: they resolve the badge lookups and hand
@@ -950,12 +995,22 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     return 0;
   }
 
+  // WHETHER HE HAS TO GO THROUGH SOMEBODY. Inside only — contact is a thing
+  // that happens at the rim, and a jump shooter with a hand in his face is a
+  // contest, which the defence composite already prices.
+  //
+  // Rolled here rather than inside the spec builder because this is where the
+  // rng lives, and because the ANSWER has to travel on the event: the drawing
+  // used to infer contact from positions invented after the fact, so a finish
+  // resolved as contested could be drawn clean and the other way round.
+  const contact = zone === 'inside' && rng() <
+    contactChance(_POSS_DATA.composite.computeComposite(shotDefender, 'defenseInterior'));
   const shotCheck = _POSS_DATA.check.skillCheck(
     withModifiers(shotMakeSpecFor(shooter, shotDefender, zone,
       offSyn.offense, defSyn.defense,
       energyMultiplier(offenseBox[shooter.id].energy),
       energyMultiplier(defenseBox[shotDefender.id].energy) * foulTroubleMultiplier(defenseBox[shotDefender.id].fouls),
-      scoreDiff, gamePeriod),
+      scoreDiff, gamePeriod, contact),
       takeoverShotMods(shooter.id, zone, tkOff, soloId, teamOn, offDial, defDial)), rng);
   const made = shotCheck.passed;
   const shotValue = zone === 'three' ? 3 : 2;
@@ -988,11 +1043,11 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
       }
     }
     logPlay(log, shooter.name + ' makes ' + zoneLabel + assistLine, shotCheck);
-    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId, check: shotCheck });
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: true, points: shotValue, assistPlayerId: assistPlayerId, contact: contact, check: shotCheck });
   } else {
     reportPlay(outcome, shooter.id, 'missedShot');
     logPlay(log, shooter.name + ' misses ' + zoneLabel, shotCheck);
-    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null, check: shotCheck });
+    pushEvent(eventCtx, { type: 'shot', playerId: shooter.id, defenderId: shotDefender.id, zone: zone, made: false, points: 0, assistPlayerId: null, contact: contact, check: shotCheck });
     const offReboundChance = Math.max(0.1, Math.min(0.4, 0.25 * (offSyn.rebound / defSyn.rebound)));
     if (rng() < offReboundChance) {
       const rebounder = weightedPick(offense, energyAware(offReboundWeight, offenseBox, false), rng, PICK_POWER.rebounder);
@@ -1078,6 +1133,9 @@ if (typeof module !== 'undefined' && module.exports) {
     PICK_CEILING: PICK_CEILING,
     shootingFoulRate: shootingFoulRate,
     shotMakeSpecFor: shotMakeSpecFor,
+    contactChance: contactChance,
+    contactPenalty: contactPenalty,
+    CONTACT_TUNING: CONTACT_TUNING,
     turnoverSpecFor: turnoverSpecFor,
     blockSpecFor: blockSpecFor,
     perimDefenseWeight: perimDefenseWeight,

@@ -2,28 +2,28 @@
   {
     "season": 1,
     "leagueYear": 2027,
-    "teamChecksum": 45095,
-    "rosterChecksum": 3381910,
+    "teamChecksum": 44742,
+    "rosterChecksum": 3238723,
     "gamesCount": 1230,
     "draftPicks": 60,
-    "leaguePlayerCount": 486
+    "leaguePlayerCount": 477
   },
   {
     "season": 2,
     "leagueYear": 2028,
-    "teamChecksum": 45442,
-    "rosterChecksum": 3894773,
+    "teamChecksum": 45156,
+    "rosterChecksum": 3803489,
     "gamesCount": 1230,
     "draftPicks": 60,
-    "leaguePlayerCount": 528
+    "leaguePlayerCount": 524
   },
   {
     "season": 3,
     "leagueYear": 2029,
-    "teamChecksum": 44788,
-    "rosterChecksum": 4095934,
+    "teamChecksum": 45131,
+    "rosterChecksum": 4137663,
     "gamesCount": 1230,
     "draftPicks": 60,
-    "leaguePlayerCount": 545
+    "leaguePlayerCount": 549
   }
 ]

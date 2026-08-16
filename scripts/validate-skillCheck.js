@@ -403,4 +403,76 @@ function checkTheCallSitesActuallyLookUpTheBadges() {
 checkBadgeModifiersReachTheSpecs();
 checkFoulProneRaisesTheFoulRate();
 checkTheCallSitesActuallyLookUpTheBadges();
+checkContactCostsSomethingAndSkillPaysItBack();
 console.log('All skillCheck validations passed');
+
+function checkContactCostsSomethingAndSkillPaysItBack() {
+  // Contact had been DRAWN since the animation pass and never meant anything:
+  // the sprite compressed and kept climbing while the sim had already decided
+  // the shot went in for reasons that had nothing to do with a body being in
+  // the way. Worse, the two disagreed about when — the drawing inferred contact
+  // from positions the choreographer invented after the fact.
+  //
+  // The sim decides it now and the drawing reads the answer, so what is worth
+  // pinning is that the decision costs something and that skill answers it.
+  const poss = require(path.join(__dirname, '..', 'simEnginePossession.js'));
+
+  // IT HAS TO COST. A contact modifier of zero is the old behaviour with a
+  // label on it.
+  assert.ok(poss.contactPenalty(50) < -0.02,
+    'contact costs a median finisher only ' + (poss.contactPenalty(50) * 100).toFixed(1) +
+    'pp — that is a rounding error, not a defender');
+
+  // ...AND SKILL HAS TO ANSWER IT. "Finishes through contact" is a rating in
+  // this game; a sim where it does nothing is a sim where the rating is
+  // decoration. Monotonic, so there is no band where getting better hurts.
+  let prev = -Infinity;
+  for (let v = 0; v <= 99; v += 3) {
+    const pen = poss.contactPenalty(v);
+    assert.ok(pen <= 0, 'contact HELPS a ' + v + ' finisher');
+    assert.ok(pen >= prev - 1e-9, 'the penalty is not monotonic in finishing at ' + v);
+    prev = pen;
+  }
+  assert.ok(poss.contactPenalty(95) > poss.contactPenalty(30) * 0.75,
+    'an elite finisher is punished nearly as hard as a poor one — the skill does not read');
+
+  // HOW OFTEN, driven by the one rating that means "puts a body on you". Rising
+  // in interior defence, bounded, and never a certainty: a defender who forces
+  // contact on every single possession is a wall, not a man.
+  prev = -Infinity;
+  for (let d = 0; d <= 99; d += 3) {
+    const c = poss.contactChance(d);
+    assert.ok(c >= prev - 1e-9, 'contact chance falls as interior defence rises, at ' + d);
+    assert.ok(c > 0 && c < 0.5,
+      'contact fires on ' + (c * 100).toFixed(0) + '% against a ' + d + ' defender');
+    prev = c;
+  }
+  assert.ok(poss.contactChance(80) > poss.contactChance(30),
+    'a rim protector forces no more contact than a guard');
+
+  // The modifier must actually reach the spec, under its own name, so the check
+  // the event carries explains itself and the UI can show it.
+  const clean = poss.shotMakeSpecFor({ id: 'a', attributes: {} },
+    { id: 'b', attributes: {} }, 'inside', 1, 1, 1, 1, 0, 1, false);
+  const hit = poss.shotMakeSpecFor({ id: 'a', attributes: {} },
+    { id: 'b', attributes: {} }, 'inside', 1, 1, 1, 1, 0, 1, true);
+  const nameOf = function (spec) {
+    return (spec.modifiers || []).filter(function (m) { return m.label === 'contact'; })[0];
+  };
+  assert.ok(nameOf(clean) && nameOf(clean).value === 0,
+    'a clean look carries a contact penalty');
+  assert.ok(nameOf(hit) && nameOf(hit).value < 0,
+    'a contact finish carries no penalty — the flag is decorative');
+  // `.probability` — skillCheckProbability returns the whole breakdown, not a
+  // number, and reading it as one silently produced NaN comparisons.
+  const pHit = skillCheckProbability(hit).probability;
+  const pClean = skillCheckProbability(clean).probability;
+  assert.ok(pHit < pClean,
+    'contact does not lower the make probability: ' +
+    pHit.toFixed(4) + ' vs ' + pClean.toFixed(4));
+
+  console.log('checkContactCostsSomethingAndSkillPaysItBack: OK (' +
+    (poss.contactPenalty(30) * 100).toFixed(1) + 'pp for a poor finisher, ' +
+    (poss.contactPenalty(95) * 100).toFixed(1) + 'pp for an elite one; fires ' +
+    (poss.contactChance(50) * 100).toFixed(0) + '% against a median defender)');
+}

@@ -302,8 +302,46 @@ time*, so `sideways / runway` came out at zero for the whole sample. The filter
 cost five of the twenty-three finishes and bought nothing. Giving drives a real
 approach angle is a change to the sim's geometry, not to the animation.
 
-**Contact still does not change the OUTCOME**, only the drawing. That is a
-balance change rather than an animation one and is left for a decision.
+**Contact changes the OUTCOME now**, on an explicit decision to make a balance
+change. The real defect was not that contact was cosmetic — it was that the
+drawing and the result were computed from *different things*: the sprite
+inferred contact from positions the choreographer invented after the fact,
+while the sim had already resolved the shot for reasons that had nothing to do
+with a body being in the way. They agreed only by accident.
+
+The sim decides it now (`contactChance`, off interior defence) and puts the
+answer on the event; the choreographer reads that flag instead of guessing.
+Measured over 4,053 inside shots: contact fires on **20.4%**, the animation
+draws it on **20.7%** of dunks, and the two match because they are the same
+fact.
+
+**Skill answers it.** "Finishes through contact" is a rating in this game, so
+the penalty is scaled by it — **−6.5pp for a poor finisher, −3.4pp for an elite
+one**. A sim where an interior scorer is punished as hard as a guard is a sim
+where the rating is decoration.
+
+Balance, measured over 30 games before and after:
+
+```
+                    before    after
+points per team      137.3    134.3
+FG%                  49.0%    48.5%
+inside FG%           59.0%    56.2%
+contested inside        —     51.1%   (against 57.6% clean)
+```
+
+Three points a team. Both scoring bands the suite guards — `validate-sim`'s
+70-160 and `validate-gamesim`'s 60-170 — were passing before and after; only the
+two characterization fixtures moved, and those pin exact per-seed scores and are
+regenerated for exactly this reason.
+
+**One measurement nearly went the wrong way.** At eight games the realised
+numbers said contested finishes converted 0.7pp BETTER than clean ones, which
+would have meant the model was inverted. It was sampling noise — 187 shots
+against a 4.5pp effect is a ~4pp standard error. Reading the make probability
+off the events directly (53.6% contested against 58.1% clean, flag and penalty
+agreeing on all 832) showed the model was right, and 4,053 shots put the
+realised cost at 6.5pp.
 
 ### Two checks caught their author
 
