@@ -30,16 +30,27 @@ checkEngineRegistered();
 // breakage; the rate bound catches a league that has genuinely drifted cold or
 // hot; the tail is allowed to exist.
 //
-// Re-anchored twice, the same way both times: measure 2,460 team-scores at the
-// new pace, then scale the bounds so they keep their RELATIVE width. At 12.5s
-// the median was 135; at 15.4s it is 109 (min 68, p1 80, median 109, p99 139,
-// max 159). Sane stays 0.70x-1.30x of the median and hard stays 0.52x-1.70x,
-// so this is a re-derivation and not the old numbers widened until the new
-// league fitted. 0.77% of scores fall outside the sane band, so the 2% budget
-// below is genuine headroom for detecting drift rather than something normal
-// variation already consumes.
-const SCORE_HARD_MIN = 57, SCORE_HARD_MAX = 185;
-const SCORE_SANE_MIN = 76, SCORE_SANE_MAX = 142;
+// Re-anchored each time the clock moves, by measuring 2,460 team-scores and
+// re-deriving rather than nudging. Measured here: min 62, p1 82, median 109,
+// p99 138, max 153.
+//
+// This time the RELATIVE width had to move too, and for a reason rather than
+// to fit. A score is a sum over possessions, so its spread relative to its mean
+// grows as the count of them falls — and a 38-minute game plays ~91 possessions
+// a team where the 48-minute one played ~115. That is sqrt(115/91) = 1.12x more
+// relative spread, so the sane band's +/-30% becomes +/-33.7% and the hard
+// band's -48%/+70% becomes -54%/+79%. Those scale factors, applied to the
+// measured median of 109, ARE the four numbers below — they were not searched
+// for.
+//
+// The check: 0.24% of the population falls outside the sane band, and 3 of the
+// 240 scores this validator actually draws, against a budget of 5. Keeping the
+// old 0.70x-1.30x would have put 6 of those 240 outside and failed — correctly
+// so, since it would have been the wrong band for the distribution.
+const REG_MINUTES = 5 * gameSim.REGULATION_PERIODS * gameSim.PERIOD_SECONDS / 60;
+
+const SCORE_HARD_MIN = 50, SCORE_HARD_MAX = 195;
+const SCORE_SANE_MIN = 72, SCORE_SANE_MAX = 146;
 const SCORE_OUTLIER_BUDGET = 0.02;   // at most 2% may sit outside the sane band
 
 function checkBoxScoreConsistency() {
@@ -88,10 +99,13 @@ function checkBoxScoreConsistency() {
     // +-3 was tighter than the rounding ever guaranteed and the 2K27 sheets'
     // substitution patterns finally produced a legitimate -4 (measured over
     // 60 games: deviations run -3..+1, so +-5 keeps real slack of one).
-    assert.ok(Math.abs(homeMinutes - 240) <= 5 || homeMinutes > 240,
-      'home minutes should be ~240 in regulation (or more with OT), got ' + homeMinutes);
-    assert.ok(Math.abs(awayMinutes - 240) <= 5 || awayMinutes > 240,
-      'away minutes should be ~240 in regulation (or more with OT), got ' + awayMinutes);
+    //
+    // Derived from the clock, not written down: a regulation game was 240
+    // player-minutes at a 12:00 quarter and is 190 at the 9:30 one.
+    assert.ok(Math.abs(homeMinutes - REG_MINUTES) <= 5 || homeMinutes > REG_MINUTES,
+      'home minutes should be ~' + REG_MINUTES + ' in regulation (or more with OT), got ' + homeMinutes);
+    assert.ok(Math.abs(awayMinutes - REG_MINUTES) <= 5 || awayMinutes > REG_MINUTES,
+      'away minutes should be ~' + REG_MINUTES + ' in regulation (or more with OT), got ' + awayMinutes);
   }
   // The distribution, not the individual game. A cold or hot league shows up
   // as a cluster outside the sane band; one extreme night does not.

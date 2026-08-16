@@ -27,7 +27,7 @@ require(path.join(__dirname, '..', 'simEngine.js'));
 require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 require(path.join(__dirname, '..', 'simEnginePossession.js'));
 require(path.join(__dirname, '..', 'gameCoach.js'));
-require(path.join(__dirname, '..', 'gameSim.js'));
+const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const schedule = require(path.join(__dirname, '..', 'schedule.js'));
 const league = require(path.join(__dirname, '..', 'league.js'));
 
@@ -147,13 +147,19 @@ function checkRecordedResultIsTheGameThatWasPlayed() {
   const totalMinutes = Object.keys(target.boxScore)
     .reduce(function (s, id) { return s + target.boxScore[id].minutes; }, 0);
   // Expected minutes depend on how many periods were actually played: five
-  // players x 48 regulation minutes x 2 teams, plus 50 for each overtime.
-  // A flat 460-500 band assumed regulation, so this failed on any seed whose
-  // game went to overtime — it passed only because seed 8 happened not to.
-  // The invariant is "a COMPLETE game was recorded", so it has to be stated
-  // against the game that was played, not against a fixed number.
-  const overtimes = Math.max(0, sim.period - 4);
-  const expectedMinutes = 480 + overtimes * 50;
+  // players x the regulation clock x 2 teams, plus both teams' worth for each
+  // overtime. A flat 460-500 band assumed regulation, so this failed on any
+  // seed whose game went to overtime — it passed only because seed 8 happened
+  // not to. The invariant is "a COMPLETE game was recorded", so it has to be
+  // stated against the game that was played, not against a fixed number.
+  //
+  // And the regulation figure itself is now derived rather than written down.
+  // It was 480 for a 12:00 quarter; the quarter is 9:30 and it is 380.
+  const BOTH_TEAMS = 5 * 2;
+  const overtimes = Math.max(0, sim.period - gameSim.REGULATION_PERIODS);
+  const expectedMinutes =
+    BOTH_TEAMS * gameSim.REGULATION_PERIODS * gameSim.PERIOD_SECONDS / 60 +
+    overtimes * BOTH_TEAMS * gameSim.OVERTIME_SECONDS / 60;
   assert.ok(Math.abs(totalMinutes - expectedMinutes) <= 20,
     'a complete game was recorded, not a partial one (total minutes ' + totalMinutes +
     ', expected ~' + expectedMinutes + ' for ' + sim.period + ' periods)');

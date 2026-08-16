@@ -298,7 +298,24 @@ const CHARGE_TUNING = {
   // profiles fill the meter slower (0.644 takeovers/game at the old 255,
   // against the 0.7-1.4 band). Swept 255/235/215/200 over 90 real games:
   // 200 -> 0.989/game, back on the ~1-per-game the design aims at.
-  full: 200,
+  //
+  // 200 -> 160 when regulation became 38 minutes. A meter that fills over the
+  // course of a game has the game's length baked into it, so a shorter one
+  // charges fewer times: 0.672/game on the validator's season, under the 0.7
+  // floor. Swept on the live season path, two seeds each:
+  //   200 -> 0.740 / 0.745    170 -> 0.908 / 0.831
+  //   185 -> 0.871 / 0.820    160 -> 0.898 / 0.888    150 -> 0.883 / 0.809
+  //
+  // Note it PLATEAUS around 0.89 rather than climbing to 1 — below ~170 the
+  // limit stops being the threshold and becomes the game itself, since a
+  // takeover also needs minRunPossessions left on the clock to fire at all.
+  // 150 is already past the point of buying anything. 160 is taken over 170
+  // for the tighter seed-to-seed pair, not the higher single reading.
+  //
+  // League scoring is flat across that entire sweep (109.1 -> 109.7 a team, no
+  // trend), which is the invariant checkLeagueScoringHeldFlat exists to state:
+  // more takeovers redistribute more, they do not manufacture points.
+  full: 160,
   secondFullMultiplier: 1.08,
   takeoverPossessions: 26,
   // The shortest run that is still a takeover. Below this the meter holds

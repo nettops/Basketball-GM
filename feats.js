@@ -92,30 +92,35 @@
 // mid-band for hugeScoring [1,6], with the best night still 75. doubleAt
 // 12 -> 11 in the same pass: capping the alpha's shot volume shaved the
 // points leg of triple-doubles to 38 against the [40,120] floor.
-// And re-measured once more for the 15.4s possession clock. This is the
-// largest move the bars have taken, and it is not a calibration drift: league
-// scoring fell from ~135 a team to ~111, so a career night is simply a smaller
-// number now. The best single night across five seasons is 59-62, where it used
-// to be 75 — leaving hugeScoring at 68 made it unreachable, and it fired 3
-// times against a 15-40 band for bigScoring.
+// And re-measured once more when a regulation game became 38 minutes rather
+// than 48. This is the largest move the bars have taken, and it is not
+// calibration drift: league scoring fell from ~135 a team to ~109.
+//
+// The subtle part is that scoring fell and big nights got MORE common, so the
+// bars did not simply follow the league total down. A shorter game is not a
+// scaled-down game, because rotations do not scale with it — measured over 60
+// games, the team clock falls 239.8 -> 190.1 player-minutes (-21%) while the
+// leading minute-getter falls only 38.0 -> 33.3 (-12%), so his share of his
+// own team's clock rises from 15.9% to 17.5%. The same team total gets divided
+// less evenly, and the best scorer takes the extra. Best single night across
+// five seasons is now 62-72 where the 48-minute league produced 59-62.
 //
 // Swept on the live season path across five seeds (20260812 / 4242 / 555 /
 // 8888 / 7), nights at or above:
-//   46 -> 55 43 47 46 44     54 -> 13  5  7  5  7
-//   48 -> 33 27 30 30 27     56 ->  7  4  4  3  3
-//   50 -> 23 15 18 23 21     58 ->  3  3  2  2  1
-//   52 -> 16 11 11 12 11     60 ->  1  1  1  1  0
+//   46 -> 76 77 64 68 70     54 -> 12 17 10 13 14
+//   48 -> 52 53 39 47 51     56 ->  6  7  8  7  9
+//   50 -> 31 39 23 28 36     58 ->  2  2  4  5  5
+//   52 -> 17 26 17 20 23     60 ->  1  1  3  3  3
 //
-// bigScoring counts nights at-or-above `big` but below `huge`, so 48/58 gives
-// 30 / 24 / 28 / 28 / 26 big — dead centre of [15,40] — and 3 / 3 / 2 / 2 / 1
-// huge, inside [1,6] on every seed. 50 was rejected because one season read 12,
-// under the floor; 56 because one read 7 huge, over the ceiling.
+// bigScoring counts nights at-or-above `big` but below `huge`, so 50/58 gives
+// 29 / 37 / 19 / 23 / 31 big — centred in [15,40] — and 2 / 2 / 4 / 5 / 5 huge,
+// inside [1,6] on every seed. 48 was rejected because one season read 50, over
+// the ceiling; 52 because one read 13, under the floor; 56 because one read 8
+// huge.
 //
-// doubleAt 11 -> 10 in the same pass, and this one was NOT optional: at 11 the
-// triple-double count read 26 / 31 / 17 / 17 / 14 against a [40,120] floor, so
-// the old bar was already failing. 10 gives 60 / 73 / 41 / 51 / 43; 9 gives
-// 129 / 145 / 107 / 124 / 107 and breaks the ceiling on two seeds.
-var FEAT_TUNING = { bigScoring: 48, hugeScoring: 58, doubleAt: 10, fiveAt: 5 };
+// doubleAt stays 10: 68 / 63 / 63 / 65 / 71 against the [40,120] band. 11 reads
+// 21-36 and falls under the floor, 9 reads 138-167 and breaks the ceiling.
+var FEAT_TUNING = { bigScoring: 50, hugeScoring: 58, doubleAt: 10, fiveAt: 5 };
 
 const FEAT_KINDS = ['bigScoring', 'hugeScoring', 'tripleDouble', 'fiveByFive'];
 

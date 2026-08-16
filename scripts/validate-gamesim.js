@@ -131,8 +131,13 @@ function checkBenchPlayersRecordNothing() {
 }
 checkBenchPlayersRecordNothing();
 
-// Minutes are now measured, not distributed: five players on the floor for a
-// 48-minute regulation game is 240 player-minutes, plus 25 per overtime.
+// Minutes are now measured, not distributed: five players on the floor for
+// every minute of every period. Both the regulation figure and the overtime
+// one are DERIVED from gameSim's own clock rather than written down, because
+// the quarter is 9:30 now and was 12:00 when this was first written.
+const ON_COURT = 5;
+const REG_MINUTES = ON_COURT * gameSim.REGULATION_PERIODS * gameSim.PERIOD_SECONDS / 60;
+const OT_MINUTES = ON_COURT * gameSim.OVERTIME_SECONDS / 60;
 function checkMinutesAreEmergent() {
   for (const seed of [43, 44, 45]) {
     const sim = gameSim.createGameSim('BOS', 'LAL', makeRng(seed));
@@ -143,10 +148,10 @@ function checkMinutesAreEmergent() {
       if (box[id].teamId === 'BOS') homeMin += box[id].minutes;
       else awayMin += box[id].minutes;
     });
-    // Five players for every minute of every period: 240 in regulation, plus
-    // 25 for each overtime. Computed from the periods actually played rather
-    // than hardcoded, so a seed that happens to go long doesn't fail this.
-    const expected = 240 + Math.max(0, sim.period - 4) * 25;
+    // Computed from the periods actually played rather than hardcoded, so a
+    // seed that happens to go long doesn't fail this.
+    const expected = REG_MINUTES +
+      Math.max(0, sim.period - gameSim.REGULATION_PERIODS) * OT_MINUTES;
     // +-4 absorbs per-player rounding to whole minutes across a full roster.
     assert.ok(Math.abs(homeMin - awayMin) <= 4, 'both teams play the same clock: ' + homeMin + ' vs ' + awayMin);
     assert.ok(Math.abs(homeMin - expected) <= 4,

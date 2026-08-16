@@ -362,25 +362,25 @@ function simulatedSeason() {
   return _season;
 }
 
-// The measured pre-ultimates figure, re-measured on the 15.4s clock by raising
-// gateOverall to 101 so nobody holds an ultimate, five seeds: 111.03 / 110.55 /
-// 110.79 / 110.46 / 110.26, mean 110.62, spread 0.77. The same five seeds with
-// ultimates on run 111.71 / 111.59 / 111.46 / 111.69 / 111.94, mean 111.68.
+// The measured pre-ultimates figure, taken by raising gateOverall to 101 so
+// nobody holds an ultimate at all. Five seeds on the 38-minute clock:
+// 108.90 / 109.07 / 108.29 / 109.02 / 108.99, mean 108.85, spread 0.78. The
+// same five with ultimates on run 109.63 / 109.66 / 109.53 / 110.35 / 109.49,
+// mean 109.73.
 //
-// So the delta is +1.06, and it is worth saying plainly that it GREW: at the
-// old pace it was +0.26 on a base of 134.86 (0.19%), and it is now +0.96% —
-// five times as large in relative terms. Fewer possessions mean each shot a
-// takeover reassigns is a bigger share of the game, so the holder's efficiency
-// edge over the team-mate he displaces buys more. The constraint still holds
-// in the sense that matters — a takeover is worth ~13 points to its holder and
-// about one point to the league — but it holds with less margin than it did,
-// and a further pace cut is the thing that would break it.
+// So the delta is +0.88, or 0.81% of the league. Worth recording that this is
+// where it settled after wandering: it was +0.26 on 134.86 (0.19%) at the
+// original pace, went to +1.06 (0.96%) when the 15.4s clock made each
+// reassigned shot a bigger share of a shorter game, and came back to 0.81%
+// here — and it came back while CHARGE_TUNING.full dropped 200 -> 160, which
+// fires MORE takeovers. That is the constraint doing its job: a takeover
+// hands its holder ~13 points and the league about one, so making them
+// commoner moves who scores without moving how much gets scored.
 //
-// The tolerance is sized to clear that delta plus the run-to-run spread
-// (1.06 + 0.77 = 1.83) rather than being carried over unchanged; at the old
-// 1.5 this would pass with 0.44 to spare, which is thinner than the seed noise
-// it is supposed to tolerate.
-const LEAGUE_SCORING_BASELINE = 110.62;
+// The tolerance clears that delta plus the run-to-run spread (0.88 + 0.78 =
+// 1.66) rather than being carried over from a different league. The original
+// 1.5 was fitted to a +0.26 delta and has no headroom for this one.
+const LEAGUE_SCORING_BASELINE = 108.85;
 const LEAGUE_SCORING_TOLERANCE = 2.0;
 
 // THE GOVERNING CONSTRAINT. Takeovers redistribute scoring toward stars; they

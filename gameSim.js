@@ -27,7 +27,31 @@ var _GAMESIM_DATA = (typeof require !== 'undefined')
     };
 
 const REGULATION_PERIODS = 4;
-const PERIOD_SECONDS = 12 * 60;
+// A 9:30 quarter, so a regulation game is 38 minutes rather than 48.
+//
+// This is the LENGTH lever, and it exists because the pace lever was the wrong
+// one to pull. Scoring is possessions times efficiency, and possessions are
+// game-seconds divided by seconds-per-possession — so shortening the clock and
+// slowing the game buy exactly the same points. They do NOT feel the same. A
+// 15.4s possession is a slower game to sit and watch, with more dead time
+// between the things the animation layer exists to draw; a shorter quarter
+// leaves every possession as quick as it was and just plays fewer of them.
+//
+// Measured at the 12.5s pace, points a team by quarter length:
+//    8:30 -> 97.4    9:30 -> 109.4    10:30 -> 120.7
+//    9:00 -> 103.7   10:00 -> 115.2
+//
+// 9:30 sits mid-band for the 99-115 target. 10:00 — the FIBA quarter, and the
+// tempting round number — reads 115.2, which is over the ceiling with no room
+// for drift; it would need pace eased to ~13.0s to come back to 110.3, and
+// that is the trade this constant exists to avoid.
+//
+// Note what does NOT move across that whole sweep: FG% stays 48.2-48.5 and 3P%
+// stays 36.9-37.6. Clock length is a pure scoring lever, exactly as pace was,
+// which is why the shot bases solved against the percentages remain correct.
+const PERIOD_SECONDS = 9.5 * 60;
+// Overtime stays a full five minutes — better than half a period of a 38-minute
+// game, because an overtime is supposed to feel like a whole extra thing.
 const OVERTIME_SECONDS = 5 * 60;
 
 // How long a possession takes, which is the knob that sets league scoring.
@@ -36,25 +60,21 @@ const OVERTIME_SECONDS = 5 * 60;
 // POSSESSIONS_PER_TEAM exactly, so switching from a fixed possession count to a
 // real clock did not re-scale scoring. It has now been moved deliberately.
 //
-// 15.4s is the current setting, and it exists to hold THREE numbers at once:
-// a team scores 99-115 a game, shoots 47.5-49% from the field, and 36-38% from
-// three. Measured over 30 games it lands 108.4 points, 48.8% FG, 37.7% from
-// three — every band on its own merits, and none of them fighting the others.
+// 12.5s, and it stays there. Measured across 3 seasons at each setting from 16s
+// down to 11s, points ran 105.8 -> 153.0 while points-per-possession never left
+// 1.186-1.189 and FG% never left 48.1-48.2: the game just plays faster and
+// every shot is exactly as hard as it was.
 //
-// PACE is the only lever that can do that, because it is the one knob that
-// moves scoring without touching how hard a shot is. Measured across 3 seasons
-// at each setting from 16s down to 11s, points ran 105.8 -> 153.0 while
-// points-per-possession never left 1.186-1.189 and FG% never left 48.1-48.2.
-// Points track 1679/seconds almost exactly over that whole range, which is what
-// made 15.4 a solve rather than a search. Reaching for the shot bases instead
-// would have moved the very percentages the other two bands pin down: there is
-// no value of SHOT_TUNING.base that both drops scoring to 108 and leaves FG% at
-// 48.8, since dropping one drops the other.
+// That makes pace a perfectly good scoring lever arithmetically, and it was
+// briefly used as one — 15.4s, to bring a 134-point league down to 108. It was
+// reverted because arithmetic is not the whole question. Seconds-per-possession
+// is how quick the game FEELS, and this engine draws a live animated
+// possession; stretching each one by 23% to fix a season total made every
+// individual play worse to watch in order to fix a number nobody watches.
 //
-// It was 12.5s when the target was 130-140 points. That target is gone; this
-// one replaces it. Every seeded score in the league moves, which is why both
-// golden fixtures are regenerated in the same commit.
-const POSSESSION_BASE_SECONDS = 15.4;
+// Game LENGTH buys the identical points and costs none of that. See
+// PERIOD_SECONDS above, which now carries the 99-115 target.
+const POSSESSION_BASE_SECONDS = 12.5;
 const POSSESSION_VARIANCE_SECONDS = 5;
 
 const TIMEOUTS_PER_GAME = 7;
@@ -656,6 +676,14 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     createGameSim: createGameSim,
     activeTakeoverFor: activeTakeoverFor,
-    simulateGame: simulatePossessionGame
+    simulateGame: simulatePossessionGame,
+    // Exported so the validators can DERIVE the minutes a game is worth
+    // instead of hard-coding 240. They were written when a regulation game was
+    // 48 minutes by definition; it is 38 now, and a test that knows the number
+    // but not where it comes from has to be re-typed every time the clock
+    // moves. Read-only in practice — nothing writes these back.
+    REGULATION_PERIODS: REGULATION_PERIODS,
+    PERIOD_SECONDS: PERIOD_SECONDS,
+    OVERTIME_SECONDS: OVERTIME_SECONDS
   };
 }

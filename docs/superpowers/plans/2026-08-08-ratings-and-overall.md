@@ -83,19 +83,38 @@ The lesson generalises: a target copied from a real-world number is only valid
 if the *denominator* it implies also matches. Check pace before importing rate.
 
 **Reopened and settled, 2026-08-16.** The paragraph above left the pace question
-open, and it was later answered twice. First by pushing
-`POSSESSION_BASE_SECONDS` down to 12.5s for a deliberately arcade 130–140, then
-by settling at **15.4s** for the three bands now in the table: 99–115 points,
-47.5–49% FG, 36–38% from three. Measured on a full season: **111.2 / 48.15 /
-37.15**.
+open. It is closed now, and the answer was **not** pace: the target is 99–115
+points, 47.5–49% FG, 36–38% from three, and a **9:30 quarter** carries it. A
+regulation game is 38 minutes. Measured on a full season: **109.8 / 48.63 /
+37.21**.
 
-Two things are worth carrying forward from doing it. Pace is the only lever
-that moves scoring without dragging the percentages with it — across 16s down
-to 11s, points ran 105.8 → 153.0 while points-per-possession never left
-1.186–1.189. And *because* it is the only such lever, the percentages then have
-to be solved separately: the slower clock left FG% at 47.0 and 3P% at 36.1,
-both on or under their floor, so the per-zone bases were re-solved on top of
-it. Getting three bands at once is a two-step, not one.
+Three things are worth carrying forward.
+
+**Scoring has two levers and they are not interchangeable.** Points are
+possessions times efficiency, and possessions are game-seconds over
+seconds-per-possession — so slowing the game and shortening it buy the identical
+points. Pace was tried first (12.5s → 15.4s) and reverted, because the two are
+only equivalent on the spreadsheet. This engine draws a live animated
+possession, and stretching each one by 23% to fix a season total makes every
+play worse to watch in order to fix a number nobody watches. Length costs
+nothing that way. Prefer it.
+
+**Neither lever touches the percentages, so those are a separate solve.** Across
+the whole quarter-length sweep (8:30 → 10:30) FG% stayed 48.2–48.5 and 3P%
+36.9–37.6. That is why the shot bases had to be re-solved independently — the
+clock alone left FG% at 47.0 and 3P% at 36.1, both under their floor. Three
+bands at once is a two-step.
+
+**A shorter game is not a scaled-down game.** This was the surprise, and it is
+where most of the follow-on work went. Rotations do not shrink with the clock:
+the team total falls 239.8 → 190.1 player-minutes (−21%) while the leading
+minute-getter falls only 38.0 → 33.3 (−12%), so his share rises 15.9% → 17.5%.
+Same team scoring, divided less evenly. Big individual nights therefore got
+*more* common even as the league scored less, and the feat bars had to move
+**up** against a falling league. Anything calibrated per-game rather than
+per-minute needs re-measuring after a clock change — including
+`CHARGE_TUNING.full`, since a meter that fills over a game has the game's
+length baked into it.
 
 ---
 
