@@ -518,7 +518,12 @@ function checkEveryBeatOfAStringSaysWhichMoveItIs() {
   // And the marker must name a move ui/pixelMotion.js knows how to draw. A
   // typo here would fall through to the default crossover silently.
   const motion = require(path.join(__dirname, '..', 'ui', 'pixelMotion.js'));
-  const known = { putdown: 1, cross: 1, behind: 1, double: 1, ankle: 1, stepback: 1, legs: 1 };
+  // `drive` is the one that is not a MOVE: it is a man carrying the ball to the
+  // rim, and it exists so the beat that was already taking him there stops
+  // being a slide. dribbleCrossings answers [] for it, deliberately — a
+  // crossing in front of a finish would be a move he is not making.
+  const known = { putdown: 1, cross: 1, behind: 1, double: 1, ankle: 1,
+    stepback: 1, legs: 1, drive: 1 };
   kfs.forEach(function (kf) {
     if (!kf.drib) return;
     assert.ok(known[kf.drib.move], 'unknown move "' + kf.drib.move + '"');

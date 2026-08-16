@@ -755,12 +755,27 @@ function checkTheApproachIsFootworkAndNotAHop() {
   // Both are FLOOR moves, and that is the property worth pinning: the moment
   // either one leaves the ground it stops being footwork and becomes a jump,
   // which is a different move that already exists.
+  // "Never leaves the floor" was the first version of this rule and it was too
+  // blunt: it failed the pro-hop, which leaves the floor BY DEFINITION — that
+  // is the difference between a hop and a step. The property that actually
+  // matters is that an approach stays LOW, well under the layup it hands over
+  // to, so it never competes with the finish for the same beat.
+  const APPROACH_CEILING = Math.round(motion.CLOSE_LIFT.rise / 2);
   Object.keys(motion.APPROACH_LIFT).forEach(function (phase) {
-    assert.ok(motion.APPROACH_LIFT[phase] <= 0,
-      phase + ' leaves the floor at ' + motion.APPROACH_LIFT[phase] + 'px — an approach is footwork');
+    assert.ok(motion.APPROACH_LIFT[phase] <= APPROACH_CEILING,
+      phase + ' rises ' + motion.APPROACH_LIFT[phase] + 'px, past the ' +
+      APPROACH_CEILING + 'px an approach may use before it is a jump');
     assert.strictEqual(motion.approachLiftAt({ close: { phase: phase } }),
       motion.APPROACH_LIFT[phase], phase + ' is not routed to the approach table');
   });
+  // Exactly one of them may leave the ground, and it has to be the hop.
+  const airborne = Object.keys(motion.APPROACH_LIFT).filter(function (p) {
+    return motion.APPROACH_LIFT[p] > 0;
+  });
+  assert.deepStrictEqual(airborne, ['hopGather'],
+    'the approaches that leave the floor are ' + JSON.stringify(airborne) +
+    ' — only the pro-hop is a hop');
+
   // ...and a normal finish must be untouched by any of it.
   ['gather', 'rise', 'release', 'land'].forEach(function (phase) {
     assert.strictEqual(motion.approachLiftAt({ close: { phase: phase } }), null,
@@ -809,20 +824,42 @@ function checkTheApproachIsFootworkAndNotAHop() {
   // it gated the spin on there being no lateral room, which is true of the move
   // and true of almost no possessions, so it fired 11 times against the euro's
   // 79. A move that never plays is not an animation.
-  const seen = { euro: 0, spin: 0, none: 0 };
-  for (let seed = 0; seed < 2000; seed++) {
+  const KINDS = ['euro', 'spin', 'hop', 'switch'];
+  const seen = { euro: 0, spin: 0, hop: 0, switch: 0, none: 0 };
+  for (let seed = 0; seed < 4000; seed++) {
     const wide = seed % 3 !== 0;      // roughly the mix real finishes produce
     const got = choreo.approachFor({ defended: true, lateral: wide ? 9 : 2,
       finish: 'standard' }, seed);
     seen[got || 'none']++;
   }
-  assert.ok(seen.euro > 100, 'the euro step fires ' + seen.euro + ' times in 2000 — effectively never');
-  assert.ok(seen.spin > 100, 'the spin finish fires ' + seen.spin + ' times in 2000 — effectively never');
-  assert.ok(seen.none > 800,
-    'an approach fires on ' + (100 - seen.none / 20).toFixed(0) + '% of finishes — that is a new default, not variety');
-  console.log('checkTheApproachIsFootworkAndNotAHop: OK (4 phases on the floor, legs lead by ' +
+  KINDS.forEach(function (k) {
+    assert.ok(seen[k] > 150,
+      'the ' + k + ' fires ' + seen[k] + ' times in 4000 — effectively never. ' +
+      'This has now happened twice: the spin shipped tight-only and played 11 ' +
+      'times against the euro 79, and the hand-switch shipped the same way and ' +
+      'played twice in eight games.');
+    // ...and each has to be its own move on the floor, not a relabelling.
+    const one = choreo.approachStep(k, 0, 1), two = choreo.approachStep(k, 1, 1);
+    assert.ok(Math.hypot(two[0] - one[0], two[1] - one[1]) >= 3,
+      k + ' barely moves between its two beats');
+    assert.strictEqual(choreo.approachBeats(k).length, 2,
+      k + ' does not have two beats');
+  });
+  // No two of them may walk the same path, or they are one move with four names.
+  for (let i = 0; i < KINDS.length; i++) {
+    for (let j = i + 1; j < KINDS.length; j++) {
+      const a = choreo.approachStep(KINDS[i], 1, 1), b = choreo.approachStep(KINDS[j], 1, 1);
+      assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) >= 2,
+        KINDS[i] + ' and ' + KINDS[j] + ' finish in the same place');
+    }
+  }
+  assert.ok(seen.none > 1600,
+    'an approach fires on ' + (100 - seen.none / 40).toFixed(0) +
+    '% of finishes — that is a new default, not variety');
+  console.log('checkTheApproachIsFootworkAndNotAHop: OK (' +
+    Object.keys(motion.APPROACH_LIFT).length + ' phases, legs lead by ' +
     (motion.SPIN_TORSO_LAG * 100).toFixed(0) + '% of the turn, ' +
-    'euro ' + (seen.euro / 20).toFixed(0) + '% / spin ' + (seen.spin / 20).toFixed(0) + '% of defended finishes)');
+    KINDS.map(function (k) { return k + ' ' + (seen[k] / 40).toFixed(0) + '%'; }).join(' / ') + ')');
 }
 
 function checkTheAlleyOopIsCaughtInTheAir() {

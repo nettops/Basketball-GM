@@ -204,7 +204,10 @@ every validator green. It now covers both.
 
 ### Not done
 
-Per-player dribble tempo (treatment D from the previous round) is still
-unbuilt: every player dribbles at the same rhythm, quick guard and slow big
-alike, which sits oddly beside the idle breathing that deliberately gives each
-player his own period.
+~~Per-player dribble tempo (treatment D from the previous round) is still
+unbuilt.~~ **Built in the animation polish pass** — see
+`2026-08-15-animation-polish.md`. Tempo now responds to handle skill and to
+pressure, measured at 0.798 for an elite handler under pressure against 0.970
+for a poor one with room, and `checkTempoRespondsToSkillAndPressure` holds it
+there. This note sat here stale for three rounds, which is its own small lesson
+about "not done" lists.

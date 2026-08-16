@@ -331,7 +331,11 @@ function closeLiftTable(finish) {
 // The lifts are small and NEGATIVE on purpose — an approach is played out on the
 // floor, and anything airborne here would fight the finish that follows it.
 const APPROACH_LIFT = {
-  euroOne: -2, euroTwo: -4, spinTurn: -3, spinOut: -1
+  euroOne: -2, euroTwo: -4, spinTurn: -3, spinOut: -1,
+  // A pro-hop is the one approach that LEAVES the floor — that is what makes it
+  // a hop rather than a step — but only just, and it lands two-footed and deep.
+  // The hand-switch stays down: he is ducking under the rim, not rising.
+  hopGather: 3, hopLand: -5, switchUnder: -4, switchOut: -2
 };
 
 function approachLiftAt(kf) {
@@ -828,6 +832,11 @@ function dribbleBall(u) {
 function dribbleCrossings(move, n) {
   // A put-down is two dribbles in place. Nothing crosses; nothing should.
   if (move === 'putdown') return [];
+  // A DRIVE is the same answer for the same reason: he is going somewhere, not
+  // beating anybody. The ball stays on one hand and travels with him — a
+  // crossing here would put a move in front of a finish that is not a move, it
+  // is an approach.
+  if (move === 'drive') return [];
   // An ankle breaker's beats are the jab, the cut back and the clear. The ball
   // has to change hands ON the cut — that IS the move — so it is pinned to beat
   // 1 rather than to a fraction of the string.

@@ -394,6 +394,18 @@ function dunkPool(ctx) {
     // AN ALLEY-OOP is caught in the air, so the ball starts high and the hands
     // have to meet it. Paths that begin below the waist cannot happen.
     if (c.alley) return d.path !== 'eastbay' && d.path !== 'double' && !d.reverse;
+    // NO ANGLE TERM, and it is worth saying why rather than leaving the gap
+    // silent. A reverse is a baseline finish and it would be right to gate it
+    // on having arrived from the side — but the drive positions the sim hands
+    // over carry no lateral component at all. Measured over 442 dunks, the
+    // start of the drive sits on the rim's own line every single time, so
+    // `|sideways| / runway` came out at zero for the whole sample.
+    //
+    // A filter on a signal that does not exist is not a filter, it is a ban:
+    // the first version of this cost five of the twenty-three finishes and
+    // bought nothing. Giving drives a real approach angle is a change to the
+    // sim's geometry, not to the animation, so it is left undone and recorded
+    // rather than faked.
     // A SHORT RUNWAY rules out everything that needs momentum to carry.
     if (typeof c.runway === 'number' && c.runway < 30) {
       return d.quick || d.path === 'power' || d.path === 'straight';

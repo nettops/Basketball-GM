@@ -146,6 +146,16 @@ const BEAT = {
   // time makes it a shuffle. The spin's turn is slower than its exit for the
   // same reason — you sell the turn and then you are gone.
   euroOne: 130, euroTwo: 190, spinTurn: 210, spinOut: 110,
+  // The pro-hop's gather is slow and its landing is quick — you float and then
+  // you arrive. The hand-switch is the reverse: a fast duck under the rim and a
+  // longer beat coming out of it with the ball on the other hand.
+  // hopLand lengthened from 90: the float covers the whole distance in this one
+  // beat, and at 90ms it was the fastest floor movement of any approach.
+  hopGather: 200, hopLand: 130, switchUnder: 110, switchOut: 190,
+  // One bounce of the drive. Short: this is the approach to a finish, not a
+  // possession's worth of handle, and a long beat here would put a pause where
+  // the gather should already be starting.
+  driveStep: 110,
   // Dunk beats. The rise is short and the hang is shorter — a leap that takes
   // as long as a jump shot's flight reads as floating, not exploding.
   dunkGather: 170, dunkRise: 150, dunkSlam: 90, dunkLand: 130,
@@ -272,6 +282,14 @@ const REVERSE_LATERAL = 48;
 // twenty-fifth, and a body is 10px wide — so 13 is "close enough to be touching"
 // and lands contact on about one dunk in six. Frequent enough to matter, rare
 // enough that it still reads as an event.
+// An ANGLE, not a distance: how much of his approach was sideways. A man who
+// started forty feet out and ten feet off-centre came down the middle; one who
+// started ten feet out and ten feet off-centre came along the baseline, and the
+// absolute offset cannot tell them apart.
+// He needs somewhere to have driven FROM. Under this he is already at the rim
+// and a dribble in front of the gather is a man bouncing the ball on the spot.
+const DRIVE_MIN_RUNWAY = 24;
+const BASELINE_ANGLE_RATIO = 0.5;
 const CONTACT_RIM_PX = 13;
 
 // Distance to the nearest man on the other team. `defenderIds` is the five on
@@ -300,20 +318,40 @@ const APPROACH_EURO_LATERAL = 6;
 // the work was effectively shelf art. A spin is available from anywhere — it is
 // just the only thing available when you are walled off — so it keeps a base
 // rate everywhere and a much higher one when he is hemmed in.
-const APPROACH_RATE = { euro: 0.24, spinWide: 0.12, spinTight: 0.34 };
+const APPROACH_RATE = { euro: 0.18, spinWide: 0.10, spinTight: 0.26,
+  // The other two members of the family. A pro-hop wants room to land into, so
+  // it goes with the euro's wide condition; a hand-switch is what you do when
+  // you have gone UNDER the rim and come out the far side, which is the tight
+  // one. Rates chosen so the four together still leave most finishes plain —
+  // an approach on every layup is a new default, not variety.
+  // `switch` was tight-only at first and fired twice in eight games — the same
+  // shape of mistake the spin made, and the reason both checks now assert a
+  // real rate rather than mere correctness. Going under the rim is available
+  // from anywhere; it is just the obvious thing when you are walled off.
+  hop: 0.12, switchTight: 0.20, switchWide: 0.09 };
 
 function approachFor(ctx, seed) {
   if (!ctx || !ctx.defended) return null;
   if (ctx.finish === 'floater') return null;
   const roll = roll01(seed);
   const wide = Math.abs(ctx.lateral || 0) >= APPROACH_EURO_LATERAL;
-  if (!wide) return roll < APPROACH_RATE.spinTight ? 'spin' : null;
+  if (!wide) {
+    if (roll < APPROACH_RATE.spinTight) return 'spin';
+    return roll < APPROACH_RATE.spinTight + APPROACH_RATE.switchTight ? 'switch' : null;
+  }
   if (roll < APPROACH_RATE.euro) return 'euro';
-  return roll < APPROACH_RATE.euro + APPROACH_RATE.spinWide ? 'spin' : null;
+  let cut = APPROACH_RATE.euro + APPROACH_RATE.hop;
+  if (roll < cut) return 'hop';
+  cut += APPROACH_RATE.spinWide;
+  if (roll < cut) return 'spin';
+  return roll < cut + APPROACH_RATE.switchWide ? 'switch' : null;
 }
 
 function approachBeats(kind) {
-  return kind === 'euro' ? ['euroOne', 'euroTwo'] : ['spinTurn', 'spinOut'];
+  if (kind === 'euro') return ['euroOne', 'euroTwo'];
+  if (kind === 'hop') return ['hopGather', 'hopLand'];
+  if (kind === 'switch') return ['switchUnder', 'switchOut'];
+  return ['spinTurn', 'spinOut'];
 }
 
 // Where each step puts him, relative to where he gathers. `away` is the side the
@@ -325,8 +363,25 @@ function approachStep(kind, index, away) {
     // closer to the rim than the first, or he has gone sideways for nothing.
     return index === 0 ? [-3 * s, -4 * s] : [2 * s, 5 * s];
   }
-  // the spin carries him AROUND: away from the man, then back in on the far side
-  return index === 0 ? [-2 * s, -3 * s] : [3 * s, 4 * s];
+  if (kind === 'hop') {
+    // A PRO-HOP is not a step, it is a GATHER and a two-footed landing — he
+    // picks the ball up, floats, and comes down square somewhere else. So the
+    // first beat barely moves him (he is collecting) and the second covers the
+    // whole distance at once, which is the opposite shape to a euro.
+    return index === 0 ? [0, -1 * s] : [3 * s, 8 * s];
+  }
+  if (kind === 'switch') {
+    // A HAND-SWITCH goes UNDER the rim and out the other side. Mostly lateral
+    // and barely forward: the point is to change which side of the basket he
+    // is on, and the ball changes hands doing it.
+    return index === 0 ? [-2 * s, 2 * s] : [-6 * s, 4 * s];
+  }
+  // The spin carries him AROUND: away from the man, then back in on the far
+  // side. More LATERAL than forward, which is what separates it from a euro —
+  // the two finished 1.4px apart at first and the separation check caught it,
+  // the same way it caught cradle and tomahawk. A euro commits at the rim; a
+  // spin comes out beside it.
+  return index === 0 ? [-2 * s, -3 * s] : [5 * s, 3 * s];
 }
 
 function layupFinish(dist, lateral, shooterHeightIn, defenderHeightIn, seed) {
@@ -1819,7 +1874,25 @@ function createChoreographer(session) {
           relSpot = rimSpot;
           // the driver and his man hold; the weak side rotates
           push(BEAT.drive, flowPositions(releasePos, [ev.playerId, ev.defenderId], pi * 13 + ei, defenderIds),
-            { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock, '');
+            { x: rimSpot[0], y: rimSpot[1], holder: ev.playerId }, period, quarter, clock,
+            // HE IS DRIBBLING IT IN, which this beat never said.
+            //
+            // Section 8 asks for the dribble to flow into the takeoff, and the
+            // reason it never did is not a rough seam — a dunk never followed a
+            // dribble AT ALL. The string is gated on the shot being outside and
+            // every dunk is inside, so measured over a game not one dunk had a
+            // dribble keyframe behind it.
+            //
+            // The drive was already here, though: this beat has always carried
+            // him from where the sim shot from to where he gathers. It simply
+            // said nothing about the ball, so he crossed that ground holding it
+            // still. Marking it costs no beats — section 25's rule — and the
+            // last bounce now hands over to the gather.
+            '', '', 'dribble');
+          // The ball's path, not the possession's dribble COUNT. `tagHandle` is
+          // the counted one and this is deliberately not it: the stepback made
+          // that mistake and moved a reported metric by eight points.
+          tagDribble('drive', 1, 0);
         }
         if (ev.made) {
           score[ev.team === 'home' ? 0 : 1] += ev.points;
@@ -1935,6 +2008,11 @@ function createChoreographer(session) {
               nearestOpponentPx(shotPos, defenderIds, relSpot) <= CONTACT_RIM_PX,
             putback: lastOrebBy === ev.playerId,
             runway: runway,
+            // The ANGLE he attacked from, not just the distance. Lateral
+            // separation between where he started and the rim: a big number is
+            // a baseline drive, a small one is straight down the middle.
+            baseline: runway > 1 &&
+              Math.abs(sp[1] - hoop.y) / runway >= BASELINE_ANGLE_RATIO,
             // THE ALLEY-OOP, which has been dead code since the pool rules for
             // it were written: `dunkPool` has known how to filter for one all
             // along and nothing ever set the flag.
@@ -1971,7 +2049,8 @@ function createChoreographer(session) {
             // lifts are written for a median frame, so without this a short
             // guard finishes under the hoop and a centre finishes over it.
             tall: _spriteTallness(shooterPlayer && shooterPlayer.heightIn),
-            alley: !!dunkCtx.alley
+            alley: !!dunkCtx.alley,
+            baseline: !!dunkCtx.baseline
           };
           function dunkPhase(phase) {
             return Object.assign({ phase: phase, route: routeMarks[phase] }, dunkMeta);

@@ -251,6 +251,67 @@ not the rendered route), and the landing check tested only the unstyled curve
 while `heavy` is 35% deeper. Both now test what ships. Same class as
 CLAUDE.md's "a validator that calls a seeded function without its seed is lying."
 
+## Follow-up: working the "not done" list
+
+### Fixed, and each was dead rather than missing
+
+**Contact fired on 2.9% of dunks** because the clause meant to catch "defended
+at the rim" read `onBall && ev.zone === 'inside'` — and `onBall` was defined
+three lines above as, among other things, `ev.zone !== 'inside'`. A
+contradiction, dead from the day it was written, so every contact dunk in the
+game came from the poster marker alone. Keying it off the *nominal* defender did
+not help either (that man is usually not the one under the rim); it reads the
+nearest body on the other team now, at 13px taken off the measured spread.
+**2.9% → 17.4%**, and the landing mix moved with it — stumbles 13 → 77, because
+being hit is what knocks you off balance.
+
+**Three moves shipped silent.** The euro, the spin and the oop passed `''` in
+the sound slot of every keyframe. Footwork squeaks now; a lob is heard leaving
+and arriving; the camera leans in on an oop as it already did on a poster.
+
+**The defence** was five men a side drawn with the idle and running poses for
+the whole game — the largest block of unanimated basketball in it, on screen the
+entire time. A stance now, deepest on the ball and easing toward the weak side,
+hands low and wide, one up to contest, released by speed because you do not
+slide the length of the floor.
+
+**The shooter had no opinion about his own shot** — a made three and an air ball
+timed out the same 520ms and he went back to standing. 900ms held on a make, 340
+on a miss, and the shoulders go after one. Timing, not a new pose.
+
+**Fatigue** existed in the sim and nowhere else.
+
+**The drive into the takeoff** (section 8). The reason the dribble never flowed
+into the dunk is more basic than a rough seam: *a dunk never followed a dribble
+at all* — the string is gated on the shot being outside and every dunk is
+inside. But the drive beat was already there, carrying him from the shot spot to
+the gather while saying nothing about the ball. Marking it costs no beats.
+**100% of dunks driven into**, worst floor step 1.06px/frame, and
+`probe-dribbles` unchanged at 44.3/25.4/16.7/13.6 — tagging the ball's path
+without touching the count marker avoided the trap the stepback fell into.
+
+**The pro-hop and the hand-switch** complete the approach family. All four fire
+at comparable rates and 61% of finishes stay plain.
+
+### Measured, and deliberately not built
+
+**Approach angle does not vary the dunk, and cannot yet.** A reverse is a
+baseline finish and gating it on having arrived from the side is right — but
+over 442 dunks the start of the drive sits on the rim's own line *every single
+time*, so `sideways / runway` came out at zero for the whole sample. The filter
+cost five of the twenty-three finishes and bought nothing. Giving drives a real
+approach angle is a change to the sim's geometry, not to the animation.
+
+**Contact still does not change the OUTCOME**, only the drawing. That is a
+balance change rather than an animation one and is left for a decision.
+
+### Two checks caught their author
+
+The approach-lift rule said "an approach never leaves the floor" and failed the
+pro-hop, which leaves the floor by definition — the rule was too blunt and now
+bounds the height instead. And the separation check caught the euro and the spin
+finishing 1.4px apart, the same way it caught cradle/tomahawk.
+
 ## Not done
 
 - **Ball-handling into dunks** (section 8) — crossover→takeoff→dunk as a
