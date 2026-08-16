@@ -207,6 +207,10 @@ function renderPixelGame(container) {
   // The same array object throughout — appendEvents mutates it in place, so
   // this stays valid as the live timeline grows.
   const kfs = timeline.keyframes;
+  // How tired everybody ended the game. The sim has tracked energy all along
+  // and nothing had ever asked for it, so a man in his fortieth minute moved
+  // exactly like one who had just checked in.
+  const energyById = timeline.energyById || {};
 
   // --- Live stepping ------------------------------------------------------
   // How far ahead of the playhead the choreographed timeline is kept. Two
@@ -1008,8 +1012,27 @@ function renderPixelGame(container) {
       const bump = contactAt[pid];
       const bumpAmt = (bump && footLift === 0)
         ? bump.strength * contactDecay(playbackMs - bump.at) : 0;
+      // HOW TIRED HE IS and WHETHER HE JUST MISSED, both folded into the same
+      // knee/waist channel the gather and the landing already use. A tired man
+      // and a man who just watched one rim out have the same tell — the
+      // shoulders go — and it is a fold at the waist, which is what `crouch`
+      // draws.
+      // Not while he is shooting or in the air: a tired man still extends
+      // fully to shoot, and drooping the gather would be reading fatigue as
+      // sloppiness rather than as posture.
+      const energyNow = energyAt(energyById[pid],
+        timeline.durationMs ? playbackMs / timeline.durationMs : 0);
+      const droop = (jumpLift <= 0 && !shooting)
+        ? fatigueLevel(energyNow) * FATIGUE_DROOP_PX : 0;
+      // Read off the release marker rather than stamped: the marker already
+      // carries the outcome and its own age, so there is no new state to keep
+      // in sync and nothing to go stale on a seek.
+      const jm = fr.a.jump;
+      const missSlump = (jm && jm.phase === 'release' && jm.id === pid && !jm.made)
+        ? shotSlump(fr.f * Math.max(1, fr.b.t - fr.a.t), false) : 0;
       const crouchPx = Math.max(0, -jumpLift) + landSquash + rimHit +
-        plantCrouch(braking) + hesiCoil + CONTACT_CROUCH_PX * bumpAmt;
+        plantCrouch(braking) + hesiCoil + CONTACT_CROUCH_PX * bumpAmt
+        + droop + missSlump;
       // pose off actual height, not the beat name — he is still on the floor
       // during the gather, and the tucked legs would read as a bug there
       // Engaged as he LEAVES the floor, not 3px up. The pose is drawn at

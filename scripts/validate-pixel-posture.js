@@ -893,8 +893,25 @@ function checkAContactDunkIsHitAndKeepsGoing() {
     assert.strictEqual(motion.contactCheck(phase, 0.45, true), 0,
       'the contact check fires on the ' + phase + ', where there is nothing to run into');
   });
+  // ...and the thing that decides WHETHER it fires has to be reachable. The
+  // clause that was meant to catch "defended at the rim" read
+  // `onBall && ev.zone === 'inside'` while `onBall` was itself defined as
+  // `... && ev.zone !== 'inside'` — a contradiction, dead from the day it was
+  // written, and the reason every contact dunk in the game came from the poster
+  // marker alone. It keys off the nearest opponent now, which is measurable.
+  const five = ['a', 'b', 'c', 'd', 'e'];
+  const near = {}; five.forEach(function (id, i) { near[id] = [100 + i * 40, 0]; });
+  assert.strictEqual(choreo.nearestOpponentPx(near, five, [100, 0]), 0,
+    'a man standing on the spot is not detected');
+  near.a = [200, 0];
+  assert.ok(choreo.nearestOpponentPx(near, five, [140, 0]) <= 20,
+    'the nearest opponent is not being found');
+  assert.strictEqual(choreo.nearestOpponentPx({}, five, [0, 0]), Infinity,
+    'an empty floor reports contact');
+  assert.strictEqual(choreo.nearestOpponentPx(near, [], [0, 0]), Infinity,
+    'contact is detected with nobody on defence');
   console.log('checkAContactDunkIsHitAndKeepsGoing: OK (costs him ' + held +
-    'px mid-climb, finishes at the same rim)');
+    'px mid-climb, finishes at the same rim, fires off the nearest body)');
 }
 
 function checkTheNewMovesAreNotSilent() {
@@ -974,6 +991,53 @@ function checkTheDefenceIsActuallyGuardingSomebody() {
     'the stance never wins over running, so it never draws');
   console.log('checkTheDefenceIsActuallyGuardingSomebody: OK (deep on the ball, ' +
     'released by speed, hand up only on a shot)');
+}
+
+function checkHeHasAnOpinionAboutHisOwnShot() {
+  // A made three and an air ball produced identical body language: the
+  // follow-through timed out after the same 520ms either way and he went back
+  // to standing. The shooter is the one man on the floor guaranteed to be
+  // watching the ball and he was the one man with nothing to say about it.
+  //
+  // Fixed with TIMING rather than a new pose — section 25's rule — so what this
+  // asserts is that the two windows are actually different, and different by
+  // enough to see.
+  assert.ok(motion.followWindow(true) > motion.followWindow(false),
+    'he holds a miss as long as a make');
+  assert.ok(motion.followWindow(true) - motion.followWindow(false) >= 300,
+    'the two follow-throughs differ by ' +
+    (motion.followWindow(true) - motion.followWindow(false)) + 'ms, which is not a tell');
+
+  // The shoulders go on a miss and NOT on a make.
+  assert.strictEqual(motion.shotSlump(100, true), 0, 'he slumps after a make');
+  assert.ok(motion.shotSlump(120, false) > 0.5, 'he does not slump after a miss');
+  assert.strictEqual(motion.shotSlump(motion.SLUMP_MS, false), 0,
+    'the slump never lets go, so he stays hunched for the rest of the game');
+  assert.strictEqual(motion.shotSlump(-5, false), 0, 'the slump starts before the shot');
+  // ...and it must not be a step. It is posture, not an impact.
+  let worst = 0;
+  for (let ms = 0; ms < motion.SLUMP_MS + 60; ms += 1000 / 60) {
+    worst = Math.max(worst, Math.abs(
+      motion.shotSlump(ms + 1000 / 60, false) - motion.shotSlump(ms, false)));
+  }
+  assert.ok(worst < 0.5,
+    'the slump steps ' + worst.toFixed(2) + 'px in one frame — that is a flinch, not a shoulder');
+
+  // FATIGUE. Normalised against the range a real game produces (the tiredest
+  // man ends around 0.74), because scaling by the nominal 0..1 makes the whole
+  // effect a rounding error that draws as nothing.
+  assert.strictEqual(motion.fatigueLevel(1), 0, 'a fresh player is drawn tired');
+  assert.ok(motion.fatigueLevel(0.74) > 0.8,
+    'the tiredest man a game produces reads as only ' +
+    motion.fatigueLevel(0.74).toFixed(2) + ' tired');
+  assert.strictEqual(motion.energyAt(0.7, 0), 1, 'he tips off already tired');
+  assert.ok(Math.abs(motion.energyAt(0.7, 1) - 0.7) < 1e-9,
+    'he does not arrive at his final energy by the buzzer');
+  assert.ok(motion.energyAt(0.7, 0.5) > motion.energyAt(0.7, 1),
+    'fatigue does not grow through the game');
+  console.log('checkHeHasAnOpinionAboutHisOwnShot: OK (hold ' +
+    motion.followWindow(true) + 'ms made vs ' + motion.followWindow(false) +
+    'ms missed, fatigue 0-' + motion.FATIGUE_DROOP_PX + 'px)');
 }
 
 function checkNoTwoDunkRoutesAreTheSameRoute() {
@@ -1177,6 +1241,7 @@ checkTheAlleyOopIsCaughtInTheAir();
 checkAContactDunkIsHitAndKeepsGoing();
 checkTheNewMovesAreNotSilent();
 checkTheDefenceIsActuallyGuardingSomebody();
+checkHeHasAnOpinionAboutHisOwnShot();
 checkEveryDunkFinishesAtTheSameRim();
 checkTheHandMeetsTheBall();
 checkNoTwoDunkRoutesAreTheSameRoute();

@@ -266,6 +266,26 @@ const REVERSE_LATERAL = 48;
 // An oop needs the ball to have been in the AIR. A dish from two feet away is a
 // handoff; anything under this is choreographed as one and looks like a man
 // being handed a ball he then dunks.
+// How close a body has to be for the finish to be through him rather than over
+// him. Read off the measured distribution rather than picked: the nearest
+// opponent at the gather sits at 11.2px on the tenth percentile and 14.8 on the
+// twenty-fifth, and a body is 10px wide — so 13 is "close enough to be touching"
+// and lands contact on about one dunk in six. Frequent enough to matter, rare
+// enough that it still reads as an event.
+const CONTACT_RIM_PX = 13;
+
+// Distance to the nearest man on the other team. `defenderIds` is the five on
+// the floor for the defence, which is the right set: help comes from anywhere.
+function nearestOpponentPx(positions, defenderIds, at) {
+  let best = Infinity;
+  (defenderIds || []).forEach(function (id) {
+    const p = positions && positions[id];
+    if (!p) return;
+    const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+    if (d < best) best = d;
+  });
+  return best;
+}
 const ALLEY_MIN_PASS = 14;
 // One in five assisted dunks from range. An oop is a specific play, and firing
 // on every assisted dunk would make it the default rather than the highlight.
@@ -862,6 +882,25 @@ function createChoreographer(session) {
     durationMs: 0,
     snapshots: snapshots,
     lineScore: lineScore,
+    // HOW TIRED EVERYBODY ENDED UP. The sim has tracked energy all along and
+    // the sprite has never once looked at it: a man in his fortieth minute
+    // moves exactly like one who just checked in.
+    //
+    // The END state, not a per-possession one — the box score handed to this
+    // function is final, and threading live energy through would be a sim
+    // change rather than an animation one. The view interpolates from fresh at
+    // the tip to this at the buzzer, which gets the visible thing right (men
+    // wear down through a game, and the ones who played heavy minutes wear
+    // down further) without pretending to a precision it does not have.
+    energyById: (function () {
+      const out = {};
+      const box = session.boxScore || {};
+      Object.keys(box).forEach(function (id) {
+        const e = box[id] && box[id].energy;
+        if (typeof e === 'number') out[id] = Math.max(0, Math.min(1, e));
+      });
+      return out;
+    }()),
     finalStats: { points: runPts, fouls: runFouls }
   };
 
@@ -1871,7 +1910,29 @@ function createChoreographer(session) {
           const runway = Math.hypot(relSpot[0] - sp[0], relSpot[1] - sp[1]);
           const dunkCtx = {
             tier: _DUNKS.dunkTierFor(shooterPlayer),
-            contact: impactKind === 'poster' || (onBall && ev.zone === 'inside'),
+            // A DEAD CLAUSE, and it is why contact fired on 2.9% of dunks.
+            //
+            // This read `impactKind === 'poster' || (onBall && ev.zone ===
+            // 'inside')` — and `onBall` is defined above as, among other
+            // things, `ev.zone !== 'inside'`. The second half could never be
+            // true. Every contact dunk in the game came from the poster marker
+            // alone; the clause meant to catch "defended at the rim" caught
+            // nothing at all, which is exactly the shape of thing this whole
+            // pass keeps turning up.
+            //
+            // Said properly: a body between him and the rim. Not every defended
+            // inside shot — a man contesting from a step away is a contest, not
+            // contact — so it wants him CLOSE, which is what the distance is.
+            // WHOEVER IS ACTUALLY IN THE WAY, not the nominal defender.
+            //
+            // Keying on `ev.defenderId` was the second version of this and it
+            // fired zero times: the man the sim charged with the shot is often
+            // not the man standing under the rim, and on an inside finish it is
+            // usually a help defender who gets run through. Measured over 442
+            // dunks, the nearest OPPONENT is inside 14px on 22% of them while
+            // the nominal defender almost never is.
+            contact: impactKind === 'poster' ||
+              nearestOpponentPx(shotPos, defenderIds, relSpot) <= CONTACT_RIM_PX,
             putback: lastOrebBy === ev.playerId,
             runway: runway,
             // THE ALLEY-OOP, which has been dead code since the pool rules for
@@ -2028,7 +2089,12 @@ function createChoreographer(session) {
             period, quarter, clock, '', '', '', null, null, null, { phase: 'rise', id: jumpBy, three: three });
           // the ball leaves at the apex, not from a standing sprite
           push(BEAT.jumpRelease, releasePos, { x: relSpot[0], y: relSpot[1] - 20, holder: null },
-            period, quarter, clock, '', '', '', null, null, null, { phase: 'release', id: jumpBy, three: three });
+            period, quarter, clock, '', '', '', null, null, null, { phase: 'release', id: jumpBy, three: three,
+              // He is watching it. Whether it went in decides how long he holds
+              // the follow-through and whether his shoulders go afterwards —
+              // the one man on the floor guaranteed to have an opinion about
+              // the shot had none.
+              made: !!ev.made });
           // ...and he holds the follow-through while it is in the air
           push(flightBeat(ev.zone), crashPos, { x: hoop.x, y: hoop.y, holder: null }, period, quarter, clock,
             ev.made ? madeLabel : '', shotComment,
@@ -2214,6 +2280,8 @@ if (typeof module !== 'undefined' && module.exports) {
     BEAT: BEAT,
     layupFinish: layupFinish,
     approachFor: approachFor,
+    nearestOpponentPx: nearestOpponentPx,
+    CONTACT_RIM_PX: CONTACT_RIM_PX,
     ALLEY_MIN_PASS: ALLEY_MIN_PASS,
     ALLEY_RATE: ALLEY_RATE,
     approachBeats: approachBeats,

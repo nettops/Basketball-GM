@@ -243,6 +243,34 @@ const JUMP_LIFT = { gather: -3, rise: 9, release: 9, follow: 0 };
 // three's flight time on purpose — the pose should end while the ball is still
 // up, not carry into the rebound.
 const JUMP_FOLLOW_MAX_MS = 520;
+// ...AND WHAT HE DOES WHEN HE SEES IT GO IN OR NOT.
+//
+// A made three and an air ball produced identical body language: the
+// follow-through timed out after the same 520ms either way and he went back to
+// standing. The shooter is the one man on the floor guaranteed to be watching
+// the ball, and he was the one man with no opinion about it.
+//
+// Timing, not a new pose — section 25's rule. A shooter who knows it is in
+// holds the follow-through; one who knows it is not drops out of it and his
+// shoulders go. Same two poses the game already has, played for different
+// lengths, which is most of what body language is.
+const FOLLOW_MADE_MS = 900;
+const FOLLOW_MISS_MS = 340;
+const SLUMP_MS = 520;
+const SLUMP_PX = 2;
+
+function followWindow(made) {
+  return made ? FOLLOW_MADE_MS : FOLLOW_MISS_MS;
+}
+
+// The shoulders going after a miss: in fast, out slow, gone by SLUMP_MS. Same
+// shape as a landing, because it is the same thing — weight arriving somewhere
+// it was not before.
+function shotSlump(ms, made) {
+  if (made || typeof ms !== 'number' || ms < 0 || ms >= SLUMP_MS) return 0;
+  const f = ms / SLUMP_MS;
+  return SLUMP_PX * Math.sin(f * Math.PI) * (1 - f * 0.4);
+}
 function jumpLiftAt(kf) {
   const j = kf && kf.jump;
   if (!j || JUMP_LIFT[j.phase] === undefined) return 0;
@@ -433,7 +461,8 @@ function resolveLifts(a, b, f, reduceMotion) {
   // rebound beat as well, so shooters stood posing with their hand up for
   // 1.6s while the board was being fought for.
   const jumpFollow = !reduceMotion &&
-    !!(jumpA && jumpA.phase === 'release' && f * spanMs < JUMP_FOLLOW_MAX_MS);
+    !!(jumpA && jumpA.phase === 'release' &&
+       f * spanMs < followWindow(jumpA.made));
 
   // The layup, on exactly the machinery the jumper uses.
   const closer = reduceMotion ? { id: null, lift: 0 }
@@ -1169,6 +1198,36 @@ function defenseStance(distToBall, speed, shooterUp) {
   return { depth: depth, contest: contest };
 }
 
+// HOW TIRED HE LOOKS, 0 fresh to 1 spent.
+//
+// The sim has tracked energy since it was written and the sprite has never
+// looked at it: a man in his fortieth minute moves exactly like one who checked
+// in thirty seconds ago.
+//
+// Normalised against the range a real game actually produces rather than
+// against the full 0..1 the number nominally spans. Measured over a game, the
+// tiredest man on the floor ends around 0.74 and nobody goes below it, so
+// scaling by the nominal range would turn the whole effect into a rounding
+// error — 0.26 of a pixel, drawn as nothing.
+const FATIGUE_FLOOR = 0.70;
+// A pixel of shoulder. It is small on purpose: this is on every player for the
+// whole second half, and anything bigger stops being posture and becomes a
+// limp. It rides the WAIST fold, which is where tiredness actually shows.
+const FATIGUE_DROOP_PX = 1;
+
+function fatigueLevel(energy) {
+  if (typeof energy !== 'number') return 0;
+  return Math.max(0, Math.min(1, (1 - energy) / (1 - FATIGUE_FLOOR)));
+}
+
+// Energy at a point in the game. The box score is final, so this walks back
+// from it: fresh at the tip, wherever he ended up at the buzzer.
+function energyAt(finalEnergy, progress) {
+  const e = typeof finalEnergy === 'number' ? finalEnergy : 1;
+  const p = Math.max(0, Math.min(1, progress || 0));
+  return 1 - (1 - e) * p;
+}
+
 const POSE_ORDER = [
   'dunking',    // at the rim, ball overhead
   'layup',      // airborne finish, one knee driven
@@ -1681,6 +1740,11 @@ if (typeof module !== 'undefined' && module.exports) {
     landingSquashPx: landingSquashPx,
     closeCockAtBeat: closeCockAtBeat,
     JUMP_FOLLOW_MAX_MS: JUMP_FOLLOW_MAX_MS,
+    followWindow: followWindow,
+    shotSlump: shotSlump,
+    FOLLOW_MADE_MS: FOLLOW_MADE_MS,
+    FOLLOW_MISS_MS: FOLLOW_MISS_MS,
+    SLUMP_MS: SLUMP_MS,
     JUMP_BALL_HIGH: JUMP_BALL_HIGH,
     DUNK_BALL_HIGH: DUNK_BALL_HIGH,
     CLOSE_BALL_HIGH: CLOSE_BALL_HIGH,
@@ -1726,6 +1790,10 @@ if (typeof module !== 'undefined' && module.exports) {
     contactDecay: contactDecay,
     POSE_ORDER: POSE_ORDER,
     defenseStance: defenseStance,
+    fatigueLevel: fatigueLevel,
+    energyAt: energyAt,
+    FATIGUE_DROOP_PX: FATIGUE_DROOP_PX,
+    FATIGUE_FLOOR: FATIGUE_FLOOR,
     DEFEND_ON_BALL_PX: DEFEND_ON_BALL_PX,
     DEFEND_FAR_PX: DEFEND_FAR_PX,
     CONTEST_PX: CONTEST_PX,
