@@ -112,4 +112,29 @@ function checkNoModeChangesASimulatedGame() {
 }
 checkNoModeChangesASimulatedGame();
 
+// difficulty's one wired dial. A setting whose modes are defined but consumed
+// by nothing is a label, so this asserts the rope actually changes length.
+function checkTheOwnerActuallyFeelsTheSetting() {
+  const gmCareer = req('gmCareer.js');
+  const missed = { met: false };
+
+  const brutalCareer = gmCareer.createGmCareer('GM', 'BOS', 2026);
+  const brutalMax = difficulty.patienceFor(owner.OWNER_PATIENCE, 'brutal');
+  const brutalFirst = owner.applyMandateResult(brutalCareer, 'BOS', missed, brutalMax);
+  assert.strictEqual(brutalFirst.fired, true, 'on brutal, one miss is the sack');
+
+  const normalCareer = gmCareer.createGmCareer('GM', 'BOS', 2026);
+  const normalMax = difficulty.patienceFor(owner.OWNER_PATIENCE, 'normal');
+  assert.strictEqual(owner.applyMandateResult(normalCareer, 'BOS', missed, normalMax).fired, false,
+    'on normal the same miss is a warning');
+
+  const relaxedCareer = gmCareer.createGmCareer('GM', 'BOS', 2026);
+  const relaxedMax = difficulty.patienceFor(owner.OWNER_PATIENCE, 'relaxed');
+  owner.applyMandateResult(relaxedCareer, 'BOS', missed, relaxedMax);
+  assert.strictEqual(owner.applyMandateResult(relaxedCareer, 'BOS', missed, relaxedMax).fired, false,
+    'and on relaxed even two misses are survivable');
+  console.log('checkTheOwnerActuallyFeelsTheSetting: OK');
+}
+checkTheOwnerActuallyFeelsTheSetting();
+
 console.log('All difficulty validations passed');

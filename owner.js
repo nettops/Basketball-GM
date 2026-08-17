@@ -195,12 +195,16 @@ function judgeMandate(mandate, outcome) {
 // counting consecutive failures, not keeping a lifetime ledger. A GM who
 // alternates good and bad years keeps his job, which is the intent: he is being
 // judged on a trend, not on an average.
-function applyMandateResult(career, teamId, judgement) {
+// maxPatience lets difficulty.js shorten or lengthen the rope without this
+// module knowing difficulty exists. Defaults to OWNER_PATIENCE, so every
+// existing caller is unchanged.
+function applyMandateResult(career, teamId, judgement, maxPatience) {
+  const ceiling = maxPatience || OWNER_PATIENCE;
   if (!career.ownerPatience) career.ownerPatience = {};
   const before = career.ownerPatience[teamId] === undefined
-    ? OWNER_PATIENCE
+    ? ceiling
     : career.ownerPatience[teamId];
-  const after = judgement.met ? OWNER_PATIENCE : before - 1;
+  const after = judgement.met ? ceiling : before - 1;
   career.ownerPatience[teamId] = Math.max(0, after);
   return { patience: career.ownerPatience[teamId], fired: after <= 0 };
 }
@@ -276,7 +280,8 @@ function reviewSeason(gameState, facts) {
   });
 
   const judgement = judgeMandate(mandate, outcome);
-  const standing = applyMandateResult(career, gameState.userTeamId, judgement);
+  const standing = applyMandateResult(career, gameState.userTeamId, judgement,
+    facts.maxPatience);
 
   // Rounded, and clamped the same way finances.js clamps its own writes. The
   // raw field carries float noise from the tax maths (25.606481199999998 was

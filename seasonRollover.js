@@ -26,7 +26,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       owner: require('./owner.js'),
       league: require('./league.js'),
       draft: require('./draft.js'),
-      rivalries: require('./rivalries.js')
+      rivalries: require('./rivalries.js'),
+      difficulty: require('./difficulty.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -38,10 +39,11 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights, resolveLeagueRestrictedFA: resolveLeagueRestrictedFA },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
-      owner: { reviewSeason: reviewSeason, endTenure: endTenure, setMandate: setMandate },
+      owner: { reviewSeason: reviewSeason, endTenure: endTenure, setMandate: setMandate, OWNER_PATIENCE: OWNER_PATIENCE },
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll },
       draft: { playoffResultByTeam: playoffResultByTeam, playoffBracketIsComplete: playoffBracketIsComplete },
       rivalries: { recordPlayoffSeries: recordPlayoffSeries, decayRivalries: decayRivalries },
+      difficulty: { patienceFor: patienceFor },
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
       ultimates: { setLeagueGate: setLeagueGate },
@@ -90,7 +92,11 @@ function runOwnerReview(gameState, onFeed) {
     madePlayoffs: reached !== undefined,
     roundsWon: reached === undefined ? 0 : reached,
     payroll: _ROLLOVER_DATA.league.getTeamPayroll(teamId),
-    capLevel: gameState.settings ? gameState.settings.capLevel : undefined
+    capLevel: gameState.settings ? gameState.settings.capLevel : undefined,
+    // The one dial difficulty actually turns today.
+    maxPatience: _ROLLOVER_DATA.difficulty.patienceFor(
+      _ROLLOVER_DATA.owner.OWNER_PATIENCE,
+      gameState.settings ? gameState.settings.difficulty : undefined)
   });
   if (!review) return null;
   // Carried to next season's mandate: the owner does not ask a club that missed
