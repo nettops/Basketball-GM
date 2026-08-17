@@ -238,4 +238,57 @@ function checkAClubDeepInTheTaxIsNotToldToStayOutOfIt() {
 }
 checkAClubDeepInTheTaxIsNotToldToStayOutOfIt();
 
+// The biggest single source of failed mandates, found by printing the
+// per-mandate miss rate rather than by reasoning about which one looked hard:
+// win totals were missed 64% of the time because the target read the club's
+// self-image and never its actual strength. Boston, prestige 88 and a 40-win
+// team, was asked for 52 every season.
+function checkTheTargetKnowsWhatTheClubActuallyDid() {
+  const proudButBad = { id: 'X', timeline: 'win-now', prestige: 88,
+    lastSeasonWins: 40, record: { wins: 0, losses: 0 } };
+  const ambition = owner.mandateAmbition(proudButBad);
+  const target = owner.mandateWinTarget(proudButBad);
+
+  assert.ok(target < ambition,
+    'a proud club that won 40 is asked for less than its reputation suggests (' +
+    target + ' vs ambition ' + ambition + ')');
+  assert.ok(target > proudButBad.lastSeasonWins,
+    'but still asked to improve on what it did (' + target + ' vs 40)');
+
+  // A club that won more is asked for more, at the same reputation.
+  const proudAndGood = Object.assign({}, proudButBad, { lastSeasonWins: 58 });
+  assert.ok(owner.mandateWinTarget(proudAndGood) > target,
+    'and a club that won 58 is asked for more than one that won 40');
+
+  // Season one has no history at all; the target falls back to ambition rather
+  // than to zero, which would make the first mandate free.
+  const fresh = { id: 'Y', timeline: 'win-now', prestige: 88, record: { wins: 0, losses: 0 } };
+  assert.strictEqual(owner.mandateWinTarget(fresh), Math.min(60, owner.mandateAmbition(fresh)),
+    'with no history the target is pure ambition, not zero');
+  console.log('checkTheTargetKnowsWhatTheClubActuallyDid: OK');
+}
+checkTheTargetKnowsWhatTheClubActuallyDid();
+
+// Missed 5 times out of 5 before this guard. The third variant of one mistake:
+// a mandate handed to a club with no realistic route to it.
+function checkAClubThatMissedThePlayoffsIsNotToldToWinASeries() {
+  const rng = makeRng(23);
+  const t = { id: 'Z', timeline: 'win-now', prestige: 70, lastSeasonWins: 38,
+    record: { wins: 0, losses: 0 } };
+  for (let i = 0; i < 300; i++) {
+    const m = owner.chooseMandate(t, rng, { madePlayoffsLastYear: false });
+    assert.notStrictEqual(m.type, owner.MANDATE_TYPES.contend,
+      'a club that missed the playoffs is not asked to win a series');
+  }
+  let sawContend = false;
+  for (let i = 0; i < 300; i++) {
+    if (owner.chooseMandate(t, rng, { madePlayoffsLastYear: true }).type === owner.MANDATE_TYPES.contend) {
+      sawContend = true;
+    }
+  }
+  assert.ok(sawContend, 'a club that reached the playoffs can be asked to go further');
+  console.log('checkAClubThatMissedThePlayoffsIsNotToldToWinASeries: OK');
+}
+checkAClubThatMissedThePlayoffsIsNotToldToWinASeries();
+
 console.log('All owner mandate validations passed');

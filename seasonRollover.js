@@ -93,6 +93,9 @@ function runOwnerReview(gameState, onFeed) {
     capLevel: gameState.settings ? gameState.settings.capLevel : undefined
   });
   if (!review) return null;
+  // Carried to next season's mandate: the owner does not ask a club that missed
+  // the playoffs to win a series in the next one.
+  gameState.lastReviewMadePlayoffs = reached !== undefined;
 
   onFeed(review.met
     ? 'The owner is satisfied: you were asked to ' + review.mandate.label + ', and ' + review.detail + '.'
@@ -217,7 +220,8 @@ function runOffseasonRollover(gameState, deps) {
       _ROLLOVER_DATA.league.getTeamRoster(gameState.userTeamId),
       gameState.rng,
       { payroll: _ROLLOVER_DATA.league.getTeamPayroll(gameState.userTeamId),
-        capLevel: gameState.settings ? gameState.settings.capLevel : undefined });
+        capLevel: gameState.settings ? gameState.settings.capLevel : undefined,
+        madePlayoffsLastYear: gameState.lastReviewMadePlayoffs });
   }
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;

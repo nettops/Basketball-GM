@@ -124,6 +124,11 @@ console.log('club  timeline     mandates met  missed  firings');
 
 const totals = { firings: 0, met: 0, missed: 0, seasons: 0 };
 const byTimeline = {};
+// Which mandate is actually failing. Without this the overall rate says the
+// owner is harsh but not WHY, and two rounds of tuning were spent guessing at
+// it — both times the answer was a mandate that could not be met rather than an
+// owner who was impatient.
+const mandateTotals = {};
 // One club per timeline where possible, so job security can be compared across
 // them rather than averaged into a single meaningless number.
 const sample = (function () {
@@ -143,6 +148,12 @@ sample.forEach(function (t, i) {
   totals.met += out.met;
   totals.missed += out.missed;
   totals.seasons += SEASONS;
+
+  Object.keys(out.byType).forEach(function (k) {
+    mandateTotals[k] = mandateTotals[k] || { seen: 0, missed: 0 };
+    mandateTotals[k].seen += out.byType[k].seen;
+    mandateTotals[k].missed += out.byType[k].missed;
+  });
 
   byTimeline[t.timeline] = byTimeline[t.timeline] || { firings: 0, seasons: 0 };
   byTimeline[t.timeline].firings += out.firings;
@@ -164,6 +175,14 @@ console.log('');
 Object.keys(byTimeline).forEach(function (tl) {
   const b = byTimeline[tl];
   console.log('  ' + tl.padEnd(12) + b.firings + ' firings / ' + b.seasons + ' seasons');
+});
+console.log('');
+console.log('by mandate — the one that matters:');
+console.log('  mandate      given  missed  miss rate');
+Object.keys(mandateTotals).sort().forEach(function (k) {
+  const m = mandateTotals[k];
+  console.log('  ' + k.padEnd(12) + String(m.seen).padStart(5) + String(m.missed).padStart(8) +
+    (m.seen ? (m.missed / m.seen * 100).toFixed(0) + '%' : '-').padStart(11));
 });
 console.log('');
 console.log('Near 0% a season means the owner is decoration. Near 50% means no plan');

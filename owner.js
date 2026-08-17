@@ -45,16 +45,36 @@ const MANDATE_TYPES = {
   budget: 'budget'
 };
 
-// Win targets are pinned to what the club's timeline claims it is doing, then
-// nudged by prestige — a proud club expects more of itself at the same
-// timeline. Kept well inside the plausible range: a target nobody can hit is
-// the same failure as no target at all.
-function mandateWinTarget(team) {
+// What the club is TRYING to be: timeline, nudged by prestige.
+function mandateAmbition(team) {
   const base = team.timeline === 'win-now' ? 48
     : team.timeline === 'retooling' ? 38
     : 28;
-  const prestigeNudge = Math.round(((team.prestige || 50) - 50) / 10);
-  return Math.max(20, Math.min(60, base + prestigeNudge));
+  return base + Math.round(((team.prestige || 50) - 50) / 10);
+}
+
+// The win target, anchored to what the club ACTUALLY DID as well as to what it
+// thinks it is.
+//
+// Ambition alone was the first cut and it was the single biggest source of
+// failed mandates: measured, win totals were missed 64% of the time, because a
+// club with a proud timeline and high prestige is asked for 52 every season
+// regardless of being a 40-win team. Boston is exactly that club, and it was
+// being set up to fail every year on the strength of its own reputation.
+//
+// Weighted toward last season because that is the honest evidence, with
+// ambition still in the mix so a proud club is held to more than a modest one
+// that won the same number. A club with no history yet (season one) falls back
+// to pure ambition.
+const TARGET_LAST_SEASON_WEIGHT = 0.65;
+
+function mandateWinTarget(team) {
+  const ambition = mandateAmbition(team);
+  const last = team.lastSeasonWins;
+  const anchored = (last === undefined || last === null)
+    ? ambition
+    : TARGET_LAST_SEASON_WEIGHT * last + (1 - TARGET_LAST_SEASON_WEIGHT) * ambition;
+  return Math.max(20, Math.min(60, Math.round(anchored)));
 }
 
 // Both guards here exist for the same reason, and it is the recurring failure
@@ -76,6 +96,11 @@ function chooseMandate(team, rng, opts) {
   const timeline = team.timeline;
   const canDevelop = !opts || opts.youngPlayers === undefined || opts.youngPlayers > 0;
   const canBudget = !opts || opts.underTaxLine === undefined || opts.underTaxLine;
+  // A club that did not reach the playoffs last season is not asked to win a
+  // series in this one. Measured, this mandate was missed 5 times out of 5 —
+  // the third variant of the same mistake, handed to clubs with no realistic
+  // route to it.
+  const canContend = !opts || opts.madePlayoffsLastYear === undefined || opts.madePlayoffsLastYear;
   const winsMandate = function () {
     return { type: MANDATE_TYPES.wins, target: mandateWinTarget(team),
       label: 'win ' + mandateWinTarget(team) + ' games' };
@@ -93,7 +118,7 @@ function chooseMandate(team, rng, opts) {
     //
     // Winning a series is the ask now: eight clubs of thirty do it, which is a
     // real bar that a good team clears and a flattering one does not.
-    if (roll < 0.30) return { type: MANDATE_TYPES.contend, rounds: 1, label: 'win a playoff series' };
+    if (roll < 0.30 && canContend) return { type: MANDATE_TYPES.contend, rounds: 1, label: 'win a playoff series' };
     if (roll < 0.75) return { type: MANDATE_TYPES.playoffs, label: 'make the playoffs' };
     return { type: MANDATE_TYPES.wins, target: mandateWinTarget(team), label: 'win ' + mandateWinTarget(team) + ' games' };
   }
@@ -222,7 +247,8 @@ function setMandate(gameState, team, roster, rng, facts) {
     youngPlayers: youngPlayerCount(roster),
     underTaxLine: f.payroll === undefined
       ? undefined
-      : f.payroll <= _OWNER_DATA.data.getEffectiveLuxuryTaxLine(f.capLevel)
+      : f.payroll <= _OWNER_DATA.data.getEffectiveLuxuryTaxLine(f.capLevel),
+    madePlayoffsLastYear: f.madePlayoffsLastYear
   });
   mandate.leagueYear = gameState.leagueYear || 2026;
   gameState.ownerMandate = mandate;
@@ -283,6 +309,7 @@ if (typeof module !== 'undefined' && module.exports) {
     OWNER_PATIENCE: OWNER_PATIENCE,
     MANDATE_TYPES: MANDATE_TYPES,
     mandateWinTarget: mandateWinTarget,
+    mandateAmbition: mandateAmbition,
     chooseMandate: chooseMandate,
     seasonOutcome: seasonOutcome,
     judgeMandate: judgeMandate,
