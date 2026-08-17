@@ -26,6 +26,7 @@ function renderSalaryCap(container, userTeamId) {
     const effectiveCap = getEffectiveSalaryCap(capLevel);
     const effectiveTaxLine = getEffectiveLuxuryTaxLine(capLevel);
     const capSpace = effectiveCap - payroll;
+    const deadMoney = getTeamDeadMoney(userTeamId);
     const tax = estimateLuxuryTax(payroll, capLevel);
     const expiring = roster.filter(function (p) { return p.contract.yearsRemaining <= 1; })
       .sort(function (a, b) { return b.contract.salary - a.contract.salary; });
@@ -44,7 +45,25 @@ function renderSalaryCap(container, userTeamId) {
       '</div>' +
       '<div class="kpi-tile"><div class="kpi-label">Roster Size</div>' +
         '<div class="kpi-value">' + roster.length + '</div><div class="kpi-sub">players under contract</div></div>' +
+      // The payroll tile above already includes this, which is exactly why it
+      // needs its own: a GM who cannot see the debt reads the payroll as the
+      // roster and concludes the cap sheet is wrong.
+      '<div class="kpi-tile"><div class="kpi-label">Dead Money</div>' +
+        '<div class="kpi-value ' + (deadMoney > 0 ? 'is-warn' : '') + '">$' + deadMoney.toLocaleString() + '</div>' +
+        '<div class="kpi-sub">' + (deadMoney > 0 ? 'owed to players who left' : 'nobody is being paid to leave') + '</div></div>' +
     '</div>';
+
+    html += '<div class="panel"><div class="panel-header">Dead Money</div><div class="panel-body">' +
+      '<p class="kpi-sub">Salary still owed to players you released. It counts against the cap in full until it runs out.</p>' +
+      ((!team.deadMoney || team.deadMoney.length === 0)
+        ? '<div class="empty-state">You owe nothing to anyone who has left.</div>'
+        : '<table class="data-table"><thead><tr><th>Player</th><th class="num">Owed / yr</th><th class="num">Yrs Left</th></tr></thead><tbody>' +
+          team.deadMoney.slice().sort(function (a, b) { return b.salary - a.salary; }).map(function (d) {
+            return '<tr><td class="col-name">' + escapeHtml(d.name) + '</td>' +
+              '<td class="num">$' + d.salary.toLocaleString() + '</td>' +
+              '<td class="num">' + d.yearsRemaining + '</td></tr>';
+          }).join('') + '</tbody></table>') +
+    '</div></div>';
 
     html += '<div class="panel"><div class="panel-header">Your Team Contracts</div><div class="panel-body">' +
       '<table class="data-table"><thead><tr><th>Player</th><th>Pos</th><th class="num">Salary</th><th class="num">Yrs Left</th><th></th></tr></thead><tbody>' +

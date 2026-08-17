@@ -538,6 +538,8 @@ const BUILT_VIEWS = {
   ultimates: renderUltimatesReference,
   playerComparison: renderPlayerComparison,
   news: renderLeagueNews,
+  transactions: renderTransactions,
+  affiliate: renderAffiliate,
   salarycap: renderSalaryCap,
   finances: renderTeamFinances,
   coaching: renderCoaching,
