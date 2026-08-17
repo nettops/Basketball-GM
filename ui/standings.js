@@ -1,3 +1,29 @@
+// Who your club actually has history with. Heat nobody can see is heat that
+// does not exist — and a rivalry is the one piece of league state that is
+// supposed to remember last year, so it earns a place next to the table it
+// grew out of.
+//
+// File scope and exported, so the ordering and the "nobody yet" case are
+// testable without a DOM.
+function rivalriesPanelHtml(state, teamId) {
+  const rivals = (typeof rivalsOf === 'function' && state) ? rivalsOf(state, teamId) : [];
+  if (rivals.length === 0) {
+    return '<div class="panel"><div class="panel-header">Rivalries</div><div class="panel-body">' +
+      '<div class="empty-state">No rivalries yet. They are made in the playoffs.</div>' +
+      '</div></div>';
+  }
+  return '<div class="panel"><div class="panel-header">Rivalries</div><div class="panel-body">' +
+    '<table class="data-table"><thead><tr><th>Club</th><th class="num">Heat</th><th>Meaning</th></tr></thead><tbody>' +
+    rivals.map(function (r) {
+      const team = getTeamById(r.teamId);
+      const mult = rivalryMultiplier(state, teamId, r.teamId);
+      return '<tr><td class="col-name">' + teamLogoImgHtml(r.teamId, 18) + ' ' +
+        escapeHtml(team ? team.name : r.teamId) + '</td>' +
+        '<td class="num">' + Math.round(r.heat) + '</td>' +
+        '<td>wins and losses count ' + mult.toFixed(1) + 'x against them</td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+}
+
 function renderStandings(container) {
   let html = '<div class="view-header"><h2>Standings</h2><span class="view-sub">Click a team to view its roster</span></div><div class="conf-grid">';
   CONFERENCES.forEach(function (conf) {
@@ -23,6 +49,7 @@ function renderStandings(container) {
     html += '</div>';
   });
   html += '</div>';
+  html += rivalriesPanelHtml(GameState.rivalries, GameState.userTeamId);
   container.innerHTML = html;
 
   container.querySelectorAll('tr[data-team-id]').forEach(function (row) {
@@ -34,5 +61,6 @@ function renderStandings(container) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderStandings: renderStandings };
+  module.exports = {
+    rivalriesPanelHtml: rivalriesPanelHtml, renderStandings: renderStandings };
 }
