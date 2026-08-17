@@ -74,6 +74,18 @@ function computeMoraleNews(teamId) {
     .slice(0, 25);
 }
 
+// Recaps for every game in the league, newest first. Unlike computeHighlights
+// this does NOT read box scores — recaps are composed in league.js when the
+// game is played, precisely so the twenty-nine teams whose box scores get
+// pruned at save time still have something to say.
+function computeRecaps(teamId, n) {
+  if (!GameState.season) return [];
+  return GameState.season.games.filter(function (g) {
+    if (!g.played || !g.recap) return false;
+    return !teamId || g.homeTeamId === teamId || g.awayTeamId === teamId;
+  }).sort(function (a, b) { return (b.day || 0) - (a.day || 0); }).slice(0, n);
+}
+
 function renderLeagueNews(container, userTeamId) {
   let scopeTeamId = 'all';
   let viewMode = 'category';
@@ -115,6 +127,8 @@ function renderLeagueNews(container, userTeamId) {
         return { day: entry.day, category: categorizeFeedEntry(entry.text), text: entry.text };
       }).concat(highlightsToShow.map(function (h) {
         return { day: h.day, category: 'highlight', text: highlightLabel(h) };
+      })).concat(computeRecaps(filterTeamId, 25).map(function (g) {
+        return { day: g.day, category: 'game', text: g.recap };
       })).sort(function (a, b) { return (b.day || 0) - (a.day || 0); });
 
       html += '<div class="panel"><div class="panel-body">' +
@@ -131,6 +145,14 @@ function renderLeagueNews(container, userTeamId) {
         (highlightsToShow.length === 0 ? '<div class="empty-state">No games played yet.</div>' :
           '<ul class="headline-list">' + highlightsToShow.slice(0, 20).map(function (h) {
             return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + highlightLabel(h) + '</li>';
+          }).join('') + '</ul>') +
+      '</div></div>';
+
+      const recaps = computeRecaps(filterTeamId, 25);
+      html += '<div class="panel"><div class="panel-header">Around the League</div><div class="panel-body">' +
+        (recaps.length === 0 ? '<div class="empty-state">No games played yet.</div>' :
+          '<ul class="headline-list">' + recaps.map(function (g) {
+            return '<li><span class="pill pill-mute">Day ' + g.day + '</span> ' + escapeHtml(g.recap) + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
 
@@ -208,6 +230,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     renderLeagueNews: renderLeagueNews, categorizeFeedEntry: categorizeFeedEntry,
     computeHighlights: computeHighlights, computeTopPerformances: computeTopPerformances,
+    computeRecaps: computeRecaps,
     TAKEOVER_NEWS_POINTS: TAKEOVER_NEWS_POINTS, takeoverIsNewsworthy: takeoverIsNewsworthy
   };
 }

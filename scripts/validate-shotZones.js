@@ -27,6 +27,7 @@ const boxEngine = require(path.join(__dirname, '..', 'simEngineBoxScore.js'));
 const possEngine = require(path.join(__dirname, '..', 'simEnginePossession.js'));
 const gameSim = require(path.join(__dirname, '..', 'gameSim.js'));
 const leagueModule = require(path.join(__dirname, '..', 'league.js'));
+const chart = require(path.join(__dirname, '..', 'ui', 'shotChart.js'));
 
 // Every seed is explicit. A validator that calls a seeded function without its
 // seed gets one roll for the whole league and reports a probabilistic rule as
@@ -165,11 +166,82 @@ function checkEmptyZonesDoNotDivideByZero() {
   console.log('checkEmptyZonesDoNotDivideByZero: OK');
 }
 
+// ---- the chart itself (ui/shotChart.js) ----
+
+// Heat is measured against a per-zone baseline, not one shared scale. 45% is a
+// poor night at the rim and an excellent one from three; a single scale would
+// paint every centre hot and every guard cold.
+function checkHeatIsJudgedPerZone() {
+  const atRim = chart.shotZoneHeat('inside', 45, 100);
+  const fromThree = chart.shotZoneHeat('three', 45, 100);
+  assert.ok(atRim < 0, '45% at the rim is below par, got heat ' + atRim);
+  assert.ok(fromThree > 0, '45% from three is well above par, got heat ' + fromThree);
+
+  assert.strictEqual(chart.shotZoneHeat('three', 0, 0), 0,
+    'an unshot zone must read neutral, not ice cold');
+  assert.strictEqual(chart.shotZoneHeat('inside', 100, 100), 1, 'heat is clamped at +1');
+  assert.strictEqual(chart.shotZoneHeat('inside', 0, 100), -1, 'heat is clamped at -1');
+  console.log('checkHeatIsJudgedPerZone: OK');
+}
+
+function checkSplitSharesSumToOne() {
+  const zones = chart.shotZoneSplit({ insideFga: 10, insideFgm: 6, midFga: 5, midFgm: 2, tpa: 5, tpm: 2 });
+  const shareSum = zones.reduce(function (s, z) { return s + z.share; }, 0);
+  assert.ok(Math.abs(shareSum - 1) < 1e-9, 'zone shares must sum to 1, got ' + shareSum);
+  assert.strictEqual(zones[0].fga, 10, 'inside comes first');
+  assert.strictEqual(zones[2].fga, 5, 'three is read from tpa/tpm, not a fourth pair');
+
+  // A player who has taken nothing must not produce NaN anywhere in the chart.
+  const empty = chart.shotZoneSplit({});
+  empty.forEach(function (z) {
+    assert.ok(!Number.isNaN(z.pct) && !Number.isNaN(z.share) && !Number.isNaN(z.heat),
+      z.zone + ' must be numeric for a player with no attempts');
+  });
+  assert.ok(chart.shotChartPanelHtml('Shot Chart', {}).indexOf('No shots taken') !== -1,
+    'an empty chart should say so rather than draw a blank court');
+  console.log('checkSplitSharesSumToOne: OK');
+}
+
+// The panel is built by string concatenation, so an unbalanced tag is a real
+// hazard and cheap to catch.
+function checkPanelHtmlIsWellFormed() {
+  const html = chart.shotChartPanelHtml('Shot Chart', { insideFga: 10, insideFgm: 6, midFga: 4, midFgm: 1, tpa: 6, tpm: 2 });
+  ['<svg', '</svg>', '<table', '</table>', '60.0%', '25.0%', '33.3%'].forEach(function (needle) {
+    assert.ok(html.indexOf(needle) !== -1, 'panel should contain ' + needle);
+  });
+  assert.strictEqual(html.split('<svg').length, html.split('</svg>').length, 'svg tags must balance');
+  assert.strictEqual(html.split('<tr').length, html.split('</tr>').length, 'table rows must balance');
+  console.log('checkPanelHtmlIsWellFormed: OK');
+}
+
+// A team chart and the sum of its players' charts must be the same numbers,
+// because they are meant to be the same code path.
+function checkTeamTotalsMatchTheirPlayers() {
+  const roster = leagueModule.getTeamRoster(TEAMS[9].id);
+  roster.forEach(function (p, i) {
+    p.seasonStats = { gamesPlayed: 1, insideFga: i + 1, insideFgm: 1, midFga: 2, midFgm: 1, tpa: 3, tpm: 1 };
+  });
+  const totals = chart.teamShotTotals(roster);
+  const expectedInside = roster.reduce(function (s, p) { return s + p.seasonStats.insideFga; }, 0);
+  assert.strictEqual(totals.insideFga, expectedInside, 'team inside attempts should be the sum of its players');
+  assert.strictEqual(totals.tpa, roster.length * 3, 'team three attempts should be the sum of its players');
+
+  // A player who has not played yet must not poison the total.
+  roster[0].seasonStats = undefined;
+  assert.strictEqual(chart.teamShotTotals(roster).tpa, (roster.length - 1) * 3,
+    'a player with no season line contributes nothing rather than NaN');
+  console.log('checkTeamTotalsMatchTheirPlayers: OK');
+}
+
 checkEveryAttemptLandsInAZone();
 checkBlockedShotsKeepTheirZone();
 checkAllThreeZonesGetUsed();
 checkBoxScoreEngineSplitsToo();
 checkZonesReachSeasonStats();
 checkEmptyZonesDoNotDivideByZero();
+checkHeatIsJudgedPerZone();
+checkSplitSharesSumToOne();
+checkPanelHtmlIsWellFormed();
+checkTeamTotalsMatchTheirPlayers();
 
 console.log('All shotZones validations passed');

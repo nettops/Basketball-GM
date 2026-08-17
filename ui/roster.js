@@ -214,6 +214,11 @@ function renderRoster(container, teamId) {
     // alongside rather than replaced: career points is the headline career
     // number, and dropping it to fix the units would trade one problem for
     // another.
+    // The team's shot diet, summed from the same season lines a player's own
+    // chart is drawn from — one code path, so a roster chart and the sum of
+    // its players can never disagree.
+    html += shotChartPanelHtml('Team Shot Chart', teamShotTotals(roster));
+
     html += '<div class="panel"><div class="panel-header">Career Totals</div>' +
       '<table class="data-table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">GP</th>' +
       '<th class="num">Pts</th><th class="num">PPG</th><th class="num">RPG</th><th class="num">APG</th>' +

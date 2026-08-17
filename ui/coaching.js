@@ -22,6 +22,35 @@ function coachCardHtml(coach) {
   '</div>';
 }
 
+// The reason this whole feature exists. Before it, a GM could set the
+// three-point dial to its highest setting and there was no screen anywhere in
+// the game that would tell them whether the shot mix moved. The dial had no
+// readout, so it may as well not have been connected.
+//
+// League share is computed from the same season lines rather than hardcoded,
+// so it stays honest as the league drifts.
+function shotDietReadoutHtml(userTeamId) {
+  const mine = teamShotTotals(getTeamRoster(userTeamId));
+  const mineFga = mine.insideFga + mine.midFga + mine.tpa;
+  if (!mineFga) {
+    return '<p class="kpi-sub" style="margin-top:10px;">Play some games to see what your game plan is actually producing.</p>';
+  }
+  let leagueThree = 0, leagueFga = 0;
+  TEAMS.forEach(function (t) {
+    const s = teamShotTotals(getTeamRoster(t.id));
+    leagueThree += s.tpa;
+    leagueFga += s.insideFga + s.midFga + s.tpa;
+  });
+  const mineShare = mine.tpa / mineFga;
+  const leagueShare = leagueFga > 0 ? leagueThree / leagueFga : 0;
+  const gap = (mineShare - leagueShare) * 100;
+  const gapClass = Math.abs(gap) < 1 ? 'text-dim' : (gap > 0 ? 'stat-up' : 'stat-down');
+  return '<p class="kpi-sub" style="margin-top:10px;">Your team takes ' +
+    '<strong>' + (mineShare * 100).toFixed(1) + '%</strong> of its shots from three ' +
+    '&mdash; league average is ' + (leagueShare * 100).toFixed(1) + '%, ' +
+    '<span class="' + gapClass + '">' + (gap >= 0 ? '+' : '') + gap.toFixed(1) + ' pts</span>.</p>';
+}
+
 function renderCoaching(container, userTeamId) {
   let candidates = null;
 
@@ -65,6 +94,7 @@ function renderCoaching(container, userTeamId) {
       THREE_RATE_DIAL_OPTIONS.map(function (opt) {
         return '<option value="' + opt.value + '"' + (team.strategy.threePointRate === opt.value ? ' selected' : '') + '>' + opt.label + '</option>';
       }).join('') + '</select></label>' +
+      shotDietReadoutHtml(userTeamId) +
     '</div></div>';
 
     container.innerHTML = html;

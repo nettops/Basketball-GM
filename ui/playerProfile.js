@@ -11,11 +11,22 @@ function renderCurrentSeasonPanel(player) {
   html += '<div class="kpi-tile"><div class="kpi-label">PPG</div><div class="kpi-value">' + avg.ppg.toFixed(1) + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">RPG</div><div class="kpi-value">' + avg.rpg.toFixed(1) + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">APG</div><div class="kpi-value">' + avg.apg.toFixed(1) + '</div></div>';
+  // What he allowed as the assigned shot defender, and what the scoreboard did
+  // while he was on the floor. Both have been accumulating since oppFga/oppFgm
+  // and plusMinus were added and neither has ever been shown — a defensive
+  // badge that lowers the shooter's percentage was invisible in a box score
+  // full of steals and blocks.
+  const played = player.seasonStats && player.seasonStats.gamesPlayed > 0;
+  html += '<div class="kpi-tile"><div class="kpi-label">DFG%</div><div class="kpi-value">' +
+    (played && player.seasonStats.oppFga > 0 ? (avg.dfgPct * 100).toFixed(1) + '%' : '—') + '</div></div>';
+  html += '<div class="kpi-tile"><div class="kpi-label">+/- per game</div><div class="kpi-value">' +
+    (played ? (avg.pmpg >= 0 ? '+' : '') + avg.pmpg.toFixed(1) : '—') + '</div></div>';
   html += '<div class="kpi-tile"><div class="kpi-label">Salary</div><div class="kpi-value">$' + player.contract.salary.toLocaleString() + '</div></div>';
   if (player.status && player.status.injury) {
     html += '<div class="kpi-tile"><div class="kpi-label">Injury</div><div class="kpi-value">' + injuryStatusHtml(player) + '</div></div>';
   }
   html += '</div></div>';
+  html += shotChartPanelHtml('Shot Chart', player.seasonStats);
   return html;
 }
 

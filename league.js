@@ -77,6 +77,86 @@ function recordGameResult(game, context) {
   }
   recordGameFeats(game, context);
   recordGameTakeovers(game, context);
+  game.recap = composeGameRecap(game, homeTeam, awayTeam);
+}
+
+// The leading scorer on one side, as { name, line } — or null if nobody on
+// that side has a line, which happens for a forfeit-shaped box score.
+function topScorerAmong(boxScore, playerIds) {
+  let best = null;
+  playerIds.forEach(function (id) {
+    const line = boxScore[id];
+    if (!line) return;
+    if (!best || line.points > best.line.points) {
+      const player = getPlayerById(id);
+      if (player) best = { name: player.name, line: line };
+    }
+  });
+  return best;
+}
+
+// One sentence about a game, composed WHEN IT IS PLAYED rather than on demand.
+//
+// That timing is the whole design. save.js prunes boxScore and playByPlay down
+// to the user's own games, so a recap derived later would exist for one team
+// out of thirty and the league news would be empty for everyone else — which
+// is the single loudest complaint aimed at this genre. A sentence survives the
+// pruning because it is text.
+//
+// Pure and at file scope so it can be tested without a season; returns null
+// rather than a placeholder when there is nothing to describe, so callers can
+// tell "no recap" from "a recap that says nothing".
+function composeGameRecap(game, homeTeam, awayTeam) {
+  if (!game.boxScore || !homeTeam || !awayTeam) return null;
+  const homeIds = getTeamRoster(game.homeTeamId).map(function (p) { return p.id; });
+  const awayIds = getTeamRoster(game.awayTeamId).map(function (p) { return p.id; });
+  const homeWon = game.homeScore > game.awayScore;
+  const winner = homeWon ? homeTeam : awayTeam;
+  const loser = homeWon ? awayTeam : homeTeam;
+  const margin = Math.abs(game.homeScore - game.awayScore);
+
+  // "hold on for" a one-possession game, "beat" a normal one, "run away with"
+  // a blowout — the verb is the only place the shape of the game shows up
+  // without spending another clause on it.
+  const verb = margin <= 3 ? 'edge' : (margin >= 20 ? 'rout' : 'beat');
+  let text = winner.name + ' ' + verb + ' ' + loser.name + ' ' +
+    Math.max(game.homeScore, game.awayScore) + '-' + Math.min(game.homeScore, game.awayScore) + '.';
+
+  const winnerTop = topScorerAmong(game.boxScore, homeWon ? homeIds : awayIds);
+  const loserTop = topScorerAmong(game.boxScore, homeWon ? awayIds : homeIds);
+  if (winnerTop) {
+    text += ' ' + winnerTop.name + ' led with ' + winnerTop.line.points + ' points';
+    if (winnerTop.line.rebounds >= 10 || winnerTop.line.assists >= 10) {
+      text += ' and ' + (winnerTop.line.rebounds >= winnerTop.line.assists
+        ? winnerTop.line.rebounds + ' rebounds'
+        : winnerTop.line.assists + ' assists');
+    }
+    text += '.';
+  }
+  if (loserTop && loserTop.line.points >= 30) {
+    text += ' ' + loserTop.name + '\'s ' + loserTop.line.points + ' was not enough.';
+  }
+  // The one notable thing, if there was one. Takeovers already ride on the
+  // finished game, so this costs nothing to read.
+  if (game.takeovers && game.takeovers.length) {
+    const biggest = game.takeovers.reduce(function (best, t) {
+      return (!best || (t.points || 0) > (best.points || 0)) ? t : best;
+    }, null);
+    if (biggest && biggest.playerName && (biggest.points || 0) > 0) {
+      // The man who took over is usually also the leading scorer, and naming
+      // him twice in three sentences reads like a template rather than a
+      // report.
+      // Either side's named scorer counts — a losing star can be the one who
+      // took over, and "Kawhi Leonard's 55 was not enough. Kawhi Leonard took
+      // the game over" is the same repetition from the other direction.
+      const namedWinner = winnerTop && winnerTop.name === biggest.playerName;
+      const namedLoser = loserTop && loserTop.line.points >= 30 && loserTop.name === biggest.playerName;
+      const alreadyNamed = namedWinner || namedLoser;
+      text += (alreadyNamed ? ' He' : ' ' + biggest.playerName) +
+        ' took the game over, ' + biggest.points + ' of them in the run.';
+    }
+  }
+  return text;
 }
 
 // Takeovers are produced by gameSim.js and carried on the finished game, so

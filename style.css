@@ -500,6 +500,22 @@ table { border-collapse: collapse; width: 100%; }
 .kpi-value.is-bad { color: var(--loss); }
 .kpi-value.is-warn { color: var(--warn); }
 
+/* ---------- Shot chart ---------- */
+/* Chart and table side by side on a wide panel, stacked when there is no room
+   for both. The table is the one that must stay readable, so it keeps the
+   flexible width and the court holds its aspect. */
+.shot-chart-body { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.shot-chart-svg { width: 240px; max-width: 100%; height: auto; flex: 0 0 auto; }
+.shot-chart-table { flex: 1 1 220px; min-width: 200px; }
+.shot-chart-pct {
+  fill: var(--text); font-size: 19px; font-weight: 700;
+  font-family: var(--font); font-variant-numeric: tabular-nums;
+}
+.shot-chart-sub { fill: var(--text-dim); font-size: 10px; font-family: var(--font); }
+.stat-up { color: var(--win); }
+.stat-down { color: var(--loss); }
+.text-dim { color: var(--text-dim); }
+
 /* ---------- Empty state ---------- */
 .empty-state {
   padding: 40px 24px; text-align: center;

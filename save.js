@@ -138,7 +138,11 @@ function serializeGameState(gameState, name, includeSnapshots) {
 
   const seasonOut = gameState.season ? {
     games: gameState.season.games.map(function (g) {
-      const out = { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      // recap sits OUT here, not inside the user-games-only block below. It is
+      // one sentence per game, and it is the only thing the other twenty-nine
+      // teams keep once their box scores are pruned — putting it inside the
+      // block would empty the league news for the whole league on every load.
+      const out = { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, recap: g.recap || null, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
       if (userGameIds[g.id]) {
         out.boxScore = g.boxScore;
         // Same "user's own games only" pruning as boxScore above, and for the
@@ -317,7 +321,11 @@ function applySavedState(payload, gameState) {
       // takeovers, like boxScore, is present only for the user's own games.
       // An empty array rather than null: ui/schedule.js reads .length on it and
       // renders nothing for an empty one, so there is no case to guard.
-      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: g.boxScore || null, playByPlay: g.playByPlay || null, takeovers: g.takeovers || [], isPlayoff: g.isPlayoff, seriesId: g.seriesId };
+      // recap is a single sentence composed when the game was played, and is
+      // the ONLY thing that survives for the twenty-nine teams whose box
+      // scores are pruned above. Dropping it here would empty the league news
+      // on every load, which is the exact failure it was written to prevent.
+      return { id: g.id, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId, day: g.day, played: g.played, homeScore: g.homeScore, awayScore: g.awayScore, boxScore: g.boxScore || null, playByPlay: g.playByPlay || null, takeovers: g.takeovers || [], recap: g.recap || null, isPlayoff: g.isPlayoff, seriesId: g.seriesId };
     }),
     currentDay: payload.season.currentDay
   } : null;
