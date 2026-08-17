@@ -218,6 +218,7 @@ function renderRoster(container, teamId) {
     // chart is drawn from — one code path, so a roster chart and the sum of
     // its players can never disagree.
     html += shotChartPanelHtml('Team Shot Chart', teamShotTotals(roster));
+    html += lineupsPanelHtml(viewedTeam, getPlayerById);
 
     html += '<div class="panel"><div class="panel-header">Career Totals</div>' +
       '<table class="data-table"><thead><tr><th>Name</th><th class="num">Seasons</th><th class="num">GP</th>' +

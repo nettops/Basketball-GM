@@ -111,6 +111,64 @@ function possessionSeconds(rng, paceBlend) {
   return Math.max(4, base + jitter);
 }
 
+// --- Five-man lineups -------------------------------------------------------
+//
+// A lineup is identified by WHO is on the floor, not by the order they were
+// substituted in, so the key is sorted. Without that the same five players
+// would produce a different row every time the coach happened to bring them
+// back in a different order, and a season's worth of data would shatter into
+// hundreds of one-possession units that never repeat.
+function lineupKey(ids) {
+  return ids.slice().sort().join('|');
+}
+
+// Credits one possession to one lineup. Seconds and possessions are credited
+// to BOTH lineups on the floor; points go to whoever earned them, which is
+// what makes pointsFor/pointsAgainst a net rating rather than a scoring total.
+//
+// At file scope, and pure apart from the store it is handed, so
+// scripts/validate-lineups.js can exercise it without building a game — the
+// ui/pixelMotion.js lesson from CLAUDE.md.
+function creditLineup(store, key, seconds, pointsFor, pointsAgainst) {
+  let row = store[key];
+  if (!row) {
+    row = store[key] = { key: key, seconds: 0, pointsFor: 0, pointsAgainst: 0, possessions: 0 };
+  }
+  row.seconds += seconds;
+  row.pointsFor += pointsFor;
+  row.pointsAgainst += pointsAgainst;
+  row.possessions += 1;
+  return row;
+}
+
+// Per 100 possessions, which is the unit a net rating is quoted in and the only
+// one that lets a 12-possession unit be compared with a 400-possession one.
+// Guarded: a lineup can exist with zero possessions if a substitution happened
+// on a dead ball, and dividing by it would put NaN on a screen.
+function lineupNetRating(row) {
+  if (!row || !row.possessions) return 0;
+  return ((row.pointsFor - row.pointsAgainst) / row.possessions) * 100;
+}
+
+// EVERY unit the game produced, sorted by time on the floor. Deliberately
+// uncapped.
+//
+// It was capped at 15 a side, and that was wrong twice over. It broke the
+// accounting — a team that fielded more than fifteen fives lost the tail's
+// seconds, and validate-lineups.js caught a side 34.8 seconds short of a
+// 2280-second game. And it biased against exactly the units worth knowing
+// about: a five that plays four minutes a night is a real rotation unit over a
+// season, but it is bottom of the list in any single game and would have been
+// cut every time before anything could add it up.
+//
+// A game yields fifteen-odd rows a side and they are never saved — they are
+// merged into the team by league.js's bankLineups, which caps AFTER
+// aggregation, where the data to choose actually exists.
+function allLineups(store) {
+  return Object.keys(store).map(function (k) { return store[k]; })
+    .sort(function (a, b) { return b.seconds - a.seconds; });
+}
+
 // Reads a dial off a team that may have no strategy object at all — every team
 // starts without one, and coaches.js only creates it when a coach is ensured.
 function paceFor(team) {
@@ -246,6 +304,9 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // game the two teams are playing, and changing it mid-game would make the
     // clock jump under a live watched game.
     paceBlend: (paceFor(homeTeam) + paceFor(awayTeam)) / 2,
+    // Five-man units, accumulated per side as the game runs. Keyed by sorted
+    // player ids so the same five are one row however they were subbed in.
+    lineups: { home: {}, away: {} },
     homeRoster: homeRoster,
     awayRoster: awayRoster,
     homeBox: homeBox,
@@ -559,6 +620,16 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     sim.clock -= elapsed;
     onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += elapsed; });
 
+    // The five on the floor for each side get this possession. Credited here,
+    // at the one place per possession where the clock moves, so a lineup's
+    // seconds can never disagree with its players' minutes.
+    //
+    // Draws no randomness and reads only what the possession already resolved,
+    // which is what keeps both golden masters untouched — same discipline as
+    // the plusMinus block above.
+    creditLineup(sim.lineups[team], lineupKey(onCourt[team]), elapsed, points, 0);
+    creditLineup(sim.lineups[other], lineupKey(onCourt[other]), elapsed, 0, points);
+
     // Sitting down has to actually restore something, or rotations are a
     // one-way ratchet: simEnginePossession.js's drainEnergy only ever spends
     // energy, so without this every player decays past the coach's fatigue
@@ -696,7 +767,12 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       boxScore: Object.assign({}, homeBox, awayBox),
       playByPlay: playByPlay,
       // Every completed takeover, for league.js to file into league history.
-      takeovers: sim.takeoverLog
+      takeovers: sim.takeoverLog,
+      // Every five-man unit on each side, stamped with the team id so league.js
+      // can bank them without knowing which side was at home. Uncapped on
+      // purpose — see allLineups.
+      lineups: allLineups(sim.lineups.home).map(function (r) { return Object.assign({ teamId: homeTeamId }, r); })
+        .concat(allLineups(sim.lineups.away).map(function (r) { return Object.assign({ teamId: awayTeamId }, r); }))
     };
   };
 
@@ -727,6 +803,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // 48 minutes by definition; it is 38 now, and a test that knows the number
     // but not where it comes from has to be re-typed every time the clock
     // moves. Read-only in practice — nothing writes these back.
+    lineupKey: lineupKey,
+    creditLineup: creditLineup,
+    lineupNetRating: lineupNetRating,
+    allLineups: allLineups,
     REGULATION_PERIODS: REGULATION_PERIODS,
     PERIOD_SECONDS: PERIOD_SECONDS,
     OVERTIME_SECONDS: OVERTIME_SECONDS

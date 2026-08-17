@@ -187,6 +187,11 @@ function generateNewSeason(rng, leagueYear) {
       { round: 1, originalTeamId: t.id, currentOwnerId: t.id },
       { round: 2, originalTeamId: t.id, currentOwnerId: t.id }
     ];
+    // Five-man units are a THIS-season question. Carrying them over would mix
+    // last year's closing lineup with a roster that has since been drafted,
+    // traded and signed into something else — and the players in a stale key
+    // may not even be on the team any more.
+    t.lineupStats = undefined;
   });
 
   _TRANSITION_DATA.players.PLAYERS_2026.forEach(function (p) {

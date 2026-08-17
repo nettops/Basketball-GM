@@ -135,8 +135,71 @@ function teamShotTotals(players) {
   return total;
 }
 
+// --- Five-man lineups -------------------------------------------------------
+
+// Sorts a team's stored units into display order and resolves each key back
+// into names. A key names five player ids; a player who has since been traded
+// or waived is no longer on the roster, so the name lookup has to tolerate a
+// miss rather than render "undefined" at the user.
+function lineupRows(team, lookupPlayer, limit) {
+  const store = (team && team.lineupStats) || {};
+  return Object.keys(store).map(function (key) {
+    const row = store[key];
+    const ids = key.split('|');
+    return {
+      key: key,
+      ids: ids,
+      names: ids.map(function (id) {
+        const p = lookupPlayer(id);
+        return p ? p.name : null;
+      }),
+      minutes: row.seconds / 60,
+      possessions: row.possessions,
+      games: row.games,
+      pointsFor: row.pointsFor,
+      pointsAgainst: row.pointsAgainst,
+      // Per 100 possessions — the only unit that lets a 41-possession unit be
+      // compared against a 2,050-possession one.
+      net: row.possessions ? ((row.pointsFor - row.pointsAgainst) / row.possessions) * 100 : 0
+    };
+  }).sort(function (a, b) { return b.minutes - a.minutes; }).slice(0, limit || 8);
+}
+
+// Surnames only. Five full names in one cell is unreadable at any width, and
+// the roster table directly above already carries the full name.
+function lineupShortName(name) {
+  if (!name) return '(gone)';
+  const parts = name.split(' ');
+  return parts.length > 1 ? parts.slice(1).join(' ') : name;
+}
+
+function lineupsPanelHtml(team, lookupPlayer) {
+  const rows = lineupRows(team, lookupPlayer, 8);
+  if (!rows.length) {
+    return '<div class="panel"><div class="panel-header">Five-Man Units</div>' +
+      '<div class="panel-body"><p class="kpi-sub">No units yet — play some games.</p></div></div>';
+  }
+  return '<div class="panel"><div class="panel-header">Five-Man Units</div>' +
+    '<div class="panel-body">' +
+    '<p class="kpi-sub">Ranked by minutes together. Net is points per 100 possessions.</p>' +
+    '<table class="data-table"><thead><tr><th>Lineup</th><th class="num">Min</th>' +
+      '<th class="num">G</th><th class="num">Poss</th><th class="num">Net</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        const netClass = r.net > 0 ? 'stat-up' : (r.net < 0 ? 'stat-down' : '');
+        return '<tr><td>' + escapeHtml(r.names.map(lineupShortName).join(' / ')) + '</td>' +
+          '<td class="num">' + r.minutes.toFixed(0) + '</td>' +
+          '<td class="num">' + r.games + '</td>' +
+          '<td class="num">' + r.possessions + '</td>' +
+          '<td class="num ' + netClass + '">' + (r.net >= 0 ? '+' : '') + r.net.toFixed(1) + '</td></tr>';
+      }).join('') +
+    '</tbody></table></div></div>';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    lineupRows: lineupRows,
+    lineupShortName: lineupShortName,
+    lineupsPanelHtml: lineupsPanelHtml,
     SHOT_ZONE_BASELINE: SHOT_ZONE_BASELINE,
     SHOT_ZONE_SPREAD: SHOT_ZONE_SPREAD,
     shotZoneHeat: shotZoneHeat,

@@ -80,6 +80,61 @@ function recordGameResult(game, context) {
   game.recap = composeGameRecap(game, homeTeam, awayTeam);
 }
 
+// How many five-man units a team keeps for a whole season.
+//
+// Measured over a real 82 games rather than guessed. A team fields 88 distinct
+// fives across a season, and the tail is worthless: ranked by minutes, #1 plays
+// 421, #10 plays 97, #20 plays 45, and #30 plays eight minutes across the whole
+// year. Twenty keeps every unit a GM could have an opinion about.
+//
+// The stored row deliberately omits `key` — the object it hangs off is already
+// keyed by it, and the key is five full player ids, 84 of the 191 bytes a naive
+// row costs. Dropping it and rounding `seconds` off its 18 digits of float
+// noise takes the league from ~250KB of save to ~110KB, against the ~150KB of
+// box scores save.js already keeps.
+const TEAM_LINEUP_KEEP = 20;
+
+// Merges one game's units into each team's running season totals. The engine
+// hands over only its busiest fives per game (gameSim.js caps that too), so a
+// unit has to actually play to survive both filters.
+//
+// Only the possession engine produces lineups; under the box-score engine
+// result.lineups is undefined and this no-ops, exactly like playByPlay.
+function bankLineups(result) {
+  if (!result.lineups || !result.lineups.length) return;
+  const touched = {};
+  result.lineups.forEach(function (row) {
+    const team = _LEAGUE_DATA.teams.getTeamById(row.teamId);
+    if (!team) return;
+    if (!team.lineupStats) team.lineupStats = {};
+    touched[row.teamId] = team;
+    const existing = team.lineupStats[row.key];
+    if (existing) {
+      existing.seconds = Math.round((existing.seconds + row.seconds) * 10) / 10;
+      existing.pointsFor += row.pointsFor;
+      existing.pointsAgainst += row.pointsAgainst;
+      existing.possessions += row.possessions;
+      existing.games += 1;
+    } else {
+      team.lineupStats[row.key] = {
+        seconds: Math.round(row.seconds * 10) / 10, pointsFor: row.pointsFor,
+        pointsAgainst: row.pointsAgainst, possessions: row.possessions, games: 1
+      };
+    }
+  });
+  // Pruned after every game rather than at season end: the whole point of the
+  // cap is that the object never grows without bound, and a cap applied only at
+  // the end would let it do exactly that for 82 games first.
+  Object.keys(touched).forEach(function (teamId) {
+    const store = touched[teamId].lineupStats;
+    const keys = Object.keys(store);
+    if (keys.length <= TEAM_LINEUP_KEEP) return;
+    keys.sort(function (a, b) { return store[b].seconds - store[a].seconds; })
+      .slice(TEAM_LINEUP_KEEP)
+      .forEach(function (k) { delete store[k]; });
+  });
+}
+
 // The leading scorer on one side, as { name, line } — or null if nobody on
 // that side has a line, which happens for a forfeit-shaped box score.
 function topScorerAmong(boxScore, playerIds) {
@@ -304,6 +359,11 @@ function applyGameResult(game, result, deps, season, dayIndex, leagueYear, playi
   // the game BEFORE recordGameResult, which is what files it into league
   // history — the result object does not survive this function.
   game.takeovers = result.takeovers || [];
+  // Five-man units go onto the TEAMS, not onto the game. A lineup is a
+  // season-long question ("which five should be closing?") and putting it on
+  // the game would send it through save.js's box-score pruning, which keeps
+  // only the user's own games — twenty-nine teams would have no units at all.
+  bankLineups(result);
 
   recordGameResult(game, { leagueYear: leagueYear, day: dayIndex });
 
@@ -496,6 +556,8 @@ if (typeof module !== 'undefined' && module.exports) {
     getTeamPayroll: getTeamPayroll,
     getPlayerById: getPlayerById,
     recordGameResult: recordGameResult,
+    bankLineups: bankLineups,
+    TEAM_LINEUP_KEEP: TEAM_LINEUP_KEEP,
     accumulateSeasonStats: accumulateSeasonStats,
     getPlayerAverages: getPlayerAverages,
     simulateDate: simulateDate,
