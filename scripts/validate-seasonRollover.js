@@ -25,7 +25,7 @@ const { TEAMS } = require(path.join(__dirname, '..', 'teams.js'));
 const traits = require(path.join(__dirname, '..', 'traits.js'));
 require(path.join(__dirname, '..', 'scouting.js'));
 const { PLAYERS_2026 } = require(path.join(__dirname, '..', 'players-2026.js'));
-const { DRAFT_PROSPECTS_2026 } = require(path.join(__dirname, '..', 'draftProspects.js'));
+const { DRAFT_PROSPECTS_2026, generateProspectClass } = require(path.join(__dirname, '..', 'draftProspects.js'));
 traits.ensureHiddenPlayerData(PLAYERS_2026);
 traits.ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
 const { makeRng } = require(path.join(__dirname, '..', 'rng.js'));
@@ -59,7 +59,22 @@ function rosterChecksum() {
     }, 0);
 }
 
+// The FIRST league gets the real 2026 class, because the golden fixture was
+// generated from it. Every league after gets one of its own, and must:
+// DRAFT_PROSPECTS_2026 is a module-level array of module-level OBJECTS, and the
+// draft pushes the objects it picks straight into the module-level
+// PLAYERS_2026 (seasonTransition.js's runOffseasonThroughDraft). Hand the same
+// array to a second league in the same process and its draft pushes those same
+// objects a second time — one player at two indexes, paid twice against the cap
+// and rosterable from two places. Measured before this split existed: 55
+// duplicate ids by the end of this file, every one of them from the fixed
+// class. checkNoPlayerAppearsTwice at the bottom is what holds it.
+let leaguesBuilt = 0;
+
 function buildGameState(seed) {
+  const draftClass = leaguesBuilt++ === 0
+    ? DRAFT_PROSPECTS_2026
+    : generateProspectClass(makeRng(seed), TEAMS.length * 2 + 4, 2026);
   const games = schedule.generateSeasonGames(makeRng(seed), TEAMS).map(function (g) {
     return {
       id: g.id, homeTeamId: g.home, awayTeamId: g.away, day: g.day,
@@ -71,7 +86,7 @@ function buildGameState(seed) {
     userTeamId: 'BOS', leagueYear: 2026, rng: makeRng(seed),
     season: { games: games, currentDay: -1 },
     playoffBracket: null, offseasonStage: null, tradeOffers: [],
-    upcomingDraftClass: DRAFT_PROSPECTS_2026,
+    upcomingDraftClass: draftClass,
     settings: { leagueYear: 2026, lotteryFormat: undefined }
   };
 }
@@ -196,5 +211,24 @@ function checkInjectedDraftReplacesTheAutomaticOne() {
   console.log('checkInjectedDraftReplacesTheAutomaticOne: OK');
 }
 checkInjectedDraftReplacesTheAutomaticOne();
+
+// PLAYERS_2026 is module-level and every check above drafts into it. One player
+// object sitting at two indexes is a shape this game has shipped before: the
+// fast-forward/offseason overlap re-drafted a still-pending class and rosters
+// duplicated while salaries counted twice (scripts/validate-simControlsOffseasonGuard.js
+// is that bug's regression test). Nothing asserted the invariant itself until
+// now, so the next occurrence was found by accident, by unrelated code that
+// happened to walk the pool.
+function checkNoPlayerAppearsTwice() {
+  const seen = Object.create(null);
+  const dupes = PLAYERS_2026.filter(function (p) {
+    if (seen[p.id]) return true;
+    seen[p.id] = true;
+    return false;
+  }).map(function (p) { return p.id; });
+  assert.deepStrictEqual(dupes, [], 'the same player id is in PLAYERS_2026 more than once');
+  console.log('checkNoPlayerAppearsTwice: OK');
+}
+checkNoPlayerAppearsTwice();
 
 console.log('All season rollover validations passed');

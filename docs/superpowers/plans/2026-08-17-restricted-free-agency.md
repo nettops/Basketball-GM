@@ -208,6 +208,48 @@ What this change owes is robustness, and it now has it: the list is a snapshot,
 resolving one player moves the world, and an entry whose rights are already
 spent is skipped. Worth a separate look.
 
+#### Resolved: it was the harness, and the mechanism is worth knowing
+
+Measured, three leagues in one process:
+
+| | duplicate ids in `PLAYERS_2026` |
+|---|---|
+| before any offseason | 0 |
+| after one league's first offseason | 0 |
+| after that same league's second offseason | 0 |
+| **after a second league drafts** | **46** |
+
+So a clean career never produces one, and the game cannot reach the state at
+all — the browser only builds a second league through `location.reload()`.
+
+The mechanism: `DRAFT_PROSPECTS_2026` is a module-level array of module-level
+**objects**, and `runOffseasonThroughDraft` pushes the objects it drafts
+straight into the module-level `PLAYERS_2026`. Hand that same array to a second
+league in one process and the same objects are pushed again — not two players
+with one id, but one player at two indexes. Every duplicate id was from the
+fixed real-2026 class (`prospect-jamier-jones-24` is simply its 24th entry;
+the suffix is a load-order counter), and never from a generated class, because
+each season generates its own.
+
+`buildGameState` now gives the first league the real class — the golden fixture
+was generated from it, and it does not move — and every league after its own
+`generateProspectClass`.
+
+**The invariant had no test.** That is the part that mattered: this game has
+already shipped this bug for real, where the fast-forward and offseason paths
+overlapped and re-drafted a still-pending class, and the report was "players
+duplicating on rosters, salary cap integer becomes weird"
+(`scripts/validate-simControlsOffseasonGuard.js` is that bug's regression test).
+Yet nothing asserted the pool itself, so the next occurrence was found by
+accident, by unrelated code that happened to walk it.
+`checkNoPlayerAppearsTwice` now asserts it — verified failing (55 duplicates)
+before the setup fix and passing after.
+
+Deliberately **not** added: a dedupe guard on the push in
+`seasonTransition.js`. It would have hidden a re-drafted pool rather than
+failed on one, and the real defect this game shipped was two offseason paths
+running, which a silent push guard would have made quieter, not rarer.
+
 ### Superseded: what was left undone in the first pass
 
 The spec called for two directions and **only defending shipped**. The user can
