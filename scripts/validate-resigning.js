@@ -233,8 +233,23 @@ function checkExpiryReleasesOnlyTheUndecided() {
   // decrementContracts survived this test until this line existed.
   assert.ok(rights.length > 0,
     'the window must actually have run: no player anywhere holds re-sign rights');
+  // Was `strictEqual(p.teamId, 'BOS')` — only the deferred team could hold
+  // rights. Restricted free agency widened that: another club's young player
+  // is now PARKED with rights too, so the GM has a window to write a competing
+  // offer sheet before the incumbent answers. Those carry `open`, and
+  // freeAgency.resolveLeagueRestrictedFA clears them when the market opens.
+  //
+  // The invariant that still has to hold — and the one this line was really
+  // protecting — is that nobody holds rights by accident: a right is either
+  // the user's own decision or an open restricted case, never a stray.
   rights.forEach(function (p) {
-    assert.strictEqual(p.teamId, 'BOS', 'only the deferred team may hold rights, found ' + p.teamId);
+    if (p.teamId !== 'BOS') {
+      assert.ok(p.resignRights.open,
+        'a non-deferred team may only hold OPEN restricted rights, found a stray on ' + p.teamId);
+      assert.ok(p.resignRights.offerSheet,
+        'an open restricted right must carry the sheet the incumbent has to answer');
+      return;
+    }
   });
   // ...and it must have DECIDED for everyone else. Somebody, somewhere, has to
   // have been kept by his own team through this call.

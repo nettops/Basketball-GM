@@ -151,7 +151,173 @@ function checkAutomationAnswersSheets() {
   console.log('checkAutomationAnswersSheets: OK');
 }
 
+// --- Raiding ----------------------------------------------------------------
+//
+// The half that needed a flow change. runResigningWindow used to settle every
+// other club's restricted player on the spot, so by the time the free agency
+// screen was drawn there was nothing left to raid. They are parked now, and
+// resolveLeagueRestrictedFA answers for all of them when the market opens.
+
+// Snapshotted so each fixture starts from the real league rather than from
+// whatever the previous check left behind — without this the contracts
+// decrement cumulatively and by the fourth call half the league is years into
+// the past.
+const LEAGUE_SNAPSHOT = PLAYERS_2026.map(function (p) {
+  return { p: p, teamId: p.teamId, salary: p.contract.salary, years: p.contract.yearsRemaining };
+});
+
+function restoreLeague() {
+  LEAGUE_SNAPSHOT.forEach(function (s) {
+    s.p.teamId = s.teamId;
+    s.p.contract.salary = s.salary;
+    s.p.contract.yearsRemaining = s.years;
+    delete s.p.resignRights;
+  });
+}
+
+// Mirrors seasonTransition.js's decrementContracts exactly: age every deal,
+// run the window, then release anyone left expired with nothing holding him.
+// That last step is not decoration — it is what makes "nobody is stranded" a
+// meaningful assertion rather than one the fixture fails by construction.
+function parkedFixture(seed) {
+  restoreLeague();
+  const rng = makeRng(seed);
+  PLAYERS_2026.forEach(function (p) { if (p.teamId) p.contract.yearsRemaining -= 1; });
+  const expiring = PLAYERS_2026.filter(function (p) { return p.teamId && p.contract.yearsRemaining <= 0; });
+  const result = fa.runResigningWindow(expiring, rng, 'BOS');
+  PLAYERS_2026.forEach(function (p) {
+    if (p.teamId && p.contract.yearsRemaining <= 0 && !p.resignRights) p.teamId = null;
+  });
+  return result;
+}
+
+function checkOtherClubsRestrictedPlayersAreRaidable() {
+  const result = parkedFixture(31);
+  assert.ok(result.openRestricted.length > 0,
+    'other clubs\' restricted players must be left open, or there is nothing to raid');
+  const open = fa.openRestrictedFreeAgents('BOS');
+  assert.ok(open.length > 0, 'and they must be findable from outside');
+  open.forEach(function (p) {
+    assert.notStrictEqual(p.teamId, 'BOS', 'the raid list must never include your own players');
+    assert.ok(p.resignRights.offerSheet, 'each carries the sheet the incumbent has to beat');
+    assert.ok(p.teamId, 'and stays on his roster while parked, holding the spot');
+  });
+  console.log('checkOtherClubsRestrictedPlayersAreRaidable: OK (' + open.length + ' raidable)');
+}
+
+function checkWritingASheetTakesTheBestOffer() {
+  parkedFixture(77);
+  const open = fa.openRestrictedFreeAgents('BOS');
+  const target = open[0];
+  const bos = TEAMS.filter(function (t) { return t.id === 'BOS'; })[0];
+  const standing = target.resignRights.offerSheet;
+
+  // Too small to tempt him: the sheet he already holds should survive.
+  const lowball = fa.writeOfferSheet(target, bos, 1200000, 1);
+  if (!lowball.ok) {
+    assert.ok(/prefers|cap|minimum|Roster/.test(lowball.reason), 'a refusal must explain itself: ' + lowball.reason);
+  }
+  assert.strictEqual(target.resignRights.offerSheet.teamId, standing.teamId,
+    'a lowball must not displace a better standing sheet');
+
+  // Illegal offers are refused with a reason rather than silently applied.
+  const silly = fa.writeOfferSheet(target, bos, -5, 3);
+  assert.strictEqual(silly.ok, false, 'a negative salary is not an offer');
+  assert.ok(silly.reason, 'and says why');
+
+  const tooLong = fa.writeOfferSheet(target, bos, 5000000, 99);
+  assert.strictEqual(tooLong.ok, false, 'a 99-year sheet is not an offer');
+
+  // Your own player is the Match flow, not a raid.
+  const mine = PLAYERS_2026.filter(function (p) { return p.teamId === 'BOS' && p.resignRights; })[0];
+  if (mine) {
+    assert.strictEqual(fa.writeOfferSheet(mine, bos, 5000000, 2).ok, false,
+      'you cannot write an offer sheet on your own player');
+  }
+  console.log('checkWritingASheetTakesTheBestOffer: OK');
+}
+
+// THE invariant of the flow change. A parked player sits on a zero-year
+// contract; if resolution ever misses one he is rostered forever on a deal
+// that can never expire again.
+function checkResolutionLeavesNobodyParked() {
+  parkedFixture(404);
+  const before = fa.openRestrictedFreeAgents('BOS').length;
+  assert.ok(before > 0, 'sanity: there must be parked players to resolve');
+
+  const results = fa.resolveLeagueRestrictedFA('BOS');
+  assert.strictEqual(results.length, before, 'every parked player must get an answer');
+  assert.strictEqual(fa.openRestrictedFreeAgents('BOS').length, 0,
+    'nobody may be left parked once the market opens');
+
+  const stranded = PLAYERS_2026.filter(function (p) {
+    return p.teamId && p.contract.yearsRemaining <= 0 && !p.resignRights;
+  });
+  // A parked player sits on a zero-year deal. If resolution misses one he is
+  // rostered forever on a contract that can never expire again.
+  assert.strictEqual(stranded.length, 0,
+    stranded.length + ' players are rostered on an expired contract with nothing holding them');
+
+  // And both endings actually occur, or the resolution is one-sided.
+  const matched = results.filter(function (r) { return r.matched; }).length;
+  assert.ok(matched > 0, 'some incumbents must keep their player');
+  assert.ok(matched < results.length, 'and some must lose him');
+  results.forEach(function (r) {
+    assert.ok(r.teamId, r.name + ' resolved to no team at all');
+  });
+  console.log('checkResolutionLeavesNobodyParked: OK (' + matched + ' kept, ' +
+    (results.length - matched) + ' moved)');
+}
+
+// A raid that works, end to end: outbid the standing sheet, then have the
+// incumbent decline to match.
+function checkAWinningRaidLandsThePlayer() {
+  parkedFixture(2718);
+
+  // The raider must actually be able to pay. Boston opens $232M against a
+  // $154M cap, so writing a sheet from there is refused every time — the first
+  // version of this check looped over every target, was refused on all of them,
+  // and printed "every incumbent matched" without ever having raided anyone.
+  // A test that passes by never reaching its own subject is worse than no test.
+  const raider = TEAMS.slice().sort(function (a, b) {
+    return league.getTeamPayroll(a.id) - league.getTeamPayroll(b.id);
+  })[0];
+  const space = fa.checkOffer(raider, 10000000, 4);
+  assert.ok(space.ok, 'the poorest-payroll club must be able to write a real sheet: ' + space.reason);
+
+  const open = fa.openRestrictedFreeAgents(raider.id);
+  assert.ok(open.length > 0, 'there must be somebody to raid');
+  const target = open[0];
+  const heldBy = target.teamId;
+
+  // Steep on purpose: he should prefer it, and the incumbent should balk.
+  const res = fa.writeOfferSheet(target, raider, 10000000, 4);
+  assert.ok(res.ok, 'a big sheet from a club with space must be accepted: ' + res.reason);
+  assert.strictEqual(target.resignRights.offerSheet.teamId, raider.id, 'the standing sheet is now ours');
+
+  const out = fa.resolveLeagueRestrictedFA(raider.id);
+  const row = out.filter(function (r) { return r.playerId === target.id; })[0];
+  assert.ok(row, 'our target must be among the resolved');
+
+  if (row.matched) {
+    assert.strictEqual(target.teamId, heldBy, 'a matched player stays put');
+    assert.strictEqual(target.contract.salary, 10000000,
+      'and is kept on OUR terms — that is what matching costs them');
+    console.log('checkAWinningRaidLandsThePlayer: OK (' + heldBy + ' matched, and pays our price)');
+  } else {
+    assert.strictEqual(target.teamId, raider.id, 'an unmatched sheet of ours must deliver the player');
+    assert.strictEqual(target.contract.salary, 10000000, 'on the terms we wrote');
+    assert.strictEqual(target.contract.yearsRemaining, 4, 'and the length we wrote');
+    console.log('checkAWinningRaidLandsThePlayer: OK (signed ' + target.name + ' away from ' + heldBy + ')');
+  }
+}
+
 checkWhoIsRestricted();
+checkOtherClubsRestrictedPlayersAreRaidable();
+checkWritingASheetTakesTheBestOffer();
+checkResolutionLeavesNobodyParked();
+checkAWinningRaidLandsThePlayer();
+restoreLeague();
 checkASheetCostsMoreThanFairValue();
 checkMatchDecisionRespondsToPrice();
 checkMatchingMayExceedTheCap();

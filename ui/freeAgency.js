@@ -66,6 +66,39 @@ function renderFreeAgency(container, userTeamId) {
       });
       html += '</tbody></table></div>';
     }
+
+    // Raiding. The rest of the league's restricted free agents are parked
+    // rather than settled, precisely so this panel can exist — a GM can put a
+    // price on somebody else's young player and make that club decide.
+    const raidable = openRestrictedFreeAgents(userTeamId);
+    if (raidable.length) {
+      html += '<div class="panel"><div class="panel-header">Restricted Free Agents Around the League</div>' +
+        '<div class="panel-body"><p class="kpi-sub">Write an offer sheet and his club must match it or lose him. ' +
+        'He keeps whichever sheet he prefers, so a bigger number is not always enough.</p>' +
+        '<table class="data-table"><thead><tr><th>Player</th><th>Team</th><th class="num">Age</th>' +
+        '<th class="num">OVR</th><th class="num">Standing Sheet</th><th>Your Offer</th><th></th></tr></thead><tbody>';
+      raidable.forEach(function (p) {
+        const club = getTeamById(p.teamId);
+        const standing = p.resignRights.offerSheet;
+        const standingClub = standing ? getTeamById(standing.teamId) : null;
+        const mine = standing && standing.teamId === userTeamId;
+        html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
+          '<td>' + escapeHtml(club ? club.name : '&mdash;') + '</td>' +
+          '<td class="num">' + p.age + '</td>' +
+          '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+          '<td class="num">' + (standing ? '$' + standing.salary.toLocaleString() + ' &times; ' +
+            standing.yearsRemaining + 'y<div class="kpi-sub">' +
+            (mine ? '<span class="stat-up">yours</span>' : escapeHtml(standingClub ? standingClub.name : 'a rival')) +
+            '</div>' : '&mdash;') + '</td>' +
+          '<td><input type="number" class="sheet-salary" data-sheet-id="' + p.id + '" placeholder="salary" ' +
+            'value="' + Math.round((standing ? standing.salary : 2000000) * 1.1) + '" step="500000"> ' +
+            '<input type="number" class="sheet-years" data-sheet-years="' + p.id + '" value="' +
+            (standing ? standing.yearsRemaining : 2) + '" min="1" max="5"></td>' +
+          '<td class="actions"><button data-writesheet-id="' + p.id + '">Offer Sheet</button></td></tr>';
+      });
+      html += '</tbody></table></div></div>';
+    }
+
     // Nothing to resolve when the pool is empty. Disabled rather than removed
     // so the screen still says what it does, matching the dock's Watch/Undo.
     html += '<div class="toolbar"><button id="resolve-remaining-btn" class="btn-ghost"' +
@@ -195,6 +228,30 @@ function renderFreeAgency(container, userTeamId) {
         signPlayer(player, sheet);
         signingLog.push(escapeHtml(player.name) + ' signs with ' + escapeHtml(rival ? rival.name : 'a rival') +
           ' on the offer sheet you declined to match');
+        draw();
+      });
+    });
+
+    container.querySelectorAll('button[data-writesheet-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-writesheet-id');
+        const player = getPlayerById(id);
+        const salary = Number(container.querySelector('input[data-sheet-id="' + id + '"]').value);
+        const years = Number(container.querySelector('input[data-sheet-years="' + id + '"]').value);
+        const res = writeOfferSheet(player, getTeamById(userTeamId), salary, years);
+        if (!res.ok) {
+          // The refusal is the interesting part — no cap space, or he simply
+          // likes where he is being offered better — so it is shown rather
+          // than swallowed.
+          signingLog.push('Offer sheet for ' + escapeHtml(player.name) + ' rejected: ' + escapeHtml(res.reason));
+          draw();
+          return;
+        }
+        pushUndoSnapshot(GameState);
+        const club = getTeamById(player.teamId);
+        signingLog.push('Offer sheet written for ' + escapeHtml(player.name) + ' ($' +
+          salary.toLocaleString() + '/yr, ' + years + ' yr' + (years === 1 ? '' : 's') + ') — ' +
+          escapeHtml(club ? club.name : 'his club') + ' must match it or lose him');
         draw();
       });
     });

@@ -156,7 +156,59 @@ played. `probe-invariants.js` holds over 10 seasons and the league pool
 oscillates 533-553 as it always has, so the small player-count shift is churn,
 not a leak. `gamesim-golden.json` is untouched.
 
-### Left undone: the raiding half
+### The raiding half (added after the first pass)
+
+Shipped. The flow change it needed:
+
+`runResigningWindow` no longer settles other clubs' restricted players on the
+spot. It **parks** them — rights held, sheet attached, roster spot kept — and a
+new `resolveLeagueRestrictedFA` answers for all of them when the market opens,
+from both paths (`script.js`'s manual advance and `seasonRollover.js`'s
+unattended one). In between sits the GM's window to write a competing sheet.
+
+The player keeps whichever sheet **he** prefers, scored through the existing
+`scoreOffer`, so outbidding is not merely a matter of being last to speak — a
+contender with minutes can hold off more money from somewhere he does not want
+to go, the same rule the open market already runs on.
+
+Verified end to end in the browser: Chicago ($101M payroll, real space) wrote
+$12M x 4 on Indiana's Quenton Jackson, Indiana declined to match, and he moved
+to Chicago on Chicago's terms with nobody left parked. Boston, $77.8M over the
+cap, is refused with exactly that sentence — the refusal is shown rather than
+swallowed, because "you have no room" is the interesting half of the answer.
+
+### Two test defects this pass exposed
+
+**A test that passed without reaching its subject.** The first
+`checkAWinningRaidLandsThePlayer` raided from Boston, which opens $232M against
+a $154M cap — every `writeOfferSheet` was refused, the loop fell through, and it
+printed "every incumbent matched" having never raided anyone. It now picks the
+lowest-payroll club and asserts the sheet is accepted before going further.
+
+**A fixture that skipped the step it was asserting about.** `parkedFixture` ran
+the window but not `decrementContracts`'s release pass, so "nobody is stranded"
+failed by construction on 94 players. It now mirrors the real pipeline, and
+snapshots the league so successive checks do not decrement contracts
+cumulatively.
+
+### A pre-existing duplicate this uncovered
+
+`resolveLeagueRestrictedFA` crashed inside `validate-seasonRollover.js` on a
+player whose rights were already spent. The cause was a **duplicate id in
+`PLAYERS_2026`** — `prospect-jamier-jones-24` appearing twice in a 22-entry
+list, so the same player was answered twice.
+
+Nothing in this feature writes to the player pool, and the validator's own
+header notes it deliberately runs several offseasons against one shared
+`PLAYERS_2026`. So this is either a harness artifact of that reuse or an older
+draft bug; it is **not** caused by restricted free agency, and chasing it inside
+this change would have been scope creep.
+
+What this change owes is robustness, and it now has it: the list is a snapshot,
+resolving one player moves the world, and an entry whose rights are already
+spent is skipped. Worth a separate look.
+
+### Superseded: what was left undone in the first pass
 
 The spec called for two directions and **only defending shipped**. The user can
 answer sheets written against their own players; they cannot yet write one on

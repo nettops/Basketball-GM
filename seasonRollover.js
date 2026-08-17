@@ -31,7 +31,7 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       // seasonTransition.js, NOT draft.js — draft.js owns the interactive
       // draft session, not the offseason pipeline.
       seasonTransition: { runOffseasonThroughDraft: runOffseasonThroughDraft, generateNewSeason: generateNewSeason },
-      freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights },
+      freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights, resolveLeagueRestrictedFA: resolveLeagueRestrictedFA },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
       traits: { announceSecretBadges: announceSecretBadges },
@@ -116,6 +116,11 @@ function runOffseasonRollover(gameState, deps) {
   // the market opens, or an automated save quietly loses every star it was
   // meant to keep. Anyone the offer does not hold onto is released here.
   _ROLLOVER_DATA.freeAgency.autoExerciseResignRights(gameState.userTeamId, gameState.rng);
+  // The rest of the league's restricted players were parked so the GM could
+  // raid them; unattended, nobody did, so every incumbent answers the rival
+  // sheet it was already facing. Must run BEFORE the open market, or a parked
+  // player would still be holding a roster spot nobody could sign into.
+  _ROLLOVER_DATA.freeAgency.resolveLeagueRestrictedFA(gameState.userTeamId);
   _ROLLOVER_DATA.freeAgency.runFreeAgencySilently(gameState.rng);
   _ROLLOVER_DATA.autoGM.autoEnforceRosterSize(_ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId));
 

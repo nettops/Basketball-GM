@@ -516,7 +516,7 @@ function applyResign(player, team, offer) {
 // (he preferred the market). Collapsing the two into a bare list hid the
 // difference well enough that deleting the interest bar changed no test result.
 function runResigningWindow(expiring, rng, deferTeamId) {
-  const resigned = [], lost = [], deferred = [];
+  const resigned = [], lost = [], deferred = [], openRestricted = [];
   expiring.slice()
     .sort(function (a, b) {
       return _FA_DATA.tradeEvaluator.basePlayerValue(b) - _FA_DATA.tradeEvaluator.basePlayerValue(a);
@@ -543,19 +543,21 @@ function runResigningWindow(expiring, rng, deferTeamId) {
       }
 
       if (sheet) {
-        const verdict = evaluateMatch(team, player, sheet);
-        if (verdict.matched) {
-          // Kept, but on the rival's terms rather than the asking price — which
-          // is the whole point of the mechanism.
-          applyResign(player, team, sheet);
-          resigned.push({ playerId: player.id, teamId: team.id, salary: sheet.salary,
-            yearsRemaining: sheet.yearsRemaining, matched: true });
-        } else {
-          // He does not reach the open market: an unmatched sheet IS the
-          // signing, so he goes straight to the club that wrote it.
-          signPlayer(player, sheet);
-          lost.push({ player: player, reason: 'poached', toTeamId: sheet.teamId });
-        }
+        // PARKED, not resolved. The incumbent does not answer yet, because the
+        // user has not had their say — this is the window in which a GM can
+        // write a competing sheet on somebody else's young player, and
+        // resolving here would settle every one of them before the free agency
+        // screen had even been drawn.
+        //
+        // He keeps his roster spot while parked (resignRights is what stops
+        // decrementContracts releasing him), so nothing downstream sees a
+        // phantom opening. resolveLeagueRestrictedFA answers for all of them
+        // when the market opens.
+        player.resignRights = {
+          teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining,
+          offerSheet: sheet, open: true
+        };
+        openRestricted.push(player);
         return;
       }
       // Does the team even want him? Same bar the AI applies to any free
@@ -570,7 +572,7 @@ function runResigningWindow(expiring, rng, deferTeamId) {
       applyResign(player, team, ask);
       resigned.push({ playerId: player.id, teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining });
     });
-  return { resigned: resigned, lost: lost, deferred: deferred };
+  return { resigned: resigned, lost: lost, deferred: deferred, openRestricted: openRestricted };
 }
 
 // A deferred player STAYS on the roster, on an expired contract, until the
@@ -644,6 +646,88 @@ function releaseUnexercisedResignRights(teamId) {
     released.push(player.id);
   });
   return released;
+}
+
+// Every restricted free agent still waiting on an answer, across the league.
+// `open` marks the ones parked by runResigningWindow for other clubs; the
+// user's own restricted players carry a sheet but no `open` flag, because
+// their decision is the Match button rather than a raid target.
+// Walks the rosters rather than the player pool: a parked restricted player is
+// by definition still on a roster, and going through getTeamRoster keeps this
+// inside the dependencies freeAgency.js already declares instead of adding a
+// players bridge for one filter.
+function openRestrictedFreeAgents(excludeTeamId) {
+  const out = [];
+  _FA_DATA.teams.TEAMS.forEach(function (t) {
+    if (t.id === excludeTeamId) return;
+    _FA_DATA.league.getTeamRoster(t.id).forEach(function (p) {
+      if (p.resignRights && p.resignRights.open) out.push(p);
+    });
+  });
+  return out;
+}
+
+// The GM writes a sheet on somebody else's young player.
+//
+// The player keeps whichever sheet HE prefers, scored the same way he scores
+// every other offer — so outbidding a rival is not a matter of simply being
+// last to speak. A bigger number usually wins, but a contender with minutes
+// available can hold off more money from a team he does not want to join,
+// which is the same rule the open market already runs on.
+function writeOfferSheet(player, team, salary, years) {
+  if (!player || !player.resignRights || !player.resignRights.open) {
+    return { ok: false, reason: 'That player is not a restricted free agent.' };
+  }
+  if (player.teamId === team.id) {
+    return { ok: false, reason: 'He is already yours — match or decline instead.' };
+  }
+  const check = checkOffer(team, salary, years);
+  if (!check.ok) return { ok: false, reason: check.reason };
+
+  const mine = { teamId: team.id, salary: salary, yearsRemaining: years, offerSheet: true };
+  const standing = player.resignRights.offerSheet;
+  const rival = standing ? _FA_DATA.teams.getTeamById(standing.teamId) : null;
+  if (standing && rival && scoreOffer(player, rival, standing) >= scoreOffer(player, team, mine)) {
+    return { ok: false, reason: 'He prefers the sheet he already has from ' + rival.name + '.' };
+  }
+  player.resignRights.offerSheet = mine;
+  return { ok: true, reason: null, sheet: mine };
+}
+
+// The incumbents finally answer, for every parked restricted player at once.
+// Called when the market opens, from both paths — the manual one in script.js
+// and the unattended one in seasonRollover.js — because a parked player left
+// unanswered would sit on a zero-year contract forever.
+function resolveLeagueRestrictedFA(excludeTeamId) {
+  const results = [];
+  openRestrictedFreeAgents(excludeTeamId).forEach(function (player) {
+    // The list is a SNAPSHOT, and resolving one player signs him somewhere,
+    // so by the time a later entry is reached the world has moved. A player
+    // whose rights are already spent has already been answered — skip him
+    // rather than reading through an undefined.
+    //
+    // Found by scripts/validate-seasonRollover.js, which deliberately runs
+    // several offseasons against one shared PLAYERS_2026 and produced a pool
+    // holding the same prospect id twice. That duplicate is not this feature's
+    // doing (nothing here writes to the pool) but it is exactly the kind of
+    // staleness a snapshot walk has to survive.
+    if (!player.resignRights) return;
+    const team = _FA_DATA.teams.getTeamById(player.teamId);
+    const sheet = player.resignRights.offerSheet;
+    delete player.resignRights;
+    if (!team || !sheet) { if (player.contract.yearsRemaining <= 0) player.teamId = null; return; }
+    const verdict = evaluateMatch(team, player, sheet);
+    if (verdict.matched) {
+      applyResign(player, team, sheet);
+      results.push({ playerId: player.id, name: player.name, teamId: team.id, matched: true,
+        salary: sheet.salary, byTeamId: sheet.teamId });
+    } else {
+      signPlayer(player, sheet);
+      results.push({ playerId: player.id, name: player.name, teamId: sheet.teamId, matched: false,
+        salary: sheet.salary, fromTeamId: team.id });
+    }
+  });
+  return results;
 }
 
 const ROSTER_FLOOR = 12;
@@ -808,6 +892,9 @@ if (typeof module !== 'undefined' && module.exports) {
     applyResign: applyResign,
     runResigningWindow: runResigningWindow,
     isRestrictedFreeAgent: isRestrictedFreeAgent,
+    openRestrictedFreeAgents: openRestrictedFreeAgents,
+    writeOfferSheet: writeOfferSheet,
+    resolveLeagueRestrictedFA: resolveLeagueRestrictedFA,
     generateOfferSheet: generateOfferSheet,
     bestOfferSheet: bestOfferSheet,
     matchDecision: matchDecision,

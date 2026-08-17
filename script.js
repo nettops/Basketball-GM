@@ -731,6 +731,13 @@ function handleAdvanceToNewSeason() {
   // zero-year contract.
   releaseUnexercisedResignRights(GameState.userTeamId);
 
+  // Every other club's restricted free agents were parked, not decided, so the
+  // GM had a window to write a competing sheet on them. That window closes
+  // here: each incumbent answers whatever sheet is standing against its player,
+  // the GM's included. Before enforceRosterFloors, because these signings are
+  // what several teams are relying on to reach the floor legally.
+  resolveLeagueRestrictedFA(GameState.userTeamId);
+
   // Unconditional, not gated on autoFreeAgency. That setting governs whether
   // the USER's free agency is automated, but AI teams have to start the season
   // with a legal roster either way — a user who clicks straight past the free

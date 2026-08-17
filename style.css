@@ -512,6 +512,11 @@ table { border-collapse: collapse; width: 100%; }
   font-family: var(--font); font-variant-numeric: tabular-nums;
 }
 .shot-chart-sub { fill: var(--text-dim); font-size: 10px; font-family: var(--font); }
+/* Offer-sheet inputs. Sized so a nine-figure salary and a one-digit term sit
+   on one line inside a table cell rather than wrapping the row. */
+.sheet-salary { width: 116px; }
+.sheet-years { width: 52px; }
+
 .stat-up { color: var(--win); }
 .stat-down { color: var(--loss); }
 .text-dim { color: var(--text-dim); }
