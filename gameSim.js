@@ -80,9 +80,45 @@ const POSSESSION_VARIANCE_SECONDS = 5;
 const TIMEOUTS_PER_GAME = 7;
 const TIMEOUT_ENERGY_RESTORE = 0.12;
 
-function possessionSeconds(rng) {
+// Seconds per possession the coaching screen's Pace dial is worth, per unit of
+// blended dial. Fast SHORTENS the possession, so the dial is subtracted.
+//
+// Sized to match what simEngineBoxScore's pace dial is already worth, so the
+// two engines agree about what "Fast" means: that one is +/-4 possessions a
+// team at full blended dial. A regulation game is 4 x 9.5min = 2280 seconds,
+// which at 12.5s is 182 possessions, 91 a side. 95 a side needs 11.98s and 87 a
+// side needs 13.07s — so a shade over half a second either way.
+//
+// Read the POSSESSION_BASE_SECONDS comment above before changing this. Pace and
+// points are the same lever arithmetically (points-per-possession does not
+// move), so this dial IS a scoring dial: about +/-5 points a game at the
+// extremes. That is intended for a control the user chose to move; it is the
+// reason the league-wide default stays 0.
+const PACE_DIAL_SECONDS = 0.55;
+
+// paceBlend is the average of BOTH teams' dials, because a possession is not
+// something one team does — the two share a clock, and a team that wants to run
+// against an opponent that wants to walk gets a compromise. Same blend
+// simEngineBoxScore.js uses.
+function possessionSeconds(rng, paceBlend) {
   const jitter = (rng() * 2 - 1) * POSSESSION_VARIANCE_SECONDS;
-  return Math.max(4, POSSESSION_BASE_SECONDS + jitter);
+  // A neutral dial has to be an EXACT no-op: every team defaults to 0, and
+  // under Node they have no strategy object at all, so a league nobody has
+  // touched must produce the byte-identical game it did before this existed.
+  const base = paceBlend
+    ? POSSESSION_BASE_SECONDS - PACE_DIAL_SECONDS * paceBlend
+    : POSSESSION_BASE_SECONDS;
+  return Math.max(4, base + jitter);
+}
+
+// Reads a dial off a team that may have no strategy object at all — every team
+// starts without one, and coaches.js only creates it when a coach is ensured.
+function paceFor(team) {
+  return (team && team.strategy && team.strategy.pace) || 0;
+}
+
+function threeRateFor(team) {
+  return (team && team.strategy && team.strategy.threePointRate) || 0;
 }
 
 // Roughly how many more possessions ONE side gets before the buzzer. Used only
@@ -205,6 +241,11 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // dependency on teams.js (see the resolution above).
     homeTeam: homeTeam,
     awayTeam: awayTeam,
+    // Both coaches' Pace dials, blended once. Unlike the three-point dial this
+    // is NOT re-read per possession: possession length is a property of the
+    // game the two teams are playing, and changing it mid-game would make the
+    // clock jump under a live watched game.
+    paceBlend: (paceFor(homeTeam) + paceFor(awayTeam)) / 2,
     homeRoster: homeRoster,
     awayRoster: awayRoster,
     homeBox: homeBox,
@@ -345,7 +386,11 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       takeovers: {
         offense: sim.takeovers[team] && sim.takeovers[team].side === 'offense' ? sim.takeovers[team] : null,
         defense: sim.takeovers[other] && sim.takeovers[other].side === 'defense' ? sim.takeovers[other] : null
-      }
+      },
+      // The shooting team's Three-Point Rate dial. Read per possession rather
+      // than hoisted, because a live watched game lets the user change it from
+      // the coaching screen between possessions and the shot mix should follow.
+      threeRate: threeRateFor(team === 'home' ? homeTeam : awayTeam)
     };
 
     const points = _GAMESIM_DATA.poss.simulatePossession(
@@ -510,7 +555,7 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       else sim.run = { team: team, points: points };
     }
 
-    const elapsed = Math.min(sim.clock, possessionSeconds(rng));
+    const elapsed = Math.min(sim.clock, possessionSeconds(rng, sim.paceBlend));
     sim.clock -= elapsed;
     onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += elapsed; });
 

@@ -308,11 +308,30 @@ const TRANSITION_INSIDE_MULT = 1.6;
 const TRANSITION_THREE_MULT = 1.0;
 const TRANSITION_MID_MULT = 0.35;
 
-function pickShotZone(shooter, rng, inTransition, takeoverBias) {
+// How hard the coaching screen's Three-Point Rate dial pulls, per unit of dial
+// (the UI offers -1, 0, +1 — Low, Balanced, High).
+//
+// A MULTIPLIER on the three weight, not an addition to the share, because this
+// engine picks a zone from weights and normalisation then pays for the extra
+// threes out of the other two zones in proportion. That is the same shape the
+// takeover bias and the transition bias already use.
+//
+// 0.33 was solved for, not picked: the league takes 27.6% of its shots from
+// three, and simEngineBoxScore's dial is worth 0.06 of SHARE per unit, so
+// matching it means landing near 33.6% at +1. A weight multiplier m moves a
+// share s to m*s/(m*s + 1 - s); solving 0.336 = 0.276m/(0.276m + 0.724) gives
+// m = 1.33. Measured result is in the plan.
+const THREE_RATE_DIAL_STRENGTH = 0.33;
+
+function pickShotZone(shooter, rng, inTransition, takeoverBias, threeRateDial) {
   const t = shooter.hiddenTendencies || {};
   let three = t.threeTendency !== undefined ? Math.max(1, t.threeTendency) : 33;
   let mid = t.midTendency !== undefined ? Math.max(1, t.midTendency) : 33;
   let inside = t.insideTendency !== undefined ? Math.max(1, t.insideTendency) : 34;
+  // A neutral dial must be an EXACT no-op — every team defaults to 0 (and to no
+  // strategy object at all under Node), so anything else here would move both
+  // golden masters for a league where nobody has touched the control.
+  if (threeRateDial) three *= 1 + THREE_RATE_DIAL_STRENGTH * threeRateDial;
   // A takeover pulls the holder toward the spot his ultimate improves — Heat
   // Check starts hunting threes. Scaled like the transition bias rather than
   // replacing the mix, so a big man taking over still is not launching from
@@ -926,6 +945,10 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   // pre-ultimates caller behaving exactly as it did.
   const tkOff = gameCtx && gameCtx.takeovers ? gameCtx.takeovers.offense : null;
   const tkDef = gameCtx && gameCtx.takeovers ? gameCtx.takeovers.defense : null;
+  // The SHOOTING team's Three-Point Rate dial (coaches.js / ui/coaching.js).
+  // Rides on gameCtx for the same reason scoreDiff does: a caller that omits it
+  // gets exactly the behaviour it had before the dial existed.
+  const threeRateDial = gameCtx ? gameCtx.threeRate : undefined;
   const offDial = tkOff ? tkOff.effect : {};
   const defDial = tkDef ? tkDef.effect : {};
   // A solo takeover names one player; a team takeover lifts all five.
@@ -973,7 +996,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     : PICK_CEILING.shooter;
   const shooter = weightedPick(offense, energyAware(shooterWeight, offenseBox, false), rng, PICK_POWER.shooter, shooterCeiling);
   const zone = pickShotZone(shooter, rng, inTransition,
-    (soloId && shooter.id === soloId) ? offDial.zoneBias : null);
+    (soloId && shooter.id === soloId) ? offDial.zoneBias : null, threeRateDial);
   const shotDefender = weightedPick(defense, energyAware(function (p) { return shotDefenseWeight(p, zone); }, defenseBox, true), rng, PICK_POWER.shotDefender);
   // reboundShare, applied on whichever side the holder is actually on. A
   // takeover by the DEFENDING team's Glass Wrecker has to lift him on the

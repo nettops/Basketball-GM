@@ -153,9 +153,56 @@ function transitionSplit() {
   console.log('');
 }
 
+// ---- 4. The pace dial, and what it costs ----
+//
+// Pace and points are the same lever arithmetically — see the
+// POSSESSION_BASE_SECONDS comment in gameSim.js — so unlike the three-point
+// dial this one IS a scoring dial. That is fine for a control the user chose to
+// move, and it is the reason every AI team sits at 0. This measures how much,
+// so the size of the concession is on the record rather than assumed.
+//
+// Both columns matter: BOTH teams at the setting is the extreme case, and the
+// user's team alone against a neutral league is the case that actually happens.
+
+function paceSweep() {
+  const home = TEAMS[0], away = TEAMS[1];
+  const homeRoster = league.getTeamRoster(home.id).map(function (p) { return p.id; });
+
+  function run(homeDial, awayDial) {
+    home.strategy = { pace: homeDial, threePointRate: 0 };
+    away.strategy = { pace: awayDial, threePointRate: 0 };
+    let points = 0, fga = 0;
+    const games = GAMES_PER_MATCHUP * 2;
+    for (let g = 0; g < games; g++) {
+      const result = gameSim.simulateGame(home.id, away.id, makeRng(4200 + g));
+      points += result.homeScore;
+      homeRoster.forEach(function (id) {
+        if (result.boxScore[id]) fga += result.boxScore[id].fga;
+      });
+    }
+    return { ppg: points / games, fga: fga };
+  }
+
+  console.log('=== 4. What the pace dial buys ===');
+  console.log('  setting            home ppg   team FGA');
+  [
+    ['both slow    ', -1, -1], ['user slow    ', -1, 0], ['neutral      ', 0, 0],
+    ['user fast    ', 1, 0], ['both fast    ', 1, 1], ['opposed      ', 1, -1]
+  ].forEach(function (row) {
+    const r = run(row[1], row[2]);
+    console.log('  ' + row[0] + '      ' + r.ppg.toFixed(1).padStart(6) + '     ' + r.fga);
+  });
+  home.strategy = { pace: 0, threePointRate: 0 };
+  away.strategy = { pace: 0, threePointRate: 0 };
+  console.log('  Every AI team sits at 0, so "user fast/slow" is the case that occurs in a real save.');
+  console.log('  "opposed" must equal "neutral" exactly — the two share one clock.');
+  console.log('');
+}
+
 const leagueShares = leagueWideSplit();
 const swing = dialSweep();
 transitionSplit();
+paceSweep();
 
 console.log('=== summary ===');
 console.log('  league three-point share: ' + pctNum(leagueShares.three));
