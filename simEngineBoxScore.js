@@ -159,7 +159,7 @@ function lineupOrder(roster, team) {
 // their shooting attributes. This is a flavor-stat approximation, not a precise
 // possession-level shot model (that's the possession-by-possession engine, later).
 function deriveShootingLine(player, points, rng, threePointRateDial) {
-  if (points === 0) return { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0 };
+  if (points === 0) return { fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, insideFga: 0, insideFgm: 0, midFga: 0, midFgm: 0 };
   const a = player.attributes;
   const ftShare = Math.min(0.35, 0.10 + (a.freeThrow - 50) / 300);
   const ftPoints = Math.round(points * Math.max(0, ftShare));
@@ -187,13 +187,37 @@ function deriveShootingLine(player, points, rng, threePointRateDial) {
   const threeAttempts = threeMade > 0 ? Math.max(threeMade, Math.round(threeMade / threePct)) : (rng() < 0.1 ? 1 : 0);
   const ftAttempts = ftPoints > 0 ? Math.max(Math.round(ftPoints / 1), Math.round(ftPoints / ftPct)) : 0;
 
+  // Split the two-pointers across the rim and the mid-range, so this engine
+  // answers the same question the possession engine does — it is selectable in
+  // ui/settings.js, and without this a player who switches engines gets a
+  // season of empty shot charts.
+  //
+  // Read from the same hiddenTendencies pair pickShotZone uses, with the same
+  // neutral fallback, so the two engines describe a player's shot diet the same
+  // way. Deliberately draws no rng: the split is a rounding of an existing
+  // total, and a new draw here would move every seeded result in this engine.
+  //
+  // The remainder always goes to mid-range rather than being rounded
+  // independently, which makes inside + mid === two by construction — the
+  // invariant validate-shotZones.js asserts cannot fail by a rounding penny.
+  const t = player.hiddenTendencies || {};
+  const insideT = t.insideTendency !== undefined ? Math.max(1, t.insideTendency) : 34;
+  const midT = t.midTendency !== undefined ? Math.max(1, t.midTendency) : 33;
+  const insideShare = insideT / (insideT + midT);
+  const insideAttempts = Math.round(twoAttempts * insideShare);
+  const insideMade = Math.min(insideAttempts, Math.round(twoMade * insideShare));
+
   return {
     fgm: twoMade + threeMade,
     fga: twoAttempts + threeAttempts,
     tpm: threeMade,
     tpa: threeAttempts,
     ftm: ftPoints,
-    fta: ftAttempts
+    fta: ftAttempts,
+    insideFga: insideAttempts,
+    insideFgm: insideMade,
+    midFga: twoAttempts - insideAttempts,
+    midFgm: twoMade - insideMade
   };
 }
 
@@ -238,6 +262,10 @@ function simulateTeamBoxScore(teamId, teamScore, opponentScore, rng) {
       tpa: shooting.tpa,
       ftm: shooting.ftm,
       fta: shooting.fta,
+      insideFga: shooting.insideFga,
+      insideFgm: shooting.insideFgm,
+      midFga: shooting.midFga,
+      midFgm: shooting.midFgm,
       plusMinus: Math.round((minutes[i] / 240) * 5 * (teamScore - opponentScore))
     };
   });

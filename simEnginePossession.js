@@ -231,7 +231,17 @@ function initBoxLine() {
   // ultimate meter (ultimates.js), per game and discarded with it. They live
   // here rather than on the player because a meter that survived the final
   // buzzer would let a star bank a takeover across a road trip.
+  // insideFga/insideFgm/midFga/midFgm are the shot chart. pickShotZone already
+  // classifies every attempt; before these existed the answer was used four
+  // times inside one possession and then dropped, so the only zone that ever
+  // reached a box score was the three — via tpa/tpm, which ARE the third pair
+  // and are why there is no threeFga here.
+  //
+  // That leaves an invariant worth more than the two integers a derived
+  // mid-range would have saved, and validate-shotZones.js asserts it:
+  //   insideFga + midFga + tpa === fga
   return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0,
+    insideFga: 0, insideFgm: 0, midFga: 0, midFgm: 0,
     charge: 0, takeoverLeft: 0, takeoversUsed: 0, takeoverPoints: 0, takeoverPointsAt: 0 };
 }
 
@@ -999,6 +1009,8 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     defenseBox[shotDefender.id].oppFga += 1;
     offenseBox[shooter.id].fga += 1;
     if (zone === 'three') offenseBox[shooter.id].tpa += 1;
+    if (zone === 'inside') offenseBox[shooter.id].insideFga += 1;
+    if (zone === 'mid') offenseBox[shooter.id].midFga += 1;
     reportPlay(outcome, shotDefender.id, 'block');
     reportPlay(outcome, shooter.id, 'missedShot');
     logPlay(log, shooter.name + '\'s ' + zoneLabel + ' is blocked by ' + shotDefender.name, blockCheck);
@@ -1028,12 +1040,16 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   offenseBox[shooter.id].fga += 1;
   defenseBox[shotDefender.id].oppFga += 1;
   if (zone === 'three') offenseBox[shooter.id].tpa += 1;
+  if (zone === 'inside') offenseBox[shooter.id].insideFga += 1;
+  if (zone === 'mid') offenseBox[shooter.id].midFga += 1;
 
   let points = 0;
   if (made) {
     offenseBox[shooter.id].fgm += 1;
     defenseBox[shotDefender.id].oppFgm += 1;
     if (zone === 'three') offenseBox[shooter.id].tpm += 1;
+    if (zone === 'inside') offenseBox[shooter.id].insideFgm += 1;
+    if (zone === 'mid') offenseBox[shooter.id].midFgm += 1;
     offenseBox[shooter.id].points += shotValue;
     points += shotValue;
     // Written as two calls rather than one with a ternary so that every

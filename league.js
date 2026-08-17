@@ -47,7 +47,16 @@ function getPlayerById(playerId) {
 
 // oppFga/oppFgm accumulate across the season because DFG% is meaningless per
 // game — five defended shots is noise. Season totals are what make it readable.
-const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm'];
+// This array is the stat spine: accumulateSeasonStats seeds and sums season
+// lines from it, and careerHistory.js derives both its season records and its
+// per-team total<Key> fields from it. Adding a key here carries a statistic
+// from a single possession all the way to a career team-by-team split with no
+// other accumulation code written.
+//
+// getPlayerAverages below is the exception — it is hand-written and does NOT
+// iterate this array, so a new key needs its rate adding there deliberately.
+const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm',
+  'insideFga', 'insideFgm', 'midFga', 'midFgm', 'plusMinus'];
 
 // context carries { leagueYear, day } — the two things a feat record needs and
 // the game object does not have. All three call sites pass it; the call-site
@@ -155,8 +164,13 @@ function accumulateSeasonStats(playerId, statLine) {
 function getPlayerAverages(player) {
   const s = player.seasonStats;
   if (!s || s.gamesPlayed === 0) {
-    return { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0, fgPct: 0, tpPct: 0, ftPct: 0, mpg: 0 };
+    return { ppg: 0, rpg: 0, apg: 0, spg: 0, bpg: 0, fgPct: 0, tpPct: 0, ftPct: 0, mpg: 0,
+      insideFgPct: 0, midFgPct: 0, insideRate: 0, midRate: 0, threeRate: 0, dfgPct: 0, pmpg: 0 };
   }
+  // A player can have a season with no attempt from a zone — a rim-running
+  // centre takes no threes all year — so every zone rate guards its own
+  // denominator rather than leaning on the total.
+  const fga = s.fga || 0;
   return {
     ppg: s.points / s.gamesPlayed,
     rpg: s.rebounds / s.gamesPlayed,
@@ -166,7 +180,18 @@ function getPlayerAverages(player) {
     fgPct: s.fga > 0 ? s.fgm / s.fga : 0,
     tpPct: s.tpa > 0 ? s.tpm / s.tpa : 0,
     ftPct: s.fta > 0 ? s.ftm / s.fta : 0,
-    mpg: s.minutes / s.gamesPlayed
+    mpg: s.minutes / s.gamesPlayed,
+    // Shooting by zone. The three-point pair is tpm/tpa, already above as
+    // tpPct — repeated here as a SHARE so the three zone rates sum to 1.
+    insideFgPct: s.insideFga > 0 ? s.insideFgm / s.insideFga : 0,
+    midFgPct: s.midFga > 0 ? s.midFgm / s.midFga : 0,
+    insideRate: fga > 0 ? (s.insideFga || 0) / fga : 0,
+    midRate: fga > 0 ? (s.midFga || 0) / fga : 0,
+    threeRate: fga > 0 ? (s.tpa || 0) / fga : 0,
+    // What he allowed as the assigned shot defender. Banked since oppFga/oppFgm
+    // were added and never once displayed.
+    dfgPct: s.oppFga > 0 ? s.oppFgm / s.oppFga : 0,
+    pmpg: (s.plusMinus || 0) / s.gamesPlayed
   };
 }
 
