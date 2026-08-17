@@ -256,4 +256,81 @@ Then: all 64 validators green, sim goldens byte-identical, `ui-smoke.js` clean.
 
 ## What was measured and what was left undone
 
-_(filled in as the work lands)_
+All eight tasks landed. 64 validators green, sim goldens byte-identical,
+ui-smoke 200/0, zero console errors.
+
+### The save-corruption bug was real
+
+Task 1's test failed against the live `accumulateSeasonStats` before the fix,
+exactly as predicted, and the same bug was confirmed at the `careerHistory.js`
+site. Both are fixed and both tests assert the *property* — they extend
+`SEASON_STAT_KEYS` at runtime and put it back — so they keep guarding whatever
+key is added next rather than only the four added here.
+
+### The league's shot diet, measured over 600 games
+
+| zone | share | FG% |
+|---|---|---|
+| at the rim | 49.3% | 56.2% |
+| mid-range | 23.1% | 45.5% |
+| three | 27.6% | 37.6% |
+
+27.6% from three against the ~30% the engine's own calibration comments claim.
+Close enough to confirm the counters are wired to the right branches, and the
+gap is a measurement difference rather than a defect: the engine's figure was
+taken over a different sample.
+
+### The probe found a real defect, and it is not in this work
+
+**The coaching dials do nothing under the default engine.** Sweeping
+`team.strategy.threePointRate` across all five settings over 80 games produced
+byte-identical output — 26.7% three-point share at every setting, the same
+10,125 attempts and the same 111.07 points per game at the extremes.
+
+Root cause, confirmed by grep and by measurement: `strategy` and
+`threePointRate` appear **zero times** in `simEnginePossession.js` and zero
+times in `gameSim.js`. Only `simEngineBoxScore.js` reads them, and that is not
+the default engine (`simEngine.js:24`). The same is true of the pace dial.
+
+So `ui/coaching.js`'s "a real but modest effect on pace and shot selection" is
+false for anyone who has not changed engines in settings — which is everyone by
+default. **This predates this plan** and was invisible until the shot chart made
+shot mix observable, which is precisely what a probe is for.
+
+It is deliberately **not fixed here**. Wiring the dial into the possession
+engine changes shot selection, which moves every golden and needs its own
+calibration sweep; this repo's own convention is that a balance change does not
+ride along inside another change. It needs its own spec, plan, and golden
+regeneration.
+
+The readout added to the coaching screen is still honest — it reports the team's
+actual shot share against the league's, which is true regardless of what moved
+it. But it currently sits underneath a control that does nothing.
+
+### Transition vs half court
+
+Drawing `pickShotZone` directly, 40,000 draws each:
+
+| | rim | mid | three |
+|---|---|---|---|
+| half court | 38.0% | 28.7% | 33.3% |
+| transition | 58.0% | 9.5% | 32.4% |
+
+The three-point share holds nearly flat (33.3% → 32.4%) while the mid-range
+collapses and the rim climbs, which is exactly the behaviour
+`TRANSITION_MID_MULT` was introduced to produce. The rim figure reads 58%
+against the ~63% recorded in the engine's comment; that comment was measured
+in-game, where possession context also selects the shooter, while this draws
+zones for a fixed player pool. Different measurement, not a regression.
+
+### Left undone
+
+- **Five-man lineup and on/off-court splits.** Out of scope from the start;
+  needs lineup keys maintained across substitutions in `gameSim.js`.
+- **The dead coaching dials**, above.
+- **Box-score engine divergence.** Its zone split is an approximation over a
+  points total and lands at 21.5% from three against the possession engine's
+  27.6%. Both are self-consistent and both invariants hold; they simply are not
+  the same model. Worth a look if that engine ever becomes the default.
+- `README.md` still tells a new player to open `index.html` directly, which
+  `CLAUDE.md` explicitly forbids. Untouched, unrelated.
