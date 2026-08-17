@@ -159,6 +159,37 @@ function executePick(teamId, prospect, pickNumber, roundSize) {
   prospect.contract = { salary: rookieSalary(pickNumber, roundSize), yearsRemaining: rookieYears(pickNumber, roundSize), playerOption: false, teamOption: false };
 }
 
+// The one place a drafted prospect joins the league pool. Both draft paths go
+// through it: the session/manual one below, and the automatic one in
+// seasonTransition.js's runOffseasonThroughDraft.
+//
+// Guards by ID, not by object identity, which is what resolveCurrentPick used
+// to check on its own. Identity is not enough: a save round-trip serializes the
+// player pool, upcomingDraftClass and draftSession as three separate object
+// graphs, so one prospect comes back as several DIFFERENT objects sharing one
+// id — and an identity check waves every one of them through. Two entries with
+// one id is the shape that once reached players as "players duplicating on
+// rosters, salary cap integer becomes weird".
+//
+// It refuses rather than throws, so a mis-sequenced draft costs a pick instead
+// of the league, but it is never expected: getting here means some prospect
+// pool was drafted twice. So it says so out loud rather than dropping the pick
+// quietly — a silent guard would have made that older bug rarer to notice, not
+// rarer to happen.
+function addDraftedProspect(prospect) {
+  const pool = _DRAFT_DATA.players.PLAYERS_2026;
+  const clash = pool.some(function (p) { return p.id === prospect.id; });
+  if (clash) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('draft: ' + prospect.name + ' (' + prospect.id + ') is already in the league — ' +
+        'a prospect pool has been drafted twice; the pick was dropped rather than duplicate him');
+    }
+    return false;
+  }
+  pool.push(prospect);
+  return true;
+}
+
 function runDraft(draftOrder, prospectPool) {
   const results = [];
   let available = prospectPool.slice();
@@ -215,11 +246,8 @@ function resolveCurrentPick(session, prospect) {
   // sets .teamId on an object nothing else ever pushed into PLAYERS_2026, so
   // no roster/payroll/getPlayerById lookup (every one of which reads
   // PLAYERS_2026 directly) can see it: a manually-drafted rookie vanished
-  // instead of joining the team. Guarded by indexOf so re-resolving from a
-  // reloaded save (prospect already merged in) can't push a duplicate.
-  if (_DRAFT_DATA.players.PLAYERS_2026.indexOf(prospect) === -1) {
-    _DRAFT_DATA.players.PLAYERS_2026.push(prospect);
-  }
+  // instead of joining the team.
+  addDraftedProspect(prospect);
   session.available = session.available.filter(function (p) { return p.id !== prospect.id; });
   const result = { teamId: pick.teamId, prospect: prospect, pickNumber: pick.pickNumber, round: pick.round };
   session.results.push(result);
@@ -256,6 +284,7 @@ if (typeof module !== 'undefined' && module.exports) {
     runDraft: runDraft,
     startDraftSession: startDraftSession,
     currentPick: currentPick,
+    addDraftedProspect: addDraftedProspect,
     resolveCurrentPick: resolveCurrentPick,
     advanceDraftUntilUserTurn: advanceDraftUntilUserTurn
   };

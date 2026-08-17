@@ -266,6 +266,41 @@ function checkOffseasonThroughDraft() {
 
 checkOffseasonThroughDraft();
 
+// The duplicate guard on the one door drafted prospects come through. The case
+// that matters is the SECOND one: a save round-trip hands back the same
+// prospect as several distinct objects sharing an id, so the identity check
+// this replaced (indexOf) let a twin straight into the pool. A player at two
+// indexes is paid twice against the cap and rosterable from two places — it
+// reached players once already, as "players duplicating on rosters, salary cap
+// integer becomes weird".
+//
+// The two warnings this prints are the guard being loud on purpose, not a
+// failure — a refusal means some pool was drafted twice, which is worth saying.
+function checkAProspectCannotJoinTheLeagueTwice() {
+  const draftModule = require(path.join(__dirname, '..', 'draft.js'));
+  const PLAYERS = require(path.join(__dirname, '..', 'players-2026.js')).PLAYERS_2026;
+  const before = PLAYERS.length;
+
+  const rookie = { id: 'prospect-validator-twice-1', name: 'Twice Drafted', teamId: null };
+  assert.strictEqual(draftModule.addDraftedProspect(rookie), true, 'a prospect new to the league joins it');
+  assert.strictEqual(PLAYERS.length, before + 1, 'and is in the pool exactly once');
+
+  assert.strictEqual(draftModule.addDraftedProspect(rookie), false, 'the same object is refused a second time');
+
+  // A save round-trip's twin: same id, different object.
+  const twin = { id: rookie.id, name: rookie.name, teamId: null };
+  assert.notStrictEqual(twin, rookie, 'the twin really is a separate object');
+  assert.strictEqual(draftModule.addDraftedProspect(twin), false, 'and so is a twin carrying the same id');
+
+  assert.strictEqual(PLAYERS.length, before + 1, 'neither refusal changed the pool');
+
+  const matches = PLAYERS.filter(function (p) { return p.id === rookie.id; });
+  assert.strictEqual(matches.length, 1, 'exactly one player holds that id');
+  PLAYERS.splice(PLAYERS.indexOf(rookie), 1);
+  console.log('checkAProspectCannotJoinTheLeagueTwice: OK');
+}
+checkAProspectCannotJoinTheLeagueTwice();
+
 function checkScoreOffer() {
   const freeAgencyModule = require(path.join(__dirname, '..', 'freeAgency.js'));
   const player = { id: 'test-fa-player', age: 34, overall: 82, position: 'SF' };

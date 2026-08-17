@@ -245,10 +245,34 @@ accident, by unrelated code that happened to walk it.
 `checkNoPlayerAppearsTwice` now asserts it — verified failing (55 duplicates)
 before the setup fix and passing after.
 
-Deliberately **not** added: a dedupe guard on the push in
-`seasonTransition.js`. It would have hidden a re-drafted pool rather than
-failed on one, and the real defect this game shipped was two offseason paths
-running, which a silent push guard would have made quieter, not rarer.
+#### The guard, added after all — and keyed on the right thing
+
+I first argued against a dedupe guard on the push, on the grounds that it would
+hide a re-drafted pool rather than fail on one. Reading the two draft paths
+properly changed the answer, because the guard turned out to be about a
+different case than the harness one.
+
+`draft.js`'s session path **already had** a guard, `indexOf(prospect) === -1`,
+and its stated purpose is re-resolving a pick from a reloaded save. It cannot
+do that job: a save round-trip serializes the player pool, `upcomingDraftClass`
+and `draftSession` as three separate object graphs, so one prospect comes back
+as several distinct objects sharing an id — and an identity check waves every
+one of them through. The check was answering "is this the same object", when
+the question the game needs answered is "is this player already in the league".
+
+So both paths now go through one `addDraftedProspect`, keyed on **id**:
+
+- `seasonTransition.js`'s automatic path, which had no guard at all
+- `draft.js`'s session path, whose identity check this replaces
+
+It refuses rather than throws — a mis-sequenced draft costs a pick, not the
+league — and it says so on the console, because reaching it means some pool was
+drafted twice, and that is worth hearing about rather than swallowing. That was
+the substance of the original objection and it is preserved: the guard is loud.
+
+`checkAProspectCannotJoinTheLeagueTwice` covers all three cases. Verified
+against the old identity check, where the twin assertion fails with
+`true !== false` — the exact duplicate the previous guard admitted.
 
 ### Superseded: what was left undone in the first pass
 

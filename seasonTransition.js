@@ -5,7 +5,7 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS },
       players: { PLAYERS_2026: PLAYERS_2026 },
       progression: { progressPlayer: progressPlayer },
-      draft: { buildDraftOrder: buildDraftOrder, runDraft: runDraft },
+      draft: { buildDraftOrder: buildDraftOrder, runDraft: runDraft, addDraftedProspect: addDraftedProspect },
       prospects: { DRAFT_PROSPECTS_2026: DRAFT_PROSPECTS_2026, generateProspectClass: generateProspectClass },
       schedule: { generateSeasonGames: generateSeasonGames },
       history: { archiveRetiree: archiveRetiree },
@@ -160,7 +160,9 @@ function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass, leagueYear, 
   // via scouting all season, not just at the moment the draft happens.
   const draftOrder = _TRANSITION_DATA.draft.buildDraftOrder(bracket, rng, lotteryFormat);
   const draftResults = _TRANSITION_DATA.draft.runDraft(draftOrder, upcomingDraftClass);
-  draftResults.forEach(function (r) { _TRANSITION_DATA.players.PLAYERS_2026.push(r.prospect); });
+  // Through draft.js rather than pushing here, so both draft paths share one
+  // duplicate guard — see addDraftedProspect.
+  draftResults.forEach(function (r) { _TRANSITION_DATA.draft.addDraftedProspect(r.prospect); });
 
   return { retireeCount: pre.retireeCount, secretBadges: pre.secretBadges, draftResults: draftResults };
 }
