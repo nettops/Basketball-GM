@@ -1,5 +1,5 @@
 var _TRANSITION_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js'), history: require('./history.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), players: require('./players-2026.js'), progression: require('./progression.js'), draft: require('./draft.js'), prospects: require('./draftProspects.js'), schedule: require('./schedule.js'), history: require('./history.js'), coaches: require('./coaches.js'), ratings: require('./ratings.js'), rosterMoves: require('./rosterMoves.js') }
   : {
       league: { getTeamRoster: getTeamRoster },
       teams: { TEAMS: TEAMS },
@@ -10,7 +10,8 @@ var _TRANSITION_DATA = (typeof require !== 'undefined')
       schedule: { generateSeasonGames: generateSeasonGames },
       history: { archiveRetiree: archiveRetiree },
       coaches: { ensureAllTeamsHaveCoaches: ensureAllTeamsHaveCoaches },
-      ratings: { RATING_BANDS: RATING_BANDS }
+      ratings: { RATING_BANDS: RATING_BANDS },
+      rosterMoves: { decrementDeadMoney: decrementDeadMoney }
     };
 
 // freeAgency.js loads AFTER this file in index.html (line 114 against line 77),
@@ -85,6 +86,11 @@ function decrementContracts(rng, deferTeamId) {
     if (!p.teamId) return;
     if (p.contract.yearsRemaining <= 0 && !p.resignRights) p.teamId = null;
   });
+
+  // Alongside the live contracts, at the same rate — a debt that ages slower
+  // than the deal it came from outlives it, and one that ages faster vanishes
+  // while the cap sheet still says it is owed.
+  _TRANSITION_DATA.rosterMoves.decrementDeadMoney(_TRANSITION_DATA.teams.TEAMS);
 }
 
 // Progression, retirement, contract expiration, and per-season status reset —

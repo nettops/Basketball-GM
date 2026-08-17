@@ -37,8 +37,25 @@ function getTeamRoster(teamId) {
   return _LEAGUE_DATA.players.PLAYERS_2026.filter(function (p) { return p.teamId === teamId; });
 }
 
+// Salary owed to men who no longer play here. Waiving a player used to delete
+// his contract outright, which made the single most expensive decision in the
+// game free: measured on the opening league, every club cutting its two worst
+// players cleared $32M each — 20.8% of the cap — at no cost. Every other
+// financial rule was being negotiated against a number that could be deleted.
+//
+// It lives here rather than at each cap check because getTeamPayroll is the one
+// question everything already asks: trade legality, free agent offers, the cap
+// sheet and the AI's own affordability checks all route through it and inherit
+// dead money without knowing it exists.
+function getTeamDeadMoney(teamId) {
+  const team = _LEAGUE_DATA.teams.getTeamById(teamId);
+  if (!team || !team.deadMoney) return 0;
+  return team.deadMoney.reduce(function (sum, d) { return sum + (d.salary || 0); }, 0);
+}
+
 function getTeamPayroll(teamId) {
-  return getTeamRoster(teamId).reduce(function (sum, p) { return sum + p.contract.salary; }, 0);
+  return getTeamRoster(teamId).reduce(function (sum, p) { return sum + p.contract.salary; }, 0)
+    + getTeamDeadMoney(teamId);
 }
 
 function getPlayerById(playerId) {
@@ -554,6 +571,7 @@ if (typeof module !== 'undefined' && module.exports) {
     SEASON_STAT_KEYS: SEASON_STAT_KEYS,
     getTeamRoster: getTeamRoster,
     getTeamPayroll: getTeamPayroll,
+    getTeamDeadMoney: getTeamDeadMoney,
     getPlayerById: getPlayerById,
     recordGameResult: recordGameResult,
     bankLineups: bankLineups,
