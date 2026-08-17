@@ -147,6 +147,67 @@ function endTenure(career, teamId, leagueYear) {
   return null;
 }
 
+// The `develop` mandate needs a before to have an after. Taken when the mandate
+// is set and diffed when it is judged — progression runs in the offseason,
+// AFTER this judgement, so asking "did the kids improve" at review time with no
+// baseline would always read zero and the mandate would be unfailable.
+function youngCoreRating(roster) {
+  return roster.filter(function (p) { return p.age <= 23; })
+    .reduce(function (sum, p) { return sum + (p.rawOverall || 0); }, 0);
+}
+
+// Sets the standing mandate and snapshots what it will be judged against.
+function setMandate(gameState, team, roster, rng) {
+  const mandate = chooseMandate(team, rng);
+  mandate.leagueYear = gameState.leagueYear || 2026;
+  mandate.youngBaseline = youngCoreRating(roster || []);
+  gameState.ownerMandate = mandate;
+  return mandate;
+}
+
+// The season review, from the facts the rollover can see. Returns null when
+// there is nothing to judge, so the caller never has to guess whether a review
+// happened — a spectator save, a career with no mandate yet, or an unfinished
+// postseason all decline the same way.
+//
+// Takes the numbers rather than the league so it stays testable: everything
+// below is arithmetic on five values.
+function reviewSeason(gameState, facts) {
+  const mandate = gameState.ownerMandate;
+  const career = gameState.gmCareer;
+  if (!mandate || !career || !gameState.userTeamId) return null;
+
+  const outcome = seasonOutcome(facts.team, {
+    madePlayoffs: facts.madePlayoffs,
+    roundsWon: facts.roundsWon,
+    payroll: facts.payroll,
+    capLevel: facts.capLevel,
+    youngImprovement: youngCoreRating(facts.roster || []) - (mandate.youngBaseline || 0)
+  });
+
+  const judgement = judgeMandate(mandate, outcome);
+  const standing = applyMandateResult(career, gameState.userTeamId, judgement);
+
+  // Rounded, and clamped the same way finances.js clamps its own writes. The
+  // raw field carries float noise from the tax maths (25.606481199999998 was
+  // live in a measured league), which reads as a bug the moment it is on
+  // screen next to a mandate.
+  if (facts.team) {
+    facts.team.ownerHappiness = Math.round(
+      Math.max(20, Math.min(99, (facts.team.ownerHappiness || 60) + judgement.happinessDelta))
+    );
+  }
+
+  return {
+    mandate: mandate,
+    met: judgement.met,
+    detail: judgement.detail,
+    patience: standing.patience,
+    fired: standing.fired,
+    happiness: facts.team ? facts.team.ownerHappiness : null
+  };
+}
+
 function patienceLabel(remaining) {
   if (remaining >= OWNER_PATIENCE) return 'Secure';
   if (remaining === 1) return 'On notice';
@@ -163,6 +224,9 @@ if (typeof module !== 'undefined' && module.exports) {
     judgeMandate: judgeMandate,
     applyMandateResult: applyMandateResult,
     endTenure: endTenure,
+    youngCoreRating: youngCoreRating,
+    setMandate: setMandate,
+    reviewSeason: reviewSeason,
     patienceLabel: patienceLabel
   };
 }

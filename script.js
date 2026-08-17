@@ -145,6 +145,14 @@ function initSeason() {
   GameState.affiliateRng = makeRng(GameState.affiliateSeed);
   const lastSeasonDay = games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
   GameState.affiliates = initAffiliateLeague(makeRng(GameState.affiliateSeed), GameState.leagueYear || 2026, lastSeasonDay + 1);
+  // Season one's mandate. The rollover sets every later one, but the first
+  // season would otherwise be unjudged — and an unjudged season is a free pass
+  // the owner never granted.
+  if (GameState.userTeamId) {
+    ensureGmCareer(GameState);
+    setMandate(GameState, getTeamById(GameState.userTeamId),
+      getTeamRoster(GameState.userTeamId), GameState.rng);
+  }
   GameState.scouting = initScoutingState();
   // The league snapshot the ultimate gate needs. Rollover takes one every
   // season (seasonRollover.js), but season ONE never did — it ran on the

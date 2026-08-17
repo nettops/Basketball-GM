@@ -188,6 +188,8 @@ function serializeGameState(gameState, name, includeSnapshots) {
     // in PLAYERS_2026 (see affiliates.js), so nothing else in this payload
     // would bring them back.
     affiliates: gameState.affiliates || null,
+    ownerMandate: gameState.ownerMandate || null,
+    firedAtEndOfSeason: gameState.firedAtEndOfSeason || null,
     lastDraftResults: lastDraftResultsOut,
     scouting: gameState.scouting,
     userTeamId: gameState.userTeamId,
@@ -338,6 +340,8 @@ function applySavedState(payload, gameState) {
   // Affiliate players come back as plain objects, so rawOverall — a derived
   // getter, not a stored field — has to be reinstalled or every rating on that
   // side of the league reads undefined.
+  gameState.ownerMandate = payload.ownerMandate || null;
+  gameState.firedAtEndOfSeason = payload.firedAtEndOfSeason || null;
   gameState.affiliates = payload.affiliates || null;
   if (gameState.affiliates && gameState.affiliates.filler) {
     gameState.affiliates.filler.forEach(function (p) { _SAVE_DATA.ratings.defineOverall(p); });

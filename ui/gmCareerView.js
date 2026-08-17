@@ -65,6 +65,39 @@ function careerMilestoneListHtml(career, ctx) {
     '<tbody>' + rows + hiddenHtml + '</tbody></table>';
 }
 
+// The owner's standing demand and how much rope is left.
+//
+// File scope and exported rather than inline in the renderer, per the
+// ui/pixelMotion.js lesson — and because "on notice" is exactly the sort of
+// string that ends up subtly wrong with no test able to see it.
+function ownerMandatePanelHtml(career, team, mandate) {
+  if (!mandate) {
+    return '<div class="panel"><div class="panel-header">The Owner</div><div class="panel-body">' +
+      '<div class="empty-state">No standing mandate. The owner will set one before next season.</div>' +
+      '</div></div>';
+  }
+
+  const patience = (career.ownerPatience && career.ownerPatience[team ? team.id : ''] !== undefined)
+    ? career.ownerPatience[team.id]
+    : OWNER_PATIENCE;
+  const label = patienceLabel(patience);
+  const warn = patience < OWNER_PATIENCE;
+
+  return '<div class="panel"><div class="panel-header">The Owner</div><div class="panel-body">' +
+    '<div class="kpi-grid">' +
+      '<div class="kpi-tile"><div class="kpi-label">This Season You Must</div>' +
+        '<div class="kpi-value">' + escapeHtml(mandate.label) + '</div>' +
+        '<div class="kpi-sub">set for ' + (mandate.leagueYear || '') + '</div></div>' +
+      '<div class="kpi-tile"><div class="kpi-label">Job Security</div>' +
+        '<div class="kpi-value ' + (warn ? 'is-warn' : '') + '">' + escapeHtml(label) + '</div>' +
+        '<div class="kpi-sub">' + (patience === 0 ? 'the next miss is the last'
+          : patience + ' more miss' + (patience === 1 ? '' : 'es') + ' costs you the job') + '</div></div>' +
+      '<div class="kpi-tile"><div class="kpi-label">Owner Happiness</div>' +
+        '<div class="kpi-value">' + Math.round((team && team.ownerHappiness) || 0) + '</div>' +
+        '<div class="kpi-sub">out of 99</div></div>' +
+    '</div></div></div>';
+}
+
 function renderGmCareer(container) {
   const career = ensureGmCareer(GameState);
   const totals = gmCareerTotals(career);
@@ -91,6 +124,9 @@ function renderGmCareer(container) {
         '<div class="kpi-sub">' + Math.round(career.reputation) + ' / 100</div></div>' +
     '</div>' +
 
+    // A mandate nobody can see before it is failed is a punishment, not a goal.
+    ownerMandatePanelHtml(career, team, GameState.ownerMandate) +
+
     '<div class="panel"><div class="panel-header">Trophy Room</div><div class="panel-body">' +
       careerTrophyRoomHtml(career, totals) + '</div></div>' +
 
@@ -102,5 +138,6 @@ function renderGmCareer(container) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderGmCareer: renderGmCareer };
+  module.exports = {
+    ownerMandatePanelHtml: ownerMandatePanelHtml, renderGmCareer: renderGmCareer };
 }

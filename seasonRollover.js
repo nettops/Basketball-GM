@@ -22,7 +22,10 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       traits: require('./traits.js'),
       players: require('./players-2026.js'),
       ultimates: require('./ultimates.js'),
-      tradeEvaluator: require('./tradeEvaluator.js')
+      tradeEvaluator: require('./tradeEvaluator.js'),
+      owner: require('./owner.js'),
+      league: require('./league.js'),
+      draft: require('./draft.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -34,11 +37,56 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights, resolveLeagueRestrictedFA: resolveLeagueRestrictedFA },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
+      owner: { reviewSeason: reviewSeason, endTenure: endTenure, setMandate: setMandate },
+      league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll },
+      draft: { playoffResultByTeam: playoffResultByTeam, playoffBracketIsComplete: playoffBracketIsComplete },
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
       ultimates: { setLeagueGate: setLeagueGate },
       tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache }
     };
+
+// Judges the standing mandate, moves the owner, and sacks the GM if his
+// patience is gone. Assembles the facts and hands them to owner.js, which owns
+// every decision — the split exists so the judgement is testable without a
+// league, and this function has no opinions of its own.
+function runOwnerReview(gameState, onFeed) {
+  const owner = _ROLLOVER_DATA.owner;
+  const teamId = gameState.userTeamId;
+  if (!teamId || !gameState.gmCareer || !gameState.ownerMandate) return null;
+
+  const team = _ROLLOVER_DATA.teams.getTeamById(teamId);
+  const bracket = gameState.playoffBracket;
+  // playoffResultByTeam reads bracket.finals[0].winner unconditionally, so an
+  // unfinished postseason has to be treated as no postseason rather than
+  // crashing the rollover.
+  const complete = _ROLLOVER_DATA.draft.playoffBracketIsComplete(bracket);
+  const results = complete ? _ROLLOVER_DATA.draft.playoffResultByTeam(bracket) : {};
+  const reached = results[teamId];
+
+  const review = owner.reviewSeason(gameState, {
+    team: team,
+    roster: _ROLLOVER_DATA.league.getTeamRoster(teamId),
+    madePlayoffs: reached !== undefined,
+    roundsWon: reached === undefined ? 0 : reached,
+    payroll: _ROLLOVER_DATA.league.getTeamPayroll(teamId),
+    capLevel: gameState.settings ? gameState.settings.capLevel : undefined
+  });
+  if (!review) return null;
+
+  onFeed(review.met
+    ? 'The owner is satisfied: you were asked to ' + review.mandate.label + ', and ' + review.detail + '.'
+    : 'The owner is not happy. You were asked to ' + review.mandate.label + ' — ' + review.detail + '.');
+
+  if (review.fired) {
+    owner.endTenure(gameState.gmCareer, teamId, gameState.leagueYear || 2026);
+    gameState.firedAtEndOfSeason = { teamId: teamId, leagueYear: gameState.leagueYear || 2026 };
+    onFeed('You have been relieved of your duties by the ' + team.name + '.');
+  } else if (!review.met) {
+    onFeed('One more season like that and the job is gone.');
+  }
+  return review;
+}
 
 // Rolls a completed season into the next one: archives history, runs the
 // draft, then (unless stopped) free agency and a fresh schedule.
@@ -64,6 +112,12 @@ function runOffseasonRollover(gameState, deps) {
   gameState.tradeOffers = [];
 
   _ROLLOVER_DATA.history.finalizeSeasonHistory(gameState.leagueYear || 2026, gameState.playoffBracket, onFeed);
+
+  // Before the year increments and the bracket is cleared — the review reads
+  // both. This is what stops ownerHappiness being a spending thermostat: until
+  // now every write to it came from the luxury tax, so the owner did not know
+  // the score.
+  runOwnerReview(gameState, onFeed);
 
   // setLeagueYear lives in script.js, which Node cannot load. Both writes are
   // done here because league.js reads settings.leagueYear and has no access
@@ -131,6 +185,17 @@ function runOffseasonRollover(gameState, deps) {
     gameState.rng, gameState.leagueYear);
   gameState.season = { games: seasonResult.games, currentDay: -1 };
   gameState.upcomingDraftClass = seasonResult.nextDraftClass;
+
+  // Next season's mandate, set now rather than at tip-off, so the GM has the
+  // whole offseason to build toward it. The roster snapshot for a `develop`
+  // mandate is taken here too — it has to predate the season it judges.
+  if (gameState.userTeamId && gameState.gmCareer) {
+    _ROLLOVER_DATA.owner.setMandate(
+      gameState,
+      _ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId),
+      _ROLLOVER_DATA.league.getTeamRoster(gameState.userTeamId),
+      gameState.rng);
+  }
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;
   gameState.allStarWeekend = null;
