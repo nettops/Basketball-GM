@@ -108,8 +108,15 @@ function recordSeasonInHistory(player, season) {
     }
     entry.seasons += 1;
     entry.totalGames += stats.gamesPlayed;
+    // Seeds the accumulator as well as the addend, for the same reason
+    // league.js's accumulateSeasonStats does: makeTeamHistoryEntry builds
+    // total<Key> from the keys that existed when the tenure OPENED, so a key
+    // added while a player is still on the same team lands on a field that
+    // was never seeded. See validate-careerHistory.js's
+    // checkNewStatKeyDoesNotCorruptAnOpenTenure.
     _CH_DATA.league.SEASON_STAT_KEYS.forEach(function (key) {
-      entry['total' + capitalize(key)] += stats[key] || 0;
+      const totalKey = 'total' + capitalize(key);
+      entry[totalKey] = (entry[totalKey] || 0) + (stats[key] || 0);
     });
   }
 

@@ -51,6 +51,37 @@ function checkRecordSeasonInHistory() {
 
 checkRecordSeasonInHistory();
 
+// The teamHistory twin of validate-careerTotals.js's
+// checkNewStatKeyDoesNotCorruptAnOldSave. An OPEN team tenure is seeded with
+// total<Key> fields from the keys of its own era; when a key is added later,
+// the next season rolled into that same still-open entry accumulates
+// `undefined + 0`. Closing and reopening the tenure would hide it, so the
+// entry has to stay open across the change — which is exactly what happens to
+// a player who does not switch teams.
+function checkNewStatKeyDoesNotCorruptAnOpenTenure() {
+  const team = teamsModule.TEAMS[4];
+  const player = leagueModule.getTeamRoster(team.id)[0];
+  player.seasonStats = { gamesPlayed: 70, points: 1400, rebounds: 500, assists: 300, steals: 60, blocks: 30, fgm: 500, fga: 1000, tpm: 100, tpa: 300, ftm: 300, fta: 350, minutes: 2200 };
+  careerHistoryModule.recordSeasonInHistory(player, 2030);
+
+  player.seasonStats = { gamesPlayed: 70, points: 1000, brandNewStat: 42 };
+  leagueModule.SEASON_STAT_KEYS.push('brandNewStat');
+  try {
+    careerHistoryModule.recordSeasonInHistory(player, 2031);
+  } finally {
+    leagueModule.SEASON_STAT_KEYS.pop();
+  }
+
+  const entry = careerHistoryModule.getTeamBreakdown(player, team.id)[0];
+  assert.ok(!Number.isNaN(entry.totalBrandNewStat),
+    'a stat key added mid-tenure must not accumulate to NaN in team totals');
+  assert.strictEqual(entry.totalBrandNewStat, 42, 'the new key should start from zero and take the season');
+  assert.strictEqual(entry.totalPoints, 2400, 'existing keys keep accumulating across the change');
+  console.log('checkNewStatKeyDoesNotCorruptAnOpenTenure: OK');
+}
+
+checkNewStatKeyDoesNotCorruptAnOpenTenure();
+
 function checkRecordSeasonInHistoryNoGames() {
   const player = leagueModule.getTeamRoster(teamsModule.TEAMS[2].id)[0];
   player.seasonStats = { gamesPlayed: 0, points: 0 };

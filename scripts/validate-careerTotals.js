@@ -39,6 +39,38 @@ function aSeason(gamesPlayed, points, rebounds, assists) {
   };
 }
 
+// Adding a key to SEASON_STAT_KEYS must not corrupt a season already in
+// progress. accumulateSeasonStats only seeds the whole object when it is
+// ABSENT — a save made before the new key exists has a seasonStats that is
+// present but short one field, and `undefined + 0` is NaN.
+//
+// The corruption hides: JSON.stringify writes NaN as null, and `null + 0` is
+// 0, so the symptom is not a NaN on screen but a statistic that silently
+// resets to zero every time the game is loaded.
+//
+// Tests the PROPERTY (any new key is safe) rather than one particular key, by
+// extending the live array and restoring it, so it keeps guarding whatever is
+// added next.
+function checkNewStatKeyDoesNotCorruptAnOldSave() {
+  const player = freshPlayer(1);
+  // An old save: seasonStats exists, seeded from the keys of its own era.
+  player.seasonStats = aSeason(10, 200, 60, 40);
+
+  leagueModule.SEASON_STAT_KEYS.push('brandNewStat');
+  try {
+    leagueModule.accumulateSeasonStats(player.id, { points: 20, brandNewStat: 7 });
+  } finally {
+    leagueModule.SEASON_STAT_KEYS.pop();
+  }
+
+  assert.ok(!Number.isNaN(player.seasonStats.brandNewStat),
+    'a stat key added after this save was made must not accumulate to NaN');
+  assert.strictEqual(player.seasonStats.brandNewStat, 7,
+    'the new key should start from zero and take the game line');
+  assert.strictEqual(player.seasonStats.points, 220, 'existing keys keep accumulating');
+  console.log('checkNewStatKeyDoesNotCorruptAnOldSave: OK');
+}
+
 // The reported bug: mid-season, career totals must include what has been
 // played so far rather than reading zero.
 function checkInProgressSeasonCounts() {
@@ -199,6 +231,7 @@ function checkSeasonHighsRespectRolledFlag() {
   console.log('checkSeasonHighsRespectRolledFlag: OK');
 }
 
+checkNewStatKeyDoesNotCorruptAnOldSave();
 checkInProgressSeasonCounts();
 checkNoDoubleCountDuringOffseason();
 checkRealEntryPointSetsTheFlag();

@@ -141,7 +141,14 @@ function accumulateSeasonStats(playerId, statLine) {
     player.seasonStatsRolled = false;
   }
   player.seasonStats.gamesPlayed += 1;
-  SEASON_STAT_KEYS.forEach(function (k) { player.seasonStats[k] += statLine[k] || 0; });
+  // Seeds the ACCUMULATOR as well as guarding the addend. The object is only
+  // built from SEASON_STAT_KEYS when it is absent entirely, so a save made
+  // before a key was added carries a seasonStats that is present but short
+  // that field — and `undefined + 0` is NaN, which JSON then stores as null
+  // and reads back as 0, silently resetting the stat on every load.
+  SEASON_STAT_KEYS.forEach(function (k) {
+    player.seasonStats[k] = (player.seasonStats[k] || 0) + (statLine[k] || 0);
+  });
   _historyDeps().careerHistory.checkAndUpdateCareerHighs(player, statLine);
 }
 
