@@ -234,12 +234,33 @@ function runWeeklyAIToAITradeGeneration(dayIndex) {
   });
 }
 
+// The wire settles once per game day, or the two-day window is fiction and a
+// waived player sits there forever. The user's own club is excluded from the
+// AI sweep: claiming for them would spend their cap space and fill their roster
+// spot without asking, and the panel is where that decision belongs.
+//
+// Claims and clearings both go to the feed. A player leaving the league quietly
+// is how you find out in March that the man you cut in December is on the team
+// you are chasing.
+function resolveWaiversForDay(dayIndex) {
+  const settled = resolveWaiverClaims(dayIndex, GameState.userTeamId, GameState.settings.capLevel);
+  settled.forEach(function (row) {
+    if (row.claimedBy) {
+      pushToFeed(row.name + ' was claimed off waivers by the ' +
+        getTeamById(row.claimedBy).name + '.', dayIndex);
+    } else {
+      pushToFeed(row.name + ' cleared waivers and is a free agent.', dayIndex);
+    }
+  });
+}
+
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   // Retire offers whose window has closed. Silent by design: the Trade Center
   // shows each offer's remaining days, so letting one lapse is a decision the
   // player already made with the deadline in front of them — announcing it
   // afterwards would just be one more thing to read.
   pruneExpiredTradeOffers(GameState, dayIndex);
+  resolveWaiversForDay(dayIndex);
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);

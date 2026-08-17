@@ -131,6 +131,9 @@
   <script src="ui/playerComparison.js"></script>
   <script src="ui/draft.js"></script>
   <script src="freeAgency.js"></script>
+  <!-- waivers.js captures estimateFairSalary and ROSTER_MAX from freeAgency.js
+       into its data block at LOAD time, so it has to come after it. -->
+  <script src="waivers.js"></script>
   <!-- seasonRollover.js captures its dependencies (pushSeasonSnapshot,
        finalizeSeasonHistory, runOffseasonThroughDraft, runFreeAgencySilently,
        autoEnforceRosterSize, generateNewSeason, getTeamById) into a data
