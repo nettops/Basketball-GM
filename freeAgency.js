@@ -1,11 +1,12 @@
 var _FA_DATA = (typeof require !== 'undefined')
-  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js'), ratings: require('./ratings.js') }
+  ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), players: require('./players-2026.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js'), ratings: require('./ratings.js') }
   : {
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap, getEffectiveSalaryFloor: getEffectiveSalaryFloor },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
       rosterMoves: { getFreeAgents: getFreeAgents, waivePlayer: waivePlayer },
+      players: { PLAYERS_2026: PLAYERS_2026 },
       careerHistory: { recordContractInHistory: recordContractInHistory },
       finances: { budgetSpendMultiplier: budgetSpendMultiplier, ARENA_MAX_TIER: ARENA_MAX_TIER },
       ratings: { RATING_BANDS: RATING_BANDS }
@@ -730,6 +731,98 @@ function resolveLeagueRestrictedFA(excludeTeamId) {
   return results;
 }
 
+// Ten-day contracts. Injury cover with a deadline attached: minimum salary, ten
+// game days, and at most two with the same club before it has to commit to him
+// for the season or let him walk. That ceiling is the whole point — without it
+// a club could keep a useful player on ten-day deals indefinitely and never pay
+// him, which is precisely what the real limit exists to prevent.
+//
+// Here rather than in rosterMoves.js because everything it needs is already
+// here: signPlayer, MIN_SALARY, ROSTER_MAX and the free agent pool. rosterMoves
+// cannot reach them — freeAgency requires it, so requiring back would close a
+// cycle.
+const TEN_DAY_LENGTH = 10;
+const TEN_DAY_LIMIT = 2;
+
+// The minimum-salary exception: any club may take a minimum contract on
+// regardless of the cap.
+//
+// This is load-bearing, not a courtesy. Measured on the opening league, exactly
+// 2 of 30 clubs have room to absorb even $1.2M, because this cap is soft and 28
+// clubs are over it — Boston opens $232M against $154M. Without the exception a
+// waiver claim is impossible league-wide and a ten-day cannot be converted into
+// the season deal it exists to lead to, so both mechanics ship dead.
+//
+// One function rather than the comparison written out at each site: waivers.js
+// asks it too, and two copies of a rule this load-bearing would drift.
+function isMinimumDeal(salary) {
+  return salary <= MIN_SALARY;
+}
+
+function tenDayCountFor(player, teamId) {
+  if (!player.tenDayHistory) return 0;
+  return player.tenDayHistory.filter(function (h) { return h === teamId; }).length;
+}
+
+function signTenDayContract(player, teamId, dayIndex) {
+  if (!player) return { success: false, reason: 'Unknown player.' };
+  if (player.teamId) return { success: false, reason: player.name + ' is already under contract.' };
+  if (player.waivers) return { success: false, reason: player.name + ' is still on waivers.' };
+  if (_FA_DATA.league.getTeamRoster(teamId).length >= ROSTER_MAX) {
+    return { success: false, reason: 'Roster is full (' + ROSTER_MAX + ' players).' };
+  }
+  if (tenDayCountFor(player, teamId) >= TEN_DAY_LIMIT) {
+    return {
+      success: false,
+      reason: player.name + ' has already had ' + TEN_DAY_LIMIT +
+        ' ten-day contracts here. Sign him for the season or let him go.'
+    };
+  }
+
+  signPlayer(player, { teamId: teamId, salary: MIN_SALARY, yearsRemaining: 1 });
+  player.tenDay = { teamId: teamId, expiresOnDay: dayIndex + TEN_DAY_LENGTH };
+  player.tenDayHistory = (player.tenDayHistory || []).concat([teamId]);
+  return { success: true, expiresOnDay: player.tenDay.expiresOnDay };
+}
+
+// Run once per game day. An expired ten-day simply ends — no dead money,
+// because the deal was fully paid over its ten days. That is the difference
+// between a ten-day and a waive, and the reason a club reaches for one.
+function expireTenDayContracts(dayIndex) {
+  const ended = [];
+  _FA_DATA.players.PLAYERS_2026.forEach(function (p) {
+    if (!p.tenDay || p.tenDay.expiresOnDay > dayIndex) return;
+    const teamId = p.tenDay.teamId;
+    // Already re-signed to a real deal by the club: the ten-day is spent, but
+    // he keeps the contract he was given. Checking the team matches means a
+    // player traded mid-ten-day is not silently released by his new club.
+    delete p.tenDay;
+    if (p.teamId === teamId) {
+      p.teamId = null;
+      ended.push({ playerId: p.id, name: p.name, teamId: teamId });
+    }
+  });
+  return ended;
+}
+
+// Converts a running ten-day into a normal contract. The history stays, so the
+// two-deal ceiling still counts against a club that lets this one lapse and
+// tries again.
+function convertTenDayToStandard(player, salary, years) {
+  if (!player || !player.tenDay) return { success: false, reason: 'He is not on a ten-day contract.' };
+  const teamId = player.tenDay.teamId;
+  // A minimum deal needs no room — he is already on the roster at that number,
+  // and refusing to convert what the club is already legally paying would be
+  // incoherent as well as fatal (see isMinimumDeal).
+  if (!isMinimumDeal(salary)) {
+    const check = checkOffer(_FA_DATA.teams.getTeamById(teamId), salary, years);
+    if (!check.ok) return { success: false, reason: check.reason };
+  }
+  delete player.tenDay;
+  player.contract = { salary: salary, yearsRemaining: years, playerOption: false, teamOption: false };
+  return { success: true };
+}
+
 const ROSTER_FLOOR = 12;
 
 // The ceiling's own league-wide sweep, symmetric to enforceRosterFloors below
@@ -881,6 +974,13 @@ if (typeof module !== 'undefined' && module.exports) {
     checkOffer: checkOffer,
     ROSTER_MAX: ROSTER_MAX,
     MIN_SALARY: MIN_SALARY,
+    isMinimumDeal: isMinimumDeal,
+    signTenDayContract: signTenDayContract,
+    expireTenDayContracts: expireTenDayContracts,
+    convertTenDayToStandard: convertTenDayToStandard,
+    tenDayCountFor: tenDayCountFor,
+    TEN_DAY_LENGTH: TEN_DAY_LENGTH,
+    TEN_DAY_LIMIT: TEN_DAY_LIMIT,
     contractYearsFor: contractYearsFor,
     MAX_CONTRACT_YEARS: MAX_CONTRACT_YEARS,
     RESIGN_TUNING: RESIGN_TUNING,

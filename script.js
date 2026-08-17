@@ -254,6 +254,15 @@ function resolveWaiversForDay(dayIndex) {
   });
 }
 
+// A ten-day that never ends is just a cheap contract, so it ends here, on the
+// same tick the wire settles on.
+function expireTenDaysForDay(dayIndex) {
+  expireTenDayContracts(dayIndex).forEach(function (row) {
+    pushToFeed(row.name + "'s 10-day contract with the " + getTeamById(row.teamId).name +
+      ' expired.', dayIndex);
+  });
+}
+
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   // Retire offers whose window has closed. Silent by design: the Trade Center
   // shows each offer's remaining days, so letting one lapse is a decision the
@@ -261,6 +270,7 @@ function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   // afterwards would just be one more thing to read.
   pruneExpiredTradeOffers(GameState, dayIndex);
   resolveWaiversForDay(dayIndex);
+  expireTenDaysForDay(dayIndex);
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);

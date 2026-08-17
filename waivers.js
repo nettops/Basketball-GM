@@ -24,7 +24,7 @@ var _WAIVERS_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       players: { PLAYERS_2026: PLAYERS_2026 },
       rosterMoves: { cancelDeadMoney: cancelDeadMoney, WAIVER_WINDOW_DAYS: WAIVER_WINDOW_DAYS },
-      freeAgency: { estimateFairSalary: estimateFairSalary, ROSTER_MAX: ROSTER_MAX, MIN_SALARY: MIN_SALARY },
+      freeAgency: { estimateFairSalary: estimateFairSalary, ROSTER_MAX: ROSTER_MAX, isMinimumDeal: isMinimumDeal },
       data: { getEffectiveSalaryCap: getEffectiveSalaryCap }
     };
 
@@ -76,7 +76,7 @@ function canClaim(team, player, capLevel) {
   const cap = _WAIVERS_DATA.data.getEffectiveSalaryCap(capLevel);
   const payroll = _WAIVERS_DATA.league.getTeamPayroll(team.id);
   const salary = player.waivers.salary;
-  if (salary > _WAIVERS_DATA.freeAgency.MIN_SALARY && payroll + salary > cap) {
+  if (!_WAIVERS_DATA.freeAgency.isMinimumDeal(salary) && payroll + salary > cap) {
     return {
       ok: false,
       reason: 'No cap space: claiming him would put payroll $' +
