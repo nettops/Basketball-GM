@@ -47,9 +47,17 @@ function chooseMandate(team, rng) {
   const timeline = team.timeline;
 
   if (timeline === 'win-now') {
-    // A proud win-now club is asked to go deep; the rest are asked to turn up.
-    if (roll < 0.45) return { type: MANDATE_TYPES.contend, rounds: 2, label: 'reach the conference finals' };
-    if (roll < 0.8) return { type: MANDATE_TYPES.playoffs, label: 'make the playoffs' };
+    // "Reach the conference finals" was the first cut of this, and it made the
+    // owner unreasonable rather than demanding: only four clubs of thirty get
+    // there in a year, so a win-now GM was handed a roughly one-in-seven task
+    // every season and sacked for failing it. Measured over 48 judged seasons,
+    // win-now clubs were fired at 33% a season against 0% for retooling — the
+    // mandate was mistuned, not the patience.
+    //
+    // Winning a series is the ask now: eight clubs of thirty do it, which is a
+    // real bar that a good team clears and a flattering one does not.
+    if (roll < 0.30) return { type: MANDATE_TYPES.contend, rounds: 1, label: 'win a playoff series' };
+    if (roll < 0.75) return { type: MANDATE_TYPES.playoffs, label: 'make the playoffs' };
     return { type: MANDATE_TYPES.wins, target: mandateWinTarget(team), label: 'win ' + mandateWinTarget(team) + ' games' };
   }
 

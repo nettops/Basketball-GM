@@ -22,7 +22,7 @@ const { TEAMS } = req('teams.js');
 const traits = req('traits.js');
 req('scouting.js');
 const { PLAYERS_2026 } = req('players-2026.js');
-const { DRAFT_PROSPECTS_2026 } = req('draftProspects.js');
+const { DRAFT_PROSPECTS_2026, generateProspectClass } = req('draftProspects.js');
 traits.ensureHiddenPlayerData(PLAYERS_2026);
 traits.ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
 req('simEngine.js'); req('simEngineBoxScore.js'); req('simEnginePossession.js');
@@ -42,11 +42,22 @@ history.ensureCareerData(PLAYERS_2026);
 // clubs still spans every timeline, which is the split that matters here.
 const SEASONS = 12;
 
+// Each career after the first gets its OWN prospect class. DRAFT_PROSPECTS_2026
+// is module-level OBJECTS and the draft pushes the ones it picks straight into
+// module-level PLAYERS_2026, so handing the same array to a second league in one
+// process re-drafts men who are already in it. The first run of this probe did
+// exactly that and draft.js's guard said so, loudly, nine times — which is the
+// same harness defect validate-seasonRollover.js carried.
+let leaguesBuilt = 0;
+
 function buildState(teamId, seed) {
+  const draftClass = leaguesBuilt++ === 0
+    ? DRAFT_PROSPECTS_2026
+    : generateProspectClass(makeRng(seed), TEAMS.length * 2 + 4, 2026);
   const gs = {
     userTeamId: teamId, leagueYear: 2026, rng: makeRng(seed),
     season: null, playoffBracket: null, offseasonStage: null, tradeOffers: [],
-    upcomingDraftClass: DRAFT_PROSPECTS_2026,
+    upcomingDraftClass: draftClass,
     settings: { leagueYear: 2026, lotteryFormat: undefined }
   };
   gs.gmCareer = gmCareer.createGmCareer('Probe', teamId, 2026);
