@@ -133,6 +133,10 @@ function initSeason() {
   ensurePlayerFace(DRAFT_PROSPECTS_2026);
   ensureCareerData(PLAYERS_2026);
   ensureAllTeamsHaveCoaches(GameState.rng);
+  // Give the market a pool of unsigned veterans. Without it a fresh league has
+  // exactly zero free agents, so ten-days, two-way deals and the roster-floor
+  // sweep all open on an empty table.
+  ensureVeteranFreeAgentPool(GameState.rng, generateProspectClass);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
   // The affiliate league is built from its own seed and keeps its own rng, so
   // it can never shift the parent season's dice. Rebuilt each season alongside

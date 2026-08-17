@@ -5,7 +5,7 @@ var _FA_DATA = (typeof require !== 'undefined')
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap, getEffectiveSalaryFloor: getEffectiveSalaryFloor },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
-      rosterMoves: { getFreeAgents: getFreeAgents, waivePlayer: waivePlayer },
+      rosterMoves: { getFreeAgents: getFreeAgents, waivePlayer: waivePlayer, buyoutAppetite: buyoutAppetite, buyoutPlayer: buyoutPlayer },
       players: { PLAYERS_2026: PLAYERS_2026 },
       careerHistory: { recordContractInHistory: recordContractInHistory },
       finances: { budgetSpendMultiplier: budgetSpendMultiplier, ARENA_MAX_TIER: ARENA_MAX_TIER },
@@ -823,6 +823,46 @@ function convertTenDayToStandard(player, salary, years) {
   return { success: true };
 }
 
+// A fresh league opens with EXACTLY zero unsigned players: 435 players across
+// thirty rosters of 13-15 consumes the pool precisely. Measured, and it is not
+// a rounding artifact — the market is empty on day one.
+//
+// That is wrong on its own terms (every real league carries a pool of unsigned
+// veterans waiting for a call) and it quietly breaks three features that have
+// nothing else to work with: ten-day contracts, two-way contracts, and the
+// roster-floor sweep that signs replacements when a club falls under twelve.
+// All three open on an empty table until somebody happens to clear waivers.
+//
+// The pool is the tail of a generated class rather than new generation code:
+// an unsigned free agent IS the man who did not get drafted, so taking the
+// worst half of twice as many prospects gives exactly the right talent level
+// with nothing new to tune. They are aged up out of the prospect bracket so
+// they read as journeymen rather than as a second draft class sitting in the
+// market.
+const VETERAN_POOL_SIZE = 24;
+const VETERAN_POOL_MIN_AGE = 24;
+const VETERAN_POOL_MAX_AGE = 33;
+
+function ensureVeteranFreeAgentPool(rng, generateProspects, count) {
+  const target = count || VETERAN_POOL_SIZE;
+  const existing = _FA_DATA.rosterMoves.getFreeAgents().length;
+  if (existing >= target) return [];
+
+  const needed = target - existing;
+  const batch = generateProspects(rng, needed * 2, 2026)
+    .sort(function (a, b) { return a.rawOverall - b.rawOverall; })
+    .slice(0, needed);
+
+  batch.forEach(function (p) {
+    p.teamId = null;
+    p.age = VETERAN_POOL_MIN_AGE + Math.floor(rng() * (VETERAN_POOL_MAX_AGE - VETERAN_POOL_MIN_AGE + 1));
+    p.yearsPro = Math.max(1, p.age - 22);
+    p.contract = { salary: 0, yearsRemaining: 0, playerOption: false, teamOption: false };
+    _FA_DATA.players.PLAYERS_2026.push(p);
+  });
+  return batch;
+}
+
 const ROSTER_FLOOR = 12;
 
 // The ceiling's own league-wide sweep, symmetric to enforceRosterFloors below
@@ -839,20 +879,51 @@ const ROSTER_FLOOR = 12;
 // opt-in Auto Roster-Size Compliance setting plus the unattended rollover
 // path (seasonRollover.js), and a league sweep must not waive the user's
 // players out from under a choice they were given a setting for.
+// How much money a club will eat to clear a roster spot, per point of player
+// value. The sweep used to rank purely by adjustedPlayerValue, which was right
+// when releasing a player was free and became wrong the moment it was not: it
+// would happily release a $35M contract to save a spot it could have saved by
+// releasing a $1.2M one, and the club paid the difference for years.
+//
+// At 0.35 a three-year $30M deal carries ~31 points of reluctance, which is
+// about the value gap between a rotation player and a fringe one — so a club
+// keeps a bad expensive contract and cuts a cheap useful man instead. That is
+// what real clubs do, and it is only visible as a decision because the debt is
+// now real.
+const DEAD_MONEY_AVERSION = 0.35;
+
+// What cutting this man actually costs: the player you lose, plus the money you
+// keep paying him for nothing.
+function releaseCost(player, team) {
+  const value = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
+  const years = Math.max(1, player.contract.yearsRemaining);
+  return value + (player.contract.salary / 1000000) * years * DEAD_MONEY_AVERSION;
+}
+
 function enforceRosterCeilings() {
   const userTeamId = typeof GameState !== 'undefined' ? GameState.userTeamId : null;
   const waived = [];
   _FA_DATA.teams.TEAMS.forEach(function (team) {
     if (team.id === userTeamId) return;
-    let roster = _FA_DATA.league.getTeamRoster(team.id);
+    let roster = _FA_DATA.league.getActiveRoster(team.id);
     while (roster.length > ROSTER_MAX) {
       const worst = roster.slice().sort(function (a, b) {
-        return _FA_DATA.tradeEvaluator.adjustedPlayerValue(a, team) - _FA_DATA.tradeEvaluator.adjustedPlayerValue(b, team);
+        return releaseCost(a, team) - releaseCost(b, team);
       })[0];
-      const result = _FA_DATA.rosterMoves.waivePlayer(worst.id);
+
+      // A buyout before a release, when he will take one. The roster spot is
+      // cleared either way; the only difference is the size of the bill, and a
+      // club with no reason to prefer the larger one should not be made to.
+      const appetite = _FA_DATA.rosterMoves.buyoutAppetite(worst, team);
+      const bought = appetite > 0 ? _FA_DATA.rosterMoves.buyoutPlayer(worst.id, appetite) : { success: false };
+      const result = bought.success ? bought : _FA_DATA.rosterMoves.waivePlayer(worst.id);
       if (!result.success) break;
-      waived.push({ playerId: worst.id, teamId: team.id });
-      roster = _FA_DATA.league.getTeamRoster(team.id);
+      waived.push({
+        playerId: worst.id, teamId: team.id,
+        boughtOut: !!bought.success,
+        deadMoney: result.deadMoney ? result.deadMoney.salary : 0
+      });
+      roster = _FA_DATA.league.getActiveRoster(team.id);
     }
   });
   return waived;
@@ -975,6 +1046,10 @@ if (typeof module !== 'undefined' && module.exports) {
     ROSTER_MAX: ROSTER_MAX,
     MIN_SALARY: MIN_SALARY,
     isMinimumDeal: isMinimumDeal,
+    releaseCost: releaseCost,
+    ensureVeteranFreeAgentPool: ensureVeteranFreeAgentPool,
+    VETERAN_POOL_SIZE: VETERAN_POOL_SIZE,
+    DEAD_MONEY_AVERSION: DEAD_MONEY_AVERSION,
     signTenDayContract: signTenDayContract,
     expireTenDayContracts: expireTenDayContracts,
     convertTenDayToStandard: convertTenDayToStandard,
