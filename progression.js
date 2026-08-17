@@ -154,6 +154,28 @@ function calcBaseChange(age, rng) {
   return val;
 }
 
+// A season's worth of affiliate basketball, and what it is worth.
+//
+// Swept in scripts/probe-development.js — 400 prospects, three seasons, the
+// SAME dice down both paths so the only difference is where he spent the year.
+// A prospect who sits gains +9.63 overall across three seasons; playing adds:
+//
+//   0.7   +2.46   (+26%)
+//   1.0   +3.45   (+36%)   <- shipped
+//   1.4   +4.75   (+49%)
+//   2.0   +6.66   (+69%)
+//
+// 2.0 was the first pass and it is too strong: at +69% sending a prospect down
+// stops being a decision and becomes an obligation. 1.0 is plainly worth doing
+// and still leaves room to want him on the bench for a playoff push.
+//
+// This does NOT move the superstar rate the GROWTH_TUNING note above guards:
+// the bonus only reaches players carrying a twoWay contract, and no player in a
+// fresh league has one until a GM signs it.
+const AFFILIATE_DEVELOPMENT_BONUS = 1.0;
+const AFFILIATE_MINIMUM_GAMES = 10;
+const AFFILIATE_DEVELOPMENT_MAX_AGE = 25;
+
 function progressPlayer(player, rng, teammates, options) {
   teammates = teammates || [];
   options = options || {};
@@ -186,6 +208,20 @@ function progressPlayer(player, rng, teammates, options) {
     } else if (player.age <= 29) {
       baseChange += potentialGap * 0.017;
     }
+  }
+
+  // Minutes beat a seat. A two-way player who actually turned out for the
+  // affiliate develops faster than one who spent the year inactive, and that
+  // difference is the entire reason the affiliate league is simulated rather
+  // than asserted — without it, sending a prospect down is a cap trick and
+  // nothing else.
+  //
+  // Read off the player rather than by requiring affiliates.js: progression is
+  // called from the offseason, long after the games, and the count is the only
+  // thing it needs to know.
+  if (player.twoWay && player.age <= AFFILIATE_DEVELOPMENT_MAX_AGE &&
+      (player.twoWay.gamesDown || 0) >= AFFILIATE_MINIMUM_GAMES) {
+    baseChange += AFFILIATE_DEVELOPMENT_BONUS;
   }
 
   var breakoutRoll = rng();

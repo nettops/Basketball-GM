@@ -53,6 +53,18 @@ function getTeamDeadMoney(teamId) {
   return team.deadMoney.reduce(function (sum, d) { return sum + (d.salary || 0); }, 0);
 }
 
+// The roster for limit purposes: everyone except two-way players who are with
+// the affiliate. That exemption IS the two-way contract — a club carries them
+// beyond the fifteen precisely because they are not taking up a seat.
+//
+// Separate from getTeamRoster rather than replacing it: the sim, the depth
+// chart and every stat sweep want the whole roster, including a two-way player
+// the moment he is called up. Only the count is different, so only the count
+// asks a different question.
+function getActiveRoster(teamId) {
+  return getTeamRoster(teamId).filter(function (p) { return !(p.twoWay && p.twoWay.down); });
+}
+
 function getTeamPayroll(teamId) {
   return getTeamRoster(teamId).reduce(function (sum, p) { return sum + p.contract.salary; }, 0)
     + getTeamDeadMoney(teamId);
@@ -572,6 +584,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getTeamRoster: getTeamRoster,
     getTeamPayroll: getTeamPayroll,
     getTeamDeadMoney: getTeamDeadMoney,
+    getActiveRoster: getActiveRoster,
     getPlayerById: getPlayerById,
     recordGameResult: recordGameResult,
     bankLineups: bankLineups,

@@ -20,7 +20,7 @@ var _WAIVERS_DATA = (typeof require !== 'undefined')
       data: require('./data.js')
     }
   : {
-      league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll },
+      league: { getActiveRoster: getActiveRoster, getPlayerById: getPlayerById, getTeamPayroll: getTeamPayroll },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       players: { PLAYERS_2026: PLAYERS_2026 },
       rosterMoves: { cancelDeadMoney: cancelDeadMoney, WAIVER_WINDOW_DAYS: WAIVER_WINDOW_DAYS },
@@ -58,7 +58,7 @@ function canClaim(team, player, capLevel) {
   if (player.waivers.fromTeamId === team.id) {
     return { ok: false, reason: 'You cannot claim a player you just waived.' };
   }
-  const roster = _WAIVERS_DATA.league.getTeamRoster(team.id);
+  const roster = _WAIVERS_DATA.league.getActiveRoster(team.id);
   if (roster.length >= _WAIVERS_DATA.freeAgency.ROSTER_MAX) {
     return { ok: false, reason: 'Roster is full (' + _WAIVERS_DATA.freeAgency.ROSTER_MAX + ' players).' };
   }

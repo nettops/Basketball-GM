@@ -184,6 +184,10 @@ function serializeGameState(gameState, name, includeSnapshots) {
     season: seasonOut,
     playoffBracket: gameState.playoffBracket,
     upcomingDraftClass: gameState.upcomingDraftClass || [],
+    // The affiliate league carries its own players — they are deliberately NOT
+    // in PLAYERS_2026 (see affiliates.js), so nothing else in this payload
+    // would bring them back.
+    affiliates: gameState.affiliates || null,
     lastDraftResults: lastDraftResultsOut,
     scouting: gameState.scouting,
     userTeamId: gameState.userTeamId,
@@ -331,6 +335,13 @@ function applySavedState(payload, gameState) {
   } : null;
   gameState.playoffBracket = payload.playoffBracket;
   gameState.upcomingDraftClass = payload.upcomingDraftClass;
+  // Affiliate players come back as plain objects, so rawOverall — a derived
+  // getter, not a stored field — has to be reinstalled or every rating on that
+  // side of the league reads undefined.
+  gameState.affiliates = payload.affiliates || null;
+  if (gameState.affiliates && gameState.affiliates.filler) {
+    gameState.affiliates.filler.forEach(function (p) { _SAVE_DATA.ratings.defineOverall(p); });
+  }
   // A payload without scouting state used to null out whatever the running
   // game had, and the Scouting page then threw on pointsAvailable. Every save
   // the game writes carries it, so this only bites a payload from before the

@@ -1,6 +1,6 @@
 var _ROSTER_MOVES_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), players: require('./players-2026.js'), teams: require('./teams.js') }
-  : { league: { getTeamRoster: getTeamRoster, getPlayerById: getPlayerById }, players: { PLAYERS_2026: PLAYERS_2026 }, teams: { getTeamById: getTeamById } };
+  : { league: { getTeamRoster: getTeamRoster, getActiveRoster: getActiveRoster, getPlayerById: getPlayerById }, players: { PLAYERS_2026: PLAYERS_2026 }, teams: { getTeamById: getTeamById } };
 
 const ROSTER_MINIMUM = 12;
 
@@ -79,7 +79,7 @@ function waivePlayer(playerId, dayIndex) {
   if (!player.teamId) {
     return { success: false, reason: 'Player is already a free agent.' };
   }
-  const roster = _ROSTER_MOVES_DATA.league.getTeamRoster(player.teamId);
+  const roster = _ROSTER_MOVES_DATA.league.getActiveRoster(player.teamId);
   if (roster.length <= ROSTER_MINIMUM) {
     return { success: false, reason: 'Waiving would drop the roster below the ' + ROSTER_MINIMUM + '-player minimum.' };
   }
@@ -160,7 +160,7 @@ function buyoutPlayer(playerId, pctForgiven) {
     return { success: false, reason: 'That player is not under contract.' };
   }
   const team = _ROSTER_MOVES_DATA.teams.getTeamById(player.teamId);
-  const roster = _ROSTER_MOVES_DATA.league.getTeamRoster(player.teamId);
+  const roster = _ROSTER_MOVES_DATA.league.getActiveRoster(player.teamId);
   if (roster.length <= ROSTER_MINIMUM) {
     return { success: false, reason: 'A buyout would drop the roster below the ' + ROSTER_MINIMUM + '-player minimum.' };
   }

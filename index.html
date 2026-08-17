@@ -134,6 +134,9 @@
   <!-- waivers.js captures estimateFairSalary and ROSTER_MAX from freeAgency.js
        into its data block at LOAD time, so it has to come after it. -->
   <script src="waivers.js"></script>
+  <!-- affiliates.js captures MIN_SALARY from freeAgency.js and
+       generateProspectClass from draftProspects.js at LOAD time. -->
+  <script src="affiliates.js"></script>
   <!-- seasonRollover.js captures its dependencies (pushSeasonSnapshot,
        finalizeSeasonHistory, runOffseasonThroughDraft, runFreeAgencySilently,
        autoEnforceRosterSize, generateNewSeason, getTeamById) into a data

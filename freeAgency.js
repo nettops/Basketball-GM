@@ -1,7 +1,7 @@
 var _FA_DATA = (typeof require !== 'undefined')
   ? { league: require('./league.js'), teams: require('./teams.js'), data: require('./data.js'), tradeEvaluator: require('./tradeEvaluator.js'), rosterMoves: require('./rosterMoves.js'), players: require('./players-2026.js'), careerHistory: require('./careerHistory.js'), finances: require('./finances.js'), ratings: require('./ratings.js') }
   : {
-      league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
+      league: { getTeamRoster: getTeamRoster, getActiveRoster: getActiveRoster, getTeamPayroll: getTeamPayroll, getPlayerById: getPlayerById },
       teams: { TEAMS: TEAMS, getTeamById: getTeamById },
       data: { CAP_CONSTANTS: CAP_CONSTANTS, getEffectiveSalaryCap: getEffectiveSalaryCap, getEffectiveSalaryFloor: getEffectiveSalaryFloor },
       tradeEvaluator: { adjustedPlayerValue: adjustedPlayerValue, basePlayerValue: basePlayerValue },
@@ -222,7 +222,7 @@ function offerLimit(team) {
   const payroll = _FA_DATA.league.getTeamPayroll(team.id);
   const capSpace = _FA_DATA.data.getEffectiveSalaryCap(capLevel) - payroll;
 
-  if (_FA_DATA.league.getTeamRoster(team.id).length >= ROSTER_MAX) {
+  if (_FA_DATA.league.getActiveRoster(team.id).length >= ROSTER_MAX) {
     return { max: 0, min: MIN_SALARY, capSpace: capSpace, capDisabled: capDisabled,
       reason: 'Roster is full (' + ROSTER_MAX + ' players).' };
   }
@@ -480,7 +480,7 @@ function evaluateResign(player, team, offer, rng) {
 function checkResignOffer(team, player, salary, years, rng) {
   const ask = resignAsk(player, rng);
   const max = Math.round(ask.salary * RESIGN_MAX_PREMIUM);
-  if (_FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
+  if (_FA_DATA.league.getActiveRoster(team.id).length > ROSTER_MAX) {
     return { ok: false, reason: 'Roster is full (' + ROSTER_MAX + ' players).', ask: ask, max: max };
   }
   if (!(salary >= ask.salary)) {
@@ -564,7 +564,7 @@ function runResigningWindow(expiring, rng, deferTeamId) {
       // Does the team even want him? Same bar the AI applies to any free
       // agent, so a declining veteran is allowed to be let go.
       const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
-      if (interest < RESIGN_INTEREST_BAR || _FA_DATA.league.getTeamRoster(team.id).length > ROSTER_MAX) {
+      if (interest < RESIGN_INTEREST_BAR || _FA_DATA.league.getActiveRoster(team.id).length > ROSTER_MAX) {
         lost.push({ player: player, reason: 'declined' });
         return;
       }
@@ -768,7 +768,7 @@ function signTenDayContract(player, teamId, dayIndex) {
   if (!player) return { success: false, reason: 'Unknown player.' };
   if (player.teamId) return { success: false, reason: player.name + ' is already under contract.' };
   if (player.waivers) return { success: false, reason: player.name + ' is still on waivers.' };
-  if (_FA_DATA.league.getTeamRoster(teamId).length >= ROSTER_MAX) {
+  if (_FA_DATA.league.getActiveRoster(teamId).length >= ROSTER_MAX) {
     return { success: false, reason: 'Roster is full (' + ROSTER_MAX + ' players).' };
   }
   if (tenDayCountFor(player, teamId) >= TEN_DAY_LIMIT) {

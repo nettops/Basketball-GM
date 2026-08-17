@@ -134,6 +134,13 @@ function initSeason() {
   ensureCareerData(PLAYERS_2026);
   ensureAllTeamsHaveCoaches(GameState.rng);
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
+  // The affiliate league is built from its own seed and keeps its own rng, so
+  // it can never shift the parent season's dice. Rebuilt each season alongside
+  // the schedule, since its own schedule is a season long.
+  GameState.affiliateSeed = Math.floor(Math.random() * 1e9);
+  GameState.affiliateRng = makeRng(GameState.affiliateSeed);
+  const lastSeasonDay = games.reduce(function (max, g) { return Math.max(max, g.day); }, 0);
+  GameState.affiliates = initAffiliateLeague(makeRng(GameState.affiliateSeed), GameState.leagueYear || 2026, lastSeasonDay + 1);
   GameState.scouting = initScoutingState();
   // The league snapshot the ultimate gate needs. Rollover takes one every
   // season (seasonRollover.js), but season ONE never did — it ran on the
@@ -263,6 +270,15 @@ function expireTenDaysForDay(dayIndex) {
   });
 }
 
+// The affiliate league plays its own schedule alongside the parent one. It gets
+// its OWN rng, not GameState.rng: the main season's determinism and both golden
+// fixtures depend on the reserves never touching the parent league's dice.
+function simulateAffiliatesForDay(dayIndex) {
+  if (!GameState.affiliates) return;
+  if (!GameState.affiliateRng) GameState.affiliateRng = makeRng(GameState.affiliateSeed || 1);
+  simulateAffiliateDay(GameState.affiliates, dayIndex, GameState.affiliateRng, PLAYERS_2026);
+}
+
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   // Retire offers whose window has closed. Silent by design: the Trade Center
   // shows each offer's remaining days, so letting one lapse is a decision the
@@ -271,6 +287,7 @@ function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   pruneExpiredTradeOffers(GameState, dayIndex);
   resolveWaiversForDay(dayIndex);
   expireTenDaysForDay(dayIndex);
+  simulateAffiliatesForDay(dayIndex);
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);
