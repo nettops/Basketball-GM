@@ -335,6 +335,104 @@ const RESIGN_MAX_PREMIUM = 1.5;   // the most a team may bid above the asking pr
 // changed no test result.
 const RESIGN_INTEREST_BAR = 58;
 
+// --- Restricted free agency --------------------------------------------------
+//
+// The first thing in this game that lets a rival put a price on a player who is
+// not on the market, and makes his own team answer it.
+//
+// A young player coming off his first deal is RESTRICTED: another club may sign
+// him to an offer sheet, and his own club keeps him only by matching those
+// terms — terms it did not choose and may hate.
+//
+// Four years of service is this game's rookie deal. Measured against the
+// opening league, that makes 10 of 82 expiring players restricted (12%): a
+// handful of real decisions an offseason rather than a second market to click
+// through.
+const RFA_MAX_YEARS_PRO = 4;
+
+function isRestrictedFreeAgent(player) {
+  return !!(player && player.teamId && (player.yearsPro || 0) <= RFA_MAX_YEARS_PRO);
+}
+
+// What a rival pays over fair value to make matching hurt.
+//
+// Without a premium this feature is theatre: generateAIOffer prices a player at
+// roughly what he is worth, his own team is by definition the club that values
+// him most, and every sheet would be matched without a thought. The premium is
+// the entire decision — match a player you like at a price you do not, or lose
+// him for nothing.
+//
+// Tuned against the match rate in scripts/probe-restrictedFA.js, which is the
+// number this feature lives or dies by. All-match or no-match both mean a fake
+// choice.
+const OFFER_SHEET_PREMIUM = 1.3;
+
+// A rival's offer sheet, or null if it cannot or will not write one.
+//
+// Built on generateAIOffer rather than beside it, so every rule the AI already
+// respects — roster space, cap space, owner spending mood, a rebuilding team's
+// disinterest in older players, the interest floor — applies unchanged. Only
+// the price is this function's own.
+function generateOfferSheet(team, player, rng) {
+  const base = generateAIOffer(team, player, rng);
+  if (!base) return null;
+  const limit = offerLimit(team);
+  // Clamped to what the club can actually pay. A team with modest space still
+  // writes a sheet, just a smaller one — which is right, and is what stops the
+  // premium from manufacturing offers nobody could honour.
+  const wanted = Math.round(base.salary * OFFER_SHEET_PREMIUM);
+  const salary = limit.capDisabled ? wanted : Math.min(wanted, limit.max);
+  if (!checkOffer(team, salary, base.yearsRemaining).ok) return null;
+  // A sheet at or below what the AI would have offered anyway carries no
+  // threat, and presenting it as a decision would waste the user's time.
+  if (salary <= base.salary) return null;
+  return { teamId: team.id, salary: salary, yearsRemaining: base.yearsRemaining, offerSheet: true };
+}
+
+// How far above the club's ordinary keep-him bar a sheet pushes, per unit of
+// overpay. At the 1.3 premium this lifts the bar by about 15 — enough that a
+// merely useful player gets away and a genuinely good one is kept.
+const MATCH_OVERPAY_WEIGHT = 50;
+
+// Match or let him walk.
+//
+// Deliberately NOT checkOffer. A team may already exceed the cap to re-sign its
+// own expiring player and nobody else (see the RESIGN_MAX_PREMIUM comment
+// above); a restricted free agent is exactly that case, and holding matches to
+// the cap would mean only bad teams could ever keep anyone. The roster ceiling
+// is free here — he is already on the roster, so keeping him adds no body.
+//
+// Pure: takes the numbers rather than reaching for a league, so
+// validate-restrictedFA.js can exercise the decision without an offseason.
+function matchDecision(playerValue, sheetSalary, fairSalary) {
+  const overpay = fairSalary > 0 ? sheetSalary / fairSalary : 1;
+  const bar = RESIGN_INTEREST_BAR + Math.max(0, overpay - 1) * MATCH_OVERPAY_WEIGHT;
+  return { matched: playerValue >= bar, bar: bar, overpay: overpay };
+}
+
+function evaluateMatch(team, player, sheet) {
+  if (!team || !player || !sheet) return { matched: false, bar: 0, overpay: 1 };
+  return matchDecision(
+    _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team),
+    sheet.salary,
+    estimateFairSalary(player, 0));
+}
+
+// The most threatening sheet anyone writes, scored the way the player himself
+// would score it — so the sheet he is presented with is the one he would sign,
+// not merely the biggest number.
+function bestOfferSheet(player, rng, excludeTeamId) {
+  let best = null, bestScore = -Infinity;
+  _FA_DATA.teams.TEAMS.forEach(function (t) {
+    if (t.id === excludeTeamId) return;
+    const sheet = generateOfferSheet(t, player, rng);
+    if (!sheet) return;
+    const s = scoreOffer(player, t, sheet);
+    if (s > bestScore) { best = sheet; bestScore = s; }
+  });
+  return best;
+}
+
 function resignAsk(player, rng) {
   return {
     salary: estimateFairSalary(player, 0),
@@ -427,9 +525,37 @@ function runResigningWindow(expiring, rng, deferTeamId) {
       const team = _FA_DATA.teams.getTeamById(player.teamId);
       if (!team) return;
       const ask = resignAsk(player, rng);
+
+      // Restricted: a rival may have put a price on him. Rolled BEFORE the
+      // defer branch so the user is shown the same sheet an AI team would have
+      // faced, rather than a decision generated later under different rosters.
+      const sheet = isRestrictedFreeAgent(player) ? bestOfferSheet(player, rng, team.id) : null;
+
       if (player.teamId === deferTeamId) {
         player.resignRights = { teamId: team.id, salary: ask.salary, yearsRemaining: ask.yearsRemaining };
+        // The sheet rides on the rights so ui/freeAgency.js can present the
+        // real choice: match these terms, or lose him to the club that wrote
+        // them. Absent for an unrestricted player, and the panel falls back to
+        // the ordinary re-sign it has always shown.
+        if (sheet) player.resignRights.offerSheet = sheet;
         deferred.push(player);
+        return;
+      }
+
+      if (sheet) {
+        const verdict = evaluateMatch(team, player, sheet);
+        if (verdict.matched) {
+          // Kept, but on the rival's terms rather than the asking price — which
+          // is the whole point of the mechanism.
+          applyResign(player, team, sheet);
+          resigned.push({ playerId: player.id, teamId: team.id, salary: sheet.salary,
+            yearsRemaining: sheet.yearsRemaining, matched: true });
+        } else {
+          // He does not reach the open market: an unmatched sheet IS the
+          // signing, so he goes straight to the club that wrote it.
+          signPlayer(player, sheet);
+          lost.push({ player: player, reason: 'poached', toTeamId: sheet.teamId });
+        }
         return;
       }
       // Does the team even want him? Same bar the AI applies to any free
@@ -464,6 +590,24 @@ function autoExerciseResignRights(teamId, rng) {
   const team = _FA_DATA.teams.getTeamById(teamId);
   _FA_DATA.league.getTeamRoster(teamId).slice().forEach(function (player) {
     if (!player.resignRights) return;
+    // A restricted player with a sheet against him is a different question:
+    // there is nothing to negotiate, only terms to match or refuse. Answered
+    // with the same rule an AI team applies to itself, so an automated save
+    // keeps exactly the players a played one would.
+    const sheet = player.resignRights.offerSheet;
+    if (sheet) {
+      const call = evaluateMatch(team, player, sheet);
+      delete player.resignRights;
+      if (call.matched) {
+        applyResign(player, team, sheet);
+        done.push({ playerId: player.id, teamId: teamId, salary: sheet.salary,
+          yearsRemaining: sheet.yearsRemaining, matched: true });
+      } else {
+        // Unmatched means he joins the club that wrote it, not the open market.
+        signPlayer(player, sheet);
+      }
+      return;
+    }
     const ask = { salary: player.resignRights.salary, yearsRemaining: player.resignRights.yearsRemaining };
     const interest = _FA_DATA.tradeEvaluator.adjustedPlayerValue(player, team);
     const verdict = evaluateResign(player, team, ask, rng);
@@ -484,6 +628,18 @@ function releaseUnexercisedResignRights(teamId) {
   const released = [];
   _FA_DATA.league.getTeamRoster(teamId).slice().forEach(function (player) {
     if (!player.resignRights) return;
+    // An offer sheet the GM never answered is not a player reaching the open
+    // market — it is a signing that went through by default. Letting him fall
+    // into free agency instead would quietly hand the rest of the league a
+    // second bite at him, and would mean ignoring the panel was better for the
+    // user than declining on it.
+    const sheet = player.resignRights.offerSheet;
+    if (sheet) {
+      delete player.resignRights;
+      signPlayer(player, sheet);
+      released.push(player.id);
+      return;
+    }
     releaseFromRights(player);
     released.push(player.id);
   });
@@ -651,6 +807,14 @@ if (typeof module !== 'undefined' && module.exports) {
     checkResignOffer: checkResignOffer,
     applyResign: applyResign,
     runResigningWindow: runResigningWindow,
+    isRestrictedFreeAgent: isRestrictedFreeAgent,
+    generateOfferSheet: generateOfferSheet,
+    bestOfferSheet: bestOfferSheet,
+    matchDecision: matchDecision,
+    evaluateMatch: evaluateMatch,
+    RFA_MAX_YEARS_PRO: RFA_MAX_YEARS_PRO,
+    OFFER_SHEET_PREMIUM: OFFER_SHEET_PREMIUM,
+    MATCH_OVERPAY_WEIGHT: MATCH_OVERPAY_WEIGHT,
     autoExerciseResignRights: autoExerciseResignRights,
     releaseUnexercisedResignRights: releaseUnexercisedResignRights,
     signPlayer: signPlayer,

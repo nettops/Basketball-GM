@@ -38,6 +38,9 @@ function renderFreeAgency(container, userTeamId) {
         // "0.0" would read as "played and was useless" rather than "did not
         // play" — a meaningful difference when you are deciding on a contract.
         const stat = function (v) { return gp ? v.toFixed(1) : '&mdash;'; };
+        const sheet = p.resignRights.offerSheet;
+        const sheetTeam = sheet ? getTeamById(sheet.teamId) : null;
+        const sheetTeamName = sheetTeam ? sheetTeam.name : 'a rival';
         html += '<tr><td class="col-name">' + escapeHtml(p.name) + '</td>' +
           '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
           '<td class="num">' + p.age + '</td>' +
@@ -46,10 +49,20 @@ function renderFreeAgency(container, userTeamId) {
           '<td class="num">' + stat(avg.ppg) + '</td>' +
           '<td class="num">' + stat(avg.rpg) + '</td>' +
           '<td class="num">' + stat(avg.apg) + '</td>' +
-          '<td class="num">$' + p.resignRights.salary.toLocaleString() + ' &times; ' +
-          p.resignRights.yearsRemaining + 'y</td>' +
-          '<td class="actions"><button data-resign-id="' + p.id + '">Re-Sign</button> ' +
-          '<button data-letgo-id="' + p.id + '" class="btn-ghost">Let Go</button></td></tr>';
+          // A restricted player with a sheet against him is a different
+          // decision, and has to READ as one: the terms are the rival's, the
+          // price is above his asking price, and declining loses him to a named
+          // club rather than to "the market".
+          (sheet
+            ? '<td class="num"><span class="stat-down">$' + sheet.salary.toLocaleString() + ' &times; ' +
+              sheet.yearsRemaining + 'y</span><div class="kpi-sub">offer sheet &middot; ' +
+              escapeHtml(sheetTeamName) + '</div></td>' +
+              '<td class="actions"><button data-match-id="' + p.id + '">Match</button> ' +
+              '<button data-declinesheet-id="' + p.id + '" class="btn-ghost">Let Him Go</button></td></tr>'
+            : '<td class="num">$' + p.resignRights.salary.toLocaleString() + ' &times; ' +
+              p.resignRights.yearsRemaining + 'y</td>' +
+              '<td class="actions"><button data-resign-id="' + p.id + '">Re-Sign</button> ' +
+              '<button data-letgo-id="' + p.id + '" class="btn-ghost">Let Go</button></td></tr>');
       });
       html += '</tbody></table></div>';
     }
@@ -147,6 +160,41 @@ function renderFreeAgency(container, userTeamId) {
           player.teamId = null;
           signingLog.push(escapeHtml(player.name) + ' turned down your offer and will test the market');
         }
+        draw();
+      });
+    });
+
+    // Matching is not a negotiation — the player has already agreed to these
+    // terms by signing the sheet, so unlike Re-Sign there is no chance of him
+    // saying no. That asymmetry is the mechanism, not an oversight.
+    container.querySelectorAll('button[data-match-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        pushUndoSnapshot(GameState);
+        const player = getPlayerById(btn.getAttribute('data-match-id'));
+        const team = getTeamById(userTeamId);
+        const sheet = player.resignRights.offerSheet;
+        delete player.resignRights;
+        applyResign(player, team, sheet);
+        signingLog.push(escapeHtml(team.name) + ' matched the offer sheet for ' + escapeHtml(player.name) +
+          ' ($' + sheet.salary.toLocaleString() + '/yr, ' + sheet.yearsRemaining + ' yr' +
+          (sheet.yearsRemaining === 1 ? '' : 's') + ')');
+        draw();
+      });
+    });
+
+    // Declining hands him to the club that wrote the sheet, NOT to free
+    // agency. He never reaches the market, which is what makes an offer sheet
+    // different from letting a contract run out.
+    container.querySelectorAll('button[data-declinesheet-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        pushUndoSnapshot(GameState);
+        const player = getPlayerById(btn.getAttribute('data-declinesheet-id'));
+        const sheet = player.resignRights.offerSheet;
+        const rival = getTeamById(sheet.teamId);
+        delete player.resignRights;
+        signPlayer(player, sheet);
+        signingLog.push(escapeHtml(player.name) + ' signs with ' + escapeHtml(rival ? rival.name : 'a rival') +
+          ' on the offer sheet you declined to match');
         draw();
       });
     });
