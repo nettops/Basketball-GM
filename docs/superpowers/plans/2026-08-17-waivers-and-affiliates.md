@@ -186,15 +186,39 @@ agency and sign differently from the first offseason onward. Season 1's **team
 checksum is unchanged at 44672** — those games were played before dead money
 could act. `gamesim-golden.json` never moved.
 
-### Left undone
+### Two follow-ups, both since fixed
 
-- **The AI does not weigh dead money before cutting anyone.** `enforceRosterCeilings`
-  waives every offseason and the club eats the debt automatically, which is where
-  most of the league's $53-72M comes from. A club should prefer a buyout, or
-  keeping him, when the debt outweighs the roster spot.
-- **A fresh league has zero free agents**, so the ten-day and two-way panels open
-  empty until somebody clears waivers. Correct, but it makes both features look
-  inert on day one.
+**The AI did not weigh dead money before cutting anyone.** The ceiling sweep
+ranked cuts purely by `adjustedPlayerValue`, which was correct while releasing a
+player was free and wrong the moment it was not: it would release a $35M
+contract to save a spot it could have saved by releasing a $1.2M one. Cuts are
+now ranked by `releaseCost` — value lost plus money still owed — and a buyout is
+preferred to a release when the player will take one.
+
+| | before | after |
+|---|---|---|
+| league dead money | $53-72M | **$40-50M** |
+| worst club, % of cap | 14-27% | **10-18%** |
+| median indebted club | $2-8M | **$1-4M** |
+
+`DEAD_MONEY_AVERSION` is 0.35, which is deliberately not enough to talk a club
+out of releasing a star on the minimum — the value gap from a fringe player to a
+star dwarfs any contract, and it should. The flip happens where the sweep
+actually chooses, at the bottom of the roster.
+
+**A fresh league had exactly zero free agents.** 435 players across thirty
+rosters of 13-15 consumes the pool precisely, so ten-days, two-way deals and the
+roster-floor sweep all opened on an empty table. The market now carries 24
+unsigned journeymen, built from the tail of a generated class — an unsigned free
+agent is the man who did not get drafted, so no new generation code was needed.
+
+`rollover-golden.json` was regenerated a second time for the sweep change.
+Season 1's team checksum is unchanged at 44672 both times.
+
+### Still left undone
+
 - **No affiliate playoffs, awards or history**, per the design. It is a
   development environment, not a second career.
 - **Affiliate games are not watchable** in the pixel view. Box scores only.
+- **Waiver claims are first-come for the user**, not priority-ordered against AI
+  clubs. Marked `ponytail:` at the site in `waivers.js` with the upgrade path.
