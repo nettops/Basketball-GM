@@ -67,14 +67,29 @@ function checkCloseGamesAndPlayoffsBuildIt() {
 checkCloseGamesAndPlayoffsBuildIt();
 
 // A rivalry that only ever rises makes the whole league everyone's rival.
+// "Stop mattering to each other" means no more playoff meetings — NOT no more
+// games. Two clubs in one league never stop playing each other, so a fixture
+// that decays in silence measures a situation the game cannot produce. The
+// first version of this check did exactly that and made the playoff constant
+// look wrong when the fixture was.
 function checkItFadesWhenTheyStopMattering() {
   const state = riv.createRivalryState();
+  const ordinarySeason = function () {
+    riv.recordGame(state, { homeTeamId: 'BOS', awayTeamId: 'NYK', homeScore: 112, awayScore: 98 });
+    riv.recordGame(state, { homeTeamId: 'NYK', awayTeamId: 'BOS', homeScore: 105, awayScore: 91 });
+    riv.recordGame(state, { homeTeamId: 'BOS', awayTeamId: 'NYK', homeScore: 118, awayScore: 99 });
+    riv.recordGame(state, { homeTeamId: 'NYK', awayTeamId: 'BOS', homeScore: 101, awayScore: 99 });
+  };
+
+  ordinarySeason();
   riv.recordPlayoffSeries(state, 'BOS', 'NYK');
   assert.ok(riv.areRivals(state, 'BOS', 'NYK'), 'it starts hot');
 
+  // They keep playing four times a year, they just never meet in May again.
   let seasons = 0;
   while (riv.areRivals(state, 'BOS', 'NYK') && seasons < 50) {
     riv.decayRivalries(state);
+    ordinarySeason();
     seasons++;
   }
   assert.ok(seasons < 50, 'it does fade');
@@ -128,5 +143,33 @@ function checkRivalsOfListsOnlyRealOnes() {
   console.log('checkRivalsOfListsOnlyRealOnes: OK');
 }
 checkRivalsOfListsOnlyRealOnes();
+
+// The check the first version of this file did not have, and the one that
+// mattered. Testing a single season cannot see where heat CONVERGES: clubs meet
+// about four times a year forever, so meeting heat settles at
+// perSeason / (1 - HEAT_DECAY). If the threshold sits below that, every pair in
+// the league eventually becomes a rivalry — measured in the browser, all 435
+// possible pairs carried heat while nobody was anybody's rival.
+function checkTheCalendarNeverReachesTheBarOnItsOwn() {
+  const state = riv.createRivalryState();
+  // Twenty seasons of ordinary scheduling: four meetings, one of them close.
+  for (let season = 0; season < 20; season++) {
+    riv.recordGame(state, { homeTeamId: 'BOS', awayTeamId: 'NYK', homeScore: 112, awayScore: 98 });
+    riv.recordGame(state, { homeTeamId: 'NYK', awayTeamId: 'BOS', homeScore: 105, awayScore: 91 });
+    riv.recordGame(state, { homeTeamId: 'BOS', awayTeamId: 'NYK', homeScore: 118, awayScore: 99 });
+    riv.recordGame(state, { homeTeamId: 'NYK', awayTeamId: 'BOS', homeScore: 101, awayScore: 99 });
+    riv.decayRivalries(state);
+  }
+  const settled = riv.getHeat(state, 'BOS', 'NYK');
+  assert.ok(!riv.areRivals(state, 'BOS', 'NYK'),
+    'two decades of ordinary scheduling is still not a rivalry (settled at ' + settled + ')');
+
+  // But add one playoff series to those same two clubs and it plainly is.
+  riv.recordPlayoffSeries(state, 'BOS', 'NYK');
+  assert.ok(riv.areRivals(state, 'BOS', 'NYK'),
+    'meeting in the playoffs makes one immediately');
+  console.log('checkTheCalendarNeverReachesTheBarOnItsOwn: OK (calendar settles at ' + settled + ')');
+}
+checkTheCalendarNeverReachesTheBarOnItsOwn();
 
 console.log('All rivalry validations passed');

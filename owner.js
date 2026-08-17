@@ -57,16 +57,33 @@ function mandateWinTarget(team) {
   return Math.max(20, Math.min(60, base + prestigeNudge));
 }
 
-// opts.youngPlayers is how many under-23s are actually on the roster. A club
-// with none cannot be asked to develop anybody — measured, several clubs open
-// with zero, and handing them a development mandate would recreate the
-// unwinnable mandate this design just removed in a new shape.
+// Both guards here exist for the same reason, and it is the recurring failure
+// of this whole feature: a mandate the club cannot possibly meet is not a
+// mandate, it is a scheduled firing.
+//
+//   opts.youngPlayers  — a club with no under-23s cannot develop anybody, and
+//                        several open with zero.
+//   opts.underTaxLine  — "stay under the luxury tax" only means anything said
+//                        to somebody who is under it. Measured, 7 clubs of 30
+//                        are, against a median payroll of $233M and a $187M
+//                        line, so this was being handed to 23 clubs who would
+//                        need to shed $46M to comply.
+//
+// Both fall through to a win total, which every club can be judged on fairly
+// because the target is already scaled by timeline and prestige.
 function chooseMandate(team, rng, opts) {
   const roll = rng ? rng() : 0.5;
   const timeline = team.timeline;
   const canDevelop = !opts || opts.youngPlayers === undefined || opts.youngPlayers > 0;
+  const canBudget = !opts || opts.underTaxLine === undefined || opts.underTaxLine;
+  const winsMandate = function () {
+    return { type: MANDATE_TYPES.wins, target: mandateWinTarget(team),
+      label: 'win ' + mandateWinTarget(team) + ' games' };
+  };
 
   if (timeline === 'win-now') {
+    // A win-now club is never told to watch the money — that is what the
+    // timeline means.
     // "Reach the conference finals" was the first cut of this, and it made the
     // owner unreasonable rather than demanding: only four clubs of thirty get
     // there in a year, so a win-now GM was handed a roughly one-in-seven task
@@ -85,13 +102,16 @@ function chooseMandate(team, rng, opts) {
     // Nobody rebuilding is told to win. They are told to develop somebody and
     // not to set fire to the money doing it.
     if (roll < 0.6 && canDevelop) return { type: MANDATE_TYPES.develop, label: 'develop the young core' };
-    return { type: MANDATE_TYPES.budget, label: 'stay under the luxury tax' };
+    if (canBudget) return { type: MANDATE_TYPES.budget, label: 'stay under the luxury tax' };
+    if (canDevelop) return { type: MANDATE_TYPES.develop, label: 'develop the young core' };
+    return winsMandate();
   }
 
   // retooling: the awkward middle, and the only one who gets the full spread.
-  if (roll < 0.4) return { type: MANDATE_TYPES.wins, target: mandateWinTarget(team), label: 'win ' + mandateWinTarget(team) + ' games' };
+  if (roll < 0.4) return winsMandate();
   if (roll < 0.7) return { type: MANDATE_TYPES.playoffs, label: 'make the playoffs' };
-  return { type: MANDATE_TYPES.budget, label: 'stay under the luxury tax' };
+  if (canBudget) return { type: MANDATE_TYPES.budget, label: 'stay under the luxury tax' };
+  return winsMandate();
 }
 
 // The season, reduced to the handful of facts a mandate can be judged against.
@@ -196,8 +216,14 @@ function youngPlayerCount(roster) {
 }
 
 // Sets the standing mandate and snapshots what it will be judged against.
-function setMandate(gameState, team, roster, rng) {
-  const mandate = chooseMandate(team, rng, { youngPlayers: youngPlayerCount(roster) });
+function setMandate(gameState, team, roster, rng, facts) {
+  const f = facts || {};
+  const mandate = chooseMandate(team, rng, {
+    youngPlayers: youngPlayerCount(roster),
+    underTaxLine: f.payroll === undefined
+      ? undefined
+      : f.payroll <= _OWNER_DATA.data.getEffectiveLuxuryTaxLine(f.capLevel)
+  });
   mandate.leagueYear = gameState.leagueYear || 2026;
   gameState.ownerMandate = mandate;
   return mandate;

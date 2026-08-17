@@ -137,6 +137,10 @@ function initSeason() {
   // exactly zero free agents, so ten-days, two-way deals and the roster-floor
   // sweep all open on an empty table.
   ensureVeteranFreeAgentPool(GameState.rng, generateProspectClass);
+  // Rivalry heat survives across seasons — it is the one piece of league state
+  // that is supposed to remember last year — so it is only created if absent,
+  // never reset here.
+  if (!GameState.rivalries) GameState.rivalries = createRivalryState();
   GameState.upcomingDraftClass = DRAFT_PROSPECTS_2026;
   // The affiliate league is built from its own seed and keeps its own rng, so
   // it can never shift the parent season's dice. Rebuilt each season alongside
@@ -151,7 +155,8 @@ function initSeason() {
   if (GameState.userTeamId) {
     ensureGmCareer(GameState);
     setMandate(GameState, getTeamById(GameState.userTeamId),
-      getTeamRoster(GameState.userTeamId), GameState.rng);
+      getTeamRoster(GameState.userTeamId), GameState.rng,
+      { payroll: getTeamPayroll(GameState.userTeamId), capLevel: GameState.settings.capLevel });
   }
   GameState.scouting = initScoutingState();
   // The league snapshot the ultimate gate needs. Rollover takes one every
@@ -291,6 +296,36 @@ function simulateAffiliatesForDay(dayIndex) {
   simulateAffiliateDay(GameState.affiliates, dayIndex, GameState.affiliateRng, PLAYERS_2026);
 }
 
+// Rivalries are driven from here rather than from inside league.js, for the
+// same reason waivers and the affiliate league are: league.js has no access to
+// GameState by design, and threading rivalry state through simulateDate's
+// settings argument to reach it would be a channel invented for one caller.
+//
+// The extra swing is applied on TOP of the ordinary win/loss nudge that
+// finances.js already made, which is what makes a rivalry game worth more
+// rather than worth something different.
+function recordRivalriesForDay(dayIndex, todaysGames) {
+  if (!GameState.rivalries) GameState.rivalries = createRivalryState();
+  (todaysGames || []).forEach(function (g) {
+    if (!g.played) return;
+    const wasRival = areRivals(GameState.rivalries, g.homeTeamId, g.awayTeamId);
+    recordGame(GameState.rivalries, g);
+    if (!wasRival) return;
+
+    const mult = rivalryMultiplier(GameState.rivalries, g.homeTeamId, g.awayTeamId);
+    const homeWon = g.homeScore > g.awayScore;
+    [[g.homeTeamId, homeWon], [g.awayTeamId, !homeWon]].forEach(function (pair) {
+      const team = getTeamById(pair[0]);
+      if (!team) return;
+      // The same 0.3 / -0.2 finances.js uses, scaled by the heat and applied
+      // again — so a rivalry win is worth up to double, and a rivalry loss
+      // stings up to double.
+      const extra = (pair[1] ? 0.3 : -0.2) * (mult - 1);
+      team.fanHappiness = Math.max(20, Math.min(99, team.fanHappiness + extra));
+    });
+  });
+}
+
 function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   // Retire offers whose window has closed. Silent by design: the Trade Center
   // shows each offer's remaining days, so letting one lapse is a decision the
@@ -300,6 +335,7 @@ function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   resolveWaiversForDay(dayIndex);
   expireTenDaysForDay(dayIndex);
   simulateAffiliatesForDay(dayIndex);
+  recordRivalriesForDay(dayIndex, todaysGames || []);
   tickScoutingForDay(dayIndex);
   pushGameResultsToFeed(dayIndex, todaysGames || []);
   pushInjuriesToFeed(newInjuries || [], dayIndex);

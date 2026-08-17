@@ -25,7 +25,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       tradeEvaluator: require('./tradeEvaluator.js'),
       owner: require('./owner.js'),
       league: require('./league.js'),
-      draft: require('./draft.js')
+      draft: require('./draft.js'),
+      rivalries: require('./rivalries.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -40,11 +41,30 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       owner: { reviewSeason: reviewSeason, endTenure: endTenure, setMandate: setMandate },
       league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll },
       draft: { playoffResultByTeam: playoffResultByTeam, playoffBracketIsComplete: playoffBracketIsComplete },
+      rivalries: { recordPlayoffSeries: recordPlayoffSeries, decayRivalries: decayRivalries },
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
       ultimates: { setLeagueGate: setLeagueGate },
       tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache }
     };
+
+// A playoff series is where rivalries are actually made, so the bracket is
+// mined for them before it is cleared — then every pair cools by a year. Decay
+// last, so a series played this spring is not immediately discounted for it.
+function runRivalryRollover(gameState) {
+  if (!gameState.rivalries) return;
+  const bracket = gameState.playoffBracket;
+  if (bracket && _ROLLOVER_DATA.draft.playoffBracketIsComplete(bracket)) {
+    ['first', 'semis', 'confFinals', 'finals'].forEach(function (round) {
+      (bracket[round] || []).forEach(function (series) {
+        if (series.higherSeed && series.lowerSeed) {
+          _ROLLOVER_DATA.rivalries.recordPlayoffSeries(gameState.rivalries, series.higherSeed, series.lowerSeed);
+        }
+      });
+    });
+  }
+  _ROLLOVER_DATA.rivalries.decayRivalries(gameState.rivalries);
+}
 
 // Judges the standing mandate, moves the owner, and sacks the GM if his
 // patience is gone. Assembles the facts and hands them to owner.js, which owns
@@ -118,6 +138,7 @@ function runOffseasonRollover(gameState, deps) {
   // now every write to it came from the luxury tax, so the owner did not know
   // the score.
   runOwnerReview(gameState, onFeed);
+  runRivalryRollover(gameState);
 
   // setLeagueYear lives in script.js, which Node cannot load. Both writes are
   // done here because league.js reads settings.leagueYear and has no access
@@ -194,7 +215,9 @@ function runOffseasonRollover(gameState, deps) {
       gameState,
       _ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId),
       _ROLLOVER_DATA.league.getTeamRoster(gameState.userTeamId),
-      gameState.rng);
+      gameState.rng,
+      { payroll: _ROLLOVER_DATA.league.getTeamPayroll(gameState.userTeamId),
+        capLevel: gameState.settings ? gameState.settings.capLevel : undefined });
   }
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;

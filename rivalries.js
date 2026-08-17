@@ -25,10 +25,16 @@ const CLOSE_GAME_MARGIN = 5;
 //
 // The first cut was 12 against a threshold of 10, which meant one decay (x0.75)
 // took it to 9 and a rivalry born in a seven-game series was over before the
-// next season tipped off. At 32 it runs 32 -> 24 -> 18 -> 13.5 -> 10.1 -> 7.6,
-// so a playoff meeting is worth roughly four seasons of bad blood and then
-// fades. Change HEAT_DECAY and this has to move with it.
-const HEAT_PER_PLAYOFF_SERIES = 32;
+// next season tipped off.
+//
+// At 40 a series clears the 35 bar on its own, which is the claim worth
+// keeping: two clubs who have never met before and go seven games in May are
+// rivals that summer, without needing a decade of scheduling behind them. In
+// practice they also carry the ~25 the calendar has already given them, so a
+// real playoff pair sits around 65 and stays above the bar for two or three
+// seasons before fading. Change HEAT_DECAY or RIVALRY_THRESHOLD and this has to
+// move with them.
+const HEAT_PER_PLAYOFF_SERIES = 40;
 
 // Yearly decay. At 0.75 a rivalry left alone falls under the threshold in about
 // four seasons — long enough to survive a bad year, short enough that a
@@ -38,7 +44,20 @@ const HEAT_DECAY = 0.75;
 
 // Below this a pair is just two teams playing. Above it, the game is worth
 // more to everyone watching.
-const RIVALRY_THRESHOLD = 10;
+//
+// Set ABOVE the equilibrium that routine scheduling produces, which is the
+// whole difficulty here. Clubs meet about four times a season forever, so heat
+// from meetings alone converges: h = h * HEAT_DECAY + perSeason, i.e.
+// perSeason / (1 - HEAT_DECAY). At ~6.3 a season that is ~25, and the first cut
+// of this file put the threshold at 10 — so after a few seasons every one of
+// the 435 possible pairs in a thirty-club league was a "rivalry", which is the
+// same as none of them being one. Measured in the browser: 435 pairs carrying
+// heat and zero pairs anybody would call a rival.
+//
+// At 35, routine meetings never get there on their own and a playoff series
+// (+32 on top of ~25) clears it comfortably. That is the intended shape: the
+// playoffs make rivalries, the calendar does not.
+const RIVALRY_THRESHOLD = 35;
 
 const HEAT_MAX = 100;
 

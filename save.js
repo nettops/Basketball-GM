@@ -189,6 +189,7 @@ function serializeGameState(gameState, name, includeSnapshots) {
     // would bring them back.
     affiliates: gameState.affiliates || null,
     ownerMandate: gameState.ownerMandate || null,
+    rivalries: gameState.rivalries || null,
     firedAtEndOfSeason: gameState.firedAtEndOfSeason || null,
     lastDraftResults: lastDraftResultsOut,
     scouting: gameState.scouting,
@@ -341,6 +342,7 @@ function applySavedState(payload, gameState) {
   // getter, not a stored field — has to be reinstalled or every rating on that
   // side of the league reads undefined.
   gameState.ownerMandate = payload.ownerMandate || null;
+  gameState.rivalries = payload.rivalries || null;
   gameState.firedAtEndOfSeason = payload.firedAtEndOfSeason || null;
   gameState.affiliates = payload.affiliates || null;
   if (gameState.affiliates && gameState.affiliates.filler) {

@@ -205,4 +205,37 @@ function checkAClubWithNoKidsIsNotToldToDevelopThem() {
 }
 checkAClubWithNoKidsIsNotToldToDevelopThem();
 
+// The same defect as the develop mandate, in the other direction. Measured, 7
+// clubs of 30 are under the luxury tax line against a median payroll of $233M
+// and a $187M line — so "stay under the luxury tax" was being handed to 23
+// clubs who would have had to shed $46M to comply with it.
+function checkAClubDeepInTheTaxIsNotToldToStayOutOfIt() {
+  const rng = makeRng(19);
+  const overTaxed = { id: 'X', timeline: 'rebuilding', prestige: 50, record: { wins: 0, losses: 0 } };
+  for (let i = 0; i < 200; i++) {
+    const m = owner.chooseMandate(overTaxed, rng, { youngPlayers: 3, underTaxLine: false });
+    assert.notStrictEqual(m.type, owner.MANDATE_TYPES.budget,
+      'a club already deep in the tax is not told to stay out of it');
+  }
+
+  // Under the line, it is a fair thing to ask.
+  let sawBudget = false;
+  for (let i = 0; i < 200; i++) {
+    if (owner.chooseMandate(overTaxed, rng, { youngPlayers: 3, underTaxLine: true }).type === owner.MANDATE_TYPES.budget) {
+      sawBudget = true;
+    }
+  }
+  assert.ok(sawBudget, 'a club under the line can be asked to stay there');
+
+  // And a club that can do NEITHER still gets something judgeable rather than
+  // falling through to nothing.
+  for (let i = 0; i < 100; i++) {
+    const m = owner.chooseMandate(overTaxed, rng, { youngPlayers: 0, underTaxLine: false });
+    assert.ok(m.type === owner.MANDATE_TYPES.wins, 'no kids and no room still yields a win total');
+    assert.ok(m.target >= 20 && m.target <= 60, 'and a reachable one');
+  }
+  console.log('checkAClubDeepInTheTaxIsNotToldToStayOutOfIt: OK');
+}
+checkAClubDeepInTheTaxIsNotToldToStayOutOfIt();
+
 console.log('All owner mandate validations passed');
