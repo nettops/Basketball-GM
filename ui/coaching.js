@@ -19,6 +19,9 @@ function coachCardHtml(coach) {
     '<div class="kpi-tile"><div class="kpi-label">Overall</div><div class="kpi-value">' + coach.overall + '</div></div>' +
     '<div class="kpi-tile"><div class="kpi-label">Specialty</div><div class="kpi-value">' + COACH_SPECIALTY_LABELS[coach.specialty] + '</div></div>' +
     '<div class="kpi-tile"><div class="kpi-label">Tenure</div><div class="kpi-value">' + coach.seasonsWithTeam + '</div><div class="kpi-sub">seasons with this team</div></div>' +
+    // Hiring a coach sets the game plan below, so what he believes in has to be
+    // on the card BEFORE the decision rather than discovered afterwards.
+    '<div class="kpi-tile"><div class="kpi-label">Playbook</div><div class="kpi-value">' + escapeHtml(coachLeanLabel(coach)) + '</div></div>' +
   '</div>';
 }
 
@@ -76,9 +79,10 @@ function renderCoaching(container, userTeamId) {
 
     if (candidates) {
       html += '<div class="panel"><div class="panel-header">Coaching Candidates</div><div class="panel-body">' +
-        '<table class="data-table"><thead><tr><th>Name</th><th class="num">Overall</th><th>Specialty</th><th></th></tr></thead><tbody>' +
+        '<table class="data-table"><thead><tr><th>Name</th><th class="num">Overall</th><th>Specialty</th><th>Playbook</th><th></th></tr></thead><tbody>' +
         candidates.map(function (c, i) {
           return '<tr><td class="col-name">' + escapeHtml(c.name) + '</td><td class="num">' + c.overall + '</td><td>' + COACH_SPECIALTY_LABELS[c.specialty] + '</td>' +
+            '<td>' + escapeHtml(coachLeanLabel(c)) + '</td>' +
             '<td><button class="btn-primary" data-hire-index="' + i + '">Hire</button></td></tr>';
         }).join('') + '</tbody></table>' +
       '</div></div>';

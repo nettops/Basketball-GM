@@ -10,6 +10,64 @@ var _COACH_DATA = (typeof require !== 'undefined')
 
 const COACH_SPECIALTIES = ['offense', 'defense', 'development'];
 
+// The playbook a coach believes in, which is what makes his specialty visible
+// on the floor instead of only in progression maths.
+//
+// An offensive coach wants to run and to shoot from range; a defensive one
+// wants a half-court game and shots closer in; a development coach has no
+// axe to grind either way. Those are the three specialties that already exist,
+// so the lean is derived from the coach rather than being a fourth thing to
+// generate and keep consistent.
+//
+// The three leans sum to zero across the pool, which is deliberate and load
+// bearing: specialty is drawn uniformly, so the LEAGUE's average pace and shot
+// mix stay exactly where they were calibrated. Thirty coaches with opinions
+// should make the league varied, not faster.
+const COACH_LEAN_BY_SPECIALTY = {
+  offense: { pace: 1, threePointRate: 1 },
+  defense: { pace: -1, threePointRate: -1 },
+  development: { pace: 0, threePointRate: 0 }
+};
+
+// How often a coach actually acts on his lean rather than sitting balanced.
+// Below 1 so two offensive coaches are not the same coach — some believe in it
+// and some are pragmatists — and so roughly a third of the league sits neutral
+// on any given dial, which keeps a Balanced setting normal rather than odd.
+const COACH_CONVICTION = 0.6;
+
+// Rolled once, when the coach is created, and stored on him. Deriving it on
+// every read would need an rng at every call site and would let the same coach
+// change his mind between screens.
+function rollCoachLean(specialty, rng) {
+  const base = COACH_LEAN_BY_SPECIALTY[specialty] || COACH_LEAN_BY_SPECIALTY.development;
+  return {
+    pace: rng() < COACH_CONVICTION ? base.pace : 0,
+    threePointRate: rng() < COACH_CONVICTION ? base.threePointRate : 0
+  };
+}
+
+// A sentence for the coach card, so hiring is an informed choice rather than a
+// number and a label. Reads the lean rather than the specialty, because a
+// pragmatic offensive coach genuinely does play balanced and the card should
+// say so.
+function coachLeanLabel(coach) {
+  if (!coach || !coach.lean) return 'Balanced';
+  const parts = [];
+  if (coach.lean.pace > 0) parts.push('runs');
+  else if (coach.lean.pace < 0) parts.push('slows it down');
+  if (coach.lean.threePointRate > 0) parts.push('shoots threes');
+  else if (coach.lean.threePointRate < 0) parts.push('works inside');
+  return parts.length ? parts.join(', ') : 'Balanced';
+}
+
+// Applies a coach's playbook to the team he is now in charge of. Separate from
+// hireCoach so ensureTeamCoach can use it too, and so the one place that
+// overwrites a user's dials is easy to find.
+function applyCoachLean(team, coach) {
+  if (!team || !coach || !coach.lean) return;
+  team.strategy = { pace: coach.lean.pace, threePointRate: coach.lean.threePointRate };
+}
+
 function coachSlug(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
@@ -38,11 +96,15 @@ function generateCoachName(rng, taken) {
 // hired coach nudges their team's strategy dials toward.
 function generateCoach(rng, taken) {
   const name = generateCoachName(rng, taken);
+  const specialty = COACH_SPECIALTIES[Math.floor(rng() * COACH_SPECIALTIES.length)];
   return {
     id: 'coach-' + coachSlug(name) + '-' + Math.floor(Math.random() * 1000000),
     name: name,
     overall: Math.round(55 + rng() * 40),
-    specialty: COACH_SPECIALTIES[Math.floor(rng() * COACH_SPECIALTIES.length)],
+    specialty: specialty,
+    // Rolled after specialty, from the same stream, so a coach's playbook is
+    // fixed the moment he exists and never drifts.
+    lean: rollCoachLean(specialty, rng),
     hireSeason: null,
     seasonsWithTeam: 0,
     awardsWon: []
@@ -51,7 +113,14 @@ function generateCoach(rng, taken) {
 
 function ensureTeamCoach(team, rng) {
   if (!team.coach) team.coach = generateCoach(rng);
-  if (!team.strategy) team.strategy = { pace: 0, threePointRate: 0 };
+  // A coach loaded from a save made before playbooks existed has no lean.
+  // Backfilled here rather than left null so an existing league gets the
+  // variety too, instead of thirty permanently balanced benches.
+  if (!team.coach.lean) team.coach.lean = rollCoachLean(team.coach.specialty, rng);
+  // Only when the team has no dials at all. This runs on every draw of the
+  // coaching screen, and a coach re-imposing his playbook over a GM who had
+  // just changed it would make the control unusable.
+  if (!team.strategy) applyCoachLean(team, team.coach);
   return team.coach;
 }
 
@@ -73,6 +142,12 @@ function hireCoach(team, coach, leagueYear) {
   team.coach = coach;
   coach.hireSeason = leagueYear;
   coach.seasonsWithTeam = 0;
+  // Hiring a coach IS choosing a playbook — that is what makes the choice
+  // between three candidates a decision rather than a comparison of one
+  // number. It overwrites whatever the dials were set to, deliberately, and the
+  // coaching screen redraws immediately so the change is visible in the two
+  // dropdowns. A GM who disagrees can move them straight back.
+  applyCoachLean(team, coach);
 }
 
 // Called once per team at season end (mirrors finances.js's applySeasonEndFinances)
@@ -107,6 +182,11 @@ if (typeof module !== 'undefined' && module.exports) {
     generateCoachCandidates: generateCoachCandidates,
     hireCoach: hireCoach,
     tickCoachTenure: tickCoachTenure,
-    coachFitMultiplier: coachFitMultiplier
+    coachFitMultiplier: coachFitMultiplier,
+    COACH_LEAN_BY_SPECIALTY: COACH_LEAN_BY_SPECIALTY,
+    COACH_CONVICTION: COACH_CONVICTION,
+    rollCoachLean: rollCoachLean,
+    coachLeanLabel: coachLeanLabel,
+    applyCoachLean: applyCoachLean
   };
 }

@@ -17,7 +17,16 @@ function checkGenerateAndEnsureCoach() {
   assert.ok(coach.name.length > 0);
   assert.ok(coach.overall >= 55 && coach.overall <= 95);
   assert.ok(coachesModule.COACH_SPECIALTIES.indexOf(coach.specialty) !== -1);
-  assert.deepStrictEqual(team.strategy, { pace: 0, threePointRate: 0 });
+  // Was `deepStrictEqual(team.strategy, { pace: 0, threePointRate: 0 })`.
+  // A new coach now arrives with a playbook and sets the dials to it, so
+  // pinning them to neutral asserted the very thing that made the Game Plan
+  // panel inert. What still has to hold is that the dials exist and only ever
+  // carry one of the three settings the coaching screen offers.
+  assert.ok(team.strategy, 'a team with a coach has a game plan');
+  assert.ok([-1, 0, 1].indexOf(team.strategy.pace) !== -1, 'pace is one of the three offered settings');
+  assert.ok([-1, 0, 1].indexOf(team.strategy.threePointRate) !== -1, 'three-point rate likewise');
+  assert.deepStrictEqual(team.strategy, { pace: coach.lean.pace, threePointRate: coach.lean.threePointRate },
+    'the dials should be exactly what this coach believes in');
 
   const sameCoach = coachesModule.ensureTeamCoach(team, rng);
   assert.strictEqual(sameCoach, coach, 'ensureTeamCoach should not replace an existing coach');
@@ -151,3 +160,113 @@ function checkCoachOfTheYear() {
 checkCoachOfTheYear();
 
 console.log('All coaches validations passed');
+
+// --- Playbooks --------------------------------------------------------------
+//
+// A coach's specialty used to exist only inside progression maths. It now sets
+// the team's Game Plan dials, which is what makes hiring one of three
+// candidates a decision rather than a comparison of a single number.
+
+// The property the whole design rests on: thirty coaches with opinions must
+// make the league VARIED, not faster. Specialty is drawn uniformly and the
+// three leans are symmetric, so the league's average dial has to sit at zero
+// or every scoring number calibrated against a neutral league drifts.
+function checkLeansCancelAcrossTheLeague() {
+  const lean = coachesModule.COACH_LEAN_BY_SPECIALTY;
+  const paceSum = coachesModule.COACH_SPECIALTIES.reduce(function (s, k) { return s + lean[k].pace; }, 0);
+  const threeSum = coachesModule.COACH_SPECIALTIES.reduce(function (s, k) { return s + lean[k].threePointRate; }, 0);
+  assert.strictEqual(paceSum, 0, 'pace leans must cancel across the specialties, got ' + paceSum);
+  assert.strictEqual(threeSum, 0, 'three-point leans must cancel across the specialties, got ' + threeSum);
+
+  // And empirically, over a realistic pool.
+  const rng = makeRng(2718);
+  let pace = 0, three = 0;
+  const N = 600;
+  for (let i = 0; i < N; i++) {
+    const c = coachesModule.generateCoach(rng, new Set(['x']));
+    pace += c.lean.pace;
+    three += c.lean.threePointRate;
+  }
+  assert.ok(Math.abs(pace / N) < 0.08, 'mean pace lean should sit near zero, got ' + (pace / N).toFixed(3));
+  assert.ok(Math.abs(three / N) < 0.08, 'mean three lean should sit near zero, got ' + (three / N).toFixed(3));
+  console.log('checkLeansCancelAcrossTheLeague: OK (mean pace ' + (pace / N).toFixed(3) +
+    ', three ' + (three / N).toFixed(3) + ')');
+}
+
+// Two coaches of the same specialty must not be the same coach. Conviction
+// below 1 is what buys that, and it also keeps Balanced a normal setting.
+function checkSameSpecialtyStillVaries() {
+  const rng = makeRng(99);
+  const seen = {};
+  for (let i = 0; i < 200; i++) {
+    const l = coachesModule.rollCoachLean('offense', rng);
+    seen[l.pace + '/' + l.threePointRate] = (seen[l.pace + '/' + l.threePointRate] || 0) + 1;
+  }
+  assert.ok(Object.keys(seen).length >= 3,
+    'offensive coaches should not all play identically: ' + JSON.stringify(seen));
+  // An offensive coach never wants a slow, inside game — conviction only ever
+  // drops him to balanced, it must not flip his beliefs.
+  Object.keys(seen).forEach(function (k) {
+    const parts = k.split('/');
+    assert.ok(Number(parts[0]) >= 0, 'an offensive coach must never lean slow: ' + k);
+    assert.ok(Number(parts[1]) >= 0, 'an offensive coach must never lean away from threes: ' + k);
+  });
+  console.log('checkSameSpecialtyStillVaries: OK (' + Object.keys(seen).length + ' distinct playbooks)');
+}
+
+function checkHiringACoachSetsTheGamePlan() {
+  const team = makeTeam({ strategy: { pace: 0, threePointRate: 0 } });
+  const coach = { id: 'c1', specialty: 'defense', overall: 80, seasonsWithTeam: 3,
+    lean: { pace: -1, threePointRate: -1 } };
+  coachesModule.hireCoach(team, coach, 2030);
+  assert.deepStrictEqual(team.strategy, { pace: -1, threePointRate: -1 },
+    'hiring a coach must impose his playbook — that is what makes the hire a choice');
+  assert.strictEqual(coach.seasonsWithTeam, 0, 'tenure still resets on hire');
+
+  // A coach from a save made before playbooks existed leaves the dials alone
+  // rather than zeroing them.
+  const team2 = makeTeam({ strategy: { pace: 1, threePointRate: 1 } });
+  coachesModule.hireCoach(team2, { id: 'c2', specialty: 'offense', overall: 70, seasonsWithTeam: 0 }, 2030);
+  assert.deepStrictEqual(team2.strategy, { pace: 1, threePointRate: 1 },
+    'a legacy coach with no lean must not silently reset the game plan');
+  console.log('checkHiringACoachSetsTheGamePlan: OK');
+}
+
+// ensureTeamCoach runs on every draw of the coaching screen. If it re-imposed
+// the playbook each time, the two dropdowns would be unusable — the GM would
+// change one and watch it snap back.
+function checkEnsureDoesNotOverwriteTheGMsChoice() {
+  const rng = makeRng(5);
+  const team = makeTeam();
+  coachesModule.ensureTeamCoach(team, rng);
+  assert.ok(team.strategy, 'a team with no dials gets its coach\'s playbook');
+
+  team.strategy = { pace: 1, threePointRate: -1 };
+  coachesModule.ensureTeamCoach(team, rng);
+  assert.deepStrictEqual(team.strategy, { pace: 1, threePointRate: -1 },
+    'a GM\'s own dial settings must survive every redraw of the screen');
+
+  // A legacy coach gets a playbook backfilled rather than staying blank
+  // forever, so an existing league gets the variety too.
+  const legacy = makeTeam({ coach: { id: 'old', specialty: 'offense', overall: 70, seasonsWithTeam: 4 } });
+  coachesModule.ensureTeamCoach(legacy, rng);
+  assert.ok(legacy.coach.lean, 'a coach loaded from an older save should be given a playbook');
+  console.log('checkEnsureDoesNotOverwriteTheGMsChoice: OK');
+}
+
+function checkPlaybookReadsAsWords() {
+  assert.strictEqual(coachesModule.coachLeanLabel({ lean: { pace: 1, threePointRate: 1 } }), 'runs, shoots threes');
+  assert.strictEqual(coachesModule.coachLeanLabel({ lean: { pace: -1, threePointRate: -1 } }), 'slows it down, works inside');
+  assert.strictEqual(coachesModule.coachLeanLabel({ lean: { pace: 0, threePointRate: 0 } }), 'Balanced');
+  assert.strictEqual(coachesModule.coachLeanLabel({ lean: { pace: 0, threePointRate: 1 } }), 'shoots threes');
+  assert.strictEqual(coachesModule.coachLeanLabel(null), 'Balanced', 'no coach reads as balanced, not a crash');
+  assert.strictEqual(coachesModule.coachLeanLabel({ specialty: 'offense' }), 'Balanced',
+    'a legacy coach with no lean reads as balanced');
+  console.log('checkPlaybookReadsAsWords: OK');
+}
+
+checkLeansCancelAcrossTheLeague();
+checkSameSpecialtyStillVaries();
+checkHiringACoachSetsTheGamePlan();
+checkEnsureDoesNotOverwriteTheGMsChoice();
+checkPlaybookReadsAsWords();
