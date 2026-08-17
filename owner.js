@@ -20,6 +20,21 @@ var _OWNER_DATA = (typeof require !== 'undefined')
 // can lose to one unlucky season stops being a job worth planning around.
 const OWNER_PATIENCE = 2;
 
+// "Develop the young core" is judged on MINUTES, not on rating growth, and that
+// is a correction rather than a preference. Rating growth was the first cut and
+// it was unwinnable: progressPlayer runs only in the offseason, the baseline was
+// taken after one and the review happens before the next, so no rating could
+// move between them. The mandate handed to 60% of rebuilding clubs could
+// essentially never be met, and it showed — measured, rebuilding clubs cleared
+// their mandate 2 seasons in 12.
+//
+// Minutes are also the honest measure: a GM does not control whether a
+// nineteen-year-old improves, he controls whether the kid plays. Measured over
+// a season the league median young share is 21.8% (p25 4.7%, p75 32.9%), so 20%
+// is a bar that a club which means it clears and a club paying lip service
+// does not.
+const DEVELOP_MINUTES_SHARE = 0.20;
+
 // What the owner asks for, by what the club is already trying to do. A
 // rebuilding club told to win 55 games is not a mandate, it is a bug report.
 const MANDATE_TYPES = {
@@ -42,9 +57,14 @@ function mandateWinTarget(team) {
   return Math.max(20, Math.min(60, base + prestigeNudge));
 }
 
-function chooseMandate(team, rng) {
+// opts.youngPlayers is how many under-23s are actually on the roster. A club
+// with none cannot be asked to develop anybody — measured, several clubs open
+// with zero, and handing them a development mandate would recreate the
+// unwinnable mandate this design just removed in a new shape.
+function chooseMandate(team, rng, opts) {
   const roll = rng ? rng() : 0.5;
   const timeline = team.timeline;
+  const canDevelop = !opts || opts.youngPlayers === undefined || opts.youngPlayers > 0;
 
   if (timeline === 'win-now') {
     // "Reach the conference finals" was the first cut of this, and it made the
@@ -64,7 +84,7 @@ function chooseMandate(team, rng) {
   if (timeline === 'rebuilding') {
     // Nobody rebuilding is told to win. They are told to develop somebody and
     // not to set fire to the money doing it.
-    if (roll < 0.6) return { type: MANDATE_TYPES.develop, label: 'develop the young core' };
+    if (roll < 0.6 && canDevelop) return { type: MANDATE_TYPES.develop, label: 'develop the young core' };
     return { type: MANDATE_TYPES.budget, label: 'stay under the luxury tax' };
   }
 
@@ -86,7 +106,7 @@ function seasonOutcome(team, opts) {
     roundsWon: opts.roundsWon || 0,
     payroll: opts.payroll || 0,
     taxLine: opts.taxLine || _OWNER_DATA.data.getEffectiveLuxuryTaxLine(opts.capLevel),
-    youngImprovement: opts.youngImprovement || 0
+    youngMinutesShare: opts.youngMinutesShare || 0
   };
 }
 
@@ -114,10 +134,9 @@ function judgeMandate(mandate, outcome) {
       detail = met ? 'stayed under the tax line' : 'went into the luxury tax';
       break;
     case MANDATE_TYPES.develop:
-      met = outcome.youngImprovement > 0;
-      detail = outcome.youngImprovement > 0
-        ? 'the young players improved'
-        : 'the young players went nowhere';
+      met = outcome.youngMinutesShare >= DEVELOP_MINUTES_SHARE;
+      detail = 'the young players took ' + Math.round(outcome.youngMinutesShare * 100) +
+        '% of the minutes (' + Math.round(DEVELOP_MINUTES_SHARE * 100) + '% asked)';
       break;
     default:
       met = true;
@@ -159,16 +178,27 @@ function endTenure(career, teamId, leagueYear) {
 // is set and diffed when it is judged — progression runs in the offseason,
 // AFTER this judgement, so asking "did the kids improve" at review time with no
 // baseline would always read zero and the mandate would be unfailable.
-function youngCoreRating(roster) {
-  return roster.filter(function (p) { return p.age <= 23; })
-    .reduce(function (sum, p) { return sum + (p.rawOverall || 0); }, 0);
+// What share of the club's minutes went to under-23s. Zero total minutes reads
+// as zero share rather than dividing by nothing — a mandate judged before a
+// single game is played must fail quietly, not throw.
+function youngMinutesShare(roster) {
+  let total = 0, young = 0;
+  (roster || []).forEach(function (p) {
+    const mins = (p.seasonStats && p.seasonStats.minutes) || 0;
+    total += mins;
+    if (p.age <= 23) young += mins;
+  });
+  return total > 0 ? young / total : 0;
+}
+
+function youngPlayerCount(roster) {
+  return (roster || []).filter(function (p) { return p.age <= 23; }).length;
 }
 
 // Sets the standing mandate and snapshots what it will be judged against.
 function setMandate(gameState, team, roster, rng) {
-  const mandate = chooseMandate(team, rng);
+  const mandate = chooseMandate(team, rng, { youngPlayers: youngPlayerCount(roster) });
   mandate.leagueYear = gameState.leagueYear || 2026;
-  mandate.youngBaseline = youngCoreRating(roster || []);
   gameState.ownerMandate = mandate;
   return mandate;
 }
@@ -190,7 +220,7 @@ function reviewSeason(gameState, facts) {
     roundsWon: facts.roundsWon,
     payroll: facts.payroll,
     capLevel: facts.capLevel,
-    youngImprovement: youngCoreRating(facts.roster || []) - (mandate.youngBaseline || 0)
+    youngMinutesShare: youngMinutesShare(facts.roster)
   });
 
   const judgement = judgeMandate(mandate, outcome);
@@ -232,7 +262,9 @@ if (typeof module !== 'undefined' && module.exports) {
     judgeMandate: judgeMandate,
     applyMandateResult: applyMandateResult,
     endTenure: endTenure,
-    youngCoreRating: youngCoreRating,
+    youngMinutesShare: youngMinutesShare,
+    youngPlayerCount: youngPlayerCount,
+    DEVELOP_MINUTES_SHARE: DEVELOP_MINUTES_SHARE,
     setMandate: setMandate,
     reviewSeason: reviewSeason,
     patienceLabel: patienceLabel

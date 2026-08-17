@@ -90,9 +90,14 @@ function checkTheJudgementReadsTheSeason() {
   assert.strictEqual(owner.judgeMandate(budget, owner.seasonOutcome(t, { payroll: line - 1 })).met, true, 'under the line');
   assert.strictEqual(owner.judgeMandate(budget, owner.seasonOutcome(t, { payroll: line + 1 })).met, false, 'over it');
 
+  // Judged on minutes, not on rating growth. Growth was unwinnable by
+  // construction: progressPlayer runs only in the offseason, so no rating could
+  // move between a mandate being set and being judged.
   const develop = { type: owner.MANDATE_TYPES.develop };
-  assert.strictEqual(owner.judgeMandate(develop, owner.seasonOutcome(t, { youngImprovement: 3 })).met, true, 'the kids grew');
-  assert.strictEqual(owner.judgeMandate(develop, owner.seasonOutcome(t, { youngImprovement: 0 })).met, false, 'they did not');
+  assert.strictEqual(owner.judgeMandate(develop, owner.seasonOutcome(t, { youngMinutesShare: 0.30 })).met, true,
+    'the kids played');
+  assert.strictEqual(owner.judgeMandate(develop, owner.seasonOutcome(t, { youngMinutesShare: 0.05 })).met, false,
+    'they sat');
 
   // Missing is news; clearing it is just the job.
   const missed = owner.judgeMandate(winsMandate, owner.seasonOutcome(team('win-now', 70, 20)));
@@ -154,5 +159,50 @@ function checkTheSackClosesTheTenure() {
   console.log('checkTheSackClosesTheTenure: OK');
 }
 checkTheSackClosesTheTenure();
+
+// The bug this replaced: ratings cannot move between a mandate being set and
+// being judged, because progression runs only in the offseason. A develop
+// mandate scored on rating growth was therefore unfailable in one direction and
+// unwinnable in the other, and rebuilding clubs cleared their mandate 2 seasons
+// in 12 because of it.
+function checkDevelopIsJudgedOnSomethingAGmControls() {
+  const played = [
+    { age: 21, seasonStats: { minutes: 2000 } },
+    { age: 30, seasonStats: { minutes: 2000 } }
+  ];
+  const benched = [
+    { age: 21, seasonStats: { minutes: 100 } },
+    { age: 30, seasonStats: { minutes: 3900 } }
+  ];
+  assert.ok(owner.youngMinutesShare(played) > owner.DEVELOP_MINUTES_SHARE, 'playing the kids clears it');
+  assert.ok(owner.youngMinutesShare(benched) < owner.DEVELOP_MINUTES_SHARE, 'benching them does not');
+
+  // Before a game is played there are no minutes at all. That must read as zero
+  // rather than dividing by nothing.
+  assert.strictEqual(owner.youngMinutesShare([{ age: 21 }, { age: 30 }]), 0, 'no minutes is no share');
+  assert.strictEqual(owner.youngMinutesShare([]), 0, 'and an empty roster does not throw');
+  console.log('checkDevelopIsJudgedOnSomethingAGmControls: OK');
+}
+checkDevelopIsJudgedOnSomethingAGmControls();
+
+// A club with no under-23s cannot develop anybody. Asking it to would recreate
+// the unwinnable mandate in a new shape — and several clubs open with zero.
+function checkAClubWithNoKidsIsNotToldToDevelopThem() {
+  const rng = makeRng(7);
+  const bare = { id: 'X', timeline: 'rebuilding', prestige: 50, record: { wins: 0, losses: 0 } };
+  for (let i = 0; i < 200; i++) {
+    const m = owner.chooseMandate(bare, rng, { youngPlayers: 0 });
+    assert.notStrictEqual(m.type, owner.MANDATE_TYPES.develop,
+      'a club with no young players is never asked to develop them');
+  }
+  // With kids on the roster it is back on the table.
+  let sawDevelop = false;
+  for (let i = 0; i < 200; i++) {
+    if (owner.chooseMandate(bare, rng, { youngPlayers: 4 }).type === owner.MANDATE_TYPES.develop) sawDevelop = true;
+  }
+  assert.ok(sawDevelop, 'a club with kids can be asked to play them');
+  console.log('checkAClubWithNoKidsIsNotToldToDevelopThem: OK');
+}
+checkAClubWithNoKidsIsNotToldToDevelopThem();
 
 console.log('All owner mandate validations passed');
