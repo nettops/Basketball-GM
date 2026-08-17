@@ -106,4 +106,95 @@ ui-smoke, both goldens, browser check.
 
 ## What was measured and what was left undone
 
-_(filled in as the work lands)_
+All ten tasks shipped. **72 validators green, ui-smoke 206/0**,
+`gamesim-golden.json` untouched, `rollover-golden.json` regenerated once with
+justification below.
+
+### The soft cap nearly killed two mechanics
+
+Twice, a rule that reads correctly on paper turned out to be impossible in this
+league. Measured on the opening roster: **2 of 30 clubs** have room to absorb
+even a $1.2M contract, because this cap is soft and 28 clubs are over it
+(Boston opens $232M against $154M).
+
+So requiring cap space for a waiver claim meant nothing would ever be claimed,
+and requiring it to convert a ten-day meant a ten-day could never become the
+season deal it exists to lead to. Both mechanics would have shipped dead and
+passed every test that did not measure the league.
+
+The minimum-salary exception is now one function, `isMinimumDeal`, asked by both
+sites. It is also the real rule — over-the-cap clubs claim minimum contracts and
+nothing else, which is exactly why the good claims go to clubs with room.
+
+### Dead money, measured over six seasons
+
+| year | clubs in debt | league total | worst club | % of cap |
+|---|---|---|---|---|
+| 2026 | 11 | $66M | MEM $28M | 18.1% |
+| 2028 | 5 | $56M | GSW $29M | 18.8% |
+| 2031 | 9 | $72M | NYK $41M | 26.6% |
+
+Median indebted club owes $2-8M — a nuisance. The worst owes up to a quarter of
+the cap. The league total holds rather than compounding, so it is self-limiting.
+
+Before this existed, every club cutting its two worst players cleared **$32M
+each, 20.8% of the cap, for free**.
+
+### The claim rate is a gradient, not a coin flip
+
+| owed | claimed | rate |
+|---|---|---|
+| minimum $1.2M | 30/30 | 100% |
+| cheap $4M | 9/30 | 30% |
+| mid $12M | 5/30 | 17% |
+| expensive $30M | 0/30 | 0% |
+
+Overall 36.7%. That shape is the feature: cutting a bargain costs you the
+player, cutting a bad deal costs you for years.
+
+### Development, swept rather than guessed
+
+400 prospects, three seasons, the **same dice down both paths**. A prospect who
+sits gains +9.63 overall; playing for the affiliate adds:
+
+| bonus | gap | |
+|---|---|---|
+| 0.7 | +2.46 | +26% |
+| **1.0** | **+3.45** | **+36% — shipped** |
+| 1.4 | +4.75 | +49% |
+| 2.0 | +6.66 | +69% — first pass, too strong |
+
+At +69% sending a prospect down stops being a decision and becomes an
+obligation.
+
+### The affiliate league simulates itself, deliberately
+
+`simulateBoxScoreGame` reaches rosters through `getTeamRoster` and clubs through
+`getTeamById`. Reusing it would have meant putting 30 affiliate clubs in `TEAMS`
+and 300 filler players in `PLAYERS_2026` — the two arrays every league-wide
+sweep walks: standings, stat leaders, awards, the draft, free agency, trades,
+the save file. Sixty lines of self-contained simulator cannot perturb the parent
+league at all, and `checkFillerStaysOutOfTheLeaguePool` asserts it never does.
+
+It takes its own rng for the same reason: the parent season's determinism and
+both goldens depend on the reserves never touching the parent league's dice.
+
+### Golden regenerated, once
+
+`rollover-golden.json`, for dead money only: clubs now carry debt into free
+agency and sign differently from the first offseason onward. Season 1's **team
+checksum is unchanged at 44672** — those games were played before dead money
+could act. `gamesim-golden.json` never moved.
+
+### Left undone
+
+- **The AI does not weigh dead money before cutting anyone.** `enforceRosterCeilings`
+  waives every offseason and the club eats the debt automatically, which is where
+  most of the league's $53-72M comes from. A club should prefer a buyout, or
+  keeping him, when the debt outweighs the roster spot.
+- **A fresh league has zero free agents**, so the ten-day and two-way panels open
+  empty until somebody clears waivers. Correct, but it makes both features look
+  inert on day one.
+- **No affiliate playoffs, awards or history**, per the design. It is a
+  development environment, not a second career.
+- **Affiliate games are not watchable** in the pixel view. Box scores only.
