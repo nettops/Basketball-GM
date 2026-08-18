@@ -70,6 +70,27 @@ function careerMilestoneListHtml(career, ctx) {
 // File scope and exported rather than inline in the renderer, per the
 // ui/pixelMotion.js lesson — and because "on notice" is exactly the sort of
 // string that ends up subtly wrong with no test able to see it.
+// What being sacked actually looks like. Without this the owner fires you and
+// the game carries on as though he had not, which is worse than not having a
+// firing at all.
+function firedPanelHtml(career, fired) {
+  if (!fired) return '';
+  const oldTeam = getTeamById(fired.teamId);
+  const suitors = clubsWillingToHire(career, TEAMS, fired.teamId).slice(0, 5);
+  return '<div class="panel"><div class="panel-header">You Were Fired</div><div class="panel-body">' +
+    '<p class="kpi-sub">The ' + escapeHtml(oldTeam ? oldTeam.name : fired.teamId) +
+    ' relieved you of your duties after the ' + fired.leagueYear + ' season.</p>' +
+    (suitors.length === 0
+      ? '<div class="empty-state">Nobody is interested. Your reputation precedes you.</div>'
+      : '<table class="data-table"><thead><tr><th>Club</th><th class="num">Prestige</th><th></th></tr></thead><tbody>' +
+        suitors.map(function (t) {
+          return '<tr><td class="col-name">' + teamLogoImgHtml(t.id, 18) + ' ' + escapeHtml(t.name) + '</td>' +
+            '<td class="num">' + (t.prestige || 50) + '</td>' +
+            '<td><button class="btn-primary" data-hire-id="' + t.id + '">Take the job</button></td></tr>';
+        }).join('') + '</tbody></table>') +
+    '</div></div>';
+}
+
 function ownerMandatePanelHtml(career, team, mandate) {
   if (!mandate) {
     return '<div class="panel"><div class="panel-header">The Owner</div><div class="panel-body">' +
@@ -124,6 +145,8 @@ function renderGmCareer(container) {
         '<div class="kpi-sub">' + Math.round(career.reputation) + ' / 100</div></div>' +
     '</div>' +
 
+    firedPanelHtml(career, GameState.firedAtEndOfSeason) +
+
     // A mandate nobody can see before it is failed is a punishment, not a goal.
     ownerMandatePanelHtml(career, team, GameState.ownerMandate) +
 
@@ -135,9 +158,27 @@ function renderGmCareer(container) {
 
     '<div class="panel"><div class="panel-header">Career Chronicle</div><div class="panel-body">' +
       careerChronicleHtml(career) + '</div></div>';
+
+  container.querySelectorAll('button[data-hire-id]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const teamId = btn.getAttribute('data-hire-id');
+      startTenure(career, teamId, GameState.leagueYear || 2026);
+      GameState.userTeamId = teamId;
+      GameState.firedAtEndOfSeason = null;
+      // A new employer sets his own terms straight away, rather than leaving
+      // the GM judged next year against the club he no longer works for.
+      setMandate(GameState, getTeamById(teamId), getTeamRoster(teamId), GameState.rng,
+        { payroll: getTeamPayroll(teamId), capLevel: GameState.settings.capLevel });
+      // ui-safety: not-markup — feed text, escaped once at render (ui/liveFeed.js).
+      pushToFeed('You have been hired by the ' + getTeamById(teamId).name + '.');
+      renderGmCareer(container);
+      renderTopBar(document.getElementById('app-topbar'));
+    });
+  });
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    ownerMandatePanelHtml: ownerMandatePanelHtml, renderGmCareer: renderGmCareer };
+    ownerMandatePanelHtml: ownerMandatePanelHtml,
+    firedPanelHtml: firedPanelHtml, renderGmCareer: renderGmCareer };
 }

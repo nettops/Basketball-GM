@@ -303,6 +303,46 @@ function reviewSeason(gameState, facts) {
   };
 }
 
+// Who would hire this man now.
+//
+// Being sacked has to lead somewhere or it is a message box: `endYear` was set,
+// `firedAtEndOfSeason` was saved, and nothing read either — the owner could fire
+// you and the game carried on as though he had not.
+//
+// Reputation is the gate, and the clubs that will take a chance are the ones
+// with the least to lose: a proud, successful club wants a proven GM, a
+// struggling one will take whoever is available. That inverts naturally out of
+// prestige, so no second ranking is invented for it.
+function clubsWillingToHire(career, teams, excludeTeamId) {
+  const reputation = (career && career.reputation) || 50;
+  return (teams || []).filter(function (t) {
+    if (t.id === excludeTeamId) return false;
+    // A club's standards scale with its prestige. At reputation 50 the middle
+    // of the league is open; a wrecked reputation leaves only the desperate.
+    return reputation >= (t.prestige || 50) - 20;
+  }).sort(function (a, b) { return (b.prestige || 50) - (a.prestige || 50); });
+}
+
+// Starts the next spell. The tenure list is the career, so a second job is
+// another entry rather than a rewrite of the first — tenureCovers already reads
+// them as a sequence.
+function startTenure(career, teamId, leagueYear) {
+  if (!career) return null;
+  if (!Array.isArray(career.tenures)) career.tenures = [];
+  // Close whatever is still open first. In the ordinary flow runOwnerReview has
+  // already done it, but a GM cannot hold two open tenures at once and
+  // tenureCovers reads them as a sequence — two open spells would report him as
+  // running both clubs in the same season and attribute every stat twice.
+  career.tenures.forEach(function (t) {
+    if (t.endYear === null || t.endYear === undefined) t.endYear = leagueYear - 1;
+  });
+  const tenure = { teamId: teamId, startYear: leagueYear, endYear: null };
+  career.tenures.push(tenure);
+  // A fresh employer extends fresh credit.
+  if (career.ownerPatience) delete career.ownerPatience[teamId];
+  return tenure;
+}
+
 function patienceLabel(remaining) {
   if (remaining >= OWNER_PATIENCE) return 'Secure';
   if (remaining === 1) return 'On notice';
@@ -320,6 +360,8 @@ if (typeof module !== 'undefined' && module.exports) {
     judgeMandate: judgeMandate,
     applyMandateResult: applyMandateResult,
     endTenure: endTenure,
+    startTenure: startTenure,
+    clubsWillingToHire: clubsWillingToHire,
     youngMinutesShare: youngMinutesShare,
     youngPlayerCount: youngPlayerCount,
     DEVELOP_MINUTES_SHARE: DEVELOP_MINUTES_SHARE,

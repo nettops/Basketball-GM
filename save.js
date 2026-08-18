@@ -190,6 +190,7 @@ function serializeGameState(gameState, name, includeSnapshots) {
     affiliates: gameState.affiliates || null,
     ownerMandate: gameState.ownerMandate || null,
     rivalries: gameState.rivalries || null,
+    pressMemory: gameState.pressMemory || [],
     firedAtEndOfSeason: gameState.firedAtEndOfSeason || null,
     lastDraftResults: lastDraftResultsOut,
     scouting: gameState.scouting,
@@ -343,6 +344,7 @@ function applySavedState(payload, gameState) {
   // side of the league reads undefined.
   gameState.ownerMandate = payload.ownerMandate || null;
   gameState.rivalries = payload.rivalries || null;
+  gameState.pressMemory = payload.pressMemory || [];
   gameState.firedAtEndOfSeason = payload.firedAtEndOfSeason || null;
   gameState.affiliates = payload.affiliates || null;
   if (gameState.affiliates && gameState.affiliates.filler) {

@@ -291,4 +291,54 @@ function checkAClubThatMissedThePlayoffsIsNotToldToWinASeries() {
 }
 checkAClubThatMissedThePlayoffsIsNotToldToWinASeries();
 
+// Being sacked has to lead somewhere. endYear was set and firedAtEndOfSeason was
+// saved, and nothing read either — the owner could fire you and the game carried
+// on as though he had not.
+function checkTheSackLeadsSomewhere() {
+  const teams = [
+    { id: 'AAA', prestige: 90 }, { id: 'BBB', prestige: 60 },
+    { id: 'CCC', prestige: 40 }, { id: 'DDD', prestige: 20 }
+  ];
+
+  const wellRegarded = { reputation: 85, tenures: [] };
+  const openToHim = owner.clubsWillingToHire(wellRegarded, teams, 'AAA');
+  assert.ok(openToHim.length >= 3, 'a respected GM has options');
+  assert.ok(!openToHim.some(function (t) { return t.id === 'AAA'; }),
+    'but not at the club that just sacked him');
+  assert.ok(openToHim[0].prestige >= openToHim[openToHim.length - 1].prestige,
+    'and the best job is listed first');
+
+  const disgraced = { reputation: 15, tenures: [] };
+  const scraps = owner.clubsWillingToHire(disgraced, teams, 'AAA');
+  assert.ok(scraps.length < openToHim.length,
+    'a wrecked reputation leaves fewer doors open (' + scraps.length + ' vs ' + openToHim.length + ')');
+  scraps.forEach(function (t) {
+    assert.ok(t.prestige <= 40, 'and only the clubs with least to lose: ' + t.id);
+  });
+
+  // Taking a job opens a new tenure and extends fresh credit.
+  const career = gmCareer.createGmCareer('GM', 'BOS', 2026);
+  owner.applyMandateResult(career, 'BOS', { met: false });
+  owner.applyMandateResult(career, 'BOS', { met: false });
+  owner.endTenure(career, 'BOS', 2028);
+
+  const next = owner.startTenure(career, 'CCC', 2029);
+  // Nobody holds two jobs at once. tenureCovers reads tenures as a sequence, so
+  // a spell left open alongside a new one reports the GM at both clubs in the
+  // same season and counts every stat twice. Found because a browser check
+  // forced the flag directly instead of going through the review that closes it.
+  const stillOpen = career.tenures.filter(function (t) {
+    return t.endYear === null || t.endYear === undefined;
+  });
+  assert.strictEqual(stillOpen.length, 1, 'exactly one tenure is open at a time');
+  assert.strictEqual(stillOpen[0].teamId, 'CCC', 'and it is the new job');
+  assert.strictEqual(career.tenures.length, 2, 'the career has two spells now');
+  assert.strictEqual(next.endYear, null, 'the new one is open');
+  assert.strictEqual(career.tenures[0].endYear, 2028, 'and the old one stays closed');
+  assert.strictEqual(owner.applyMandateResult(career, 'CCC', { met: false }).fired, false,
+    'a new employer does not inherit the grudge of the last one');
+  console.log('checkTheSackLeadsSomewhere: OK');
+}
+checkTheSackLeadsSomewhere();
+
 console.log('All owner mandate validations passed');
