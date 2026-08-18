@@ -96,7 +96,6 @@
   <script src="draftLotteryFormats.js"></script>
   <script src="draft.js"></script>
   <script src="seasonTransition.js"></script>
-  <script src="save.js"></script>
   <script src="autoGM.js"></script>
   <script src="commissioner.js"></script>
   <!-- Reads getTeamRoster/getTeamPayroll (league.js) and the cap helpers
@@ -155,6 +154,12 @@
        time, long after every script has run. Loading it earlier would capture
        runFreeAgencySilently as undefined, exactly the way gameCoach.js broke
        when it was placed before simEngineBoxScore.js. -->
+  <!-- save.js's browser bridge captures MARKET_TUNING (freeAgency.js) and
+       TRADE_TUNING (tradeEvaluator.js) at LOAD time to re-apply difficulty when a
+       save is loaded, so it has to come after both. It sat above freeAgency.js
+       for a while and threw on load: every const in it stayed uninitialised, which
+       killed the System tab and blocked the offseason at pushSeasonSnapshot. -->
+  <script src="save.js"></script>
   <script src="seasonRollover.js"></script>
   <script src="freeAgencyBidding.js"></script>
   <script src="ui/freeAgency.js"></script>
