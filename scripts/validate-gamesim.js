@@ -584,4 +584,67 @@ function checkPeriodScoresAreRecorded() {
 }
 checkPeriodScoresAreRecorded();
 
+// An offensive rebound has to actually mean something.
+//
+// It did not, for a long time: the engine produced a realistic ten offensive
+// rebounds a team a night, credited them to the box score, and then gameSim's
+// loop handed the ball to the defence anyway because it flipped sides
+// unconditionally. Measured over 60 games, the whole league scored ONE
+// second-chance point per team-game against a real-world 13.
+//
+// So this asserts the consequence, not the flag: after an offensive rebound,
+// the next thing that happens in the event stream is the same team playing on.
+function checkAnOffensiveReboundKeepsTheBall() {
+  let boards = 0, kept = 0, secondChancePoints = 0;
+
+  for (let g = 0; g < 6; g++) {
+    const events = [];
+    gameSim.simulateGame(TEAMS[g].id, TEAMS[(g + 5) % TEAMS.length].id, makeRng(4400 + g),
+      { settings: { simEngine: 'possession' }, events: events });
+
+    // Two windows, because they close at different moments. `handoff` asks
+    // who plays the NEXT possession and is answered the instant one starts;
+    // `chance` stays open until the ball actually changes hands, so a board
+    // rebounded, missed and rebounded again still scores as one second chance.
+    let handoff = null, chance = null;
+    events.forEach(function (ev) {
+      if (ev.type === 'possession' && handoff !== null) {
+        boards += 1;
+        if (ev.team === handoff) kept += 1;
+        handoff = null;
+      } else if (ev.type === 'shot') {
+        if (ev.made) {
+          if (chance === ev.team) secondChancePoints += ev.points;
+          chance = null;
+        }
+      } else if (ev.type === 'foul-ft') {
+        // A shooting foul on the same miss sends the offence to the line,
+        // which IS that trip's reward — so the board is dropped from the
+        // handoff count rather than scored as a failure to keep the ball.
+        if (chance === ev.team) secondChancePoints += ev.points;
+        handoff = null;
+        chance = null;
+      } else if (ev.type === 'turnover') {
+        chance = null;
+      } else if (ev.type === 'rebound') {
+        handoff = ev.offensive ? ev.team : null;
+        chance = ev.offensive ? ev.team : null;
+      }
+    });
+  }
+
+  assert.ok(boards > 60, 'only ' + boards + ' offensive rebounds in six games — too few to judge');
+  // Not 100%: a board on the last shot of a period has no next possession to
+  // hand it to. Trips to the line are excluded above rather than counted as
+  // failures.
+  assert.ok(kept / boards > 0.9,
+    'only ' + (100 * kept / boards).toFixed(0) + '% of offensive rebounds kept the ball — ' +
+    'the possession loop is flipping sides through them');
+  assert.ok(secondChancePoints > 0,
+    'six games produced no second-chance points at all');
+  console.log('checkAnOffensiveReboundKeepsTheBall: OK (' + boards + ' boards, ' +
+    (100 * kept / boards).toFixed(0) + '% kept, ' + secondChancePoints + ' second-chance pts)');
+}
+checkAnOffensiveReboundKeepsTheBall();
+
 console.log('All game sim validations passed');
