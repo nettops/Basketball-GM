@@ -137,6 +137,9 @@ function initSeason() {
   // exactly zero free agents, so ten-days, two-way deals and the roster-floor
   // sweep all open on an empty table.
   ensureVeteranFreeAgentPool(GameState.rng, generateProspectClass);
+  // The tuning holders are module-level, so they survive a load and a new game
+  // and would otherwise keep the last mode set in this page session.
+  applyDifficulty(GameState.settings.difficulty, TRADE_TUNING, MARKET_TUNING);
   // Rivalry heat survives across seasons — it is the one piece of league state
   // that is supposed to remember last year — so it is only created if absent,
   // never reset here.
@@ -322,6 +325,17 @@ function recordRivalriesForDay(dayIndex, todaysGames) {
       // stings up to double.
       const extra = (pair[1] ? 0.3 : -0.2) * (mult - 1);
       team.fanHappiness = Math.max(20, Math.min(99, team.fanHappiness + extra));
+
+      // The players feel it too, on the same principle: morale.js already
+      // swings 0.35 / -0.45 on a result, so a rivalry makes that swing bigger
+      // rather than introducing a second unrelated effect. Applied to the whole
+      // roster, because beating the club you hate is a room-wide feeling and
+      // not a minutes-weighted one.
+      const moraleExtra = (pair[1] ? 0.35 : -0.45) * (mult - 1);
+      getTeamRoster(team.id).forEach(function (p) {
+        if (!p.status) return;
+        p.status.morale = Math.max(0, Math.min(100, p.status.morale + moraleExtra));
+      });
     });
   });
 }

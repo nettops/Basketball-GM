@@ -187,6 +187,16 @@ function evaluateSalaryLeg(teamId, outgoingPlayerIds, incomingPlayerIds) {
   };
 }
 
+// How hard the AI bargains, as a multiplier on the value it demands back.
+//
+// A mutable holder rather than a threaded parameter, the same shape
+// RESIGN_TUNING uses in freeAgency.js: evaluateTeamLeg is called from the Trade
+// Center, the AI-to-AI generator and the offer inbox, and a difficulty setting
+// is not worth a new argument at three call sites. difficulty.js writes it;
+// the shipped default is exactly 1, so a save with no difficulty set behaves
+// precisely as it always did.
+var TRADE_TUNING = { shrewdness: 1 };
+
 function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingPickValue, incomingPickValue) {
   outgoingPickValue = outgoingPickValue || 0;
   incomingPickValue = incomingPickValue || 0;
@@ -199,7 +209,10 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
 
   const outgoingValue = outgoing.reduce(function (s, p) { return s + adjustedPlayerValue(p, team, leagueBaseline); }, 0) + outgoingPickValue;
   const incomingValue = incoming.reduce(function (s, p) { return s + adjustedPlayerValue(p, team, leagueBaseline); }, 0) + incomingPickValue;
-  const valueOk = incomingValue >= 0.9 * outgoingValue;
+  // At shrewdness 1 the AI accepts getting back 90% of what it gives — its
+  // long-standing tolerance. On brutal (1.3) it demands 17% MORE than it gives;
+  // on relaxed (0.85) it will hand over rather more than it gets.
+  const valueOk = incomingValue >= 0.9 * TRADE_TUNING.shrewdness * outgoingValue;
 
   const outgoingSalary = outgoing.reduce(function (s, p) { return s + p.contract.salary; }, 0);
   const incomingSalary = incoming.reduce(function (s, p) { return s + p.contract.salary; }, 0);
@@ -218,6 +231,7 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    TRADE_TUNING: TRADE_TUNING,
     youthFactor: youthFactor,
     contractBurden: contractBurden,
     rawProductionPerGame: rawProductionPerGame,

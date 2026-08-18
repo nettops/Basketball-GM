@@ -84,6 +84,19 @@ function tradedAwayPenalty(player, team) {
 // reads as randomness rather than as loyalty.
 var RESIGN_TUNING = { incumbentBonus: 0.22 };
 
+// How much harder rival clubs pull at a free agent than they otherwise would.
+// Same mutable-holder shape as RESIGN_TUNING above, written by difficulty.js,
+// and exactly 1 by default so an existing save is untouched.
+var MARKET_TUNING = { rivalPull: 1 };
+
+// A rival's offer, weighted by difficulty. The user's own offer is never
+// scaled — difficulty makes the league harder, it does not make the player
+// worse at his job.
+function rivalWeightedScore(player, team, offer, userTeamId) {
+  const raw = scoreOffer(player, team, offer);
+  return (userTeamId && team.id === userTeamId) ? raw : raw * MARKET_TUNING.rivalPull;
+}
+
 // 8-factor mood model: money, contention (timeline), current-season hype,
 // playing time, market size, prestige, facilities, being traded away by this
 // exact team before — plus the incumbent bonus above and hidden personality
@@ -988,10 +1001,11 @@ function signPlayer(player, offer) {
 function resolveFreeAgentSilently(player, rng, roundsUnsigned) {
   const offers = _FA_DATA.teams.TEAMS.map(function (t) { return generateAIOffer(t, player, rng, roundsUnsigned); }).filter(Boolean);
   if (offers.length === 0) return null;
+  const userTeamId = typeof GameState !== 'undefined' ? GameState.userTeamId : null;
   let best = offers[0];
-  let bestScore = scoreOffer(player, _FA_DATA.teams.getTeamById(best.teamId), best);
+  let bestScore = rivalWeightedScore(player, _FA_DATA.teams.getTeamById(best.teamId), best, userTeamId);
   for (let i = 1; i < offers.length; i++) {
-    const score = scoreOffer(player, _FA_DATA.teams.getTeamById(offers[i].teamId), offers[i]);
+    const score = rivalWeightedScore(player, _FA_DATA.teams.getTeamById(offers[i].teamId), offers[i], userTeamId);
     if (score > bestScore) { best = offers[i]; bestScore = score; }
   }
   signPlayer(player, best);
@@ -1046,6 +1060,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ROSTER_MAX: ROSTER_MAX,
     MIN_SALARY: MIN_SALARY,
     isMinimumDeal: isMinimumDeal,
+    MARKET_TUNING: MARKET_TUNING,
+    rivalWeightedScore: rivalWeightedScore,
     releaseCost: releaseCost,
     ensureVeteranFreeAgentPool: ensureVeteranFreeAgentPool,
     VETERAN_POOL_SIZE: VETERAN_POOL_SIZE,

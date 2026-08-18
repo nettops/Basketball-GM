@@ -137,4 +137,42 @@ function checkTheOwnerActuallyFeelsTheSetting() {
 }
 checkTheOwnerActuallyFeelsTheSetting();
 
+// The other two dials. They were defined and consumed by nothing for a while,
+// which is a setting that lies about what it does — so this asserts both are
+// actually read by the code that claims to read them.
+function checkTheOtherTwoDialsAreReallyWired() {
+  const tradeEvaluator = req('tradeEvaluator.js');
+  const freeAgency = req('freeAgency.js');
+
+  difficulty.applyDifficulty('normal', tradeEvaluator.TRADE_TUNING, freeAgency.MARKET_TUNING);
+  assert.strictEqual(tradeEvaluator.TRADE_TUNING.shrewdness, 1, 'normal leaves trades exactly alone');
+  assert.strictEqual(freeAgency.MARKET_TUNING.rivalPull, 1, 'and free agency exactly alone');
+
+  difficulty.applyDifficulty('brutal', tradeEvaluator.TRADE_TUNING, freeAgency.MARKET_TUNING);
+  assert.ok(tradeEvaluator.TRADE_TUNING.shrewdness > 1, 'brutal makes the AI bargain harder');
+  assert.ok(freeAgency.MARKET_TUNING.rivalPull > 1, 'and rivals pull harder at free agents');
+
+  difficulty.applyDifficulty('relaxed', tradeEvaluator.TRADE_TUNING, freeAgency.MARKET_TUNING);
+  assert.ok(tradeEvaluator.TRADE_TUNING.shrewdness < 1, 'relaxed makes it easier');
+  assert.ok(freeAgency.MARKET_TUNING.rivalPull < 1, 'both ways');
+
+  // The user's own offer is never scaled: difficulty makes the league harder,
+  // it does not make the player worse at his job.
+  const player = { name: 'X', age: 27, rawOverall: 75, status: { morale: 70 },
+    hiddenPersonality: null, careerHistory: null };
+  const team = { id: 'BOS', timeline: 'win-now', prestige: 70, marketSize: 70,
+    record: { wins: 40, losses: 20 }, finances: { arenaTier: 3 } };
+  const offer = { salary: 20000000, yearsRemaining: 3, teamId: 'BOS' };
+  global.GameState = { userTeamId: 'BOS' };
+  const mine = freeAgency.rivalWeightedScore(player, team, offer, 'BOS');
+  const theirs = freeAgency.rivalWeightedScore(player, team, offer, 'LAL');
+  assert.ok(theirs < mine, 'on relaxed a rival offer is worth less than the same offer from the user');
+  delete global.GameState;
+
+  // Leave the league on normal for anything that runs after this file.
+  difficulty.applyDifficulty('normal', tradeEvaluator.TRADE_TUNING, freeAgency.MARKET_TUNING);
+  console.log('checkTheOtherTwoDialsAreReallyWired: OK');
+}
+checkTheOtherTwoDialsAreReallyWired();
+
 console.log('All difficulty validations passed');

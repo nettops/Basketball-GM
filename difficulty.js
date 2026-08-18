@@ -70,6 +70,20 @@ function rivalFreeAgentPullFor(key) {
   return getDifficulty(key).rivalFreeAgentPull;
 }
 
+// Writes the two mutable tuning holders the rest of the game already reads.
+// Called whenever the setting changes, a save loads, or a season starts —
+// wherever the mode could differ from what the holders currently say.
+//
+// Passed in rather than required, so this file keeps its one useful property:
+// it depends on nothing, which is what makes "difficulty cannot reach the sim"
+// checkable by reading it.
+function applyDifficulty(key, tradeTuning, marketTuning) {
+  const mode = getDifficulty(key);
+  if (tradeTuning) tradeTuning.shrewdness = mode.aiTradeShrewdness;
+  if (marketTuning) marketTuning.rivalPull = mode.rivalFreeAgentPull;
+  return mode;
+}
+
 function difficultyKeys() {
   return Object.keys(DIFFICULTY_MODES);
 }
@@ -82,6 +96,7 @@ if (typeof module !== 'undefined' && module.exports) {
     patienceFor: patienceFor,
     tradeShrewdnessFor: tradeShrewdnessFor,
     rivalFreeAgentPullFor: rivalFreeAgentPullFor,
-    difficultyKeys: difficultyKeys
+    difficultyKeys: difficultyKeys,
+    applyDifficulty: applyDifficulty
   };
 }

@@ -166,15 +166,50 @@ real job is the negative — the same seeded game under every mode must produce 
 identical box score (97-105 on all four). It passes by construction today and
 exists to stop passing the moment somebody wires difficulty into the sim.
 
-### Left undone
+### The four gaps, since closed
 
-- **Press conferences with memory** — task 8, not started. `dialogueScenes.js`
-  is already a pure scene engine with `when` predicates over a flat fact object,
-  so this is a memory to feed it rather than a system to build.
-- **Difficulty's other two dials.** `aiTradeShrewdness` and `rivalFreeAgentPull`
-  are defined and consumed by nothing. Wiring them means touching calibrated
-  constants in `tradeEvaluator.js` and `freeAgency.js`.
-- **Rivalries do not affect morale**, only fan happiness. The spec asked for
-  both.
-- **No firing consequence in the UI.** `firedAtEndOfSeason` is set and saved,
-  and nothing reads it — being sacked currently ends nothing.
+**Being sacked led nowhere.** `endYear` was set, `firedAtEndOfSeason` was saved,
+and nothing read either. There is a panel now: who will hire you, gated on
+reputation, with the clubs willing to take a chance falling out of prestige
+rather than needing a second ranking. Taking a job opens a second tenure with
+fresh credit.
+
+A browser check forced the fired flag directly instead of going through the
+review that closes the tenure, and caught that `startTenure` would happily push
+a second spell while the first was open — two open tenures make `tenureCovers`
+report the GM at both clubs in one season and count every stat twice. It closes
+whatever is open first, and a validator says so.
+
+**Press memory.** `dialogueScenes.js` was already a pure scene engine, so this
+was a memory to feed it rather than a system to build. What the GM SAID is
+recorded — choice ids and tone, not prose, because the text may be rewritten
+while "he blamed the officials, twice" stays true — and arrives as more facts in
+the same flat object every `when` already reads. Bounded at twelve, because it
+is saved and a reporter who can quote you from nine years ago is a database.
+The engine's purity is asserted rather than assumed: the validator greps it for
+requires and game-state references.
+
+**Rivalries reach morale now**, not only fan happiness, on the same principle —
+a multiplier on the swing a result already produces rather than a second effect.
+Verified in the browser: against a rival at heat 81 (multiplier 1.69) a win adds
+**+0.213 fan happiness and +0.249 morale** on top of the ordinary swing, and a
+win over a club with no history adds **exactly zero** to both.
+
+**Difficulty's other two dials are wired.** `aiTradeShrewdness` scales the 90%
+value the AI demands back in `evaluateTeamLeg` — on brutal it wants 17% MORE
+than it gives; `rivalFreeAgentPull` weights rival offers when a free agent
+picks. Both through mutable tuning holders, the same shape `RESIGN_TUNING`
+already used, because a difficulty setting is not worth a new argument at three
+call sites. The user's own offer is never scaled: difficulty makes the league
+harder, it does not make the player worse at his job.
+
+Verified in the browser: selecting Brutal moves both holders to 1.3 and back to
+exactly 1 on Normal.
+
+### Still left undone
+
+- **No probe of the wired dials.** Trade shrewdness and free agent pull are
+  asserted to be read, not measured for effect. What brutal does to a season is
+  unknown.
+- **Rivalries have no bearing on the schedule or the AI.** They colour results;
+  nothing plans around them.

@@ -15,6 +15,9 @@ var _SAVE_DATA = (typeof require !== 'undefined')
   ? {
       players: require('./players-2026.js'),
       ratings: require('./ratings.js'),
+      difficulty: require('./difficulty.js'),
+      tradeEvaluator: require('./tradeEvaluator.js'),
+      freeAgency: require('./freeAgency.js'),
       teams: require('./teams.js'),
       league: require('./league.js'),
       rng: require('./rng.js'),
@@ -26,6 +29,9 @@ var _SAVE_DATA = (typeof require !== 'undefined')
   : {
       players: { PLAYERS_2026: PLAYERS_2026 },
       ratings: { defineOverall: defineOverall },
+      difficulty: { applyDifficulty: applyDifficulty },
+      tradeEvaluator: { TRADE_TUNING: TRADE_TUNING },
+      freeAgency: { MARKET_TUNING: MARKET_TUNING },
       teams: { TEAMS: TEAMS },
       league: { getPlayerById: getPlayerById },
       rng: { makeRng: makeRng },
@@ -345,6 +351,11 @@ function applySavedState(payload, gameState) {
   gameState.ownerMandate = payload.ownerMandate || null;
   gameState.rivalries = payload.rivalries || null;
   gameState.pressMemory = payload.pressMemory || [];
+  // The difficulty holders are module-level and would otherwise keep whatever
+  // the previous save in this page session set.
+  _SAVE_DATA.difficulty.applyDifficulty(
+    gameState.settings ? gameState.settings.difficulty : undefined,
+    _SAVE_DATA.tradeEvaluator.TRADE_TUNING, _SAVE_DATA.freeAgency.MARKET_TUNING);
   gameState.firedAtEndOfSeason = payload.firedAtEndOfSeason || null;
   gameState.affiliates = payload.affiliates || null;
   if (gameState.affiliates && gameState.affiliates.filler) {

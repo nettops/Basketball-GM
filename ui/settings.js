@@ -168,6 +168,7 @@ function renderSettings(container) {
 
   document.getElementById('settings-difficulty').addEventListener('change', function (e) {
     GameState.settings.difficulty = e.target.value;
+    applyDifficulty(GameState.settings.difficulty, TRADE_TUNING, MARKET_TUNING);
     renderSettings(document.getElementById('view-content'));
   });
 
