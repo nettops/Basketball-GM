@@ -29,7 +29,9 @@ const SEASON_KEYS = [
   'moment', 'role', 'teamName', 'seasonWins', 'seasonLosses', 'gamesPlayed',
   'gamesLeft', 'streak', 'unhappyName', 'unhappyCount', 'injuredCount',
   'injuredName', 'mandateLabel', 'mandateType', 'winsNeeded', 'patience',
-  'ownerHappiness', 'overTaxLine'
+  'ownerHappiness', 'overTaxLine', 'conferenceRank', 'inPlayoffSpot',
+  'gamesFromCut', 'leaderName', 'leaderPpg', 'youngName', 'rivalName',
+  'rivalHeat', 'deadlineSoon'
 ];
 const EFFECT_CHANNELS = ['teamMorale', 'playerMorale', 'reputation', 'chronicle',
   'recordDecision', 'boostPlayer', 'ownerHappiness'];
@@ -53,7 +55,10 @@ function fullContext(moment, role) {
     slumpId: 'p1', slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14, slumpPoints: 7, boostId: 'p1',
     gamesPlayed: 35, gamesLeft: 47, unhappyName: 'J. Brown', unhappyCount: 1,
     injuredCount: 3, injuredName: 'K. Porzingis', mandateLabel: 'win 44 games',
-    mandateType: 'wins', winsNeeded: 24, patience: 1, ownerHappiness: 55, overTaxLine: true
+    mandateType: 'wins', winsNeeded: 24, patience: 1, ownerHappiness: 55, overTaxLine: true,
+    conferenceRank: 11, inPlayoffSpot: false, gamesFromCut: 3, leaderName: 'J. Tatum',
+    leaderPpg: 28.4, youngName: 'B. Scheierman', rivalName: 'Monarchs', rivalHeat: 62,
+    deadlineSoon: true
   };
 }
 
@@ -404,13 +409,25 @@ function checkEverySeasonSceneCanFire() {
     { name: 'an unhappy starter', ctx: { unhappyName: 'J. Brown', unhappyCount: 1, gamesLeft: 30 } },
     { name: 'the target slipping away', ctx: { mandateType: 'wins', winsNeeded: 24, gamesLeft: 30 } },
     { name: 'an injury crisis', ctx: { injuredCount: 4, injuredName: 'K. Porzingis' } },
-    { name: 'a payroll over the tax line', ctx: { overTaxLine: true, gamesPlayed: 40 } }
+    { name: 'a payroll over the tax line', ctx: { overTaxLine: true, gamesPlayed: 40 } },
+    { name: 'missing the playoffs on a playoff mandate',
+      ctx: { mandateType: 'playoffs', inPlayoffSpot: false, conferenceRank: 11, gamesLeft: 24, gamesFromCut: 3 } },
+    { name: 'a tight race', ctx: { inPlayoffSpot: true, conferenceRank: 7, gamesFromCut: 1, gamesLeft: 20 } },
+    { name: 'the deadline in sight', ctx: { deadlineSoon: true } },
+    { name: 'a man having a career year', ctx: { leaderName: 'J. Tatum', leaderPpg: 28.4, gamesPlayed: 45 } },
+    { name: 'a genuine rivalry', ctx: { rivalName: 'Monarchs', rivalHeat: 62 } },
+    { name: 'a lost season', ctx: { gamesPlayed: 55, gamesLeft: 27, seasonWins: 12, seasonLosses: 43 } },
+    { name: 'a young man in the rotation', ctx: { youngName: 'B. Scheierman', gamesPlayed: 30 } },
+    { name: 'a club stuck on .500', ctx: { seasonWins: 21, seasonLosses: 21, gamesLeft: 40 } }
   ];
 
   const quiet = { moment: 'season', role: 'gm', streak: 0, gamesPlayed: 41, gamesLeft: 41,
     unhappyName: '', unhappyCount: 0, injuredCount: 0, injuredName: '',
     mandateLabel: 'make the playoffs', mandateType: 'playoffs', winsNeeded: 0,
-    patience: 2, ownerHappiness: 60, overTaxLine: false, teamName: 'Harbormen' };
+    patience: 2, ownerHappiness: 60, overTaxLine: false, teamName: 'Harbormen',
+    seasonWins: 30, seasonLosses: 11, conferenceRank: 2, inPlayoffSpot: true,
+    gamesFromCut: 9, leaderName: 'J. Tatum', leaderPpg: 19.2, youngName: '',
+    rivalName: '', rivalHeat: 0, deadlineSoon: false };
 
   const fired = {};
   situations.forEach(function (sit) {

@@ -467,6 +467,210 @@ const SCENES = [
         effect: function () { return { teamMorale: 3, reputation: 1,
           chronicle: 'Gave the roster the credit for a winning run.' }; } }
     ]
+  },
+  // The first six all keyed off trouble — a slump, a sulk, injuries, the tax.
+  // Measured across a full season, a bad club saw exactly TWO of them and a
+  // mid-table club would have seen almost none, because "nothing is
+  // especially wrong" is the most common state a season is in and nothing
+  // spoke to it. These seven are aimed at that gap: where you sit, who is
+  // playing well, who you hate, and what you intend to do about the deadline.
+  {
+    id: 'outside-looking-in',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 80,
+    when: function (c) {
+      return c.mandateType === 'playoffs' && !c.inPlayoffSpot && c.gamesLeft > 5 && c.gamesLeft <= 30;
+    },
+    speaker: { kind: 'owner' },
+    lines: [
+      { emotion: 'angry', text: 'I asked you to {mandateLabel}. You are {conferenceRank}th with {gamesLeft} to play.' },
+      { emotion: 'neutral', text: 'Is this squad getting there or not?' }
+    ],
+    choices: [
+      { text: 'It is. We are {gamesFromCut} games out, not ten.', emotion: 'confident',
+        effect: function () { return { ownerHappiness: 2, teamMorale: 1, reputation: -1,
+          chronicle: 'Told the owner the playoff place was still on.' }; } },
+      { text: 'Not as built. Let me sell and get you next year.', emotion: 'neutral',
+        effect: function () { return { ownerHappiness: -2, reputation: 3, teamMorale: -3,
+          chronicle: 'Asked the owner for permission to sell mid-season.' }; } },
+      { text: 'Give me the rest of the month.', emotion: 'shaken',
+        effect: function () { return { ownerHappiness: -1 }; } }
+    ]
+  },
+  {
+    id: 'race-is-tight',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 70,
+    when: function (c) {
+      return c.inPlayoffSpot && c.gamesFromCut <= 4 && c.gamesLeft > 5 && c.gamesLeft <= 25;
+    },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{conferenceRank}th, and {gamesFromCut} games covers the whole race.' },
+      { emotion: 'neutral', text: 'Does a club in your position push, or protect what it has?' }
+    ],
+    choices: [
+      { text: 'We push. There is no prize for finishing safely.', emotion: 'confident',
+        effect: function () { return { teamMorale: 2, ownerHappiness: 2, reputation: 1,
+          chronicle: 'Committed to pushing through a tight playoff race.' }; } },
+      { text: 'We protect the place and get healthy.', emotion: 'neutral',
+        effect: function () { return { teamMorale: 1, ownerHappiness: -1 }; } },
+      { text: 'I do not manage the standings. I manage the next game.', emotion: 'neutral',
+        effect: function () { return { reputation: 1 }; } }
+    ]
+  },
+  {
+    id: 'deadline-question',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 90,
+    when: function (c) { return c.deadlineSoon; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: 'The deadline is close and the {teamName} are {seasonWins}-{seasonLosses}.' },
+      { emotion: 'neutral', text: 'Buyer, seller, or are you standing still?' }
+    ],
+    choices: [
+      { text: 'Buyer. We are closer than the record says.', emotion: 'confident',
+        effect: function () { return { teamMorale: 3, ownerHappiness: -2, reputation: -1,
+          chronicle: 'Declared himself a buyer at the deadline.' }; } },
+      { text: 'Seller. This roster has taken us as far as it goes.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -3, ownerHappiness: 2, reputation: 2,
+          chronicle: 'Declared himself a seller at the deadline.' }; } },
+      { text: 'I like this group. Nothing is moving.', emotion: 'neutral',
+        effect: function () { return { teamMorale: 2, reputation: -1 }; } }
+    ]
+  },
+  {
+    id: 'career-year',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 45,
+    when: function (c) { return !!c.leaderName && c.leaderPpg >= 26 && c.gamesPlayed >= 20; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{leaderName} is putting up {leaderPpg} a night.' },
+      { emotion: 'neutral', text: 'Is anybody in the league playing better than that right now?' }
+    ],
+    choices: [
+      { text: 'No. And I will say that anywhere you like.', emotion: 'confident',
+        effect: function (c) { return { teamMorale: 3, reputation: -1,
+          chronicle: 'Went public calling ' + c.leaderName + ' the best in the league.' }; } },
+      { text: 'He is having a great year on a team that has to do more.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -1, reputation: 2 }; } },
+      { text: 'Ask me in June.', emotion: 'neutral', effect: null }
+    ]
+  },
+  {
+    id: 'rivalry-heat',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 58,
+    // No second heat bar here: rivalsOf already applies RIVALRY_THRESHOLD, so
+    // anything with a name attached is a real rivalry by the game's own
+    // definition. Stacking 50 on top of it meant no club in the league
+    // qualified in a first season, when all heat starts at zero.
+    when: function (c) { return !!c.rivalName; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: 'There is real needle between you and the {rivalName} now.' },
+      { emotion: 'neutral', text: 'Is that a rivalry, or just two clubs in the same bracket?' }
+    ],
+    choices: [
+      { text: 'It is a rivalry. Everyone in that locker room knows it.', emotion: 'confident',
+        effect: function (c) { return { teamMorale: 3, reputation: 1,
+          chronicle: 'Named the ' + c.rivalName + ' as the rivalry that matters.' }; } },
+      { text: 'They are one of thirty. I do not do rivalries.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -1, reputation: 1 }; } },
+      { text: 'Ask them. They are the ones talking.', emotion: 'angry',
+        effect: function () { return { teamMorale: 2, reputation: -2,
+          chronicle: 'Traded shots with a rival through the press.' }; } }
+    ]
+  },
+  {
+    id: 'tanking-question',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 72,
+    when: function (c) {
+      // 0.55, not 0.4. Measured over a finished season, a bar of 0.4 caught
+      // ONE club in thirty — a 23-59 team. Tanking is talked about long before
+      // it gets that bad; 0.55 is about a 29-53 pace and catches four.
+      return c.gamesPlayed >= 40 && c.gamesLeft > 5 &&
+        c.seasonWins < c.seasonLosses * 0.55;
+    },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{seasonWins}-{seasonLosses}, and the draft looks better than the standings.' },
+      { emotion: 'angry', text: 'Are you trying to win these last games or not?' }
+    ],
+    choices: [
+      { text: 'Every night. I will not insult that locker room.', emotion: 'angry',
+        effect: function () { return { teamMorale: 3, ownerHappiness: -2, reputation: 3,
+          chronicle: 'Refused to tank, publicly.' }; } },
+      { text: 'We are developing young players. Read that how you like.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -2, ownerHappiness: 2, reputation: -2,
+          chronicle: 'All but confirmed the season was being played for the lottery.' }; } },
+      { text: 'I am not answering that.', emotion: 'shaken',
+        effect: function () { return { reputation: -1 }; } }
+    ]
+  },
+  {
+    id: 'young-core-rising',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 42,
+    when: function (c) { return !!c.youngName && c.gamesPlayed >= 25; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{youngName} has played his way into the rotation this year.' },
+      { emotion: 'neutral', text: 'How much is he part of what comes next?' }
+    ],
+    choices: [
+      { text: 'He is the reason I sleep at night. Build around him.', emotion: 'confident',
+        effect: function (c) { return { teamMorale: 3, ownerHappiness: 1, reputation: -1,
+          chronicle: 'Named ' + c.youngName + ' as the man to build around.' }; } },
+      { text: 'He has earned minutes. He has not earned a statue.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -1, reputation: 2 }; } },
+      { text: 'Young players get talked into being finished articles. Not here.', emotion: 'neutral',
+        effect: function () { return { reputation: 1 }; } }
+    ]
+  },
+  // The .500 club with no star, no tax bill and no crisis.
+  //
+  // Added after measuring: a 45-37 Boston carrying a tax bill and a 26-point
+  // scorer heard thirteen conversations across a season, and a 41-41 club with
+  // neither heard four. Middling is the MOST common thing for a club to be and
+  // it was the one state nothing spoke to — which is backwards, because being
+  // stuck in the middle is the hardest question a GM actually gets asked.
+  {
+    id: 'middling-identity',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 48,
+    when: function (c) {
+      const played = c.seasonWins + c.seasonLosses;
+      if (played < 30 || c.gamesLeft <= 5) return false;
+      const pct = c.seasonWins / played;
+      return pct >= 0.42 && pct <= 0.58;
+    },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{seasonWins}-{seasonLosses}. Good enough to hope, not good enough to scare anyone.' },
+      { emotion: 'neutral', text: 'What is this team actually trying to be?' }
+    ],
+    choices: [
+      { text: 'A contender. We are one piece away and I will go get it.', emotion: 'confident',
+        effect: function () { return { teamMorale: 3, ownerHappiness: -2, reputation: -1,
+          chronicle: 'Called a .500 side one piece away from contending.' }; } },
+      { text: 'Honestly? Stuck. And I would rather be bad than stuck.', emotion: 'neutral',
+        effect: function () { return { teamMorale: -3, ownerHappiness: -1, reputation: 3,
+          chronicle: 'Admitted publicly that the roster was going nowhere.' }; } },
+      { text: 'A team that wins its next game. That is the whole plan.', emotion: 'neutral',
+        effect: function () { return { teamMorale: 1, reputation: -1 }; } }
+    ]
   }
 ];
 

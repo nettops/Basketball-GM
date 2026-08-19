@@ -13,6 +13,8 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       names: require('./names.js'),
       faces: require('./faces.js'),
       ultimates: require('./ultimates.js'),
+      morale: require('./morale.js'),
+      rivalries: require('./rivalries.js'),
       owner: require('./owner.js'),
       data: require('./data.js')
     }
@@ -28,6 +30,8 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       names: { pickUniqueName: pickUniqueName, takenNameSet: takenNameSet },
       faces: { generateFace: generateFace },
       ultimates: { hasUltimate: hasUltimate, chargeThreshold: chargeThreshold },
+      morale: { moraleTier: moraleTier },
+      rivalries: { rivalsOf: rivalsOf },
       owner: { currentPatience: currentPatience },
       data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine }
     };
@@ -68,15 +72,13 @@ function stampSeasonScene(gameState, sceneId) {
   return gameState.seasonSceneDays;
 }
 
-// What counts as an unhappy man, for scene purposes.
+// Unhappiness uses morale.js's OWN tier, not a number invented here.
 //
-// NOT morale.js's moraleTier 'unhappy' band, which is everything under 40 —
-// measured across all thirty clubs mid-season, the league MINIMUM morale was
-// 49, so nothing in the game ever reaches that band and a scene keyed to it
-// would be dead content that no playtest could ever surface. 55 is around the
-// league's bottom decile, which is what "the unhappiest man in your building"
-// actually means on this scale.
-const UNHAPPY_MORALE = 55;
+// It briefly did use a local threshold, on the measurement that nothing in the
+// league ever reached the 'unhappy' band. That measurement was taken 38 games
+// into a season and was simply too early — but chasing it turned up the real
+// bug, which was in the morale tick rather than the tier, and it is fixed. One
+// definition of unhappy now serves the dashboard panel and these scenes alike.
 
 // How many answers the press remembers. Bounded because it is saved, and
 // because a reporter who can quote you from nine years ago is not a reporter,
@@ -259,12 +261,57 @@ function buildSeasonContext(gameState) {
   let unhappy = null;
   roster.forEach(function (p) {
     const morale = (p.status && p.status.morale);
-    if (typeof morale !== 'number' || morale >= UNHAPPY_MORALE) return;
+    if (typeof morale !== 'number' || _DIALOGUE_DATA.morale.moraleTier(morale) !== 'unhappy') return;
     if (!unhappy || (p.rawOverall || 0) > (unhappy.rawOverall || 0)) unhappy = p;
   });
 
   const injured = roster.filter(function (p) { return p.status && p.status.injury; })
     .sort(function (a, b) { return (b.rawOverall || 0) - (a.rawOverall || 0); });
+
+  // Where the club sits in its own conference, and whether that is a playoff
+  // place. Counted off wins rather than through playoffs.js's seeding, which
+  // wants a finished season — mid-February a club only needs to know if it is
+  // in the eight, and by how much.
+  const conf = (team && team.conference) || '';
+  const rivalsInConf = _DIALOGUE_DATA.teams.TEAMS.filter(function (t) {
+    return t.conference === conf;
+  }).sort(function (a, b) { return (b.record.wins || 0) - (a.record.wins || 0); });
+  let rank = rivalsInConf.length;
+  for (let i = 0; i < rivalsInConf.length; i++) {
+    if (rivalsInConf[i].id === teamId) { rank = i + 1; break; }
+  }
+  const PLAYOFF_PLACES = 8;
+  const cutoff = rivalsInConf[Math.min(PLAYOFF_PLACES, rivalsInConf.length) - 1];
+  const gamesFromCut = cutoff ? Math.abs((cutoff.record.wins || 0) - record.wins) : 0;
+
+  // The season's leading scorer on this roster, if he has played enough for
+  // the number to mean anything.
+  let leader = null;
+  roster.forEach(function (p) {
+    const st = p.seasonStats;
+    if (!st || !st.gamesPlayed || st.gamesPlayed < 10) return;
+    if (!leader || (st.points / st.gamesPlayed) > (leader.seasonStats.points / leader.seasonStats.gamesPlayed)) {
+      leader = p;
+    }
+  });
+  const leaderPpg = leader ? leader.seasonStats.points / leader.seasonStats.gamesPlayed : 0;
+
+  // The best young man actually in the rotation. A 20-year-old who never
+  // dresses is not a rising core, he is a draft pick.
+  let young = null;
+  roster.forEach(function (p) {
+    const st = p.seasonStats;
+    if (!p.age || p.age > 23) return;
+    if (!st || !st.gamesPlayed || (st.minutes / st.gamesPlayed) < 18) return;
+    if (!young || (p.rawOverall || 0) > (young.rawOverall || 0)) young = p;
+  });
+
+  // The club this one actually hates, if any. rivalsOf already applies the
+  // heat threshold, so anything it returns is a real rivalry rather than two
+  // teams that happen to share a calendar.
+  const rivals = (gameState.rivalries && _DIALOGUE_DATA.rivalries.rivalsOf)
+    ? _DIALOGUE_DATA.rivalries.rivalsOf(gameState.rivalries, teamId) : [];
+  const topRival = rivals.sort(function (a, b) { return b.heat - a.heat; })[0] || null;
 
   const mandate = gameState.ownerMandate || null;
   const career = gameState.gmCareer;
@@ -293,10 +340,27 @@ function buildSeasonContext(gameState) {
     streak: _currentStreak(gameState, teamId),
     unhappyName: unhappy ? unhappy.name : '',
     unhappyCount: roster.filter(function (p) {
-      return p.status && typeof p.status.morale === 'number' && p.status.morale < UNHAPPY_MORALE;
+      return p.status && typeof p.status.morale === 'number' &&
+        _DIALOGUE_DATA.morale.moraleTier(p.status.morale) === 'unhappy';
     }).length,
     injuredCount: injured.length,
     injuredName: injured.length > 0 ? injured[0].name : '',
+    conferenceRank: rank,
+    inPlayoffSpot: rank <= PLAYOFF_PLACES,
+    gamesFromCut: gamesFromCut,
+    leaderName: leader ? leader.name : '',
+    leaderPpg: Math.round(leaderPpg * 10) / 10,
+    youngName: young ? young.name : '',
+    rivalName: topRival ? _teamName(topRival.teamId) : '',
+    rivalHeat: topRival ? Math.round(topRival.heat) : 0,
+    // The deadline sits at 65% of the calendar, matching the skip-to target in
+    // ui/simControls.js. "Soon" is the fortnight before it — the window where
+    // buy-or-sell is still a live question.
+    deadlineSoon: (function () {
+      if (!mine) return false;
+      const deadlineGame = Math.round(mine * 0.65);
+      return played <= deadlineGame && deadlineGame - played <= 8;
+    })(),
     mandateLabel: mandate ? mandate.label : '',
     mandateType: mandate ? mandate.type : '',
     // How many more wins the owner's number needs. Zero when the mandate is
@@ -591,7 +655,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     RECENT_SCENE_LIMIT: RECENT_SCENE_LIMIT,
     SEASON_SCENE_COOLDOWN_DAYS: SEASON_SCENE_COOLDOWN_DAYS,
-    UNHAPPY_MORALE: UNHAPPY_MORALE,
     recentSeasonScenes: recentSeasonScenes,
     stampSeasonScene: stampSeasonScene,
     PRESS_MEMORY_LIMIT: PRESS_MEMORY_LIMIT,
