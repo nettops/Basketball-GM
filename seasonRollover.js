@@ -22,7 +22,12 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       traits: require('./traits.js'),
       players: require('./players-2026.js'),
       ultimates: require('./ultimates.js'),
-      tradeEvaluator: require('./tradeEvaluator.js')
+      tradeEvaluator: require('./tradeEvaluator.js'),
+      owner: require('./owner.js'),
+      league: require('./league.js'),
+      draft: require('./draft.js'),
+      rivalries: require('./rivalries.js'),
+      difficulty: require('./difficulty.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -34,11 +39,83 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       freeAgency: { runFreeAgencySilently: runFreeAgencySilently, autoExerciseResignRights: autoExerciseResignRights, resolveLeagueRestrictedFA: resolveLeagueRestrictedFA },
       autoGM: { autoEnforceRosterSize: autoEnforceRosterSize },
       teams: { getTeamById: getTeamById },
+      owner: { reviewSeason: reviewSeason, endTenure: endTenure, setMandate: setMandate, OWNER_PATIENCE: OWNER_PATIENCE },
+      league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll },
+      draft: { playoffResultByTeam: playoffResultByTeam, playoffBracketIsComplete: playoffBracketIsComplete },
+      rivalries: { recordPlayoffSeries: recordPlayoffSeries, decayRivalries: decayRivalries },
+      difficulty: { patienceFor: patienceFor },
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
       ultimates: { setLeagueGate: setLeagueGate },
       tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache }
     };
+
+// A playoff series is where rivalries are actually made, so the bracket is
+// mined for them before it is cleared — then every pair cools by a year. Decay
+// last, so a series played this spring is not immediately discounted for it.
+function runRivalryRollover(gameState) {
+  if (!gameState.rivalries) return;
+  const bracket = gameState.playoffBracket;
+  if (bracket && _ROLLOVER_DATA.draft.playoffBracketIsComplete(bracket)) {
+    ['first', 'semis', 'confFinals', 'finals'].forEach(function (round) {
+      (bracket[round] || []).forEach(function (series) {
+        if (series.higherSeed && series.lowerSeed) {
+          _ROLLOVER_DATA.rivalries.recordPlayoffSeries(gameState.rivalries, series.higherSeed, series.lowerSeed);
+        }
+      });
+    });
+  }
+  _ROLLOVER_DATA.rivalries.decayRivalries(gameState.rivalries);
+}
+
+// Judges the standing mandate, moves the owner, and sacks the GM if his
+// patience is gone. Assembles the facts and hands them to owner.js, which owns
+// every decision — the split exists so the judgement is testable without a
+// league, and this function has no opinions of its own.
+function runOwnerReview(gameState, onFeed) {
+  const owner = _ROLLOVER_DATA.owner;
+  const teamId = gameState.userTeamId;
+  if (!teamId || !gameState.gmCareer || !gameState.ownerMandate) return null;
+
+  const team = _ROLLOVER_DATA.teams.getTeamById(teamId);
+  const bracket = gameState.playoffBracket;
+  // playoffResultByTeam reads bracket.finals[0].winner unconditionally, so an
+  // unfinished postseason has to be treated as no postseason rather than
+  // crashing the rollover.
+  const complete = _ROLLOVER_DATA.draft.playoffBracketIsComplete(bracket);
+  const results = complete ? _ROLLOVER_DATA.draft.playoffResultByTeam(bracket) : {};
+  const reached = results[teamId];
+
+  const review = owner.reviewSeason(gameState, {
+    team: team,
+    roster: _ROLLOVER_DATA.league.getTeamRoster(teamId),
+    madePlayoffs: reached !== undefined,
+    roundsWon: reached === undefined ? 0 : reached,
+    payroll: _ROLLOVER_DATA.league.getTeamPayroll(teamId),
+    capLevel: gameState.settings ? gameState.settings.capLevel : undefined,
+    // The one dial difficulty actually turns today.
+    maxPatience: _ROLLOVER_DATA.difficulty.patienceFor(
+      _ROLLOVER_DATA.owner.OWNER_PATIENCE,
+      gameState.settings ? gameState.settings.difficulty : undefined)
+  });
+  if (!review) return null;
+  // Carried to next season's mandate: the owner does not ask a club that missed
+  // the playoffs to win a series in the next one.
+  gameState.lastReviewMadePlayoffs = reached !== undefined;
+
+  onFeed(review.met
+    ? 'The owner is satisfied: you were asked to ' + review.mandate.label + ', and ' + review.detail + '.'
+    : 'The owner is not happy. You were asked to ' + review.mandate.label + ' — ' + review.detail + '.');
+
+  if (review.fired) {
+    owner.endTenure(gameState.gmCareer, teamId, gameState.leagueYear || 2026);
+    gameState.firedAtEndOfSeason = { teamId: teamId, leagueYear: gameState.leagueYear || 2026 };
+    onFeed('You have been relieved of your duties by the ' + team.name + '.');
+  } else if (!review.met) {
+    onFeed('One more season like that and the job is gone.');
+  }
+  return review;
+}
 
 // Rolls a completed season into the next one: archives history, runs the
 // draft, then (unless stopped) free agency and a fresh schedule.
@@ -64,6 +141,13 @@ function runOffseasonRollover(gameState, deps) {
   gameState.tradeOffers = [];
 
   _ROLLOVER_DATA.history.finalizeSeasonHistory(gameState.leagueYear || 2026, gameState.playoffBracket, onFeed);
+
+  // Before the year increments and the bracket is cleared — the review reads
+  // both. This is what stops ownerHappiness being a spending thermostat: until
+  // now every write to it came from the luxury tax, so the owner did not know
+  // the score.
+  runOwnerReview(gameState, onFeed);
+  runRivalryRollover(gameState);
 
   // setLeagueYear lives in script.js, which Node cannot load. Both writes are
   // done here because league.js reads settings.leagueYear and has no access
@@ -131,6 +215,20 @@ function runOffseasonRollover(gameState, deps) {
     gameState.rng, gameState.leagueYear);
   gameState.season = { games: seasonResult.games, currentDay: -1 };
   gameState.upcomingDraftClass = seasonResult.nextDraftClass;
+
+  // Next season's mandate, set now rather than at tip-off, so the GM has the
+  // whole offseason to build toward it. The roster snapshot for a `develop`
+  // mandate is taken here too — it has to predate the season it judges.
+  if (gameState.userTeamId && gameState.gmCareer) {
+    _ROLLOVER_DATA.owner.setMandate(
+      gameState,
+      _ROLLOVER_DATA.teams.getTeamById(gameState.userTeamId),
+      _ROLLOVER_DATA.league.getTeamRoster(gameState.userTeamId),
+      gameState.rng,
+      { payroll: _ROLLOVER_DATA.league.getTeamPayroll(gameState.userTeamId),
+        capLevel: gameState.settings ? gameState.settings.capLevel : undefined,
+        madePlayoffsLastYear: gameState.lastReviewMadePlayoffs });
+  }
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;
   gameState.allStarWeekend = null;

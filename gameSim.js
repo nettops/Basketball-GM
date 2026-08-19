@@ -96,6 +96,7 @@ const TIMEOUT_ENERGY_RESTORE = 0.12;
 // reason the league-wide default stays 0.
 const PACE_DIAL_SECONDS = 0.55;
 
+
 // paceBlend is the average of BOTH teams' dials, because a possession is not
 // something one team does — the two share a clock, and a team that wants to run
 // against an opponent that wants to walk gets a compromise. Same blend
@@ -191,10 +192,17 @@ function threeRateFor(team) {
 // Overtime counts only the overtime on the clock — whether there will be
 // another one is not knowable, and assuming one would hand out runs the game
 // may never deliver.
+// The `- 2` is the safety margin, and it used to be `- 1`. Halving the
+// remaining trips assumes the two sides alternate, which stopped being exactly
+// true when an offensive rebound started keeping the ball: a side being
+// out-rebounded now gets FEWER than half of what is left, so a takeover
+// granted on the old estimate ran out of clock before it ran out of
+// possessions. Measured at 5.4% of takeovers cut short by the buzzer against a
+// rule that is supposed to hold that near zero.
 function possessionsLeftForSide(period, clock) {
   let seconds = clock;
   if (period < REGULATION_PERIODS) seconds += (REGULATION_PERIODS - period) * PERIOD_SECONDS;
-  return Math.floor(seconds / POSSESSION_BASE_SECONDS / 2) - 1;
+  return Math.floor(seconds / POSSESSION_BASE_SECONDS / 2) - 2;
 }
 
 // The game-level state machine. step() advances exactly one possession pair
@@ -616,6 +624,13 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
       else sim.run = { team: team, points: points };
     }
 
+    // A second chance is charged a full possession's clock, not the two or
+    // three seconds a putback really takes. That is deliberate: an offensive
+    // rebound should take a trip AWAY from the opponent, not mint a free one
+    // for everybody. Billing it short was measured at +9 points a team a game
+    // — straight past the 99-115 design target validate-identity.js holds the
+    // engine to — because every board added a possession to the game instead
+    // of moving one across.
     const elapsed = Math.min(sim.clock, possessionSeconds(rng, sim.paceBlend));
     sim.clock -= elapsed;
     onCourt.home.concat(onCourt.away).forEach(function (id) { secondsPlayed[id] += elapsed; });
@@ -637,7 +652,8 @@ function createGameSim(homeTeamId, awayTeamId, rng, options) {
     // drain, so heavy minutes still cost something over a game.
     recoverBenchEnergy();
     sim.possessionsPlayed += 1;
-    sim.offenseTeam = other;
+    // The ball only changes hands if nobody on the offence rebounded the miss.
+    sim.offenseTeam = outcome.offensiveRebound ? team : other;
 
     if (sim.clock <= 0) endPeriod();
   };

@@ -213,4 +213,84 @@ if (failures.length) {
 
 console.log('checkBrowserBridges: OK (' + checkedFiles + ' eager bridges, ' + checkedRefs + ' references)');
 console.log('checkLazyBridges: OK (' + checkedLazy + ' lazy accessors, ' + checkedLazyRefs + ' references)');
+
+// THE THIRD WAY A BRIDGE LIES, and the one the two checks above sail straight
+// past: the browser branch names a global that is real, spelled right, and
+// exported — but its <script> tag comes LATER in index.html than the file
+// capturing it. Node has no such thing as load order (require pulls the module
+// in on demand), so the Node branch is always fine and the whole suite stays
+// green.
+//
+// This happened for real. save.js's browser branch was given
+// `freeAgency: { MARKET_TUNING: MARKET_TUNING }` so a loaded save could
+// re-apply its difficulty, but save.js was tagged at line 99 and freeAgency.js
+// at line 142. save.js threw on load. Its function declarations still hoisted,
+// so nothing looked obviously wrong — but every `const` in it stayed
+// uninitialised, which took out the System tab (SAVE_SLOT_COUNT) and blocked
+// the offseason entirely (pushSeasonSnapshot reads SEASON_SNAPSHOT_LIMIT, and
+// runOffseasonRollover calls it first thing).
+//
+// A capture is a LOAD-TIME read. Anything a bridge names has to already exist.
+const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const loadOrder = {};
+let tagIdx = 0;
+indexHtml.replace(/<script src="([^"]+)"/g, function (_, src) {
+  loadOrder[src] = tagIdx++;
+  return '';
+});
+
+// Where every top-level global is declared. Column-zero only: that is what
+// makes a name global in a classic script, and it is how every file here
+// declares one.
+const declaredIn = {};
+files.forEach(function (file) {
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  let m;
+  const re = /^(?:function|const|let|var)\s+([A-Za-z_$][\w$]*)/gm;
+  while ((m = re.exec(src)) !== null) {
+    if (!declaredIn[m[1]]) declaredIn[m[1]] = [];
+    declaredIn[m[1]].push(file.split(path.sep).join('/'));
+  }
+});
+
+let checkedCaptures = 0;
+files.forEach(function (file) {
+  const key = file.split(path.sep).join('/');
+  const here = loadOrder[key];
+  if (here === undefined) return;            // not loaded by the page at all
+  const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+  const branch = browserBranch(src);
+  if (!branch) return;
+
+  // Every identifier sitting on the right of a colon: `ns: { fn: fn }` reads
+  // the second `fn`, and `storage: localStorage` reads localStorage.
+  const seen = new Set();
+  let m;
+  const re = /:\s*([A-Za-z_$][\w$]*)/g;
+  while ((m = re.exec(branch.text)) !== null) seen.add(m[1]);
+
+  seen.forEach(function (name) {
+    const decls = declaredIn[name];
+    if (!decls) return;                      // a builtin (localStorage, Math)
+    if (decls.indexOf(key) !== -1) return;   // declared in this very file
+    checkedCaptures += 1;
+    const earliest = decls.reduce(function (best, d) {
+      const at = loadOrder[d];
+      if (at === undefined || at >= here) return best;
+      return (best === null || at < best) ? at : best;
+    }, null);
+    if (earliest === null) {
+      failures.push(key + ': its browser bridge captures ' + name + ' at LOAD time, but ' +
+        decls.join(' / ') + ' is tagged AFTER it in index.html — the whole file throws on load');
+    }
+  });
+});
+
+if (failures.length) {
+  console.error('A browser bridge captures a global that does not exist yet.\n');
+  failures.forEach(function (f) { console.error('  ' + f); });
+  assert.fail(failures.length + ' load-order violation(s)');
+}
+
+console.log('checkBridgeCapturesLoadFirst: OK (' + checkedCaptures + ' captured globals in load order)');
 console.log('All browser bridge validations passed');

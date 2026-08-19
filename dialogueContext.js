@@ -30,6 +30,11 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
 
 const RECENT_SCENE_LIMIT = 8;
 
+// How many answers the press remembers. Bounded because it is saved, and
+// because a reporter who can quote you from nine years ago is not a reporter,
+// he is a database — the useful range is "the thing you said last month".
+const PRESS_MEMORY_LIMIT = 12;
+
 // --- the halftime hint ----------------------------------------------------
 // A player has to have taken enough shots for a bad night to be a bad night
 // rather than a small sample. 1-for-3 is three shots; calling it out would
@@ -137,7 +142,7 @@ function _baseContext(gameState, sim) {
   const opponentScore = userIsHome ? sim.awayScore : sim.homeScore;
   const opponentId = userIsHome ? sim.awayTeamId : sim.homeTeamId;
   const top = _topScorer(sim, userIsHome);
-  return {
+  const base = {
     role: currentRole(gameState),
     userIsHome: userIsHome,
     teamId: gameState.userTeamId,
@@ -154,6 +159,9 @@ function _baseContext(gameState, sim) {
       ? _DIALOGUE_DATA.league.getTeamRoster(gameState.userTeamId)
       : []
   };
+  // Memory rides along with every other fact, so any scene's `when` can reach
+  // it without dialogueScenes.js knowing memory exists.
+  return Object.assign(base, pressMemoryFacts(gameState));
 }
 
 // The margin the user led by at the end of the third, if they led and then
@@ -356,6 +364,59 @@ function applyDialogueEffect(gameState, desc, ctx, opts) {
   return { applied: applied };
 }
 
+// What the GM actually SAID, as opposed to which scenes he has been shown.
+// pushRecentScene below already stops a scene repeating; this is the other half
+// — it lets a scene know it is talking to somebody with a history.
+//
+// Stored as ids and a tone rather than as prose: the text belongs to
+// dialogueScenes.js and may be rewritten, but "he blamed the officials, twice"
+// stays true either way.
+function rememberAnswer(gameState, sceneId, choice, leagueYear) {
+  if (!Array.isArray(gameState.pressMemory)) gameState.pressMemory = [];
+  if (!choice || !choice.id) return gameState.pressMemory;
+  gameState.pressMemory.push({
+    sceneId: sceneId,
+    choiceId: choice.id,
+    tone: choice.tone || null,
+    leagueYear: leagueYear === undefined ? null : leagueYear
+  });
+  while (gameState.pressMemory.length > PRESS_MEMORY_LIMIT) gameState.pressMemory.shift();
+  return gameState.pressMemory;
+}
+
+// The memory, reduced to facts a scene's `when` predicate can read. Handed in
+// with everything else so dialogueScenes.js stays exactly as pure as it is —
+// memory arrives as more facts, never as a new import.
+function pressMemoryFacts(gameState) {
+  const log = Array.isArray(gameState.pressMemory) ? gameState.pressMemory : [];
+  const saidCounts = {};
+  const toneCounts = {};
+  log.forEach(function (entry) {
+    saidCounts[entry.choiceId] = (saidCounts[entry.choiceId] || 0) + 1;
+    if (entry.tone) toneCounts[entry.tone] = (toneCounts[entry.tone] || 0) + 1;
+  });
+
+  const last = log.length ? log[log.length - 1] : null;
+  // How many times in a row the most recent tone has been used. A GM who has
+  // been defiant four straight times is a story; one who was defiant once is
+  // not.
+  let streak = 0;
+  for (let i = log.length - 1; i >= 0 && last && log[i].tone === last.tone; i--) streak++;
+
+  return {
+    pressAnswers: log.length,
+    pressSaidCounts: saidCounts,
+    pressToneCounts: toneCounts,
+    pressLastTone: last ? last.tone : null,
+    pressLastChoiceId: last ? last.choiceId : null,
+    pressToneStreak: streak,
+    // The common question a scene wants to ask, as a function rather than a
+    // key per choice id — a flat key for every possible answer would grow with
+    // the scene library forever.
+    pressHasSaid: function (choiceId) { return (saidCounts[choiceId] || 0) > 0; }
+  };
+}
+
 function pushRecentScene(gameState, sceneId) {
   if (!Array.isArray(gameState.recentDialogueScenes)) gameState.recentDialogueScenes = [];
   gameState.recentDialogueScenes.push(sceneId);
@@ -368,6 +429,9 @@ function pushRecentScene(gameState, sceneId) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     RECENT_SCENE_LIMIT: RECENT_SCENE_LIMIT,
+    PRESS_MEMORY_LIMIT: PRESS_MEMORY_LIMIT,
+    rememberAnswer: rememberAnswer,
+    pressMemoryFacts: pressMemoryFacts,
     SLUMP_MIN_ATTEMPTS: SLUMP_MIN_ATTEMPTS,
     SLUMP_MAX_FG_PCT: SLUMP_MAX_FG_PCT,
     BOOST_CHARGE_FRACTION: BOOST_CHARGE_FRACTION,

@@ -1700,6 +1700,9 @@ function renderPixelGame(container) {
         if (!result.skipped) {
           const choice = scene.choices[result.choiceIndex];
           if (choice && typeof choice.effect === 'function') {
+            // What he said, before what it does — so a later scene can bring
+            // it up.
+            rememberAnswer(GameState, scene && scene.id, choice, GameState.leagueYear);
             // The sim goes through as an explicit capability rather than on
             // the context: this is the one moment a LIVE game exists to nudge,
             // and the post-game caller has nothing to pass. It is also what

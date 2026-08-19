@@ -84,7 +84,10 @@ function getPlayerById(playerId) {
 //
 // getPlayerAverages below is the exception — it is hand-written and does NOT
 // iterate this array, so a new key needs its rate adding there deliberately.
-const SEASON_STAT_KEYS = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm',
+// oreb/dreb are carried ALONGSIDE rebounds, which stays the total. Nothing
+// that reads `rebounds` today — career milestones, triple-doubles, the awards
+// race, the record book — needs to know the split exists.
+const SEASON_STAT_KEYS = ['points', 'rebounds', 'oreb', 'dreb', 'assists', 'steals', 'blocks', 'fgm', 'fga', 'tpm', 'tpa', 'ftm', 'fta', 'minutes', 'oppFga', 'oppFgm',
   'insideFga', 'insideFgm', 'midFga', 'midFgm', 'plusMinus'];
 
 // context carries { leagueYear, day } — the two things a feat record needs and
@@ -338,6 +341,11 @@ function getPlayerAverages(player) {
   return {
     ppg: s.points / s.gamesPlayed,
     rpg: s.rebounds / s.gamesPlayed,
+    // Both ends of the glass. `|| 0` because getPlayerAverages is hand-written
+    // and does NOT iterate SEASON_STAT_KEYS, so a save written before the split
+    // existed reaches here with the field simply absent.
+    orpg: (s.oreb || 0) / s.gamesPlayed,
+    drpg: (s.dreb || 0) / s.gamesPlayed,
     apg: s.assists / s.gamesPlayed,
     spg: s.steals / s.gamesPlayed,
     bpg: s.blocks / s.gamesPlayed,

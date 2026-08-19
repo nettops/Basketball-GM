@@ -75,6 +75,25 @@ function reboundWeight(player) {
   const base = (a.offReb + a.defReb) / 2;
   return Math.max(1, base + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
 }
+// The two ends of the floor, weighted separately, because that is the whole
+// point of splitting the column: a centre who lives on the offensive glass and
+// a guard who gets his boards uncontested should not read the same. Blending
+// them back into one average, then taking a flat share of it, would give every
+// player on the roster the identical split.
+function offReboundWeight(player) {
+  const a = player.attributes;
+  return Math.max(1, a.offReb + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
+}
+function defReboundWeight(player) {
+  const a = player.attributes;
+  return Math.max(1, a.defReb + _ENGINE_DATA.traits.getTraitBonus(player, 'boxscore', 'rebound'));
+}
+
+// Share of a team's boards that come at the offensive end. Measured off the
+// possession engine, which produces 26% unprompted from its own rebound roll —
+// the two engines have to agree about this or a season simmed on one would
+// read differently from a season simmed on the other.
+const OFFENSIVE_REBOUND_SHARE = 0.26;
 function assistWeight(player) {
   const a = player.attributes;
   const base = (a.passing + a.ballHandling) / 2;
@@ -233,7 +252,13 @@ function simulateTeamBoxScore(teamId, teamScore, opponentScore, rng) {
   const roster = _ENGINE_DATA.league.getTeamRoster(teamId).filter(function (p) { return !p.status.injury; });
   const minutes = distributeInt(240, roster.map(minutesWeight));
   const points = distributeInt(teamScore, roster.map(scoringWeight));
-  const rebounds = distributeInt(Math.round(teamScore * 0.42), roster.map(reboundWeight)); // ~42 total rebounds/team is a realistic NBA average
+  // ~42 total rebounds/team is a realistic NBA average. Distributed as two
+  // separate pots and summed, rather than one pot then split, so that
+  // oreb + dreb === rebounds holds exactly with no rounding slack.
+  const totalBoards = Math.round(teamScore * 0.42);
+  const offBoards = Math.round(totalBoards * OFFENSIVE_REBOUND_SHARE);
+  const oreb = distributeInt(offBoards, roster.map(offReboundWeight));
+  const dreb = distributeInt(totalBoards - offBoards, roster.map(defReboundWeight));
   const assists = distributeInt(Math.round(teamScore * 0.22), roster.map(assistWeight));
   const steals = distributeInt(7, roster.map(stealWeight));
   const blocks = distributeInt(5, roster.map(blockWeight));
@@ -252,7 +277,9 @@ function simulateTeamBoxScore(teamId, teamScore, opponentScore, rng) {
       teamId: teamId,
       minutes: minutes[i],
       points: points[i],
-      rebounds: rebounds[i],
+      rebounds: oreb[i] + dreb[i],
+      oreb: oreb[i],
+      dreb: dreb[i],
       assists: assists[i],
       steals: steals[i],
       blocks: blocks[i],

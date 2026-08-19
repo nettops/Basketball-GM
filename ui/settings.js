@@ -62,6 +62,17 @@ function renderSettings(container) {
   html += '</div>';
 
   html += '<div class="panel"><div class="panel-header">League Rules</div><div class="panel-body">' +
+    // Difficulty adjusts what the league does AROUND you — never the sim. The
+    // blurb says so, because a setting people suspect of rigging games is worse
+    // than no setting.
+    '<label class="toggle-row" style="display:block;">Difficulty<br><select id="settings-difficulty">' +
+    difficultyKeys().map(function (key) {
+      const mode = getDifficulty(key);
+      const selected = (GameState.settings.difficulty || DEFAULT_DIFFICULTY) === key ? ' selected' : '';
+      return '<option value="' + key + '"' + selected + '>' + escapeHtml(mode.label) + '</option>';
+    }).join('') + '</select><span class="kpi-sub">' +
+    escapeHtml(getDifficulty(GameState.settings.difficulty).blurb) +
+    ' Never changes how a game is simulated.</span></label>' +
     '<label class="toggle-row" style="display:block;">Cap Level<br><select id="settings-cap-level">' +
     CAP_LEVEL_OPTIONS.map(function (opt) {
       return '<option value="' + opt.value + '"' + (GameState.settings.capLevel === opt.value ? ' selected' : (opt.value === 1 && GameState.settings.capLevel === undefined ? ' selected' : '')) + '>' + opt.label + '</option>';
@@ -154,6 +165,12 @@ function renderSettings(container) {
       GameState.settings.capDisabled = e.target.checked;
     });
   }
+
+  document.getElementById('settings-difficulty').addEventListener('change', function (e) {
+    GameState.settings.difficulty = e.target.value;
+    applyDifficulty(GameState.settings.difficulty, TRADE_TUNING, MARKET_TUNING);
+    renderSettings(document.getElementById('view-content'));
+  });
 
   document.getElementById('settings-cap-level').addEventListener('change', function (e) {
     GameState.settings.capLevel = Number(e.target.value);

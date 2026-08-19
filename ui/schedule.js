@@ -122,6 +122,36 @@ function defensiveFgText(s) {
   return s.oppFga ? (100 * s.oppFgm / s.oppFga).toFixed(1) : '—';
 }
 
+// ONE header and ONE row, shared by the split view and the combined fallback
+// below. They carried identical copies of this markup, which is how a column
+// added to one and not the other ends up shifting every cell in the other by a
+// place — the header says STL over a column of blocks and nothing throws.
+const BOX_SCORE_COLUMNS = ['MIN', 'PTS', 'REB', 'OREB', 'DREB', 'AST', 'STL', 'BLK', 'DFG%'];
+
+function boxScoreHeaderHtml() {
+  return '<thead><tr><th>Player</th>' + BOX_SCORE_COLUMNS.map(function (c) {
+    return '<th class="num">' + c + '</th>';
+  }).join('') + '</tr></thead>';
+}
+
+// oreb/dreb are shown from the line, never derived from the other two: a box
+// score saved before the split existed has neither, and `rebounds - dreb`
+// would quietly print the whole total in the OREB column. An em dash says
+// "this game does not know" and is the truth.
+function boxScoreRowHtml(name, s) {
+  const board = function (v) { return v === undefined || v === null ? '—' : v; };
+  return '<tr><td class="col-name">' + escapeHtml(name) + '</td>' +
+    '<td class="num">' + s.minutes + '</td>' +
+    '<td class="num">' + s.points + '</td>' +
+    '<td class="num">' + s.rebounds + '</td>' +
+    '<td class="num">' + board(s.oreb) + '</td>' +
+    '<td class="num">' + board(s.dreb) + '</td>' +
+    '<td class="num">' + s.assists + '</td>' +
+    '<td class="num">' + s.steals + '</td>' +
+    '<td class="num">' + s.blocks + '</td>' +
+    '<td class="num">' + defensiveFgText(s) + '</td></tr>';
+}
+
 function boxScoreTeamTableHtml(game, teamId) {
   const team = getTeamById(teamId);
   const lines = Object.keys(game.boxScore)
@@ -143,15 +173,10 @@ function boxScoreTeamTableHtml(game, teamId) {
 
   let html = '<div class="box-score-team"><div class="box-score-team-name">' +
     teamLogoImgHtml(teamId, 18) + ' ' + escapeHtml(team ? team.name : teamId) + '</div>' +
-    '<table class="data-table"><thead><tr><th>Player</th><th class="num">MIN</th><th class="num">PTS</th>' +
-    '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th>' +
-    '<th class="num">DFG%</th></tr></thead><tbody>';
+    '<table class="data-table">' + boxScoreHeaderHtml() + '<tbody>';
   lines.forEach(function (e) {
-    const s = e.stats;
     // Retired or commissioner-deleted players still have a stat line worth showing.
-    html += '<tr><td class="col-name">' + escapeHtml(e.player ? e.player.name : 'Former player') + '</td><td class="num">' + s.minutes + '</td><td class="num">' + s.points +
-      '</td><td class="num">' + s.rebounds + '</td><td class="num">' + s.assists + '</td><td class="num">' + s.steals +
-      '</td><td class="num">' + s.blocks + '</td><td class="num">' + defensiveFgText(s) + '</td></tr>';
+    html += boxScoreRowHtml(e.player ? e.player.name : 'Former player', e.stats);
   });
   return { count: lines.length, html: html + '</tbody></table></div>' };
 }
@@ -180,16 +205,10 @@ function boxScoreDetailHtml(game) {
   const totalLines = Object.keys(game.boxScore).length;
   if (awayTable.count + homeTable.count !== totalLines || awayTable.count === 0 || homeTable.count === 0) {
     let html = '<div class="box-score-detail">' + boxScoreLineHeaderHtml(game) +
-      '<table class="data-table"><thead><tr><th>Player</th><th class="num">MIN</th><th class="num">PTS</th>' +
-      '<th class="num">REB</th><th class="num">AST</th><th class="num">STL</th><th class="num">BLK</th>' +
-    '<th class="num">DFG%</th></tr></thead><tbody>';
+      '<table class="data-table">' + boxScoreHeaderHtml() + '<tbody>';
     Object.keys(game.boxScore).forEach(function (playerId) {
       const p = getPlayerById(playerId);
-      const s = game.boxScore[playerId];
-      html += '<tr><td class="col-name">' + escapeHtml(p ? p.name : 'Former player') + '</td><td class="num">' + s.minutes +
-        '</td><td class="num">' + s.points + '</td><td class="num">' + s.rebounds + '</td><td class="num">' + s.assists +
-        '</td><td class="num">' + s.steals + '</td><td class="num">' + s.blocks +
-        '</td><td class="num">' + defensiveFgText(s) + '</td></tr>';
+      html += boxScoreRowHtml(p ? p.name : 'Former player', game.boxScore[playerId]);
     });
     return html + '</tbody></table>' + playByPlayHtml(game) + '</div>';
   }

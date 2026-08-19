@@ -240,7 +240,12 @@ function initBoxLine() {
   // That leaves an invariant worth more than the two integers a derived
   // mid-range would have saved, and validate-shotZones.js asserts it:
   //   insideFga + midFga + tpa === fga
-  return { minutes: 0, points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0,
+  // oreb/dreb split the SAME boards `rebounds` already counts — it stays the
+  // total, so every consumer of it (career milestones, feats, triple-doubles,
+  // the awards race) is untouched. Same shape as the shot zones above:
+  //   oreb + dreb === rebounds
+  // and scripts/validate-rebounds.js asserts it for both engines.
+  return { minutes: 0, points: 0, rebounds: 0, oreb: 0, dreb: 0, assists: 0, steals: 0, blocks: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, ftm: 0, fta: 0, energy: 1, fouls: 0, plusMinus: 0, oppFga: 0, oppFgm: 0,
     insideFga: 0, insideFgm: 0, midFga: 0, midFgm: 0,
     charge: 0, takeoverLeft: 0, takeoversUsed: 0, takeoverPoints: 0, takeoverPointsAt: 0 };
 }
@@ -939,6 +944,7 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const offSyn = synergy ? synergy.offense : { offense: 1, defense: 1, rebound: 1 };
   const defSyn = synergy ? synergy.defense : { offense: 1, defense: 1, rebound: 1 };
   if (outcome) outcome.liveBallToDefense = false;
+  if (outcome) outcome.offensiveRebound = false;
 
   // The two live takeovers, already resolved to offense/defense by gameSim.js.
   // Absent for every caller that passes no gameCtx, which is what keeps every
@@ -1102,12 +1108,20 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
     if (rng() < offReboundChance) {
       const rebounder = weightedPick(offense, energyAware(offReboundWeight, offenseBox, false), rng, PICK_POWER.rebounder);
       offenseBox[rebounder.id].rebounds += 1;
+      offenseBox[rebounder.id].oreb += 1;
       reportPlay(outcome, rebounder.id, 'offRebound');
       logPlay(log, rebounder.name + ' grabs the offensive rebound');
       pushEvent(eventCtx, { type: 'rebound', playerId: rebounder.id, offensive: true });
+      // The whole point of an offensive rebound: the ball does NOT change
+      // hands. gameSim.js's loop used to flip sides unconditionally, so a
+      // board was recorded and then handed straight to the defence — the
+      // engine produced a realistic ten offensive rebounds a team a night and
+      // one single second-chance point.
+      if (outcome) outcome.offensiveRebound = true;
     } else {
       const rebounder = weightedPick(defense, energyAware(defReboundWeight, defenseBox, false), rng, PICK_POWER.rebounder);
       defenseBox[rebounder.id].rebounds += 1;
+      defenseBox[rebounder.id].dreb += 1;
       reportPlay(outcome, rebounder.id, 'rebound');
       logPlay(log, rebounder.name + ' grabs the defensive rebound');
       // A defensive rebounder is on the OTHER side from the possession's
@@ -1134,6 +1148,11 @@ function simulatePossession(offense, offenseBox, defense, defenseBox, rng, syner
   const foulMult = (shooterIsHolder && offDial.foulRate) ? offDial.foulRate : 1;
   if (rng() < shootingFoulRate(shotDefender) * foulMult) {
     defenseBox[shotDefender.id].fouls += 1;
+    // Fouled on the shot: the ball is at the line, so this is the trip's
+    // reward and an offensive rebound on the same miss must not ALSO extend
+    // the possession. Rare (a foul on a miss the offence rebounded), but it
+    // would pay for one miss twice.
+    if (outcome) outcome.offensiveRebound = false;
     reportPlay(outcome, shotDefender.id, 'foul');
     const ftAttempts = 2;
     // Was `freeThrow / 105`, which centred a 78% free-throw shooter at a rating

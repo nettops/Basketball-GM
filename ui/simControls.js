@@ -453,6 +453,8 @@ function maybeRunPostgameDialogue(sim, onContinue) {
     if (!result.skipped) {
       const choice = scene.choices[result.choiceIndex];
       if (choice && typeof choice.effect === 'function') {
+        // What he said, before what it does — so a later scene can bring it up.
+        rememberAnswer(GameState, scene && scene.id, choice, GameState.leagueYear);
         applyDialogueEffect(GameState, choice.effect(ctx), ctx);
       }
     }
