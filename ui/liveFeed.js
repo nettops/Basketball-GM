@@ -9,7 +9,7 @@ function renderLiveFeed(container) {
         // Feed text is assembled in the sim layer (trade.js, freeAgency.js,
         // history.js) and embeds player and team names, so it carries whatever
         // a user typed into player creation or the commissioner tools.
-        (entry.day === null ? '—' : entry.day) + '</span><span>' + escapeHtml(entry.text) + '</span></div>';
+        dayLabel(entry.day) + '</span><span>' + escapeHtml(entry.text) + '</span></div>';
     });
     html += '</div>';
   }

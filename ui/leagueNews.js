@@ -134,7 +134,7 @@ function renderLeagueNews(container, userTeamId) {
       html += '<div class="panel"><div class="panel-body">' +
         (combined.length === 0 ? '<div class="empty-state">No news yet.</div>' :
           '<ul class="headline-list">' + combined.map(function (e) {
-            return '<li><span class="pill pill-mute">Day ' + e.day + '</span> ' +
+            return '<li><span class="pill pill-mute">Day ' + dayLabel(e.day) + '</span> ' +
               '<span class="pill ' + NEWS_CATEGORY_PILL_CLASS[e.category] + '">' + NEWS_CATEGORY_LABELS[e.category] + '</span> ' + escapeHtml(e.text) + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
@@ -144,7 +144,7 @@ function renderLeagueNews(container, userTeamId) {
         '</div><div class="panel-body">' +
         (highlightsToShow.length === 0 ? '<div class="empty-state">No games played yet.</div>' :
           '<ul class="headline-list">' + highlightsToShow.slice(0, 20).map(function (h) {
-            return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + highlightLabel(h) + '</li>';
+            return '<li><span class="pill pill-mute">Day ' + dayLabel(h.day) + '</span> ' + highlightLabel(h) + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
 
@@ -152,7 +152,7 @@ function renderLeagueNews(container, userTeamId) {
       html += '<div class="panel"><div class="panel-header">Around the League</div><div class="panel-body">' +
         (recaps.length === 0 ? '<div class="empty-state">No games played yet.</div>' :
           '<ul class="headline-list">' + recaps.map(function (g) {
-            return '<li><span class="pill pill-mute">Day ' + g.day + '</span> ' + escapeHtml(g.recap) + '</li>';
+            return '<li><span class="pill pill-mute">Day ' + dayLabel(g.day) + '</span> ' + escapeHtml(g.recap) + '</li>';
           }).join('') + '</ul>') +
       '</div></div>';
 

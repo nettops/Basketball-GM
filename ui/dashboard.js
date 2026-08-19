@@ -344,7 +344,7 @@ function renderDashboard(container, teamId) {
           : '<ul class="headline-list">' + headlines.map(function (h) {
               // Same reason ui/liveFeed.js escapes this: feed text is built in
               // the sim layer and embeds user-supplied player and team names.
-              return '<li><span class="pill pill-mute">Day ' + h.day + '</span> ' + escapeHtml(h.text) + '</li>';
+              return '<li><span class="pill pill-mute">Day ' + dayLabel(h.day) + '</span> ' + escapeHtml(h.text) + '</li>';
             }).join('') + '</ul>') +
       '</div></div>' +
 

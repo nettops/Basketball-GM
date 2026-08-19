@@ -21,6 +21,18 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+// A day label for a feed or headline row.
+//
+// Playoff games and anything filed outside the regular-season calendar carry
+// `day: null`, and four separate call sites interpolated it raw — so every
+// postseason headline in the game read "Day null". ui/liveFeed.js was the only
+// one that guarded it, inline. One rule, one place, so the fifth call site
+// cannot get it wrong again.
+function dayLabel(day) {
+  return (day === null || day === undefined) ? '—' : day;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { escapeHtml: escapeHtml };
+  module.exports = {
+    dayLabel: dayLabel, escapeHtml: escapeHtml };
 }
