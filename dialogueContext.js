@@ -12,11 +12,13 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       gmCareer: require('./gmCareer.js'),
       names: require('./names.js'),
       faces: require('./faces.js'),
-      ultimates: require('./ultimates.js')
+      ultimates: require('./ultimates.js'),
+      owner: require('./owner.js'),
+      data: require('./data.js')
     }
   : {
       teams: { getTeamById: getTeamById, TEAMS: TEAMS },
-      league: { getTeamRoster: getTeamRoster },
+      league: { getTeamRoster: getTeamRoster, getTeamPayroll: getTeamPayroll },
       gmCareer: {
         ensureGmCareer: ensureGmCareer,
         addChronicle: addChronicle,
@@ -25,10 +27,56 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       },
       names: { pickUniqueName: pickUniqueName, takenNameSet: takenNameSet },
       faces: { generateFace: generateFace },
-      ultimates: { hasUltimate: hasUltimate, chargeThreshold: chargeThreshold }
+      ultimates: { hasUltimate: hasUltimate, chargeThreshold: chargeThreshold },
+      owner: { currentPatience: currentPatience },
+      data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine }
     };
 
 const RECENT_SCENE_LIMIT = 8;
+
+// Mid-season scenes remember by DAY, not by a recent-list, and that is a
+// correctness fix rather than a style choice.
+//
+// A postgame scene is tied to a result that will not recur in the same shape,
+// so a list of "the last eight" is right for it. A mid-season scene is tied to
+// a SITUATION that recurs by nature: a club on a losing run in November is on
+// another one in February, and that is a different conversation. Any
+// list-of-N deadlocks the moment only one scene matches a given club — which
+// is the common case, not the edge case. Measured on a 10-28 club: exactly one
+// scene fired on day 10 and the system then sat silent for forty-five days
+// with its one matching predicate permanently in the list.
+//
+// A per-scene day stamp cannot deadlock: the worst case is the same
+// conversation every three weeks, which is what a club in a long slump would
+// actually get.
+const SEASON_SCENE_COOLDOWN_DAYS = 21;
+
+// Ids that fired within the cooldown. Handed to selectScene as its `recent`,
+// so the engine needs no idea any of this exists.
+function recentSeasonScenes(gameState) {
+  const stamps = gameState.seasonSceneDays;
+  if (!stamps) return [];
+  const day = (gameState.season && gameState.season.currentDay) || 0;
+  return Object.keys(stamps).filter(function (id) {
+    return day - stamps[id] < SEASON_SCENE_COOLDOWN_DAYS;
+  });
+}
+
+function stampSeasonScene(gameState, sceneId) {
+  if (!gameState.seasonSceneDays) gameState.seasonSceneDays = {};
+  gameState.seasonSceneDays[sceneId] = (gameState.season && gameState.season.currentDay) || 0;
+  return gameState.seasonSceneDays;
+}
+
+// What counts as an unhappy man, for scene purposes.
+//
+// NOT morale.js's moraleTier 'unhappy' band, which is everything under 40 —
+// measured across all thirty clubs mid-season, the league MINIMUM morale was
+// 49, so nothing in the game ever reaches that band and a scene keyed to it
+// would be dead content that no playtest could ever surface. 55 is around the
+// league's bottom decile, which is what "the unhappiest man in your building"
+// actually means on this scale.
+const UNHAPPY_MORALE = 55;
 
 // How many answers the press remembers. Bounded because it is saved, and
 // because a reporter who can quote you from nine years ago is not a reporter,
@@ -161,6 +209,107 @@ function _baseContext(gameState, sim) {
   };
   // Memory rides along with every other fact, so any scene's `when` can reach
   // it without dialogueScenes.js knowing memory exists.
+  return Object.assign(base, pressMemoryFacts(gameState));
+}
+
+// Signed run of results: +4 is four straight wins, -4 four straight losses.
+//
+// Derived from the schedule rather than tracked on the team, for the reason
+// ui/dashboard.js already gives about its own form strip — a separately stored
+// streak is a second source of truth that drifts the first time a game is
+// re-simmed or a save is loaded mid-run.
+function _currentStreak(gameState, teamId) {
+  const games = ((gameState.season && gameState.season.games) || [])
+    .filter(function (g) {
+      return g.played && (g.homeTeamId === teamId || g.awayTeamId === teamId);
+    })
+    .sort(function (a, b) { return a.day - b.day; });
+  if (games.length === 0) return 0;
+  const won = function (g) {
+    return g.homeTeamId === teamId ? g.homeScore > g.awayScore : g.awayScore > g.homeScore;
+  };
+  const lastWon = won(games[games.length - 1]);
+  let run = 0;
+  for (let i = games.length - 1; i >= 0 && won(games[i]) === lastWon; i--) run += 1;
+  return lastWon ? run : -run;
+}
+
+// A season in progress, with no game attached.
+//
+// Every other context in this file is built FROM a finished or half-finished
+// sim. This one is not: mid-season scenes fire between games, during an
+// unwatched Continue run, which is precisely the stretch that had nothing in
+// it. Sixty games of clicking Continue was the single loudest finding of the
+// playtest, and the reason was simple — every scene the game owned needed a
+// `sim` to exist, and a batch-simmed day never produces one you are looking at.
+//
+// Reads only the league state that is already there. Nothing here is stored,
+// so a save written before mid-season scenes existed builds this context fine.
+function buildSeasonContext(gameState) {
+  const teamId = gameState.userTeamId;
+  const team = _DIALOGUE_DATA.teams.getTeamById(teamId);
+  const roster = _DIALOGUE_DATA.league.getTeamRoster
+    ? _DIALOGUE_DATA.league.getTeamRoster(teamId) : [];
+  const record = (team && team.record) || { wins: 0, losses: 0 };
+  const played = record.wins + record.losses;
+
+  // The unhappiest man on the roster who is actually worth worrying about.
+  // Sorting by morale alone hands you the fifteenth man every time; a rotation
+  // player sulking is a story, the third-string centre is not.
+  let unhappy = null;
+  roster.forEach(function (p) {
+    const morale = (p.status && p.status.morale);
+    if (typeof morale !== 'number' || morale >= UNHAPPY_MORALE) return;
+    if (!unhappy || (p.rawOverall || 0) > (unhappy.rawOverall || 0)) unhappy = p;
+  });
+
+  const injured = roster.filter(function (p) { return p.status && p.status.injury; })
+    .sort(function (a, b) { return (b.rawOverall || 0) - (a.rawOverall || 0); });
+
+  const mandate = gameState.ownerMandate || null;
+  const career = gameState.gmCareer;
+  const patience = _DIALOGUE_DATA.owner.currentPatience(career, teamId);
+
+  // Games left comes off the schedule rather than a constant, because the
+  // schedule is what actually decides it and an expansion league would make a
+  // hard-coded 82 a lie.
+  const games = (gameState.season && gameState.season.games) || [];
+  let mine = 0;
+  for (let i = 0; i < games.length; i++) {
+    const g = games[i];
+    if (g.homeTeamId === teamId || g.awayTeamId === teamId) mine += 1;
+  }
+
+  const base = {
+    moment: 'season',
+    role: currentRole(gameState),
+    teamId: teamId,
+    teamName: _teamName(teamId),
+    roster: roster,
+    seasonWins: record.wins,
+    seasonLosses: record.losses,
+    gamesPlayed: played,
+    gamesLeft: Math.max(0, mine - played),
+    streak: _currentStreak(gameState, teamId),
+    unhappyName: unhappy ? unhappy.name : '',
+    unhappyCount: roster.filter(function (p) {
+      return p.status && typeof p.status.morale === 'number' && p.status.morale < UNHAPPY_MORALE;
+    }).length,
+    injuredCount: injured.length,
+    injuredName: injured.length > 0 ? injured[0].name : '',
+    mandateLabel: mandate ? mandate.label : '',
+    mandateType: mandate ? mandate.type : '',
+    // How many more wins the owner's number needs. Zero when the mandate is
+    // not a win total, so a scene has to check mandateType before using it.
+    winsNeeded: (mandate && mandate.type === 'wins' && typeof mandate.target === 'number')
+      ? Math.max(0, mandate.target - record.wins) : 0,
+    patience: patience,
+    ownerHappiness: Math.round((team && team.ownerHappiness) || 0),
+    overTaxLine: !!(team && _DIALOGUE_DATA.league.getTeamPayroll &&
+      _DIALOGUE_DATA.league.getTeamPayroll(teamId) >
+      _DIALOGUE_DATA.data.getEffectiveLuxuryTaxLine(
+        gameState.settings && gameState.settings.capLevel))
+  };
   return Object.assign(base, pressMemoryFacts(gameState));
 }
 
@@ -337,6 +486,18 @@ function applyDialogueEffect(gameState, desc, ctx, opts) {
     }
   }
 
+  // The one channel that reaches job security. A mid-season answer that moves
+  // the owner meter is what makes the dashboard strip worth glancing at — the
+  // stakes it shows have to be something your decisions actually touch, or it
+  // is a read-only sticker.
+  if (typeof desc.ownerHappiness === 'number') {
+    const t = _DIALOGUE_DATA.teams.getTeamById(gameState.userTeamId);
+    if (t) {
+      t.ownerHappiness = Math.max(0, Math.min(99, (t.ownerHappiness || 0) + desc.ownerHappiness));
+      applied.push('ownerHappiness');
+    }
+  }
+
   if (typeof desc.chronicle === 'string' && desc.chronicle.length > 0) {
     const career = _DIALOGUE_DATA.gmCareer.ensureGmCareer(gameState);
     if (career) {
@@ -429,6 +590,10 @@ function pushRecentScene(gameState, sceneId) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     RECENT_SCENE_LIMIT: RECENT_SCENE_LIMIT,
+    SEASON_SCENE_COOLDOWN_DAYS: SEASON_SCENE_COOLDOWN_DAYS,
+    UNHAPPY_MORALE: UNHAPPY_MORALE,
+    recentSeasonScenes: recentSeasonScenes,
+    stampSeasonScene: stampSeasonScene,
     PRESS_MEMORY_LIMIT: PRESS_MEMORY_LIMIT,
     rememberAnswer: rememberAnswer,
     pressMemoryFacts: pressMemoryFacts,
@@ -447,6 +612,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureReporters: ensureReporters,
     reporterForTeam: reporterForTeam,
     buildPostgameContext: buildPostgameContext,
+    buildSeasonContext: buildSeasonContext,
     buildHalftimeContext: buildHalftimeContext,
     applyDialogueEffect: applyDialogueEffect,
     pushRecentScene: pushRecentScene

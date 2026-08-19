@@ -23,11 +23,21 @@ const HALFTIME_KEYS = [
   'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore', 'isPlayoff',
   'slumpName', 'slumpFgm', 'slumpFga', 'slumpPoints'
 ];
+// Mid-season scenes fire BETWEEN games, so they can read the season and the
+// club but nothing about a single result — there is no game in front of them.
+const SEASON_KEYS = [
+  'moment', 'role', 'teamName', 'seasonWins', 'seasonLosses', 'gamesPlayed',
+  'gamesLeft', 'streak', 'unhappyName', 'unhappyCount', 'injuredCount',
+  'injuredName', 'mandateLabel', 'mandateType', 'winsNeeded', 'patience',
+  'ownerHappiness', 'overTaxLine'
+];
 const EFFECT_CHANNELS = ['teamMorale', 'playerMorale', 'reputation', 'chronicle',
-  'recordDecision', 'boostPlayer'];
+  'recordDecision', 'boostPlayer', 'ownerHappiness'];
 
 function keysFor(moment) {
-  return moment === 'halftime' ? HALFTIME_KEYS : POSTGAME_KEYS;
+  if (moment === 'halftime') return HALFTIME_KEYS;
+  if (moment === 'season') return SEASON_KEYS;
+  return POSTGAME_KEYS;
 }
 
 // A context carrying every allowed key, for exercising effects and predicates.
@@ -40,7 +50,10 @@ function fullContext(moment, role) {
     userScore: 104, opponentScore: 110, isPlayoff: false,
     streak: -2, seasonWins: 20, seasonLosses: 15,
     trailing: true, leading: false,
-    slumpId: 'p1', slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14, slumpPoints: 7, boostId: 'p1'
+    slumpId: 'p1', slumpName: 'J. Tatum', slumpFgm: 3, slumpFga: 14, slumpPoints: 7, boostId: 'p1',
+    gamesPlayed: 35, gamesLeft: 47, unhappyName: 'J. Brown', unhappyCount: 1,
+    injuredCount: 3, injuredName: 'K. Porzingis', mandateLabel: 'win 44 games',
+    mandateType: 'wins', winsNeeded: 24, patience: 1, ownerHappiness: 55, overTaxLine: true
   };
 }
 
@@ -58,7 +71,8 @@ function checkEverySceneIsWellFormed() {
     assert.ok(typeof s.id === 'string' && s.id.length > 0, 'scene has an id');
     assert.ok(!seen[s.id], 'duplicate scene id: ' + s.id);
     seen[s.id] = true;
-    assert.ok(s.moment === 'postgame' || s.moment === 'halftime', s.id + ' has a valid moment');
+    assert.ok(s.moment === 'postgame' || s.moment === 'halftime' || s.moment === 'season',
+      s.id + ' has a valid moment');
     assert.ok(Array.isArray(s.roles) && s.roles.length > 0, s.id + ' has roles');
     s.roles.forEach(function (r) {
       assert.ok(r === 'gm' || r === 'player', s.id + ' has an unknown role: ' + r);
@@ -371,5 +385,58 @@ function checkAtLeastOneFlavourChoiceExists() {
   console.log('checkAtLeastOneFlavourChoiceExists: OK');
 }
 checkAtLeastOneFlavourChoiceExists();
+
+
+// Every mid-season scene must be REACHABLE. These fire off league state rather
+// than off a game result, so a predicate can easily be written that no real
+// season ever satisfies — and unlike a postgame scene, nobody would notice,
+// because the fallback is deliberately refused for this moment and the game
+// simply stays quiet. A scene nobody can ever see is not content.
+function checkEverySeasonSceneCanFire() {
+  const season = scenes.SCENES.filter(function (s) { return s.moment === 'season'; });
+  assert.ok(season.length > 0, 'there is at least one mid-season scene');
+
+  // Contexts a real season genuinely produces, each one a situation the game
+  // can be in. Between them they must light up every mid-season scene.
+  const situations = [
+    { name: 'a losing run', ctx: { streak: -5, gamesLeft: 40, gamesPlayed: 42 } },
+    { name: 'a winning run', ctx: { streak: 6, gamesLeft: 40, gamesPlayed: 42 } },
+    { name: 'an unhappy starter', ctx: { unhappyName: 'J. Brown', unhappyCount: 1, gamesLeft: 30 } },
+    { name: 'the target slipping away', ctx: { mandateType: 'wins', winsNeeded: 24, gamesLeft: 30 } },
+    { name: 'an injury crisis', ctx: { injuredCount: 4, injuredName: 'K. Porzingis' } },
+    { name: 'a payroll over the tax line', ctx: { overTaxLine: true, gamesPlayed: 40 } }
+  ];
+
+  const quiet = { moment: 'season', role: 'gm', streak: 0, gamesPlayed: 41, gamesLeft: 41,
+    unhappyName: '', unhappyCount: 0, injuredCount: 0, injuredName: '',
+    mandateLabel: 'make the playoffs', mandateType: 'playoffs', winsNeeded: 0,
+    patience: 2, ownerHappiness: 60, overTaxLine: false, teamName: 'Harbormen' };
+
+  const fired = {};
+  situations.forEach(function (sit) {
+    const ctx = Object.assign({}, quiet, sit.ctx);
+    season.forEach(function (sc) {
+      if (sc.when(ctx)) fired[sc.id] = true;
+    });
+  });
+
+  season.forEach(function (sc) {
+    assert.ok(fired[sc.id], 'mid-season scene "' + sc.id +
+      '" fires in none of the situations a real season produces — it is dead content');
+  });
+
+  // And the other half: an ordinary, uneventful club must be left ALONE.
+  // A scene that fires on the quiet context would interrupt every eight days
+  // regardless of what was happening, which is the noise this system exists
+  // to avoid.
+  const onQuiet = season.filter(function (sc) { return sc.when(quiet); });
+  assert.strictEqual(onQuiet.length, 0,
+    'these fire on a club with nothing going on: ' +
+    onQuiet.map(function (sc) { return sc.id; }).join(', '));
+
+  console.log('checkEverySeasonSceneCanFire: OK (' + season.length +
+    ' mid-season scenes, all reachable, none fire on a quiet season)');
+}
+checkEverySeasonSceneCanFire();
 
 console.log('All dialogue scene validations passed');

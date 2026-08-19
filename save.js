@@ -221,6 +221,9 @@ function serializeGameState(gameState, name, includeSnapshots) {
     automationBeforeSpectator: gameState.automationBeforeSpectator || null,
     lastTradeGenWeek: gameState.lastTradeGenWeek,
     lastAIToAITradeWeek: gameState.lastAIToAITradeWeek,
+    // Without this a load fires a mid-season scene on the very next day,
+    // because the gap check has nothing to measure against.
+    lastMidSeasonSceneDay: gameState.lastMidSeasonSceneDay,
     gameMode: gameState.gameMode || null,
     controlledPlayerId: gameState.controlledPlayerId || null,
     playerLegacy: gameState.playerLegacy || null,
@@ -241,7 +244,8 @@ function serializeGameState(gameState, name, includeSnapshots) {
     // load would hand you a stranger each session. The ring buffer stops a
     // scene recurring immediately across a save/load.
     reporters: gameState.reporters || null,
-    recentDialogueScenes: gameState.recentDialogueScenes || []
+    recentDialogueScenes: gameState.recentDialogueScenes || [],
+    seasonSceneDays: gameState.seasonSceneDays || {}
   };
 }
 
@@ -397,6 +401,8 @@ function applySavedState(payload, gameState) {
   // null are regenerated on first use by ensureReporters; the buffer starts
   // empty, which just means the next scene is unconstrained.
   gameState.reporters = payload.reporters || null;
+  gameState.seasonSceneDays = (payload.seasonSceneDays && typeof payload.seasonSceneDays === 'object')
+    ? payload.seasonSceneDays : {};
   gameState.recentDialogueScenes = Array.isArray(payload.recentDialogueScenes)
     ? payload.recentDialogueScenes
     : [];
@@ -433,6 +439,7 @@ function applySavedState(payload, gameState) {
   gameState.automationBeforeSpectator = payload.automationBeforeSpectator || null;
   gameState.lastTradeGenWeek = payload.lastTradeGenWeek;
   gameState.lastAIToAITradeWeek = payload.lastAIToAITradeWeek;
+  gameState.lastMidSeasonSceneDay = payload.lastMidSeasonSceneDay;
   gameState.gameMode = payload.gameMode || null;
   gameState.controlledPlayerId = payload.controlledPlayerId || null;
   gameState.playerLegacy = payload.playerLegacy || null;

@@ -173,6 +173,10 @@ function stepOnce(out) {
 
   GameState.season.currentDay = simulateNextDay(
     GameState.season, GameState.season.currentDay, GameState.settings, GameState.rng, handleDayComplete);
+
+  // After the day is played, so the scene reads the standings the player would
+  // see if they stopped here.
+  if (maybeRunMidSeasonScene()) out.sceneShown = true;
   return true;
 }
 
@@ -184,6 +188,85 @@ function stepOnce(out) {
 function setSimStatus(text) {
   const el = document.getElementById('sim-status');
   if (el) el.textContent = text;
+}
+
+// How many game days must pass between two mid-season scenes.
+//
+// Tuned against the complaint it exists to answer: a playtester found a
+// meaningful decision only every 15-20 games and spent the rest of an 82-game
+// season clicking Continue. At eight days this roughly doubles the decision
+// density without the season turning into a talk show — the predicates below
+// still have to find something real, so a quiet team gets fewer.
+const MID_SEASON_SCENE_GAP_DAYS = 8;
+
+// A mid-season scene, fired between games during an ordinary Continue run.
+//
+// Returns true if one opened, which the caller turns into out.sceneShown —
+// runAdvance already treats that as "something asked to be read" and stops the
+// run. That is the entire point: the scene has to INTERRUPT the fast-forward,
+// or it is just another thing you would scroll past.
+//
+// Refuses the fallback deliberately. selectScene invents a generic press
+// question when nothing matches, which is right after a game you just watched
+// and wrong here — an unprompted "any message for the fans?" every eight days
+// is noise, and noise is what trained the player to skip in the first place.
+function maybeRunMidSeasonScene() {
+  if (GameState.settings && GameState.settings.dialogueScenes === false) return false;
+  if (GameState.gameMode === 'playerCareer') return false;
+  if (typeof runDialogue !== 'function' || dialogueBoxIsOpen()) return false;
+  // Regular season only: the offseason and the playoffs have their own beats.
+  if (GameState.offseasonStage || GameState.playoffBracket) return false;
+  if (!GameState.season || !GameState.gmCareer) return false;
+
+  const day = GameState.season.currentDay;
+  const last = GameState.lastMidSeasonSceneDay;
+  if (last !== undefined && last !== null && day - last < MID_SEASON_SCENE_GAP_DAYS) return false;
+
+  const ctx = buildSeasonContext(GameState);
+  const scene = selectScene(ctx, {
+    // Day-stamped, NOT the shared recent-list — see
+    // SEASON_SCENE_COOLDOWN_DAYS in dialogueContext.js for why any
+    // list-of-N silenced this system entirely.
+    recent: recentSeasonScenes(GameState),
+    rand: GameState.rng
+  });
+  if (!scene || scene.id === FALLBACK_SCENE_ID) return false;
+
+  const speakerIsOwner = scene.speaker && scene.speaker.kind === 'owner';
+  if (speakerIsOwner) {
+    ctx.speakerName = 'The Owner';
+  } else {
+    const reporter = reporterForTeam(GameState, GameState.userTeamId);
+    if (reporter) {
+      ctx.speakerReporter = { face: reporter.face };
+      // join() rather than concatenation — see maybeRunPostgameDialogue for
+      // why this value must not look like markup to the ui-safety scanner.
+      ctx.speakerName = [reporter.name, reporter.outlet].join(' — ');
+    }
+  }
+
+  // Stamped BEFORE the box opens, not in the callback: the callback does not
+  // run until the user answers, and a player who leaves the box sitting there
+  // would otherwise get a second scene the moment they resumed.
+  GameState.lastMidSeasonSceneDay = day;
+
+  const opened = runDialogue(scene, ctx, function (result) {
+    if (!result.skipped) {
+      const choice = scene.choices[result.choiceIndex];
+      if (choice && typeof choice.effect === 'function') {
+        rememberAnswer(GameState, scene.id, choice, GameState.leagueYear);
+        applyDialogueEffect(GameState, choice.effect(ctx), ctx);
+      }
+    }
+    stampSeasonScene(GameState, scene.id);
+    // The dashboard strip shows owner happiness and job security, and an
+    // answer can move both — repaint so the consequence is visible where the
+    // player already is, instead of on next render.
+    renderView(GameState.currentView);
+  });
+
+  if (!opened) GameState.lastMidSeasonSceneDay = last;
+  return opened;
 }
 
 // options: { target } — null for Continue. Resolves to the stop that ended it.

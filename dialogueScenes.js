@@ -317,6 +317,156 @@ const SCENES = [
         effect: function () { return { teamMorale: 0.5 }; } },
       { text: 'Trust the group.', emotion: 'neutral', effect: null }
     ]
+  },
+  // ---- mid-season ----
+  //
+  // These fire BETWEEN games, during an unwatched Continue run — the stretch
+  // that previously contained nothing at all. Every other scene in this file
+  // needs a game you were watching; a batch-simmed day never produces one, so
+  // sixty games of a season had no dialogue in them by construction.
+  //
+  // Each one keys off something that actually happened to the club rather than
+  // firing on a timer, so an answer is a response to a situation and not a
+  // random interruption. ui/simControls.js refuses the fallback for this
+  // moment: if nothing real is going on, the game stays quiet.
+  {
+    id: 'losing-slide',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 60,
+    when: function (c) { return c.streak <= -4; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: 'Four straight, and the {teamName} are {seasonWins}-{seasonLosses}.' },
+      { emotion: 'angry', text: 'Is anybody in that building worried yet?' }
+    ],
+    choices: [
+      { text: 'I back this group. We are not changing course.', emotion: 'confident',
+        effect: function () { return { teamMorale: 2, reputation: 1, ownerHappiness: -2,
+          chronicle: 'Publicly backed the roster through a losing run.' }; } },
+      { text: 'Nobody in that room is safe. Including me.', emotion: 'shaken',
+        effect: function () { return { teamMorale: -2, ownerHappiness: 3,
+          chronicle: 'Put the roster on notice mid-season.' }; } },
+      { text: 'Ask me in ten games.', emotion: 'neutral', effect: null }
+    ]
+  },
+  {
+    id: 'unhappy-star',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 75,
+    when: function (c) { return !!c.unhappyName && c.gamesLeft > 10; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: 'The word out of the locker room is that {unhappyName} is unhappy.' },
+      { emotion: 'neutral', text: 'Is he going to finish the season with the {teamName}?' }
+    ],
+    choices: [
+      { text: 'He is going nowhere. I will fix what is bothering him.', emotion: 'confident',
+        effect: function (c) { return { teamMorale: 3, reputation: -1,
+          chronicle: 'Committed publicly to ' + c.unhappyName + ' mid-season.' }; } },
+      { text: 'Everyone is available for the right price.', emotion: 'neutral',
+        effect: function (c) { return { teamMorale: -3, reputation: 2, ownerHappiness: 1,
+          chronicle: 'Told the press ' + c.unhappyName + ' was available.' }; } },
+      { text: 'I do not negotiate through reporters.', emotion: 'angry',
+        effect: function () { return { reputation: 1 }; } }
+    ]
+  },
+  {
+    id: 'mandate-slipping',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 85,
+    // Only when the owner's number is genuinely in danger: more wins still
+    // needed than three quarters of the remaining games can comfortably give.
+    when: function (c) {
+      return c.mandateType === 'wins' && c.gamesLeft > 5 && c.gamesLeft <= 40 &&
+        c.winsNeeded > c.gamesLeft * 0.75;
+    },
+    speaker: { kind: 'owner' },
+    lines: [
+      { emotion: 'angry', text: 'I asked you to {mandateLabel}. You need {winsNeeded} more with {gamesLeft} to play.' },
+      { emotion: 'neutral', text: 'Talk me through how that happens.' }
+    ],
+    choices: [
+      { text: 'We will get there. Watch the next month.', emotion: 'confident',
+        effect: function () { return { ownerHappiness: 2, reputation: -1,
+          chronicle: 'Promised the owner a run the season still had to deliver.' }; } },
+      { text: 'It does not. Better you hear that now than in April.', emotion: 'neutral',
+        effect: function () { return { ownerHappiness: -3, reputation: 3, teamMorale: -1,
+          chronicle: 'Told the owner to his face that the target was gone.' }; } },
+      { text: 'Injuries. You saw the same games I did.', emotion: 'shaken',
+        effect: function () { return { ownerHappiness: -1, teamMorale: -2 }; } }
+    ]
+  },
+  {
+    id: 'injury-pileup',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 65,
+    // Two, not three. Measured mid-season: eleven injured men across the whole
+    // thirty-club league and NOT ONE club carrying three at once, so a bar of
+    // three was a scene that could never fire.
+    when: function (c) { return c.injuredCount >= 2; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: '{injuredCount} men in the treatment room, {injuredName} among them.' },
+      { emotion: 'neutral', text: 'Do you ride it out, or go and get help?' }
+    ],
+    choices: [
+      { text: 'The guys behind them have waited for this.', emotion: 'confident',
+        effect: function () { return { teamMorale: 2,
+          chronicle: 'Backed the bench through an injury crisis.' }; } },
+      { text: 'We push the healthy bodies harder. Nobody rests.', emotion: 'angry',
+        effect: function () { return { teamMorale: -3, ownerHappiness: 2 }; } },
+      { text: 'This stretch is written off. We get people right.', emotion: 'neutral',
+        effect: function () { return { teamMorale: 1, ownerHappiness: -3,
+          chronicle: 'Wrote off a stretch of the season to get players healthy.' }; } }
+    ]
+  },
+  {
+    id: 'tax-bill-looming',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 55,
+    when: function (c) { return c.overTaxLine && c.gamesPlayed >= 20; },
+    speaker: { kind: 'owner' },
+    lines: [
+      { emotion: 'angry', text: 'I have seen the projection. We are over the tax line.' },
+      { emotion: 'neutral', text: 'Tell me what I am buying for it.' }
+    ],
+    choices: [
+      { text: 'A contender. You knew the bill when we built it.', emotion: 'confident',
+        effect: function () { return { ownerHappiness: -2, reputation: 2, teamMorale: 1,
+          chronicle: 'Defended the payroll to the owner.' }; } },
+      { text: 'I will get us under it before the deadline.', emotion: 'neutral',
+        effect: function () { return { ownerHappiness: 4, teamMorale: -2,
+          chronicle: 'Promised the owner a payroll cut before the deadline.' }; } },
+      { text: 'Every club is spending. That is the market.', emotion: 'neutral',
+        effect: function () { return { ownerHappiness: -1 }; } }
+    ]
+  },
+  {
+    id: 'running-hot',
+    moment: 'season',
+    roles: ['gm'],
+    priority: 50,
+    when: function (c) { return c.streak >= 5; },
+    speaker: { kind: 'reporter' },
+    lines: [
+      { emotion: 'neutral', text: 'Five in a row. Nobody had the {teamName} down for this.' },
+      { emotion: 'confident', text: 'Has this changed what the season is about?' }
+    ],
+    choices: [
+      { text: 'We are chasing something now. Say it out loud.', emotion: 'confident',
+        effect: function () { return { teamMorale: 2, ownerHappiness: 3, reputation: -1,
+          chronicle: 'Raised expectations publicly during a winning run.' }; } },
+      { text: 'Five games. Ask me in March.', emotion: 'neutral',
+        effect: function () { return { reputation: 1 }; } },
+      { text: 'That is the players. I just signed them.', emotion: 'neutral',
+        effect: function () { return { teamMorale: 3, reputation: 1,
+          chronicle: 'Gave the roster the credit for a winning run.' }; } }
+    ]
   }
 ];
 
