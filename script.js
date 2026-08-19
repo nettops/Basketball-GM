@@ -126,6 +126,20 @@ function initSeason() {
   GameState.playoffBracket = null;
   GameState.offseasonStage = null;
   GameState.allStarWeekend = null;
+  // Both are measured in DAYS OF THIS SEASON, so they have to go when the day
+  // counter goes back to -1. Carrying them over makes every stamp look like it
+  // happened in the future, the cooldown never expires, and mid-season scenes
+  // are silenced for the entire next league — measured at zero scenes in a
+  // full 82 games after starting a second game in one session.
+  GameState.seasonSceneDays = {};
+  GameState.lastMidSeasonSceneDay = null;
+  // The inbox belongs to the league that generated it. Starting a second
+  // career in one session left the first league's offers sitting there —
+  // naming two clubs the new GM has nothing to do with — and the Trade view
+  // threw outright, because it looks for the user's own side of the deal and
+  // there isn't one. The rollover already does this between seasons
+  // (seasonRollover.js); a brand new league needs it too.
+  GameState.tradeOffers = [];
 
   ensureHiddenPlayerData(PLAYERS_2026);
   ensureHiddenPlayerData(DRAFT_PROSPECTS_2026);
@@ -920,6 +934,20 @@ function handleAdvanceToNewSeason() {
   GameState.playoffBracket = null;
   GameState.offseasonStage = null;
   GameState.allStarWeekend = null;
+  // Both are measured in DAYS OF THIS SEASON, so they have to go when the day
+  // counter goes back to -1. Carrying them over makes every stamp look like it
+  // happened in the future, the cooldown never expires, and mid-season scenes
+  // are silenced for the entire next league — measured at zero scenes in a
+  // full 82 games after starting a second game in one session.
+  GameState.seasonSceneDays = {};
+  GameState.lastMidSeasonSceneDay = null;
+  // The inbox belongs to the league that generated it. Starting a second
+  // career in one session left the first league's offers sitting there —
+  // naming two clubs the new GM has nothing to do with — and the Trade view
+  // threw outright, because it looks for the user's own side of the deal and
+  // there isn't one. The rollover already does this between seasons
+  // (seasonRollover.js); a brand new league needs it too.
+  GameState.tradeOffers = [];
   renderView('dashboard');
   autosave(GameState);
 }

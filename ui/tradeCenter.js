@@ -110,6 +110,13 @@ function renderTradeCenter(container, userTeamId) {
         const partner = getTeamById(partnerId);
         const mine = offer.proposal.assignments.find(function (a) { return a.fromTeamId === userTeamId; });
         const theirs = offer.proposal.assignments.find(function (a) { return a.fromTeamId === partnerId; });
+        // An offer with no side belonging to the user cannot be described, let
+        // alone accepted. initSeason now clears the inbox for a new league, but
+        // a save written before that fix still carries the old league's offers,
+        // and one of them used to take the entire Trade screen down with a
+        // TypeError. Skip it rather than throw.
+        if (!partner || !mine || !theirs ||
+            !getPlayerById(mine.playerId) || !getPlayerById(theirs.playerId)) return;
         // Offers lapse after TRADE_OFFER_EXPIRY_DAYS (trade.js). Showing the
         // countdown is what makes ignoring one a decision rather than an
         // accident — the offer disappears silently, so the deadline has to be

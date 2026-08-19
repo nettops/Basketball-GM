@@ -232,6 +232,9 @@ function runOffseasonRollover(gameState, deps) {
   gameState.playoffBracket = null;
   gameState.offseasonStage = null;
   gameState.allStarWeekend = null;
+  // Day-stamped, and the day counter restarts — see script.js's initSeason.
+  gameState.seasonSceneDays = {};
+  gameState.lastMidSeasonSceneDay = null;
 
   // Re-anchor the ultimate gate to the NEW player population. It is rank-based
   // — the 36th best player — because the league's rating distribution drifts
