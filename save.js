@@ -245,7 +245,8 @@ function serializeGameState(gameState, name, includeSnapshots) {
     // scene recurring immediately across a save/load.
     reporters: gameState.reporters || null,
     recentDialogueScenes: gameState.recentDialogueScenes || [],
-    seasonSceneDays: gameState.seasonSceneDays || {}
+    seasonSceneDays: gameState.seasonSceneDays || {},
+    seasonSceneCounts: gameState.seasonSceneCounts || {}
   };
 }
 
@@ -403,6 +404,8 @@ function applySavedState(payload, gameState) {
   gameState.reporters = payload.reporters || null;
   gameState.seasonSceneDays = (payload.seasonSceneDays && typeof payload.seasonSceneDays === 'object')
     ? payload.seasonSceneDays : {};
+  gameState.seasonSceneCounts = (payload.seasonSceneCounts && typeof payload.seasonSceneCounts === 'object')
+    ? payload.seasonSceneCounts : {};
   gameState.recentDialogueScenes = Array.isArray(payload.recentDialogueScenes)
     ? payload.recentDialogueScenes
     : [];

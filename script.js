@@ -132,6 +132,7 @@ function initSeason() {
   // are silenced for the entire next league — measured at zero scenes in a
   // full 82 games after starting a second game in one session.
   GameState.seasonSceneDays = {};
+  GameState.seasonSceneCounts = {};
   GameState.lastMidSeasonSceneDay = null;
   // The inbox belongs to the league that generated it. Starting a second
   // career in one session left the first league's offers sitting there —
@@ -702,6 +703,12 @@ function runInteractiveDraft(gs) {
   // is the exact behaviour the window was built to remove.
   const preDraft = runOffseasonPreDraft(gs.rng, gs.leagueYear, gs.userTeamId);
   announceSecretBadges(preDraft.secretBadges, function (text) { pushToFeed(text); });
+  // The MANUAL draft route. runOffseasonRollover announces retirements on the
+  // automatic route, and this path reaches runOffseasonPreDraft directly — so
+  // without this line the default settings (autoDraft off) got no retirement
+  // news at all, which is exactly the silence being fixed. Same shape as the
+  // secret-badge call above, and for the same reason.
+  announceRetirements(gs, preDraft.retirees, function (text) { pushToFeed(text); });
   const draftOrder = buildDraftOrder(gs.playoffBracket, gs.rng, gs.settings.lotteryFormat);
   gs.draftSession = startDraftSession(draftOrder, gs.upcomingDraftClass);
   advanceDraftUntilUserTurn(gs.draftSession, gs.userTeamId, false);
@@ -940,6 +947,7 @@ function handleAdvanceToNewSeason() {
   // are silenced for the entire next league — measured at zero scenes in a
   // full 82 games after starting a second game in one session.
   GameState.seasonSceneDays = {};
+  GameState.seasonSceneCounts = {};
   GameState.lastMidSeasonSceneDay = null;
   // The inbox belongs to the league that generated it. Starting a second
   // career in one session left the first league's offers sitting there —

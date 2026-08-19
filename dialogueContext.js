@@ -55,20 +55,39 @@ const RECENT_SCENE_LIMIT = 8;
 // actually get.
 const SEASON_SCENE_COOLDOWN_DAYS = 21;
 
-// Ids that fired within the cooldown. Handed to selectScene as its `recent`,
-// so the engine needs no idea any of this exists.
+// And a hard ceiling on how often ONE conversation can happen in a season.
+//
+// The cooldown alone was not enough. Twenty-one days into a hundred-and-thirty
+// day season permits six repeats, and a playtester got exactly that: the owner
+// asking about the tax bill FOUR TIMES, word for word, same three answers, in
+// a single year. The system's best feature became its most tiring one inside
+// one season — "the writing's strength curdles into its weakness".
+//
+// Twice is the most a season should hear any one of these. A recurring
+// situation genuinely can come round again — a slump in November and another
+// in February really are two conversations — but a third is the game running
+// out of things to say and admitting it.
+const SEASON_SCENE_MAX_PER_SEASON = 2;
+
+// Ids that may not fire right now: either inside the cooldown, or already used
+// up for the season. Handed to selectScene as its `recent`, so the engine needs
+// no idea any of this exists.
 function recentSeasonScenes(gameState) {
   const stamps = gameState.seasonSceneDays;
   if (!stamps) return [];
+  const counts = gameState.seasonSceneCounts || {};
   const day = (gameState.season && gameState.season.currentDay) || 0;
   return Object.keys(stamps).filter(function (id) {
+    if ((counts[id] || 0) >= SEASON_SCENE_MAX_PER_SEASON) return true;
     return day - stamps[id] < SEASON_SCENE_COOLDOWN_DAYS;
   });
 }
 
 function stampSeasonScene(gameState, sceneId) {
   if (!gameState.seasonSceneDays) gameState.seasonSceneDays = {};
+  if (!gameState.seasonSceneCounts) gameState.seasonSceneCounts = {};
   gameState.seasonSceneDays[sceneId] = (gameState.season && gameState.season.currentDay) || 0;
+  gameState.seasonSceneCounts[sceneId] = (gameState.seasonSceneCounts[sceneId] || 0) + 1;
   return gameState.seasonSceneDays;
 }
 
@@ -655,6 +674,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     RECENT_SCENE_LIMIT: RECENT_SCENE_LIMIT,
     SEASON_SCENE_COOLDOWN_DAYS: SEASON_SCENE_COOLDOWN_DAYS,
+    SEASON_SCENE_MAX_PER_SEASON: SEASON_SCENE_MAX_PER_SEASON,
     recentSeasonScenes: recentSeasonScenes,
     stampSeasonScene: stampSeasonScene,
     PRESS_MEMORY_LIMIT: PRESS_MEMORY_LIMIT,
