@@ -250,14 +250,69 @@ function runWeeklyTradeGeneration(dayIndex) {
 // The user's team is excluded from the partner search (see autoGM.js's
 // generateTradeOffer excludeTeamId comment) since this pass auto-executes
 // with no inbox/approval step.
+// How many trades one AI club will make in a season before it stops looking.
+// Every trade has two clubs in it, so thirty clubs at two apiece is about
+// thirty trades leaguewide — which is roughly what a real season produces.
+//
+// This used to be unbounded: all 29 AI clubs attempted a trade EVERY week, and
+// any mutually-accepted match executed. About 18 weeks times 29 clubs is ~520
+// attempts a season with no ceiling of any kind, and a playtest measured the
+// result at 493 completed trades in one offseason, one player moved 24 times,
+// one club logging 55. That is not a lively league, it is obviously machinery.
+const AI_TRADES_PER_SEASON = 2;
+
+// Clubs do not trade at a flat rate across a season — almost nothing happens in
+// November and then everything happens at once. The deadline sits at 65% of
+// the calendar (ui/simControls.js's skip-to target uses the same fraction), so
+// the fortnight around it is when a club is actually looking.
+const DEADLINE_FRACTION = 0.65;
+const DEADLINE_WEEKS = 2;
+const TRADE_CHANCE_NORMAL = 0.08;
+const TRADE_CHANCE_DEADLINE = 0.45;
+
+// Counted off the trade archive rather than a new counter, because the archive
+// is already written by archiveTrade and already saved. A tally kept anywhere
+// else would need serialising, migrating for old saves, and resetting at the
+// rollover — three chances to be wrong about a number that is already sitting
+// in LEAGUE_HISTORY.
+function aiTradesMadeThisSeason(teamId, leagueYear) {
+  let n = 0;
+  const trades = (typeof LEAGUE_HISTORY !== 'undefined' && LEAGUE_HISTORY.trades) || [];
+  for (let i = trades.length - 1; i >= 0; i--) {
+    const t = trades[i];
+    if (t.leagueYear !== leagueYear) continue;
+    if (t.participants && t.participants.indexOf(teamId) !== -1) n += 1;
+  }
+  return n;
+}
+
+function tradeChanceForDay(dayIndex, lastDay) {
+  if (!lastDay) return TRADE_CHANCE_NORMAL;
+  const deadlineDay = Math.round(lastDay * DEADLINE_FRACTION);
+  const daysOut = Math.abs(dayIndex - deadlineDay);
+  return daysOut <= DEADLINE_WEEKS * 7 ? TRADE_CHANCE_DEADLINE : TRADE_CHANCE_NORMAL;
+}
+
 function runWeeklyAIToAITradeGeneration(dayIndex) {
   const week = currentWeek(dayIndex);
   if (GameState.lastAIToAITradeWeek === week) return;
   GameState.lastAIToAITradeWeek = week;
+
+  const leagueYear = GameState.leagueYear || 2026;
+  const lastDay = GameState.season && GameState.season.games
+    ? GameState.season.games.reduce(function (m, g) { return g.day > m ? g.day : m; }, 0)
+    : 0;
+  const chance = tradeChanceForDay(dayIndex, lastDay);
+
   TEAMS.filter(function (t) { return t.id !== GameState.userTeamId; }).forEach(function (team) {
+    // Budget first, then the roll — a club that has done its business for the
+    // year costs nothing to skip, and generateTradeOffer is the expensive part
+    // (it searches every other club for a match).
+    if (aiTradesMadeThisSeason(team.id, leagueYear) >= AI_TRADES_PER_SEASON) return;
+    if (GameState.rng() > chance) return;
     const offer = generateTradeOffer(team, GameState.rng, GameState.userTeamId);
     if (!offer) return;
-    executeTrade(offer.proposal, function (p) { archiveTrade(p, GameState.leagueYear || 2026); }, dayIndex);
+    executeTrade(offer.proposal, function (p) { archiveTrade(p, leagueYear); }, dayIndex);
   });
 }
 
