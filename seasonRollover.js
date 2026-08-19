@@ -27,10 +27,13 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       league: require('./league.js'),
       draft: require('./draft.js'),
       rivalries: require('./rivalries.js'),
-      difficulty: require('./difficulty.js')
+      difficulty: require('./difficulty.js'),
+      gmCareer: require('./gmCareer.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
+      gmCareer: { ensureGmCareer: ensureGmCareer, addChronicle: addChronicle,
+        CHRONICLE_KINDS: CHRONICLE_KINDS },
       history: { finalizeSeasonHistory: finalizeSeasonHistory, archiveDraftClass: archiveDraftClass },
       // runOffseasonThroughDraft and generateNewSeason both live in
       // seasonTransition.js, NOT draft.js — draft.js owns the interactive
@@ -130,6 +133,57 @@ function runOwnerReview(gameState, onFeed) {
 // deps.stopAfterDraft stops once the draft is done, leaving offseasonStage at
 // 'draft'. That is the manual path; without it the rollover continues through
 // free agency into a fresh schedule.
+
+// A career ending is news. Which career it was decides how loudly.
+//
+// A club legend leaving on your watch also belongs in YOUR record — the GM
+// chronicle already holds every press answer you have given, and "the greatest
+// player you ever employed retired" is at least as much a part of a tenure as
+// what you said about a losing streak.
+const RETIREMENT_HEADLINE_OVERALL = 78;
+const RETIREMENT_LEGEND_OVERALL = 86;
+
+function announceRetirements(gameState, retirees, onFeed) {
+  if (!Array.isArray(retirees) || retirees.length === 0) return 0;
+  const year = gameState.leagueYear || 2026;
+  let announced = 0;
+
+  retirees.slice()
+    .sort(function (a, b) { return b.overall - a.overall; })
+    .forEach(function (r) {
+      const wasOurs = r.teamId && r.teamId === gameState.userTeamId;
+      // Everyone worth a headline, plus anyone who played for the user
+      // regardless of rating — the twelfth man on your own bench retiring is
+      // still your news, even if the league does not care.
+      if (r.overall < RETIREMENT_HEADLINE_OVERALL && !wasOurs) return;
+
+      // Points only when there are some to report: a veteran who retires early
+      // in a league's life has real seasons behind him but no points THIS save
+      // has recorded, and "12 seasons, 0 career points" is worse than saying
+      // nothing about the scoring at all.
+      const career = r.seasons > 0
+        ? (r.points > 0
+            ? r.seasons + ' seasons, ' + r.points.toLocaleString() + ' career points'
+            : r.seasons + ' seasons in the league')
+        : 'a short career';
+      const rings = r.titles > 0 ? ', ' + r.titles + (r.titles === 1 ? ' ring' : ' rings') : '';
+      const verb = r.overall >= RETIREMENT_LEGEND_OVERALL ? ' retires' : ' calls it a career';
+      onFeed(r.name + verb + ' at ' + r.age + ' — ' + career + rings + '.');
+      announced += 1;
+
+      if (wasOurs && r.overall >= RETIREMENT_HEADLINE_OVERALL) {
+        const gmCareer = _ROLLOVER_DATA.gmCareer.ensureGmCareer(gameState);
+        if (gmCareer) {
+          _ROLLOVER_DATA.gmCareer.addChronicle(gmCareer, year,
+            _ROLLOVER_DATA.gmCareer.CHRONICLE_KINDS.PRESS,
+            r.name + ' retired a ' + (r.titles > 0 ? 'champion' : 'one-club man') +
+            (r.seasons > 0 ? ' after ' + r.seasons + ' seasons.' : '.'));
+        }
+      }
+    });
+  return announced;
+}
+
 function runOffseasonRollover(gameState, deps) {
   const d = deps || {};
   const onFeed = d.onFeed || function () {};
@@ -139,6 +193,8 @@ function runOffseasonRollover(gameState, deps) {
   // The offseason below retires players out of PLAYERS_2026, so any offer
   // still in the inbox can name someone who no longer exists.
   gameState.tradeOffers = [];
+  // Last offseason's outcomes belong to last offseason.
+  gameState.freeAgencyLog = [];
 
   _ROLLOVER_DATA.history.finalizeSeasonHistory(gameState.leagueYear || 2026, gameState.playoffBracket, onFeed);
 
@@ -168,6 +224,7 @@ function runOffseasonRollover(gameState, deps) {
     const draftResult = _ROLLOVER_DATA.seasonTransition.runOffseasonThroughDraft(
       gameState.playoffBracket, gameState.rng, gameState.upcomingDraftClass,
       gameState.leagueYear, gameState.settings.lotteryFormat, gameState.userTeamId);
+    announceRetirements(gameState, draftResult.retirees, onFeed);
     // Both offseason routes announce these. The manual-draft path calls
     // runOffseasonPreDraft itself (script.js) and reports there; this is the
     // fast-forward path, the one that runs unattended, where a silent
@@ -234,6 +291,7 @@ function runOffseasonRollover(gameState, deps) {
   gameState.allStarWeekend = null;
   // Day-stamped, and the day counter restarts — see script.js's initSeason.
   gameState.seasonSceneDays = {};
+  gameState.seasonSceneCounts = {};
   gameState.lastMidSeasonSceneDay = null;
 
   // Re-anchor the ultimate gate to the NEW player population. It is rank-based
@@ -254,5 +312,6 @@ function runOffseasonRollover(gameState, deps) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { runOffseasonRollover: runOffseasonRollover };
+  module.exports = {
+    announceRetirements: announceRetirements, runOffseasonRollover: runOffseasonRollover };
 }

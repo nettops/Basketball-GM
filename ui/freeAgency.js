@@ -1,4 +1,23 @@
+// Free agency's running outcome log.
+//
+// It used to be `const signingLog = []` inside renderFreeAgency, which meant it
+// was destroyed every time the view re-rendered or the user navigated away —
+// so the one line telling you a player had REFUSED you was gone the moment you
+// looked anywhere else. On GameState it survives the offseason it belongs to,
+// and seasonRollover clears it with everything else.
+//
+// Entries carry a kind, because "we re-signed him" and "he walked" are not the
+// same news and must not look the same. A playtester lost an 88 OVR player to
+// a refusal, saw no error, and only found out by inspecting game state.
+function faLog(kind, text) {
+  if (!Array.isArray(GameState.freeAgencyLog)) GameState.freeAgencyLog = [];
+  GameState.freeAgencyLog.push({ kind: kind, text: text });
+  while (GameState.freeAgencyLog.length > 40) GameState.freeAgencyLog.shift();
+}
+
 function renderFreeAgency(container, userTeamId) {
+  // Kept as a name so the bidding panel's existing contract is unchanged; it
+  // pushes plain strings, which faLogRender treats as ordinary signings.
   const signingLog = [];
 
   function draw() {
@@ -17,6 +36,23 @@ function renderFreeAgency(container, userTeamId) {
       .sort(function (a, b) { return b.overall - a.overall; });
 
     let html = '<div class="view-header"><h2>Free Agency</h2><span class="view-sub">' + pool.length + ' available</span></div>';
+
+    // AT THE TOP, not the bottom. This panel is the only place the game tells
+    // you a re-signing was refused, and it used to sit under the whole free
+    // agent pool where a player who had just clicked a button at the top of
+    // the page would never see it.
+    const entries = (GameState.freeAgencyLog || []).concat(
+      signingLog.map(function (t) { return { kind: 'signed', text: t }; }));
+    if (entries.length) {
+      html += '<div class="panel"><div class="panel-header">What Just Happened</div>' +
+        '<ul class="stack-list" id="signing-log">' +
+        entries.slice(-15).reverse().map(function (e) {
+          // The text is already escaped by its callers — these strings are
+          // built with escapeHtml around every name. ui-safety: not-markup
+          return '<li class="fa-log fa-log-' + (e.kind === 'lost' ? 'lost' : 'signed') + '">' +
+            (e.kind === 'lost' ? '<span class="fa-log-flag">LOST</span> ' : '') + e.text + '</li>';
+        }).join('') + '</ul></div>';
+    }
 
     if (expiring.length) {
       html += '<div class="panel"><div class="panel-header">Your Expiring Contracts — ' +
@@ -127,10 +163,6 @@ function renderFreeAgency(container, userTeamId) {
     // Same stranded-header problem: this panel titled itself before there was
     // anything to list, so a mid-season visit showed "Recent Signings" over
     // blank space. It appears once there is a signing to report.
-    if (signingLog.length) {
-      html += '<div class="panel"><div class="panel-header">Recent Signings</div><ul class="stack-list" id="signing-log">' +
-        signingLog.slice(-15).map(function (s) { return '<li>' + s + '</li>'; }).join('') + '</ul></div>';
-    }
 
     container.innerHTML = html;
 
@@ -185,13 +217,14 @@ function renderFreeAgency(container, userTeamId) {
         if (verdict.accepted) {
           delete player.resignRights;
           applyResign(player, team, ask);
-          signingLog.push(escapeHtml(team.name) + ' re-signed ' + escapeHtml(player.name) +
+          faLog('signed', escapeHtml(team.name) + ' re-signed ' + escapeHtml(player.name) +
             ' ($' + ask.salary.toLocaleString() + '/yr, ' + ask.yearsRemaining + ' yr' +
             (ask.yearsRemaining === 1 ? '' : 's') + ')');
         } else {
           delete player.resignRights;
           player.teamId = null;
-          signingLog.push(escapeHtml(player.name) + ' turned down your offer and will test the market');
+          faLog('lost', escapeHtml(player.name) + ' turned down your offer. He is a free agent now — ' +
+            'you can still bid for him below, but so can everyone else.');
         }
         draw();
       });
@@ -208,7 +241,7 @@ function renderFreeAgency(container, userTeamId) {
         const sheet = player.resignRights.offerSheet;
         delete player.resignRights;
         applyResign(player, team, sheet);
-        signingLog.push(escapeHtml(team.name) + ' matched the offer sheet for ' + escapeHtml(player.name) +
+        faLog('signed', escapeHtml(team.name) + ' matched the offer sheet for ' + escapeHtml(player.name) +
           ' ($' + sheet.salary.toLocaleString() + '/yr, ' + sheet.yearsRemaining + ' yr' +
           (sheet.yearsRemaining === 1 ? '' : 's') + ')');
         draw();
@@ -226,7 +259,7 @@ function renderFreeAgency(container, userTeamId) {
         const rival = getTeamById(sheet.teamId);
         delete player.resignRights;
         signPlayer(player, sheet);
-        signingLog.push(escapeHtml(player.name) + ' signs with ' + escapeHtml(rival ? rival.name : 'a rival') +
+        faLog('lost', escapeHtml(player.name) + ' signs with ' + escapeHtml(rival ? rival.name : 'a rival') +
           ' on the offer sheet you declined to match');
         draw();
       });
