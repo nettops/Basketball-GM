@@ -231,4 +231,41 @@ function checkNoPlayerAppearsTwice() {
 }
 checkNoPlayerAppearsTwice();
 
+// A retirement headline may not mix two provenances in one sentence.
+//
+// It did, and it produced "Mike Conley — 20 seasons, 507 career points". The
+// career LENGTH comes from yearsPro and covers the player's whole life; the
+// POINTS come from careerStats and cover only the seasons THIS SAVE simulated.
+// Quoted together they are wrong twice: they undersell a twenty-year career
+// and misreport its scoring. So the points are spoken only when the save
+// watched the whole career, and the length stands alone otherwise.
+function checkARetirementHeadlineNeverMixesProvenances() {
+  const rollover = require(path.join(__dirname, '..', 'seasonRollover.js'));
+  const lines = [];
+  const gs = { leagueYear: 2028, userTeamId: 'BOS', gmCareer: null };
+
+  rollover.announceRetirements(gs, [
+    // The regression: a long career this save only saw the tail of.
+    { id: 'a', name: 'Long Career', teamId: 'LAL', age: 40, overall: 84,
+      seasons: 20, simSeasons: 2, points: 507, titles: 0 },
+    // A career the save watched end to end — here the points are real.
+    { id: 'b', name: 'Home Grown', teamId: 'LAL', age: 38, overall: 84,
+      seasons: 12, simSeasons: 12, points: 21000, titles: 1 }
+  ], function (line) { lines.push(line); });
+
+  assert.strictEqual(lines.length, 2, 'both retirements should be announced');
+  const partial = lines.filter(function (l) { return l.indexOf('Long Career') === 0; })[0];
+  const full = lines.filter(function (l) { return l.indexOf('Home Grown') === 0; })[0];
+
+  assert.ok(partial.indexOf('20 seasons') !== -1, 'the real career length must survive');
+  assert.ok(partial.indexOf('507') === -1,
+    'points from 2 simulated seasons were quoted against a 20-season career: ' + partial);
+  assert.ok(full.indexOf('21,000 career points') !== -1,
+    'a fully-simulated career must still report its points: ' + full);
+  console.log('checkARetirementHeadlineNeverMixesProvenances: OK');
+  console.log('  ' + partial);
+  console.log('  ' + full);
+}
+checkARetirementHeadlineNeverMixesProvenances();
+
 console.log('All season rollover validations passed');

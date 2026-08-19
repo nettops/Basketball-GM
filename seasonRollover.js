@@ -157,12 +157,16 @@ function announceRetirements(gameState, retirees, onFeed) {
       // still your news, even if the league does not care.
       if (r.overall < RETIREMENT_HEADLINE_OVERALL && !wasOurs) return;
 
-      // Points only when there are some to report: a veteran who retires early
-      // in a league's life has real seasons behind him but no points THIS save
-      // has recorded, and "12 seasons, 0 career points" is worse than saying
-      // nothing about the scoring at all.
+      // Two numbers, two provenances, and they may not be mixed. Career LENGTH
+      // comes from yearsPro and covers the player's whole life; POINTS come
+      // from careerStats and cover only the seasons this save simulated.
+      // Quoting them together produced "Mike Conley — 20 seasons, 507 career
+      // points", which is wrong twice over: it undersells the career and
+      // misreports the total. So the points are only spoken when this save
+      // watched the whole career — otherwise the length stands on its own.
+      const knowsWholeCareer = r.simSeasons >= r.seasons;
       const career = r.seasons > 0
-        ? (r.points > 0
+        ? (knowsWholeCareer && r.points > 0
             ? r.seasons + ' seasons, ' + r.points.toLocaleString() + ' career points'
             : r.seasons + ' seasons in the league')
         : 'a short career';

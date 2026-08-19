@@ -152,6 +152,10 @@ function runOffseasonPreDraft(rng, leagueYear, deferTeamId) {
       // "Kawhi Leonard calls it a career at 42 — a career that never got going"
       // was the actual output.
       seasons: Math.max((p.careerStats && p.careerStats.seasonsPlayed) || 0, p.yearsPro || 0),
+      // Kept SEPARATE from `seasons` on purpose: points are only known for the
+      // seasons this save actually simulated, so the two numbers have different
+      // provenance and must never be quoted as one fact. See announceRetirements.
+      simSeasons: (p.careerStats && p.careerStats.seasonsPlayed) || 0,
       points: (p.careerStats && p.careerStats.points) || 0,
       titles: p.championshipsWon || 0
     };
