@@ -197,6 +197,35 @@ function evaluateSalaryLeg(teamId, outgoingPlayerIds, incomingPlayerIds) {
 // precisely as it always did.
 var TRADE_TUNING = { shrewdness: 1 };
 
+// What a PACKAGE of players is worth, as opposed to what they are worth added up.
+//
+// This used to be a plain sum, and a plain sum says three replacement-level
+// bodies are worth more than one star. Measured across all 870 club pairs,
+// 6.8% of them would hand over their best player for a bundle of the worst
+// players on your roster — an average upgrade of +28 OVR, including Victor
+// Wembanyama at 82 for three men whose best was 36.
+//
+// A sum is the wrong model because a roster is not a warehouse: there are five
+// places on the floor and one ball, and the fourth-best piece in a package
+// plays almost none of the minutes the star he replaced was playing. So the
+// pieces are ranked and discounted — the headline player counts in full, the
+// next a little over half, and it falls away from there.
+//
+// This is deliberately NOT a cap on package size. Two good players for one
+// great one is a real trade and still goes through; what stops working is
+// paying for quality with quantity.
+const PACKAGE_DIMINISH = 0.55;
+
+function packageValue(players, team, leagueBaseline) {
+  const values = players.map(function (p) { return adjustedPlayerValue(p, team, leagueBaseline); })
+    .sort(function (a, b) { return b - a; });
+  let total = 0;
+  for (let i = 0; i < values.length; i++) {
+    total += values[i] * Math.pow(PACKAGE_DIMINISH, i);
+  }
+  return total;
+}
+
 function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingPickValue, incomingPickValue) {
   outgoingPickValue = outgoingPickValue || 0;
   incomingPickValue = incomingPickValue || 0;
@@ -207,8 +236,8 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
   // Computed once per evaluation (not once per player) — see computeLeagueStatBaseline.
   const leagueBaseline = computeLeagueStatBaseline();
 
-  const outgoingValue = outgoing.reduce(function (s, p) { return s + adjustedPlayerValue(p, team, leagueBaseline); }, 0) + outgoingPickValue;
-  const incomingValue = incoming.reduce(function (s, p) { return s + adjustedPlayerValue(p, team, leagueBaseline); }, 0) + incomingPickValue;
+  const outgoingValue = packageValue(outgoing, team, leagueBaseline) + outgoingPickValue;
+  const incomingValue = packageValue(incoming, team, leagueBaseline) + incomingPickValue;
   // At shrewdness 1 the AI accepts getting back 90% of what it gives — its
   // long-standing tolerance. On brutal (1.3) it demands 17% MORE than it gives;
   // on relaxed (0.85) it will hand over rather more than it gets.
@@ -232,6 +261,8 @@ function evaluateTeamLeg(teamId, outgoingPlayerIds, incomingPlayerIds, outgoingP
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     TRADE_TUNING: TRADE_TUNING,
+    PACKAGE_DIMINISH: PACKAGE_DIMINISH,
+    packageValue: packageValue,
     youthFactor: youthFactor,
     contractBurden: contractBurden,
     rawProductionPerGame: rawProductionPerGame,
