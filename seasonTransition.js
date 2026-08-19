@@ -134,6 +134,28 @@ function runOffseasonPreDraft(rng, leagueYear, deferTeamId) {
   });
 
   const retirees = allPlayers.filter(function (p) { return rollRetirement(p, rng); });
+  // Captured BEFORE the splice below, because after it the player object is
+  // gone from the league and nothing downstream can say who left.
+  //
+  // This used to return a bare count. A playtester watched a 95 OVR All-NBA
+  // franchise cornerstone vanish between seasons with no headline, no tribute,
+  // nothing — while the same offseason produced three separate conversations
+  // about a bench player's minutes. The engine to mark it already existed; the
+  // retirement simply never told anyone it had happened.
+  const retiredSummaries = retirees.map(function (p) {
+    return {
+      id: p.id, name: p.name, teamId: p.teamId, age: p.age,
+      overall: p.rawOverall || p.overall || 0,
+      // yearsPro as the floor, not just careerStats.seasonsPlayed. The latter
+      // counts only seasons THIS SAVE has simulated, so a veteran who retires
+      // in the first or second year of a league reads as having played none —
+      // "Kawhi Leonard calls it a career at 42 — a career that never got going"
+      // was the actual output.
+      seasons: Math.max((p.careerStats && p.careerStats.seasonsPlayed) || 0, p.yearsPro || 0),
+      points: (p.careerStats && p.careerStats.points) || 0,
+      titles: p.championshipsWon || 0
+    };
+  });
   retirees.forEach(function (p) {
     _TRANSITION_DATA.history.archiveRetiree(p, leagueYear);
     const idx = _TRANSITION_DATA.players.PLAYERS_2026.indexOf(p);
@@ -153,6 +175,7 @@ function runOffseasonPreDraft(rng, leagueYear, deferTeamId) {
   _TRANSITION_DATA.players.PLAYERS_2026.forEach(function (p) { stillActive[p.id] = true; });
   return {
     retireeCount: retirees.length,
+    retirees: retiredSummaries,
     secretBadges: secretBadges.filter(function (s) { return stillActive[s.playerId]; })
   };
 }
@@ -170,7 +193,7 @@ function runOffseasonThroughDraft(bracket, rng, upcomingDraftClass, leagueYear, 
   // duplicate guard — see addDraftedProspect.
   draftResults.forEach(function (r) { _TRANSITION_DATA.draft.addDraftedProspect(r.prospect); });
 
-  return { retireeCount: pre.retireeCount, secretBadges: pre.secretBadges, draftResults: draftResults };
+  return { retireeCount: pre.retireeCount, retirees: pre.retirees, secretBadges: pre.secretBadges, draftResults: draftResults };
 }
 
 // leagueYear is the season being started. It reaches generateProspectClass so
