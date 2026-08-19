@@ -210,7 +210,16 @@ function runDialogue(scene, ctx, onDone) {
     if (choiceList.style.display === 'none') showChoices();
   }
 
-  root.addEventListener('click', advance);
+  // On the BOX, not the overlay. The overlay covers the whole viewport, so
+  // binding advance there made every click on the page an advance — a
+  // playtester aiming for the Transactions tab hit the overlay instead and
+  // burned a line of dialogue he had not read yet. The overlay still swallows
+  // outside clicks (that is what a modal is for), it just no longer acts on
+  // them, and the cursor changes at the box edge to say where the target is.
+  //
+  // The studio segment below keeps its whole-root binding on purpose: it is a
+  // fullscreen cinematic with nothing else on screen to aim at.
+  box.addEventListener('click', advance);
 
   state.onKey = function (e) {
     if (e.key === 'Escape') {

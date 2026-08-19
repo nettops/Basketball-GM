@@ -402,6 +402,17 @@ table { border-collapse: collapse; width: 100%; }
 .rating-chip.tier-high { background: rgba(88, 166, 255, .14); color: var(--info); }
 .rating-chip.tier-mid { background: var(--surface-3); color: var(--text); }
 .rating-chip.tier-low { background: var(--surface-3); color: var(--text-mute); }
+/* A scout's estimate rather than a known rating. Wider (it holds a range),
+   dashed so the uncertainty is visible at a glance in a column of solid
+   chips, and never coloured by tier — a confident colour on a guess would
+   undo the point of showing a range at all. */
+.rating-chip.is-estimate {
+  min-width: 52px;
+  background: transparent;
+  border: 1px dashed var(--line);
+  color: var(--text-dim);
+  font-weight: 700;
+}
 
 /* ---------- Pills ---------- */
 .pill {
@@ -499,6 +510,9 @@ table { border-collapse: collapse; width: 100%; }
 .kpi-value.is-good { color: var(--win); }
 .kpi-value.is-bad { color: var(--loss); }
 .kpi-value.is-warn { color: var(--warn); }
+/* An award nobody won. Smaller and dimmer than a name, so the tile reads as
+   answered rather than empty. */
+.kpi-muted { font-size: 1rem; font-weight: 600; color: var(--text-mute); }
 
 /* ---------- Shot chart ---------- */
 /* Chart and table side by side on a wide panel, stacked when there is no room
@@ -1377,9 +1391,11 @@ table { border-collapse: collapse; width: 100%; }
   display: flex; align-items: flex-end; justify-content: center;
   padding: 0 14px 14px;
   background: rgba(0, 0, 0, .45);
-  cursor: pointer;
+  /* default, not pointer: only the box advances the scene, and a pointer over
+     the whole screen promises a click target that is not there. */
+  cursor: default;
 }
-.dlg-box { width: 100%; max-width: 660px; }
+.dlg-box { width: 100%; max-width: 660px; cursor: pointer; }
 .dlg-frame {
   display: flex;
   background: #0d1017;
