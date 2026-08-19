@@ -1,6 +1,7 @@
 var _SCOUTING_DATA = (typeof require !== 'undefined')
-  ? { traits: require('./traits.js') }
-  : { traits: { TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY, TRAIT_TIERS: TRAIT_TIERS } };
+  ? { traits: require('./traits.js'), data: require('./data.js') }
+  : { traits: { TRAIT_TAXONOMY_BY_KEY: TRAIT_TAXONOMY_BY_KEY, TRAIT_TIERS: TRAIT_TIERS },
+      data: { RATING_MIN: RATING_MIN, RATING_MAX: RATING_MAX } };
 
 function weeklyScoutPointsForTeam(team) {
   return 100 + Math.floor(team.prestige / 2);
@@ -119,6 +120,77 @@ function getRevealedView(player, confidence, isProspect) {
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// What a scout can actually tell you the player is worth.
+//
+// getRevealedView above fogs personality, tendencies and traits, and until now
+// that was the whole of scouting — the OVERALL RATING was never fogged at all.
+// The draft board printed the true number in a column beside a pill reading
+// "Unscouted", and then sorted the board by that same true number, so the best
+// prospect available was always the top row whether you had spent a scouting
+// point or not. Every part of the scouting system was decorative next to that.
+//
+// Two properties matter here:
+//
+// 1. The band is NOT centred on the truth. A range that always brackets the
+//    real number symmetrically hands you the answer as its midpoint, which is
+//    the same leak wearing a disguise. Each player carries a stable bias, so
+//    an unscouted read can be genuinely wrong in a direction.
+// 2. It is DETERMINISTIC per player. Scouting reports must not reshuffle every
+//    time the table repaints, and a re-rollable number could be averaged out
+//    by opening and closing the view.
+const SCOUT_BAND_HIDDEN = 8;
+const SCOUT_BAND_FUZZY = 4;
+
+function _scoutHash(id) {
+  const str = String(id);
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return h;
+}
+
+// { level, low, high, exact } — exact is the true rating and is non-null only
+// when the player is fully scouted. Callers must display low..high otherwise,
+// and must sort by the midpoint rather than by the true rating.
+function scoutedOverallRange(player, confidence) {
+  // `overall`, not `rawOverall`. They are different scales — A.J. Dybantsa
+  // shows 81 on the draft board and carries a rawOverall of 38 — and this
+  // function has to fog the number the column actually prints, or a fully
+  // scouted prospect reads 38 where the board used to say 81. Caught in the
+  // browser against real prospects; the first fixtures held the two equal and
+  // could not see it, which is why the validator now sets them apart.
+  const truth = typeof player.overall === 'number' ? player.overall : (player.rawOverall || 0);
+  const min = _SCOUTING_DATA.data.RATING_MIN;
+  const max = _SCOUTING_DATA.data.RATING_MAX;
+  if (confidence >= 70) {
+    return { level: 'exact', low: truth, high: truth, exact: truth };
+  }
+  const band = confidence >= 30 ? SCOUT_BAND_FUZZY : SCOUT_BAND_HIDDEN;
+  const bias = (_scoutHash(player.id) % (band + 1)) - Math.round(band / 2);
+  const mid = truth + bias;
+  return {
+    level: confidence >= 30 ? 'fuzzy' : 'hidden',
+    low: Math.max(min, mid - band),
+    high: Math.min(max, mid + band),
+    exact: null
+  };
+}
+
+// What to print in an OVR column. One place, so no view can accidentally
+// render the truth next to an "Unscouted" pill again.
+function scoutedOverallLabel(range) {
+  return range.exact !== null ? String(range.exact) : range.low + '–' + range.high;
+}
+
+// What to SORT by. The midpoint of what the club believes, never the truth.
+function scoutedOverallSortKey(range) {
+  return range.exact !== null ? range.exact : (range.low + range.high) / 2;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     weeklyScoutPointsForTeam: weeklyScoutPointsForTeam,
@@ -128,6 +200,11 @@ if (typeof module !== 'undefined' && module.exports) {
     tickPassiveScouting: tickPassiveScouting,
     allocateScoutPoints: allocateScoutPoints,
     getRevealedView: getRevealedView,
+    scoutedOverallRange: scoutedOverallRange,
+    scoutedOverallLabel: scoutedOverallLabel,
+    scoutedOverallSortKey: scoutedOverallSortKey,
+    SCOUT_BAND_HIDDEN: SCOUT_BAND_HIDDEN,
+    SCOUT_BAND_FUZZY: SCOUT_BAND_FUZZY,
     personalityBucket: personalityBucket
   };
 }

@@ -31,7 +31,16 @@ function prospectProfileHtml(p) {
 function renderDraftPicker(container, session, userTeamId, onPick) {
   const pick = currentPick(session);
   const team = getTeamById(userTeamId);
-  const sorted = session.available.slice().sort(function (a, b) { return b.overall - a.overall; });
+  // Sorted by what the club BELIEVES, not by the truth. Sorting the board by
+  // p.overall meant the best prospect left was always the top row, which told
+  // you everything scouting was supposed to cost you something to learn.
+  const scoutRangeFor = function (p) {
+    const target = GameState.scouting.targets[p.id];
+    return scoutedOverallRange(p, target ? target.confidence : 0);
+  };
+  const sorted = session.available.slice().sort(function (a, b) {
+    return scoutedOverallSortKey(scoutRangeFor(b)) - scoutedOverallSortKey(scoutRangeFor(a));
+  });
 
   let expandedProspectId = null;
 
@@ -44,6 +53,7 @@ function renderDraftPicker(container, session, userTeamId, onPick) {
       const target = GameState.scouting.targets[p.id];
       const confidence = target ? target.confidence : 0;
       const revealed = getRevealedView(p, confidence);
+      const ovr = scoutedOverallRange(p, confidence);
       const scoutPill = revealed.level === 'exact'
         ? '<span class="pill pill-win">Fully scouted</span>'
         : (revealed.level === 'fuzzy' ? '<span class="pill pill-gold">Partial</span>' : '<span class="pill pill-mute">Unscouted</span>');
@@ -53,7 +63,8 @@ function renderDraftPicker(container, session, userTeamId, onPick) {
         '<td class="col-name">' + escapeHtml(p.name) + ' <span class="schedule-chevron">' + (isExpanded ? '▾' : '▸') + '</span></td>' +
         '<td><span class="pill pill-pos">' + p.position + '</span></td>' +
         '<td class="num">' + p.age + '</td>' +
-        '<td class="num"><span class="rating-chip ' + ratingTier(p.overall) + '">' + p.overall + '</span></td>' +
+        '<td class="num"><span class="rating-chip ' + ratingTier(scoutedOverallSortKey(ovr)) +
+          (ovr.exact === null ? ' is-estimate' : '') + '">' + scoutedOverallLabel(ovr) + '</span></td>' +
         '<td>' + scoutPill + '</td>' +
         '<td class="actions"><button class="btn-primary" data-prospect-id="' + p.id + '">Draft</button></td></tr>';
       if (isExpanded) {
