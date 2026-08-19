@@ -33,7 +33,7 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       morale: { moraleTier: moraleTier },
       rivalries: { rivalsOf: rivalsOf },
       owner: { currentPatience: currentPatience },
-      data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine }
+      data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine, tradeDeadlineDay: tradeDeadlineDay }
     };
 
 const RECENT_SCENE_LIMIT = 8;
@@ -372,13 +372,16 @@ function buildSeasonContext(gameState) {
     youngName: young ? young.name : '',
     rivalName: topRival ? _teamName(topRival.teamId) : '',
     rivalHeat: topRival ? Math.round(topRival.heat) : 0,
-    // The deadline sits at 65% of the calendar, matching the skip-to target in
-    // ui/simControls.js. "Soon" is the fortnight before it — the window where
-    // buy-or-sell is still a live question.
+    // "Soon" is the fortnight before the deadline — the window where buy-or-sell
+    // is still a live question. Measured in DAYS off the shared helper, because
+    // measuring it in games played put this window a full seventeen days ahead
+    // of the deadline the rest of the game observes.
     deadlineSoon: (function () {
-      if (!mine) return false;
-      const deadlineGame = Math.round(mine * 0.65);
-      return played <= deadlineGame && deadlineGame - played <= 8;
+      const deadline = _DIALOGUE_DATA.data.tradeDeadlineDay(
+        gameState.season && gameState.season.games);
+      if (!deadline) return false;
+      const day = (gameState.season && gameState.season.currentDay) || 0;
+      return day <= deadline && deadline - day <= 14;
     })(),
     mandateLabel: mandate ? mandate.label : '',
     mandateType: mandate ? mandate.type : '',

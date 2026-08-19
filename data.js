@@ -82,10 +82,28 @@ const PLAYER_ARCHETYPES = {
   }
 };
 
+// The trade deadline, as a day on the calendar.
+//
+// This lived in three places and two different units. ui/simControls.js sent
+// Skip To Deadline to day 83; script.js clustered AI trades around day 83; and
+// dialogueContext.js asked "is the deadline soon?" in GAMES PLAYED, where 65%
+// of 82 games is game 53 — which a club reaches on day 66. So the owner asked
+// buy-or-sell up to seventeen days early and went quiet five days before the
+// deadline actually landed. A season is 82 games over ~127 days; the two units
+// are not interchangeable and must not both be called "the deadline".
+const DEADLINE_FRACTION = 0.65;
+
+function tradeDeadlineDay(games) {
+  if (!Array.isArray(games) || games.length === 0) return 0;
+  const lastDay = games.reduce(function (m, g) { return g.day > m ? g.day : m; }, 0);
+  return Math.round(lastDay * DEADLINE_FRACTION);
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     ATTRIBUTE_KEYS, POSITIONS, CONFERENCES, DIVISIONS,
     CAP_CONSTANTS, RATING_MIN, RATING_MAX, PLAYER_ARCHETYPES,
-    getEffectiveSalaryCap, getEffectiveLuxuryTaxLine, getEffectiveSalaryFloor
+    getEffectiveSalaryCap, getEffectiveLuxuryTaxLine, getEffectiveSalaryFloor,
+    DEADLINE_FRACTION, tradeDeadlineDay
   };
 }

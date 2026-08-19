@@ -277,10 +277,9 @@ function runWeeklyTradeGeneration(dayIndex) {
 const AI_TRADES_PER_SEASON = 2;
 
 // Clubs do not trade at a flat rate across a season — almost nothing happens in
-// November and then everything happens at once. The deadline sits at 65% of
-// the calendar (ui/simControls.js's skip-to target uses the same fraction), so
-// the fortnight around it is when a club is actually looking.
-const DEADLINE_FRACTION = 0.65;
+// November and then everything happens at once, so the fortnight around the
+// deadline is when a club is actually looking. The deadline day itself comes
+// from data.js's tradeDeadlineDay, which is the only place it is defined.
 const DEADLINE_WEEKS = 2;
 const TRADE_CHANCE_NORMAL = 0.08;
 const TRADE_CHANCE_DEADLINE = 0.45;
@@ -301,9 +300,9 @@ function aiTradesMadeThisSeason(teamId, leagueYear) {
   return n;
 }
 
-function tradeChanceForDay(dayIndex, lastDay) {
-  if (!lastDay) return TRADE_CHANCE_NORMAL;
-  const deadlineDay = Math.round(lastDay * DEADLINE_FRACTION);
+function tradeChanceForDay(dayIndex, games) {
+  const deadlineDay = tradeDeadlineDay(games);
+  if (!deadlineDay) return TRADE_CHANCE_NORMAL;
   const daysOut = Math.abs(dayIndex - deadlineDay);
   return daysOut <= DEADLINE_WEEKS * 7 ? TRADE_CHANCE_DEADLINE : TRADE_CHANCE_NORMAL;
 }
@@ -314,10 +313,7 @@ function runWeeklyAIToAITradeGeneration(dayIndex) {
   GameState.lastAIToAITradeWeek = week;
 
   const leagueYear = GameState.leagueYear || 2026;
-  const lastDay = GameState.season && GameState.season.games
-    ? GameState.season.games.reduce(function (m, g) { return g.day > m ? g.day : m; }, 0)
-    : 0;
-  const chance = tradeChanceForDay(dayIndex, lastDay);
+  const chance = tradeChanceForDay(dayIndex, GameState.season && GameState.season.games);
 
   TEAMS.filter(function (t) { return t.id !== GameState.userTeamId; }).forEach(function (team) {
     // Budget first, then the roll — a club that has done its business for the

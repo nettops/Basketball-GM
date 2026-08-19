@@ -402,7 +402,7 @@ async function handleSkipTo(kind, quantity) {
   const lastDay = lastDayOfSeason();
 
   if (kind === 'deadline') {
-    return runAdvance({ target: advanceTargetForDay(Math.min(lastDay, Math.round(lastDay * 0.65)), 'the trade deadline') });
+    return runAdvance({ target: advanceTargetForDay(Math.min(lastDay, tradeDeadlineDay(GameState.season.games)), 'the trade deadline') });
   }
   if (kind === 'days') {
     return runAdvance({ target: advanceTargetForDay(Math.min(lastDay, GameState.season.currentDay + quantity), quantity + ' days') });

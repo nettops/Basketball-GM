@@ -584,4 +584,40 @@ function checkTypewriterSpeedIsTheSpeccedValue() {
 }
 checkTypewriterSpeedIsTheSpeccedValue();
 
+// The deadline the owner asks about must be the deadline the game observes.
+//
+// It was not. ui/simControls.js sends "Skip To Deadline" to day 83 and
+// script.js clusters AI trades around day 83, while this file asked the
+// question in GAMES PLAYED — 65% of 82 games is game 53, which a club reaches
+// on day 66. So the buy-or-sell scene opened seventeen days early and had gone
+// quiet by the time the deadline actually landed. Both are now read off
+// data.js's tradeDeadlineDay, and this check exists so they cannot drift apart
+// again in different units.
+function checkTheDeadlineSceneAsksAboutTheRealDeadline() {
+  const data = rq('data.js');
+  // A season shaped like the real one: 82 games per club spread over ~127 days.
+  const games = [];
+  for (let day = 1; day <= 127; day++) games.push({ day: day });
+  const deadline = data.tradeDeadlineDay(games);
+  assert.strictEqual(deadline, 83, 'the shared helper moved: got day ' + deadline);
+
+  function soonOn(day) {
+    const gs = fakeState();
+    gs.season = { games: games, currentDay: day };
+    return dc.buildSeasonContext(gs).deadlineSoon;
+  }
+
+  assert.strictEqual(soonOn(deadline), true, 'silent ON the deadline itself');
+  assert.strictEqual(soonOn(deadline - 1), true, 'silent the day before the deadline');
+  assert.strictEqual(soonOn(deadline - 14), true, 'the window must open a fortnight out');
+  assert.strictEqual(soonOn(deadline - 15), false, 'the window opened too early');
+  assert.strictEqual(soonOn(deadline + 1), false, 'still asking after the deadline passed');
+  // The specific regression: the old games-played window opened here.
+  assert.strictEqual(soonOn(66), false,
+    'day 66 is seventeen days before the deadline and must not count as soon');
+  console.log('checkTheDeadlineSceneAsksAboutTheRealDeadline: OK (deadline day ' +
+    deadline + ', window ' + (deadline - 14) + '-' + deadline + ')');
+}
+checkTheDeadlineSceneAsksAboutTheRealDeadline();
+
 console.log('All dialogue context validations passed');
