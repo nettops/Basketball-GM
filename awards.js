@@ -68,6 +68,16 @@ function bestByValue(entries, valueFn) {
   return best;
 }
 
+// Only players this save has actually simulated a season for, and that gate is
+// deliberately stricter than "has lastSeasonAverages".
+//
+// Loosening it to the seeded averages was tried and measured. In the league's
+// first year the seed carries real-life 2025-26 numbers, which come from a
+// different distribution than this sim produces: league-wide "improvement" in
+// 2026 runs mean +13.8 / median +9.0, against mean +1.2 / median +0.1 in every
+// year after. That is not 400 players improving, it is a units mismatch, and
+// it handed Most Improved to the same man who won MVP. Improvement is only
+// measurable between two seasons the same engine played.
 function computeMip(entries) {
   const withPriorSeason = entries.filter(function (entry) {
     return entry.player.careerStats && entry.player.careerStats.seasonsPlayed > 0;

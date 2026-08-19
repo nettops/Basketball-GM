@@ -173,11 +173,20 @@ function lineupShortName(name) {
   return parts.length > 1 ? parts.slice(1).join(' ') : name;
 }
 
-function lineupsPanelHtml(team, lookupPlayer) {
+// simEngine is passed in rather than read off GameState so this stays a pure
+// function Node can call. Measured over a full 82-game season: the possession
+// engine fills all 30 clubs to the 20-unit cap, and the box-score engine fills
+// none of them ever — it does not track who is on the floor, so bankLineups
+// no-ops on every game. Telling a box-score player to "play some games" is
+// advice that cannot work, which is how an empty panel reads as broken.
+function lineupsPanelHtml(team, lookupPlayer, simEngine) {
   const rows = lineupRows(team, lookupPlayer, 8);
   if (!rows.length) {
+    const why = simEngine === 'boxscore'
+      ? 'The box score engine does not track who is on the floor. Switch to the possession engine in Settings to record units.'
+      : 'No units yet — play some games.';
     return '<div class="panel"><div class="panel-header">Five-Man Units</div>' +
-      '<div class="panel-body"><p class="kpi-sub">No units yet — play some games.</p></div></div>';
+      '<div class="panel-body"><p class="kpi-sub">' + escapeHtml(why) + '</p></div></div>';
   }
   return '<div class="panel"><div class="panel-header">Five-Man Units</div>' +
     '<div class="panel-body">' +

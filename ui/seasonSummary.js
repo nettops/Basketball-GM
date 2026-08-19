@@ -4,13 +4,32 @@
 // the season's award winners, all in one place instead of scattered across
 // the Playoffs/Awards/History tabs. Also reachable any time via the League
 // nav item, where it always shows the most recently completed season.
+// Two of these awards are genuinely unwinnable in a league's first season, and
+// a bare em dash made that read as a broken screen. Rookie of the Year has
+// nobody to give it to — the 2026 rosters contain no player with yearsPro 0,
+// because the first rookie class arrives at the first draft. Most Improved has
+// nothing to compare against — improvement is measured between two seasons the
+// same engine played, and in year one there is only the one.
+//
+// Both are correct behaviour, so the fix is to say so rather than to invent a
+// winner.
+const AWARD_EMPTY_NOTES = {
+  roy: ['Not awarded', 'No rookies in the league this season'],
+  mip: ['Not awarded', 'Needs a previous season to improve on']
+};
+
 function seasonSummaryAwardTile(winners, awardKey, label) {
   const w = winners.find(function (x) { return x.award === awardKey; });
   const player = w ? getPlayerById(w.playerId) : null;
   const team = player && player.teamId ? getTeamById(player.teamId) : null;
+  const note = w ? null : AWARD_EMPTY_NOTES[awardKey];
+  const value = w
+    ? '<a href="javascript:void(0)" data-profile-id="' + w.playerId + '">' + escapeHtml(w.playerName) + '</a>'
+    : (note ? '<span class="kpi-muted">' + escapeHtml(note[0]) + '</span>' : '—');
+  const sub = team ? escapeHtml(team.name) : (note ? escapeHtml(note[1]) : '');
   return '<div class="kpi-tile"><div class="kpi-label">' + escapeHtml(label) + '</div>' +
-    '<div class="kpi-value">' + (w ? '<a href="javascript:void(0)" data-profile-id="' + w.playerId + '">' + escapeHtml(w.playerName) + '</a>' : '—') + '</div>' +
-    (team ? '<div class="kpi-sub">' + escapeHtml(team.name) + '</div>' : '') + '</div>';
+    '<div class="kpi-value">' + value + '</div>' +
+    (sub ? '<div class="kpi-sub">' + sub + '</div>' : '') + '</div>';
 }
 
 const SEASON_SUMMARY_SIMPLE_AWARDS = [
