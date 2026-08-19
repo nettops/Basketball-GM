@@ -343,6 +343,17 @@ function startTenure(career, teamId, leagueYear) {
   return tenure;
 }
 
+// What the owner's patience stands at RIGHT NOW, defaulting to full for a
+// club the GM has only just joined. Read by both the career page and the
+// dashboard strip; a second inline copy of this `=== undefined ? ceiling`
+// rule is how the two screens end up disagreeing about whether you are about
+// to be sacked.
+function currentPatience(career, teamId, maxPatience) {
+  const ceiling = maxPatience || OWNER_PATIENCE;
+  if (!career || !career.ownerPatience || career.ownerPatience[teamId] === undefined) return ceiling;
+  return career.ownerPatience[teamId];
+}
+
 function patienceLabel(remaining) {
   if (remaining >= OWNER_PATIENCE) return 'Secure';
   if (remaining === 1) return 'On notice';
@@ -367,6 +378,7 @@ if (typeof module !== 'undefined' && module.exports) {
     DEVELOP_MINUTES_SHARE: DEVELOP_MINUTES_SHARE,
     setMandate: setMandate,
     reviewSeason: reviewSeason,
+    currentPatience: currentPatience,
     patienceLabel: patienceLabel
   };
 }

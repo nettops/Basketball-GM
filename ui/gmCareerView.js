@@ -98,9 +98,7 @@ function ownerMandatePanelHtml(career, team, mandate) {
       '</div></div>';
   }
 
-  const patience = (career.ownerPatience && career.ownerPatience[team ? team.id : ''] !== undefined)
-    ? career.ownerPatience[team.id]
-    : OWNER_PATIENCE;
+  const patience = currentPatience(career, team ? team.id : '');
   const label = patienceLabel(patience);
   const warn = patience < OWNER_PATIENCE;
 

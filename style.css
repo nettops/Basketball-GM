@@ -1561,3 +1561,20 @@ table { border-collapse: collapse; width: 100%; }
      but it happens at once rather than as a movement. */
   .studio-fs.studio-handoff { transition: none; }
 }
+
+/* The owner's standing demand, under the dashboard hero. Deliberately one
+   quiet line: it has to be readable at a glance every time you open the
+   dashboard without competing with the record for attention. It only turns
+   warm when the job is actually at risk, so the colour means something. */
+.stakes-strip { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px;
+  margin: 10px 0 0; padding: 8px 12px; background: var(--surface-2);
+  border: 1px solid var(--line); border-left: 3px solid var(--line-strong);
+  border-radius: var(--r-sm); font-size: 13px; }
+.stakes-strip.is-warn { border-left-color: var(--warn); }
+.stakes-label { color: var(--text-mute); text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+.stakes-mandate { color: var(--text); font-weight: 650; }
+.stakes-sep { color: var(--line-strong); }
+.stakes-job { color: var(--text); font-weight: 650; }
+.stakes-strip.is-warn .stakes-job { color: var(--warn); }
+.stakes-note { color: var(--text-dim); }
+.stakes-happy { margin-left: auto; color: var(--text-dim); font-variant-numeric: tabular-nums; }

@@ -189,6 +189,39 @@ function raceRowsHtml(team, season) {
   }).join('');
 }
 
+// The owner's standing demand, as one line directly under the hero.
+//
+// All of this already existed on the Records > My Career page and a playtester
+// found it BY ACCIDENT, after a losing season, having managed a whole year
+// without knowing a job was on the line. Stakes you have to go looking for are
+// not stakes. This is deliberately a strip and not a second copy of the career
+// panel: it has to sit in the corner of your eye on the screen you actually
+// manage from, not be a page you visit.
+function ownerStakesStripHtml(teamId) {
+  if (GameState.gameMode === 'playerCareer') return '';
+  const career = GameState.gmCareer;
+  const mandate = GameState.ownerMandate;
+  if (!career || !mandate) return '';
+
+  const team = getTeamById(teamId);
+  const patience = currentPatience(career, teamId);
+  const label = patienceLabel(patience);
+  const warn = patience < OWNER_PATIENCE;
+  const note = patience === 0
+    ? 'the next miss is the last'
+    : patience + ' more miss' + (patience === 1 ? '' : 'es') + ' costs you the job';
+
+  return '<div class="stakes-strip' + (warn ? ' is-warn' : '') + '">' +
+    '<span class="stakes-label">The owner wants</span>' +
+    '<span class="stakes-mandate">' + escapeHtml(mandate.label) + '</span>' +
+    '<span class="stakes-sep">&middot;</span>' +
+    '<span class="stakes-label">Job security</span>' +
+    '<span class="stakes-job">' + escapeHtml(label) + '</span>' +
+    '<span class="stakes-note">' + escapeHtml(note) + '</span>' +
+    '<span class="stakes-happy">Owner ' + Math.round((team && team.ownerHappiness) || 0) + '</span>' +
+    '</div>';
+}
+
 function renderDashboard(container, teamId) {
   const team = getTeamById(teamId);
   const roster = getTeamRoster(teamId);
@@ -253,6 +286,8 @@ function renderDashboard(container, teamId) {
         '<button id="dash-play"' + (noGameToWatch ? ' disabled' : '') + '>Play Next Game</button>' +
       '</div>' +
     '</div>' +
+
+    ownerStakesStripHtml(teamId) +
 
     '<div class="dash-grid"><div class="dash-col">' +
 
