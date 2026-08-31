@@ -620,4 +620,58 @@ function checkTheDeadlineSceneAsksAboutTheRealDeadline() {
 }
 checkTheDeadlineSceneAsksAboutTheRealDeadline();
 
+// A rivalry scene has to be about something that is happening, not about a
+// row in a table. rivalry-heat used to fire on "you have a rival", which is
+// permanently true once you do — and at priority 58 that outranked everything
+// below it. probe-sceneVolume.js measured the cost: running-hot never fired
+// once across six seasons.
+function checkTheRivalryOnlyComesUpAroundTheFixture() {
+  const dc = require(path.join(ROOT, 'dialogueContext.js'));
+  const ds = require(path.join(ROOT, 'dialogueScenes.js'));
+  const rivalries = require(path.join(ROOT, 'rivalries.js'));
+  const teams = require(path.join(ROOT, 'teams.js'));
+
+  const state = rivalries.createRivalryState ? rivalries.createRivalryState() : {};
+  rivalries.addHeat(state, 'BOS', 'LAL', rivalries.RIVALRY_THRESHOLD + 10);
+
+  function ctxOnDay(day, rivalGameDay) {
+    teams.TEAMS.forEach(function (t) { t.record = { wins: 20, losses: 20 }; });
+    return dc.buildSeasonContext({
+      userTeamId: 'BOS', leagueYear: 2026, rivalries: state, gmCareer: null,
+      season: {
+        currentDay: day,
+        games: [{ id: 'g1', homeTeamId: 'BOS', awayTeamId: 'LAL', day: rivalGameDay,
+                  played: rivalGameDay <= day, homeScore: null, awayScore: null }]
+      }
+    });
+  }
+
+  const near = ctxOnDay(40, 42);
+  const far = ctxOnDay(40, 90);
+  assert.ok(near.rivalName, 'the rival must still be identified either way');
+  assert.ok(far.rivalName, 'the rival must still be identified either way');
+  assert.strictEqual(near.rivalGameNear, true, 'a fixture two days out is near');
+  assert.strictEqual(far.rivalGameNear, false, 'a fixture fifty days out is not');
+
+  const scene = ds.SCENES.filter(function (x) { return x.id === 'rivalry-heat'; })[0];
+  assert.ok(scene, 'rivalry-heat must exist');
+  assert.strictEqual(scene.when(near), true, 'it must fire around the fixture');
+  assert.strictEqual(scene.when(far), false, 'and stay quiet the rest of the year');
+
+  // Just played counts as much as about to play.
+  assert.strictEqual(ctxOnDay(40, 34).rivalGameNear, true, 'a game six days ago is still live');
+  assert.strictEqual(ctxOnDay(40, 20).rivalGameNear, false, 'twenty days ago is not');
+
+  // No rivalry at all must not throw or invent one.
+  const none = dc.buildSeasonContext({
+    userTeamId: 'BOS', leagueYear: 2026, rivalries: null, gmCareer: null,
+    season: { currentDay: 10, games: [] }
+  });
+  assert.strictEqual(none.rivalGameNear, false, 'no rival, no fixture');
+  assert.strictEqual(scene.when(none), false, 'and no scene');
+
+  console.log('checkTheRivalryOnlyComesUpAroundTheFixture: OK');
+}
+checkTheRivalryOnlyComesUpAroundTheFixture();
+
 console.log('All dialogue context validations passed');

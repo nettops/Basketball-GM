@@ -332,6 +332,34 @@ function buildSeasonContext(gameState) {
     ? _DIALOGUE_DATA.rivalries.rivalsOf(gameState.rivalries, teamId) : [];
   const topRival = rivals.sort(function (a, b) { return b.heat - a.heat; })[0] || null;
 
+  // Is the rivalry LIVE, or merely on the books?
+  //
+  // rivalry-heat used to fire on `!!rivalName` alone — a standing fact, not
+  // something that just happened. Every other season scene keys off an event:
+  // a losing run, an injury pileup, a career year. At priority 58 a scene that
+  // is permanently true outranks everything below it whenever it has cap left,
+  // and probe-sceneVolume.js measured the result: running-hot (priority 50,
+  // needs a five-game winning run) never fired once across six seasons.
+  //
+  // A rivalry is topical when you have just played them or are about to. Nine
+  // days each way is a little over the 8-day gap between scenes, so a fixture
+  // against the rival gets exactly one conversation rather than none or three.
+  const RIVAL_GAME_WINDOW_DAYS = 9;
+  const rivalGameNear = (function () {
+    if (!topRival) return false;
+    const day = (gameState.season && gameState.season.currentDay) || 0;
+    const list = (gameState.season && gameState.season.games) || [];
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      const involvesBoth =
+        (g.homeTeamId === teamId && g.awayTeamId === topRival.teamId) ||
+        (g.awayTeamId === teamId && g.homeTeamId === topRival.teamId);
+      if (!involvesBoth) continue;
+      if (Math.abs((g.day || 0) - day) <= RIVAL_GAME_WINDOW_DAYS) return true;
+    }
+    return false;
+  })();
+
   const mandate = gameState.ownerMandate || null;
   const career = gameState.gmCareer;
   const patience = _DIALOGUE_DATA.owner.currentPatience(career, teamId);
@@ -372,6 +400,7 @@ function buildSeasonContext(gameState) {
     youngName: young ? young.name : '',
     rivalName: topRival ? _teamName(topRival.teamId) : '',
     rivalHeat: topRival ? Math.round(topRival.heat) : 0,
+    rivalGameNear: rivalGameNear,
     // "Soon" is the fortnight before the deadline — the window where buy-or-sell
     // is still a live question. Measured in DAYS off the shared helper, because
     // measuring it in games played put this window a full seventeen days ahead

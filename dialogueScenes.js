@@ -572,7 +572,7 @@ const SCENES = [
     // anything with a name attached is a real rivalry by the game's own
     // definition. Stacking 50 on top of it meant no club in the league
     // qualified in a first season, when all heat starts at zero.
-    when: function (c) { return !!c.rivalName; },
+    when: function (c) { return !!c.rivalName && !!c.rivalGameNear; },
     speaker: { kind: 'reporter' },
     lines: [
       { emotion: 'neutral', text: 'There is real needle between you and the {rivalName} now.' },

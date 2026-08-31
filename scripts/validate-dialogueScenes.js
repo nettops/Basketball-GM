@@ -415,7 +415,11 @@ function checkEverySeasonSceneCanFire() {
     { name: 'a tight race', ctx: { inPlayoffSpot: true, conferenceRank: 7, gamesFromCut: 1, gamesLeft: 20 } },
     { name: 'the deadline in sight', ctx: { deadlineSoon: true } },
     { name: 'a man having a career year', ctx: { leaderName: 'J. Tatum', leaderPpg: 28.4, gamesPlayed: 45 } },
-    { name: 'a genuine rivalry', ctx: { rivalName: 'Monarchs', rivalHeat: 62 } },
+    // rivalGameNear as well as rivalName: the scene now needs the fixture to
+    // be close, not just the rivalry to exist. Without it this situation went
+    // quiet and this very check caught it.
+    { name: 'a rivalry, with the fixture days away',
+      ctx: { rivalName: 'Monarchs', rivalHeat: 62, rivalGameNear: true } },
     { name: 'a lost season', ctx: { gamesPlayed: 55, gamesLeft: 27, seasonWins: 12, seasonLosses: 43 } },
     { name: 'a young man in the rotation', ctx: { youngName: 'B. Scheierman', gamesPlayed: 30 } },
     { name: 'a club stuck on .500', ctx: { seasonWins: 21, seasonLosses: 21, gamesLeft: 40 } }
@@ -427,7 +431,7 @@ function checkEverySeasonSceneCanFire() {
     patience: 2, ownerHappiness: 60, overTaxLine: false, teamName: 'Harbormen',
     seasonWins: 30, seasonLosses: 11, conferenceRank: 2, inPlayoffSpot: true,
     gamesFromCut: 9, leaderName: 'J. Tatum', leaderPpg: 19.2, youngName: '',
-    rivalName: '', rivalHeat: 0, deadlineSoon: false };
+    rivalName: '', rivalHeat: 0, rivalGameNear: false, deadlineSoon: false };
 
   const fired = {};
   situations.forEach(function (sit) {
@@ -441,6 +445,16 @@ function checkEverySeasonSceneCanFire() {
     assert.ok(fired[sc.id], 'mid-season scene "' + sc.id +
       '" fires in none of the situations a real season produces — it is dead content');
   });
+
+  // The rivalry must be about the fixture, not the table. A standing rivalry
+  // with no game near it fires nothing — before this rule rivalry-heat was
+  // permanently true and, at priority 58, silenced running-hot entirely.
+  const standingOnly = Object.assign({}, quiet, { rivalName: 'Monarchs', rivalHeat: 62, rivalGameNear: false });
+  const rivalScene = season.filter(function (sc) { return sc.id === 'rivalry-heat'; })[0];
+  if (rivalScene) {
+    assert.strictEqual(rivalScene.when(standingOnly), false,
+      'a rivalry with no fixture near it must not keep coming up');
+  }
 
   // And the other half: an ordinary, uneventful club must be left ALONE.
   // A scene that fires on the quiet context would interrupt every eight days
