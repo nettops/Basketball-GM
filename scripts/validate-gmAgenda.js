@@ -270,6 +270,56 @@ function checkItRunsOnARealLeague() {
     ' items; payroll $' + Math.round(payroll / 1e6) + 'M vs $' + Math.round(taxLine / 1e6) + 'M line)');
 }
 
+// ~30 AI trades execute every season and the GM is told nothing. This is the
+// detector that changes that, and the checks below pin the three rules that
+// keep it from becoming a ticker.
+function checkARivalsTradeReachesYourDesk() {
+  const history = rq('history.js');
+  const saved = history.LEAGUE_HISTORY.trades.slice();
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.trades.push(
+    { leagueYear: 2026, participants: ['LAL', 'DEN'],
+      players: [{ playerId: 'x', playerName: 'Ray Alvarez', fromTeamId: 'LAL', toTeamId: 'DEN' }], picks: [] });
+
+  // A rival moved: news.
+  const withRival = agenda.detectLeagueTrades(view({ rivals: ['LAL'], leagueYear: 2026 }));
+  assert.strictEqual(withRival.length, 1, 'a rival reshaping itself must reach the desk');
+  assert.strictEqual(withRival[0].category, agenda.AGENDA_CATEGORY.LEAGUE);
+  assert.ok(/Ray Alvarez/.test(withRival[0].explanation), 'it must name who moved');
+
+  // Nobody you care about: not news.
+  assert.strictEqual(agenda.detectLeagueTrades(view({ rivals: ['CHI'], leagueYear: 2026 })).length, 0,
+    'a trade between two clubs you have no history with is not your business');
+
+  // Your own trade: you were there.
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.trades.push(
+    { leagueYear: 2026, participants: ['BOS', 'LAL'], players: [], picks: [] });
+  assert.strictEqual(agenda.detectLeagueTrades(view({ rivals: ['LAL'], leagueYear: 2026 })).length, 0,
+    'your own trade is not news to you');
+
+  // Last season's business is over.
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.trades.push(
+    { leagueYear: 2019, participants: ['LAL', 'DEN'], players: [], picks: [] });
+  assert.strictEqual(agenda.detectLeagueTrades(view({ rivals: ['LAL'], leagueYear: 2026 })).length, 0,
+    'an old trade must not resurface as current news');
+
+  // Many trades must still yield at most one item.
+  history.LEAGUE_HISTORY.trades.length = 0;
+  for (let i = 0; i < 20; i++) {
+    history.LEAGUE_HISTORY.trades.push(
+      { leagueYear: 2026, participants: ['LAL', 'DEN'], players: [], picks: [] });
+  }
+  assert.strictEqual(agenda.detectLeagueTrades(view({ rivals: ['LAL'], leagueYear: 2026 })).length, 1,
+    'the desk shows a story, not a ticker');
+
+  history.LEAGUE_HISTORY.trades.length = 0;
+  saved.forEach(function (t) { history.LEAGUE_HISTORY.trades.push(t); });
+  console.log('checkARivalsTradeReachesYourDesk: OK');
+}
+checkARivalsTradeReachesYourDesk();
+
 checkAnAngryStarIsTheLoudestThingOnTheList();
 checkAContentBenchPlayerIsNotNews();
 checkALastYearDealOnAGoodPlayerSurfaces();

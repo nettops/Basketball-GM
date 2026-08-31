@@ -20,7 +20,8 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       data: require('./data.js'),
       league: require('./league.js'),
       owner: require('./owner.js'),
-      rivalries: require('./rivalries.js')
+      rivalries: require('./rivalries.js'),
+      history: require('./history.js')
     }
   : {
       data: {
@@ -34,7 +35,8 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       },
       owner: { currentPatience: typeof currentPatience !== 'undefined' ? currentPatience : null,
                patienceLabel: typeof patienceLabel !== 'undefined' ? patienceLabel : null },
-      rivalries: { rivalsOf: typeof rivalsOf !== 'undefined' ? rivalsOf : null }
+      rivalries: { rivalsOf: typeof rivalsOf !== 'undefined' ? rivalsOf : null },
+      history: { LEAGUE_HISTORY: typeof LEAGUE_HISTORY !== 'undefined' ? LEAGUE_HISTORY : null }
     };
 
 // Urgency is HOW SOON, category is WHAT KIND. The brief lists them in one
@@ -60,7 +62,11 @@ var AGENDA_TUNING = {
   longInjuryGames: 10,
   rosterMin: 13,
   rosterMax: 15,
-  streakLength: 5           // games in a row before it is a story
+  streakLength: 5,          // games in a row before it is a story
+  // How far back down the trade archive to look. A TAIL read, not a scan: the
+  // audit's rule is that nothing walks league history, and the archive grows
+  // without bound across a twenty-season career.
+  tradeLookback: 8
 };
 
 function _num(v, fallback) { return typeof v === 'number' && isFinite(v) ? v : fallback; }
@@ -326,9 +332,46 @@ function detectRivalry(v) {
   })];
 }
 
+// The league transacts around you and never tells you. ~30 AI trades execute
+// in a season (see the corrected section of the audit) and the only trace is a
+// line in the feed that scrolls away. A rival getting better is a fact about
+// YOUR season, so it belongs on your desk.
+function detectLeagueTrades(v) {
+  const H = _AGENDA_DATA.history && _AGENDA_DATA.history.LEAGUE_HISTORY;
+  if (!H || !Array.isArray(H.trades) || !H.trades.length) return [];
+  const rivals = v.rivals || [];
+  const recent = H.trades.slice(-AGENDA_TUNING.tradeLookback);
+  const out = [];
+  for (let i = recent.length - 1; i >= 0; i--) {
+    const t = recent[i];
+    if (v.leagueYear && t.leagueYear !== v.leagueYear) continue;
+    const parts = t.participants || [];
+    // Your own trades are not news to you.
+    if (parts.indexOf(v.teamId) !== -1) continue;
+    const rival = parts.filter(function (id) { return rivals.indexOf(id) !== -1; });
+    if (!rival.length) continue;
+    const names = (t.players || []).map(function (p) { return p.playerName; }).filter(Boolean);
+    out.push(makeItem({
+      id: 'league-trade-' + (t.leagueYear || '') + '-' + parts.join('-') + '-' + i,
+      urgency: AGENDA_URGENCY.DEVELOPING,
+      category: AGENDA_CATEGORY.LEAGUE,
+      source: 'trade',
+      entities: parts.map(function (id) { return { kind: 'team', id: id }; }),
+      headline: rival.join(' and ') + ' made a move',
+      explanation: parts.join(' and ') + ' traded' +
+        (names.length ? ' ' + names.slice(0, 3).join(', ') : '') +
+        '. A club you are measured against just changed shape.',
+      responses: [{ label: 'Check the standings', view: 'standings' }],
+      weight: 22
+    }));
+    break;   // one is a story, five is a ticker
+  }
+  return out;
+}
+
 var AGENDA_DETECTORS = [
   detectOwnerPatience, detectRosterSize, detectExpiringContracts, detectUnhappyPlayers,
-  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry
+  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry, detectLeagueTrades
 ];
 
 // Assembles the one view every detector reads, so the roster is walked once and
@@ -440,6 +483,7 @@ if (typeof module !== 'undefined' && module.exports) {
     detectBuriedProspect: detectBuriedProspect,
     detectAgingCore: detectAgingCore,
     detectForm: detectForm,
-    detectRivalry: detectRivalry
+    detectRivalry: detectRivalry,
+    detectLeagueTrades: detectLeagueTrades
   };
 }

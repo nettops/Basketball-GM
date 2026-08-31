@@ -79,38 +79,68 @@ exist but only fire on games you sit and watch.
 writing is good. There are almost none of them, and the cap is a hard constant,
 not a consequence of anything the player did.
 
-## Measured: the league does not move on its own
+## CORRECTED: the league DOES move on its own
 
-`proposeTrade` (`trade.js:186`) has exactly one app caller:
-`ui/tradeCenter.js:33` — the human pressing a button. `autoGM.js` exposes
-`generateTradeOffer`, but nothing runs an AI-to-AI trade pass during a season.
+This section first claimed the league was transactionally inert, on the
+strength of "zero trades in a full simulated season". That was wrong, and the
+error is worth keeping written down because it is the same shape as the trap
+this audit warns about elsewhere.
 
-Zero trades in a full simulated season is not a tuning problem. Rival teams
-never reshape themselves, never call you, and never compete for a player. Every
-transaction in the league is one you initiated. Phases 7 and 8 (Rival GMs,
-Trade Drama) have no substrate to sit on until this exists.
+`runWeeklyAIToAITradeGeneration` (`script.js:310`) exists, is called every
+simulated day from `afterDaySimulated` (`script.js:423`), and is carefully
+tuned: `AI_TRADES_PER_SEASON = 2` per club (~30 leaguewide), an 8% weekly
+chance that rises to 45% in the fortnight either side of the deadline, and a
+budget added after a playtest measured 493 trades in one offseason with one
+player moving 24 times.
 
-## Systems that compute and are thrown away
+Verified directly: **28 of 30 clubs produce a viable offer in a single
+`generateTradeOffer` pass.**
 
-The recurring failure shape in this repo, and it recurs here:
+Why the first measurement said zero: it drove the season through
+`league.simulateDate`, which is the SIM layer. The weekly trade hooks live in
+`afterDaySimulated`, which is the CONTROLLER layer in `script.js`. Everything
+`script.js` does — trades, waivers, affiliates, scouting ticks, feed pushes,
+rivalry recording — is invisible to a Node probe that calls the sim directly.
 
-- **`relatives.js`** — `ensureRelatives` has **no app caller**. Family ties are
-  never generated, so `relatives.js` (204 lines) affects nothing. Phase 2's
-  "you drafted his younger brother" has no data behind it today.
-- **`morale.js`** — read by UI, `freeAgency.js` and `playoffs.js`, but **never
-  by `simEnginePossession.js`, `gameSim.js`, or `progression.js`**. An unhappy
-  player does not play worse or develop slower; he is only harder to re-sign.
-- **`gmMilestones.js`** — `MILESTONES`, `nearestMilestone`, `isUnlocked` have no
-  app caller. The milestone ladder exists and is never shown.
+**Rule for anyone auditing this repo next: a Node probe over `league.js`
+measures the simulation, not the game.** To measure the game you must drive
+`afterDaySimulated`, which means a browser.
+
+## CORRECTED: relatives are generated
+
+Also wrong. This section claimed `relatives.js` had no caller, on the strength
+of grepping for `ensureRelatives` — a function name guessed from the pattern
+`ensureHiddenPlayerData`/`ensurePlayerFace` used elsewhere. The real entry
+point is `assignFamilies`, called from `draftProspects.js:312`, so draft
+classes do get family ties.
+
+**Grepping for a name you assumed rather than one you read is how three of
+these findings went wrong.** Read the exports first, then grep.
+
+## What survived re-checking
+
+- **The narrative systems are unreachable in GM mode.** Verified at
+  `script.js:1172`. Still the headline finding.
+- **The GM's event budget is ~3 a season**, set by constants
+  (`SEASON_SCENE_MAX_PER_SEASON = 2`) rather than by game state. Verified.
+- **Morale never reaches the floor.** It IS ticked — `league.js:418` calls
+  `tickMoraleForTeamGame` after every game — but no reference to it exists in
+  `simEnginePossession.js`, `simEngineBoxScore.js`, `gameSim.js`,
+  `gameCoach.js` or `progression.js`. An unhappy player does not play worse or
+  develop slower. He is only harder to re-sign and cheaper to trade.
 
 ## Ranked weaknesses
 
 1. Narrative/event systems unreachable in GM mode (parked-mode dependency).
 2. Event volume capped at ~3/season by constant, unrelated to game state.
-3. League is transactionally inert — no AI trades.
-4. Consequence has no memory: decisions do not persist into later seasons.
-5. Relationships have no substrate (relatives never generated, morale inert).
-6. Morale is a number that changes nothing on the floor.
+3. Consequence has no memory: decisions do not persist into later seasons.
+4. Morale changes nothing on the floor — it ticks, and no engine reads it.
+5. The league transacts, but silently: ~30 AI trades a season happen and the
+   GM is told about none of them beyond a feed line.
+
+Struck from this list after re-checking: "the league is transactionally
+inert" and "relatives are never generated". Both were false. See the two
+CORRECTED sections above.
 
 ## Implementation order
 
@@ -135,8 +165,10 @@ and a separate job.
 **P0.4 — Make morale bite.** Route it into progression and/or the sim so the
 relationship layer has stakes.
 
-**P0.5 — AI trade pass.** Give the league its own transaction heartbeat so
-Rival GMs and Trade Drama have substrate.
+**P0.5 — SURFACE the AI trades that already happen.** Not build them: they
+exist and work. ~30 a season execute and the GM learns nothing about them
+beyond a feed line. Trade Drama (Phase 8) does not need a trade engine, it
+needs the existing one to be noticed — which is an agenda/news job.
 
 ## Testing strategy
 
