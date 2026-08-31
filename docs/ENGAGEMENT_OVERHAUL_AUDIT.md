@@ -51,7 +51,30 @@ Wired and working, via `seasonRollover.js` and `ui/simControls.js`:
 - **Rivalries** — `rivalries.js`, called from `seasonRollover.js`.
 - **League news, feats, history, GM career** — all live.
 
-## Measured: the GM's season is nearly empty
+## CORRECTED: the GM's season is not capped at three
+
+This section claimed roughly three narrative touchpoints a season. Wrong, and
+wrong the same way as the others: by reading a constant's NAME instead of the
+code that uses it.
+
+`SEASON_SCENE_MAX_PER_SEASON = 2` is a cap **per scene id**, not per season.
+`recentSeasonScenes` blocks an id once its own count hits two; every other
+scene stays available. There are 14 season scenes, so up to **28 season
+conversations** are permitted in a year, plus postgame and halftime.
+
+Verified by driving the gate directly: stamp scene A twice and scene B once,
+and at day 100 only A is blocked.
+
+The cap exists for a good reason the comment records — a playtester got the
+owner asking about the tax bill four times, word for word, in one season.
+
+What is NOT known, and was never measured: how many of those 28 actually fire,
+which depends on how often each scene's predicate matches real game state.
+That needs driving `ui/simControls.js` through a season in a browser. Until
+someone does that, "the GM's season is too quiet" is an untested hypothesis,
+not a finding.
+
+## Superseded: the original volume claim
 
 Design constants (`dialogueContext.js`):
 
@@ -75,9 +98,9 @@ So across 82 games a GM receives roughly **three discrete narrative
 touchpoints**: one owner mandate and at most two season scenes. Postgame scenes
 exist but only fire on games you sit and watch.
 
-**That is the boredom cause.** It is not that the events are bad — the dialogue
-writing is good. There are almost none of them, and the cap is a hard constant,
-not a consequence of anything the player did.
+The original conclusion drawn from this — "that is the boredom cause" — does
+not survive the correction above. The ceiling is 28, not 3. Whether the floor
+is anywhere near it is unmeasured.
 
 ## CORRECTED: the league DOES move on its own
 
@@ -132,7 +155,8 @@ these findings went wrong.** Read the exports first, then grep.
 ## Ranked weaknesses
 
 1. Narrative/event systems unreachable in GM mode (parked-mode dependency).
-2. Event volume capped at ~3/season by constant, unrelated to game state.
+2. Event volume UNKNOWN. The ceiling is 28 season conversations, not 3; how
+   many fire has never been measured. Measure before building.
 3. Consequence has no memory: decisions do not persist into later seasons.
 4. Morale changes nothing on the floor — it ticks, and no engine reads it.
 5. The league transacts, but silently: ~30 AI trades a season happen and the
@@ -157,10 +181,18 @@ every later phase publishes into, which is why it goes first.
 what happened, so later seasons can refer back. Extends `history.js` rather
 than starting a parallel store.
 
-**P0.3 — Un-park the narrative layer for GM mode.** Give `NarrativeSystem` and
-`RandomEventSystem` a GM entry point driven by agenda state, not by the parked
-career mode. Do not fix `createCustomPlayer` here; that is career mode's bug
-and a separate job.
+**P0.3 — WITHDRAWN. Do not un-park those two for GM mode.** The finding that
+they are unreachable is true, but the fix is wrong. Both are written for a
+PLAYER: `triggerRandomEvent(playerId)`, decisions like "Request trade", and a
+dialogue library of agents saying "let us get you max money". None of it is
+addressed to a general manager. Forcing them into GM mode means replacing
+their content wholesale, which is not extending an existing system, it is
+writing a new one wearing its name.
+
+The GM-facing narrative system already exists and is good: `dialogueScenes.js`
+holds 24 scenes, 23 of them tagged `roles: ['gm']`, with reporters, token
+interpolation and real choices, wired through `ui/simControls.js`. If GM mode
+needs more narrative, that is the system to grow.
 
 **P0.4 — Make morale bite.** Route it into progression and/or the sim so the
 relationship layer has stakes.

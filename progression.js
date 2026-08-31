@@ -172,6 +172,45 @@ function calcBaseChange(age, rng) {
 // This does NOT move the superstar rate the GROWTH_TUNING note above guards:
 // the bonus only reaches players carrying a twoWay contract, and no player in a
 // fresh league has one until a GM signs it.
+// A man who does not want to be there does not get better.
+//
+// Morale was measured every game (morale.js's tickMoraleForTeamGame) and read
+// by nobody who mattered: the audit found no reference to it in
+// simEnginePossession, gameSim, gameCoach or this file. It decided how hard he
+// was to re-sign and nothing else. So neglect had no cost you could see on the
+// floor, and "keep your best young player happy" was not a decision.
+//
+// PIVOT is the league MEAN morale after a season actually played, measured at
+// 62.3 — not 70 (which a reader would guess from moraleTier's "happy" bound
+// and which would slow the whole league) and not 57 either, even though 57 is
+// the median morale.js documents and the median a fresh season reproduces
+// exactly.
+//
+// The median is the wrong centre for this. Morale's distribution is skewed:
+// measured after one season, median 57.1 but p10 39 and p90 92, so the tail
+// above the middle is twice as long as the tail below it. Pivoting on the
+// median therefore still handed the league a net +0.244 rating points a
+// season — every club quietly developing faster, which would have moved every
+// balance number the engine was just tuned to, for no design reason at all.
+//
+// Pivoting on the MEAN makes the change what it should be: a redistribution.
+// Happy players develop faster, miserable ones slower, and the league as a
+// whole develops exactly as it did before.
+//
+// SCALE sits deliberately in the same family as the other soft inputs here:
+// coachability contributes +/-1.5, the affiliate bonus 1.0, and a breakout
+// roll +/-8. Mood should matter about as much as a coach who suits you, and
+// nothing like as much as a breakout year.
+const MORALE_DEV_PIVOT = 62.3;
+const MORALE_DEV_SCALE = 1.2;
+const MORALE_DEV_SPAN = 50;
+
+function moraleDevelopmentBonus(player) {
+  const m = player && player.status && player.status.morale;
+  if (typeof m !== 'number' || !isFinite(m)) return 0;
+  return ((m - MORALE_DEV_PIVOT) / MORALE_DEV_SPAN) * MORALE_DEV_SCALE;
+}
+
 const AFFILIATE_DEVELOPMENT_BONUS = 1.0;
 const AFFILIATE_MINIMUM_GAMES = 10;
 const AFFILIATE_DEVELOPMENT_MAX_AGE = 25;
@@ -233,6 +272,12 @@ function progressPlayer(player, rng, teammates, options) {
   baseChange += _PROGRESSION_DATA.traits.getTraitBonus(player, 'progression', 'self') * 0.3;
   if (player.hiddenPersonality && player.hiddenPersonality.coachability !== undefined) {
     baseChange += (player.hiddenPersonality.coachability - 50) / 50 * 1.5 * fit;
+  }
+  // Suppressed during the Monte Carlo potential estimate for the same reason
+  // the potential pull and coach fit are: that run is asking what this player
+  // COULD become, and a bad month in November is not part of the answer.
+  if (!options.suppressPotentialPull) {
+    baseChange += moraleDevelopmentBonus(player);
   }
   if (player.age <= 25 && !options.suppressPotentialPull) {
     var mentorBonus = teammates.reduce(function (sum, tm) {
@@ -379,5 +424,5 @@ function estimatePotentialMonteCarlo(player, rng) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating, estimatePotentialMonteCarlo: estimatePotentialMonteCarlo, GROWTH_TUNING: GROWTH_TUNING, calcBaseChange: calcBaseChange };
+  module.exports = { progressPlayer: progressPlayer, clampRating: clampRating, estimatePotentialMonteCarlo: estimatePotentialMonteCarlo, GROWTH_TUNING: GROWTH_TUNING, calcBaseChange: calcBaseChange, moraleDevelopmentBonus: moraleDevelopmentBonus, MORALE_DEV_PIVOT: MORALE_DEV_PIVOT, MORALE_DEV_SCALE: MORALE_DEV_SCALE };
 }
