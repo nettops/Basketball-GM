@@ -64,6 +64,12 @@
   <!-- difficulty.js is a lookup table and a multiply. It deliberately reaches
        nothing in the sim; validate-difficulty.js asserts that. -->
   <script src="difficulty.js"></script>
+  <!-- gmAgenda.js is a pure READ over league state: it captures getActiveRoster
+       and getTeamPayroll (league.js), the cap helpers (data.js), currentPatience
+       (owner.js) and rivalsOf (rivalries.js) into its data block at LOAD time,
+       so all four must already be defined. It rolls no dice and mutates
+       nothing, so nothing needs to load after it. -->
+  <script src="gmAgenda.js"></script>
   <script src="history.js"></script>
   <script src="historyToys.js"></script>
   <script src="schedule.js"></script>
