@@ -71,6 +71,16 @@ Non-trivial features get two documents:
 
 Read the most recent plan to see where things stand.
 
+## Reporting
+
+Lead with the result. Keep it compact — detail is welcome, sprawl is not.
+
+- State what changed and what it measured. Skip the narration of getting there
+  unless a wrong turn is itself the finding.
+- Corrections go in one or two sentences, not a retrospective.
+- Tables for numbers, prose for reasoning, never both for the same thing.
+- **End every response with what is next**, as the last thing on the page.
+
 ## Branches
 
 `master` is the main branch and the only one with that word in its name.
