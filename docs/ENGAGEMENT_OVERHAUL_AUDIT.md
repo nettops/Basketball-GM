@@ -68,11 +68,32 @@ and at day 100 only A is blocked.
 The cap exists for a good reason the comment records — a playtester got the
 owner asking about the tax bill four times, word for word, in one season.
 
-What is NOT known, and was never measured: how many of those 28 actually fire,
-which depends on how often each scene's predicate matches real game state.
-That needs driving `ui/simControls.js` through a season in a browser. Until
-someone does that, "the GM's season is too quiet" is an untested hypothesis,
-not a finding.
+**MEASURED, and the hypothesis is dead.** `scripts/probe-sceneVolume.js`
+replicates the gate exactly and reports **13.0 mid-season conversations a
+season**, not 3.
+
+The binding constraint is neither constant this audit looked at. It is
+`MID_SEASON_SCENE_GAP_DAYS = 8` in `ui/simControls.js`, which caps a ~128-day
+season at about 16. Thirteen against a ceiling of sixteen is a system working.
+
+Variety is team-shaped and that is the design working, not a gap. A contender
+(BOS) hears career-year, race-is-tight and outside-looking-in. A rebuild (BKN)
+hears young-core-rising, tanking-question and losing-slide. Neither hears the
+other's. Across both, 12 of 14 season scenes fire.
+
+Two remain unreached, and only one is a defect:
+
+- `running-hot` (priority 50) needs a five-game winning run, but `rivalry-heat`
+  (priority 58) triggers on `!!c.rivalName` — unconditional once any rivalry
+  exists. Every other scene keys off something that just happened; this one
+  keys off a standing fact, so it outranks anything below 58 whenever it has
+  cap left. That is worth fixing.
+- `mandate-slipping` needs a wins-type mandate being badly missed. Rare by
+  design, not broken.
+
+**Conclusion: the GM's narrative volume needs no work.** The audit's "boredom
+cause" was wrong three times over — wrong constant, wrong reading of it, and
+wrong conclusion.
 
 ## Superseded: the original volume claim
 
