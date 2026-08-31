@@ -88,12 +88,11 @@ checkSeasonGames();
 function checkEngineRegistry() {
   const simEngineModule = require(path.join(__dirname, '..', 'simEngine.js'));
   assert.ok('boxscore' in simEngineModule.SIM_ENGINES);
-  assert.ok('scoreonly' in simEngineModule.SIM_ENGINES);
   assert.ok('possession' in simEngineModule.SIM_ENGINES);
   simEngineModule.registerEngine('boxscore', { simulateGame: function () { return { homeScore: 1, awayScore: 0, boxScore: null }; } });
   const engine = simEngineModule.getActiveEngine({ simEngine: 'boxscore' });
   assert.strictEqual(typeof engine.simulateGame, 'function');
-  assert.throws(function () { simEngineModule.getActiveEngine({ simEngine: 'possession' }); }, /not implemented yet/);
+  assert.throws(function () { simEngineModule.registerEngine('scoreonly', {}); }, /unknown engine name/);
   console.log('checkEngineRegistry: OK');
 }
 

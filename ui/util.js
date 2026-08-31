@@ -32,7 +32,15 @@ function dayLabel(day) {
   return (day === null || day === undefined) ? '—' : day;
 }
 
+// 1st/2nd/3rd, and the 11th/12th/13th exceptions that catch naive
+// implementations. Lives here because ui/dashboard.js and ui/teamSelect.js each
+// declared their own into the one global scope every script tag shares, so the
+// later-loading copy silently won.
+function ordinal(n) {
+  const suf = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+  return n + suf;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    dayLabel: dayLabel, escapeHtml: escapeHtml };
+  module.exports = { escapeHtml: escapeHtml, dayLabel: dayLabel, ordinal: ordinal };
 }

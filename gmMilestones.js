@@ -306,5 +306,4 @@ if (typeof module === 'undefined' || !module.exports) {
   var gmMilestoneIsUnlocked = isUnlocked;
   var gmBuildMilestoneContext = buildContext;
   var gmNearestMilestone = nearestMilestone;
-  var gmEvaluateMilestones = evaluate;
 }

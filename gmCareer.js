@@ -325,5 +325,4 @@ if (typeof module !== 'undefined' && module.exports) {
 if (typeof module === 'undefined' || !module.exports) {
   var gmCareerTitleYears = titleYears;
   var gmCareerTotals = careerTotals;
-  var gmCareerSeasons = seasonsAscending;
 }

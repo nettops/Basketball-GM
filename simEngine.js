@@ -1,10 +1,7 @@
-// Registry of available sim engines. Only `boxscore` is implemented this phase;
-// `scoreonly` and `possession` are reserved slots for later phases — keeping them
-// present (rather than omitted) is what lets ui/settings.js show them as disabled
-// "coming later" options without special-casing missing keys.
+// Registry of available sim engines. Both slots are filled in by the engine
+// files themselves as they load (simEngineBoxScore.js, gameSim.js).
 const SIM_ENGINES = {
-  boxscore: null,   // filled in by simEngineBoxScore.js once it loads
-  scoreonly: null,
+  boxscore: null,
   possession: null
 };
 

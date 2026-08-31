@@ -70,11 +70,6 @@ function teamStreak(teamId, season) {
   return (lastWon ? 'W' : 'L') + run;
 }
 
-function ordinal(n) {
-  const suf = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
-  return n + suf;
-}
-
 // Seeding comes from getPlayoffSeeds (playoffs.js) — wins, then point diff —
 // not the standings page's wins-only divisional sort, so the number shown here
 // is the seed the bracket would actually hand out today.

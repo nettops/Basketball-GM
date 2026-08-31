@@ -49,11 +49,6 @@ function drainFinishedPlayoffGames() {
   return out;
 }
 
-// Only for tests and for a fresh league: ids restart with the bracket.
-function resetPlayoffGameLog() {
-  _finishedPlayoffGames = [];
-}
-
 function getPlayoffSeeds(conference, count) {
   const confTeams = _PLAYOFF_DATA.teams.TEAMS.filter(function (t) { return t.conference === conference; });
   return confTeams.slice().sort(function (a, b) {
@@ -319,7 +314,6 @@ if (typeof module !== 'undefined' && module.exports) {
     ROUND1_SEED_PAIRS: ROUND1_SEED_PAIRS,
     simulateNextPlayoffGame: simulateNextPlayoffGame,
     drainFinishedPlayoffGames: drainFinishedPlayoffGames,
-    resetPlayoffGameLog: resetPlayoffGameLog,
     simulateSeriesGame: simulateSeriesGame,
     advanceBracketIfRoundComplete: advanceBracketIfRoundComplete,
     getCurrentRoundSeries: getCurrentRoundSeries,
