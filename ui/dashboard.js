@@ -267,6 +267,14 @@ function renderDashboard(container, teamId) {
     '<div class="res" style="color:var(--text-mute)">Day ' +
       nextGames.map(function (r) { return r.day; }).join(' · ') + '</div></div>';
 
+  // The agenda goes at the top of the screen you manage from, because that is
+  // the whole point of it: the state was always full of situations nobody was
+  // reading (see docs/ENGAGEMENT_OVERHAUL_AUDIT.md). Guarded on typeof because
+  // gmAgenda.js is a plain script tag like everything else, and a dashboard
+  // that throws when one file fails to load is worse than one without a panel.
+  const agendaItems = (typeof buildAgenda === 'function') ? buildAgenda(GameState) : [];
+  const agendaHtml = (typeof agendaPanelHtml === 'function') ? agendaPanelHtml(agendaItems) : '';
+
   container.innerHTML =
     '<div class="dash-hero">' +
       teamLogoImgHtml(team.id, 44) +
@@ -283,6 +291,12 @@ function renderDashboard(container, teamId) {
     '</div>' +
 
     ownerStakesStripHtml(teamId) +
+
+    // After the hero and the owner strip, before the columns. It sat above the
+    // hero first, and on a 900px screen five items pushed the record and Play
+    // Next Game clean off the bottom — the desk is what matters, but it is not
+    // what you came to click.
+    agendaHtml +
 
     '<div class="dash-grid"><div class="dash-col">' +
 
@@ -344,6 +358,10 @@ function renderDashboard(container, teamId) {
       '</div></div>' +
 
     '</div></div>';
+
+  if (typeof bindAgendaPanel === 'function') {
+    bindAgendaPanel(container, function (view) { renderView(view); });
+  }
 
   const playBtn = container.querySelector('#dash-play');
   if (playBtn && !playBtn.disabled && typeof handleWatchNextGame === 'function') {

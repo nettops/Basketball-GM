@@ -1574,3 +1574,50 @@ table { border-collapse: collapse; width: 100%; }
 .fa-log-lost { color: var(--loss); }
 .fa-log-flag { display: inline-block; padding: 1px 6px; margin-right: 6px; border-radius: var(--r-sm);
   background: var(--loss); color: #0E1116; font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+
+/* --- GM agenda -----------------------------------------------------------
+   Urgency is carried by a colour dot and a left edge, not by shouting: the
+   panel sits on the dashboard and has to be scannable in a second without
+   pulling the eye off everything else. Colours come from the existing accent
+   set rather than three new ones. */
+.agenda-panel { margin-bottom: 16px; }
+.agenda-title {
+  margin: 0 0 8px; font-size: .72rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-dim, #8b93a1);
+  display: flex; align-items: center; gap: 8px;
+}
+.agenda-count {
+  background: var(--surface-3, #232B37); color: var(--text, #e6e9ef);
+  border-radius: 10px; padding: 1px 7px; font-size: .7rem; letter-spacing: 0;
+}
+.agenda-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.agenda-item {
+  background: var(--surface-1, #131822); border: 1px solid var(--line, #232B37);
+  border-left: 3px solid var(--line, #232B37);
+  border-radius: 8px; padding: 10px 12px;
+}
+.agenda-critical    { border-left-color: #e5484d; }
+.agenda-developing  { border-left-color: #f5a524; }
+.agenda-opportunity { border-left-color: #30a46c; }
+.agenda-head { display: flex; align-items: center; gap: 8px; }
+.agenda-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.agenda-critical .agenda-dot    { color: #e5484d; }
+.agenda-developing .agenda-dot  { color: #f5a524; }
+.agenda-opportunity .agenda-dot { color: #30a46c; }
+.agenda-headline { color: var(--text, #e6e9ef); font-size: .95rem; }
+/* The meaning leads; the number is small print underneath it. */
+.agenda-why { color: var(--text-dim, #8b93a1); font-size: .84rem; margin-top: 4px; line-height: 1.45; }
+.agenda-who { color: var(--text-faint, #6b7280); font-size: .78rem; margin-top: 3px; }
+.agenda-conseq { color: var(--text-faint, #6b7280); font-size: .78rem; margin-top: 4px; font-style: italic; }
+.agenda-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.agenda-act {
+  background: var(--surface-2, #1A2029); color: var(--text, #e6e9ef);
+  border: 1px solid var(--line, #232B37); border-radius: 6px;
+  padding: 4px 10px; font-size: .78rem; cursor: pointer;
+}
+.agenda-act:hover { border-color: var(--accent, #f5820f); }
+.agenda-tag {
+  margin-top: 7px; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-faint, #6b7280);
+}
+.agenda-more { margin-top: 8px; font-size: .78rem; color: var(--text-faint, #6b7280); }
