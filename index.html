@@ -64,13 +64,19 @@
   <!-- difficulty.js is a lookup table and a multiply. It deliberately reaches
        nothing in the sim; validate-difficulty.js asserts that. -->
   <script src="difficulty.js"></script>
-  <!-- gmAgenda.js is a pure READ over league state: it captures getActiveRoster
-       and getTeamPayroll (league.js), the cap helpers (data.js), currentPatience
-       (owner.js) and rivalsOf (rivalries.js) into its data block at LOAD time,
-       so all four must already be defined. It rolls no dice and mutates
-       nothing, so nothing needs to load after it. -->
-  <script src="gmAgenda.js"></script>
   <script src="history.js"></script>
+  <!-- BOTH of these capture LEAGUE_HISTORY into their data blocks at LOAD
+       time, so both must come after history.js. They sat above it briefly and
+       captured null: detectLeagueTrades and every memory query would have been
+       silently dead in the browser while passing every Node test, because in
+       Node the require() resolves the real module regardless of tag order.
+       gmMemory before gmAgenda, which captures gmMemory in turn. -->
+  <script src="gmMemory.js"></script>
+  <!-- gmAgenda.js is a pure READ over league state: getActiveRoster and
+       getTeamPayroll (league.js), the cap helpers (data.js), currentPatience
+       (owner.js), rivalsOf (rivalries.js), LEAGUE_HISTORY (history.js) and
+       gmMemory. It rolls no dice and mutates nothing. -->
+  <script src="gmAgenda.js"></script>
   <script src="historyToys.js"></script>
   <script src="schedule.js"></script>
   <script src="simEngine.js"></script>

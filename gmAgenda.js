@@ -21,7 +21,8 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       league: require('./league.js'),
       owner: require('./owner.js'),
       rivalries: require('./rivalries.js'),
-      history: require('./history.js')
+      history: require('./history.js'),
+      memory: require('./gmMemory.js')
     }
   : {
       data: {
@@ -36,7 +37,11 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       owner: { currentPatience: typeof currentPatience !== 'undefined' ? currentPatience : null,
                patienceLabel: typeof patienceLabel !== 'undefined' ? patienceLabel : null },
       rivalries: { rivalsOf: typeof rivalsOf !== 'undefined' ? rivalsOf : null },
-      history: { LEAGUE_HISTORY: typeof LEAGUE_HISTORY !== 'undefined' ? LEAGUE_HISTORY : null }
+      history: { LEAGUE_HISTORY: typeof LEAGUE_HISTORY !== 'undefined' ? LEAGUE_HISTORY : null },
+      memory: {
+        historyLineWith: typeof historyLineWith !== 'undefined' ? historyLineWith : null,
+        hasHistoryWith: typeof hasHistoryWith !== 'undefined' ? hasHistoryWith : null
+      }
     };
 
 // Urgency is HOW SOON, category is WHAT KIND. The brief lists them in one
@@ -369,9 +374,37 @@ function detectLeagueTrades(v) {
   return out;
 }
 
+// The league remembers. You face a club on Thursday, and three seasons ago you
+// sent them the man who is now their best player — that is a fact the game has
+// always stored in LEAGUE_HISTORY.trades and never once mentioned.
+//
+// Deliberately tied to the NEXT FIXTURE rather than firing whenever history
+// exists. rivalry-heat taught that lesson: a scene keyed on a standing fact is
+// permanently true and drowns out everything that just happened.
+function detectOldFriend(v) {
+  const M = _AGENDA_DATA.memory;
+  const opp = v.nextOpponent;
+  if (!opp || !opp.teamId || !M || !M.historyLineWith) return [];
+  let line = null;
+  try { line = M.historyLineWith(v.teamId, opp.teamId, { leagueYear: v.leagueYear }); }
+  catch (e) { line = null; }
+  if (!line) return [];
+  return [makeItem({
+    id: 'old-friend-' + opp.teamId,
+    urgency: AGENDA_URGENCY.OPPORTUNITY,
+    category: AGENDA_CATEGORY.LEAGUE,
+    source: 'memory',
+    entities: [{ kind: 'team', id: opp.teamId }],
+    headline: 'You have history with your next opponent',
+    explanation: line,
+    responses: [{ label: 'Look at the schedule', view: 'schedule' }],
+    weight: 12
+  })];
+}
+
 var AGENDA_DETECTORS = [
   detectOwnerPatience, detectRosterSize, detectExpiringContracts, detectUnhappyPlayers,
-  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry, detectLeagueTrades
+  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry, detectLeagueTrades, detectOldFriend
 ];
 
 // Assembles the one view every detector reads, so the roster is walked once and
@@ -410,8 +443,31 @@ function agendaView(gameState) {
     career: gs.gmCareer || null,
     rivals: rivals,
     streak: gs.agendaStreak || currentStreak(gs),
+    nextOpponent: nextOpponent(gs),
     leagueYear: gs.leagueYear || null
   };
+}
+
+// The next club on the schedule, so a memory can arrive at the moment it is
+// about to matter rather than at a random time in March. Walks forward from
+// today and stops at the first unplayed fixture, so it is O(games left) in the
+// worst case and usually one step.
+function nextOpponent(gameState) {
+  const gs = gameState || {};
+  const teamId = gs.userTeamId;
+  if (!teamId || !gs.season || !Array.isArray(gs.season.games)) return null;
+  const day = gs.season.currentDay || 0;
+  let best = null;
+  for (let i = 0; i < gs.season.games.length; i++) {
+    const g = gs.season.games[i];
+    if (g.played) continue;
+    if ((g.day || 0) < day) continue;
+    if (g.homeTeamId !== teamId && g.awayTeamId !== teamId) continue;
+    if (best === null || (g.day || 0) < (best.day || 0)) {
+      best = { day: g.day, teamId: g.homeTeamId === teamId ? g.awayTeamId : g.homeTeamId };
+    }
+  }
+  return best;
 }
 
 // Current win/loss run, read off the season's played games. Positive is a
@@ -484,6 +540,8 @@ if (typeof module !== 'undefined' && module.exports) {
     detectAgingCore: detectAgingCore,
     detectForm: detectForm,
     detectRivalry: detectRivalry,
-    detectLeagueTrades: detectLeagueTrades
+    detectLeagueTrades: detectLeagueTrades,
+    detectOldFriend: detectOldFriend,
+    nextOpponent: nextOpponent
   };
 }

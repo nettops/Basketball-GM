@@ -269,6 +269,21 @@ files.forEach(function (file) {
   const re = /:\s*([A-Za-z_$][\w$]*)/g;
   while ((m = re.exec(branch.text)) !== null) seen.add(m[1]);
 
+  // And the guarded form, which this check used to miss entirely:
+  //
+  //     LEAGUE_HISTORY: typeof LEAGUE_HISTORY !== 'undefined' ? LEAGUE_HISTORY : null
+  //
+  // The regex above reads the identifier after the colon and gets `typeof`, so
+  // the real name was never checked. That matters more than the plain form,
+  // not less: an unguarded capture of a global that does not exist yet THROWS
+  // and takes the file with it, which is loud and gets found in a minute. The
+  // guarded one quietly captures null, the file loads, every Node test still
+  // passes because require() ignores tag order, and the feature is simply dead
+  // in the browser forever. gmMemory.js and gmAgenda.js both shipped that way
+  // for exactly as long as it took to write this.
+  const guarded = /typeof\s+([A-Za-z_$][\w$]*)\s*!==\s*['"]undefined['"]/g;
+  while ((m = guarded.exec(branch.text)) !== null) seen.add(m[1]);
+
   seen.forEach(function (name) {
     const decls = declaredIn[name];
     if (!decls) return;                      // a builtin (localStorage, Math)
