@@ -28,7 +28,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       draft: require('./draft.js'),
       rivalries: require('./rivalries.js'),
       difficulty: require('./difficulty.js'),
-      gmCareer: require('./gmCareer.js')
+      gmCareer: require('./gmCareer.js'),
+      promises: require('./gmPromises.js')
     }
   : {
       save: { pushSeasonSnapshot: pushSeasonSnapshot },
@@ -50,7 +51,8 @@ var _ROLLOVER_DATA = (typeof require !== 'undefined')
       traits: { announceSecretBadges: announceSecretBadges },
       players: { PLAYERS_2026: PLAYERS_2026 },
       ultimates: { setLeagueGate: setLeagueGate },
-      tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache }
+      tradeEvaluator: { invalidateLeagueAvgCache: invalidateLeagueAvgCache },
+      promises: { settlePromises: settlePromises }
     };
 
 // A playoff series is where rivalries are actually made, so the bracket is
@@ -69,6 +71,17 @@ function runRivalryRollover(gameState) {
     });
   }
   _ROLLOVER_DATA.rivalries.decayRivalries(gameState.rivalries);
+}
+
+// Everything the GM said he would do, judged. gmPromises.js owns the rules and
+// the payout; this is the call site that says WHEN.
+function settleOpenPromises(gameState, onFeed) {
+  const fn = _ROLLOVER_DATA.promises && _ROLLOVER_DATA.promises.settlePromises;
+  if (!fn) return [];
+  let settled = [];
+  try { settled = fn(gameState, { seasonEnd: true }) || []; } catch (e) { settled = []; }
+  settled.forEach(function (s) { onFeed(s.line); });
+  return settled;
 }
 
 // Judges the standing mandate, moves the owner, and sacks the GM if his
@@ -206,6 +219,12 @@ function runOffseasonRollover(gameState, deps) {
   // both. This is what stops ownerHappiness being a spending thermostat: until
   // now every write to it came from the luxury tax, so the owner did not know
   // the score.
+  // BEFORE the owner review, not after. A promise that comes due at the end of
+  // the season moves owner happiness, and the review reads that number — settle
+  // afterwards and the man judging your year would be doing it on a figure that
+  // is about to change. Season end forces a verdict on everything still open:
+  // the season is over, so "there is still time" is no longer true of anything.
+  settleOpenPromises(gameState, onFeed);
   runOwnerReview(gameState, onFeed);
   runRivalryRollover(gameState);
 

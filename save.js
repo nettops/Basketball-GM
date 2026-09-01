@@ -197,6 +197,9 @@ function serializeGameState(gameState, name, includeSnapshots) {
     ownerMandate: gameState.ownerMandate || null,
     rivalries: gameState.rivalries || null,
     pressMemory: gameState.pressMemory || [],
+    // What the GM said he would DO, as opposed to what he said. Capped by
+    // gmPromises.js itself, so this is a handful of small rows.
+    gmPromises: gameState.gmPromises || [],
     firedAtEndOfSeason: gameState.firedAtEndOfSeason || null,
     lastDraftResults: lastDraftResultsOut,
     scouting: gameState.scouting,
@@ -356,6 +359,7 @@ function applySavedState(payload, gameState) {
   gameState.ownerMandate = payload.ownerMandate || null;
   gameState.rivalries = payload.rivalries || null;
   gameState.pressMemory = payload.pressMemory || [];
+  gameState.gmPromises = Array.isArray(payload.gmPromises) ? payload.gmPromises : [];
   // The difficulty holders are module-level and would otherwise keep whatever
   // the previous save in this page session set.
   _SAVE_DATA.difficulty.applyDifficulty(

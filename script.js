@@ -134,6 +134,11 @@ function initSeason() {
   GameState.seasonSceneDays = {};
   GameState.seasonSceneCounts = {};
   GameState.lastMidSeasonSceneDay = null;
+  // A promise is owed to a specific owner about a specific season, and its due
+  // date is a day index of that season's schedule. None of that survives a new
+  // league, so the ledger starts empty with everything else that is measured
+  // in days of this season.
+  GameState.gmPromises = [];
   // The inbox belongs to the league that generated it. Starting a second
   // career in one session left the first league's offers sitting there —
   // naming two clubs the new GM has nothing to do with — and the Trade view
@@ -421,6 +426,23 @@ function handleDayComplete(dayIndex, todaysGames, newInjuries) {
   pushInjuriesToFeed(newInjuries || [], dayIndex);
   runWeeklyTradeGeneration(dayIndex);
   runWeeklyAIToAITradeGeneration(dayIndex);
+  settlePromisesForDay(dayIndex);
+}
+
+// A promise comes due on a DATE, so the date has to be checked as it passes.
+//
+// dayIndex, never GameState.season.currentDay: see pushToFeed above for why
+// the latter is stale for the whole of a multi-day run. Judged with the same
+// day the rest of this callback is working on.
+//
+// Settlements go in the feed rather than opening a dialogue box. The box
+// interrupts, and a promise landing is a consequence of something the player
+// already decided — it belongs in the record next to the game results, and on
+// the agenda, which is where they will actually be looking.
+function settlePromisesForDay(dayIndex) {
+  if (typeof settlePromises !== 'function') return;
+  const settled = settlePromises(GameState, { day: dayIndex });
+  settled.forEach(function (s) { pushToFeed(s.line, dayIndex); });
 }
 
 function switchPlayMode(newMode, teamId) {
@@ -945,6 +967,11 @@ function handleAdvanceToNewSeason() {
   GameState.seasonSceneDays = {};
   GameState.seasonSceneCounts = {};
   GameState.lastMidSeasonSceneDay = null;
+  // A promise is owed to a specific owner about a specific season, and its due
+  // date is a day index of that season's schedule. None of that survives a new
+  // league, so the ledger starts empty with everything else that is measured
+  // in days of this season.
+  GameState.gmPromises = [];
   // The inbox belongs to the league that generated it. Starting a second
   // career in one session left the first league's offers sitting there —
   // naming two clubs the new GM has nothing to do with — and the Trade view

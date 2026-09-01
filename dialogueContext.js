@@ -16,7 +16,8 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       morale: require('./morale.js'),
       rivalries: require('./rivalries.js'),
       owner: require('./owner.js'),
-      data: require('./data.js')
+      data: require('./data.js'),
+      promises: require('./gmPromises.js')
     }
   : {
       teams: { getTeamById: getTeamById, TEAMS: TEAMS },
@@ -30,10 +31,11 @@ var _DIALOGUE_DATA = (typeof require !== 'undefined')
       names: { pickUniqueName: pickUniqueName, takenNameSet: takenNameSet },
       faces: { generateFace: generateFace },
       ultimates: { hasUltimate: hasUltimate, chargeThreshold: chargeThreshold },
-      morale: { moraleTier: moraleTier },
+      morale: { moraleTier: moraleTier, nudgeMorale: nudgeMorale },
       rivalries: { rivalsOf: rivalsOf },
       owner: { currentPatience: currentPatience },
-      data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine, tradeDeadlineDay: tradeDeadlineDay }
+      data: { getEffectiveLuxuryTaxLine: getEffectiveLuxuryTaxLine, tradeDeadlineDay: tradeDeadlineDay },
+      promises: { makePromise: makePromise }
     };
 
 const RECENT_SCENE_LIMIT = 8;
@@ -202,7 +204,7 @@ function _topScorer(sim, userIsHome) {
     if (pts > best) { best = pts; bestId = id; }
   });
   const player = (roster || []).filter(function (p) { return p.id === bestId; })[0];
-  return { name: (player && player.name) || 'Your best player', points: Math.max(0, best) };
+  return { id: bestId, name: (player && player.name) || 'Your best player', points: Math.max(0, best) };
 }
 
 function _baseContext(gameState, sim) {
@@ -222,6 +224,10 @@ function _baseContext(gameState, sim) {
     opponentScore: opponentScore,
     margin: Math.abs(userScore - opponentScore),
     topScorerName: top.name,
+    // The id as well as the name, because a choice can now make a PROMISE
+    // about this man and a promise has to name him in a way that survives him
+    // being renamed, traded or retired.
+    topScorerId: top.id || null,
     topScorerPoints: top.points,
     isPlayoff: !!gameState.playoffBracket,
     roster: _DIALOGUE_DATA.league.getTeamRoster
@@ -386,6 +392,7 @@ function buildSeasonContext(gameState) {
     gamesLeft: Math.max(0, mine - played),
     streak: _currentStreak(gameState, teamId),
     unhappyName: unhappy ? unhappy.name : '',
+    unhappyId: unhappy ? unhappy.id : null,
     unhappyCount: roster.filter(function (p) {
       return p.status && typeof p.status.morale === 'number' &&
         _DIALOGUE_DATA.morale.moraleTier(p.status.morale) === 'unhappy';
@@ -531,9 +538,10 @@ function buildHalftimeContext(gameState, sim) {
   return base;
 }
 
+// morale.js owns the clamp. This was a second copy of it, which is one place
+// too many for the 0-100 scale to be defined.
 function _nudgeMorale(player, delta) {
-  if (!player || !player.status || typeof player.status.morale !== 'number') return;
-  player.status.morale = Math.max(0, Math.min(100, player.status.morale + delta));
+  _DIALOGUE_DATA.morale.nudgeMorale(player, delta);
 }
 
 // Acting on the halftime hint. Charge for a player who can actually take over,
@@ -627,6 +635,14 @@ function applyDialogueEffect(gameState, desc, ctx, opts) {
       ? ctx.userIsHome
       : opts.sim.homeTeamId === gameState.userTeamId;
     if (_applyHalftimeBoost(opts.sim, desc.boostPlayer, userIsHome)) applied.push('boostPlayer');
+  }
+
+  // The deferred channel. Everything above settles the instant it is applied;
+  // this one writes down what was said and lets gmPromises.js judge it on the
+  // date. See gmPromises.js for why that difference is the whole point.
+  if (desc.promise && desc.promise.kind) {
+    const made = _DIALOGUE_DATA.promises.makePromise(gameState, desc.promise);
+    if (made) applied.push('promise');
   }
 
   if (desc.recordDecision) {

@@ -49,6 +49,12 @@
   <script src="coaches.js"></script>
   <script src="feats.js"></script>
   <script src="league.js"></script>
+  <!-- Moved up from beside injuries.js to sit next to league.js, whose
+       getTeamRoster it captures (with RATING_BANDS from ratings.js, further
+       up still) — that is its whole dependency. It has to be here because
+       gmPromises.js below captures nudgeMorale from it at LOAD time, and
+       gmAgenda.js in turn captures gmPromises. -->
+  <script src="morale.js"></script>
   <script src="godMode.js"></script>
   <script src="careerHistory.js"></script>
   <script src="careerHistoryImport.js"></script>
@@ -72,6 +78,11 @@
        Node the require() resolves the real module regardless of tag order.
        gmMemory before gmAgenda, which captures gmMemory in turn. -->
   <script src="gmMemory.js"></script>
+  <!-- gmPromises.js captures the cap helpers (data.js), the roster and payroll
+       reads (league.js), the chronicle and reputation writers (gmCareer.js)
+       and nudgeMorale (morale.js) at LOAD time. gmAgenda.js below captures
+       gmPromises in turn, so this tag must sit between them. -->
+  <script src="gmPromises.js"></script>
   <!-- gmAgenda.js is a pure READ over league state: getActiveRoster and
        getTeamPayroll (league.js), the cap helpers (data.js), currentPatience
        (owner.js), rivalsOf (rivalries.js), LEAGUE_HISTORY (history.js) and
@@ -95,7 +106,6 @@
   <script src="gameSim.js"></script>
   <script src="fatigue.js"></script>
   <script src="injuries.js"></script>
-  <script src="morale.js"></script>
   <script src="playoffs.js"></script>
   <script src="allStarWeekend.js"></script>
   <script src="rosterMoves.js"></script>

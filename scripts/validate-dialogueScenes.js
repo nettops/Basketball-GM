@@ -16,7 +16,7 @@ const bust = require(path.join(__dirname, '..', 'ui', 'pixelBust.js'));
 const POSTGAME_KEYS = [
   'moment', 'role', 'userWon', 'userLost', 'margin', 'teamName', 'opponentName',
   'leadBlown', 'topScorerName', 'topScorerPoints', 'userScore', 'opponentScore',
-  'isPlayoff', 'streak', 'seasonWins', 'seasonLosses'
+  'isPlayoff', 'streak', 'seasonWins', 'seasonLosses', 'topScorerId'
 ];
 const HALFTIME_KEYS = [
   'moment', 'role', 'margin', 'teamName', 'opponentName', 'trailing', 'leading',
@@ -31,10 +31,10 @@ const SEASON_KEYS = [
   'injuredName', 'mandateLabel', 'mandateType', 'winsNeeded', 'patience',
   'ownerHappiness', 'overTaxLine', 'conferenceRank', 'inPlayoffSpot',
   'gamesFromCut', 'leaderName', 'leaderPpg', 'youngName', 'rivalName',
-  'rivalHeat', 'deadlineSoon'
+  'rivalHeat', 'deadlineSoon', 'unhappyId'
 ];
 const EFFECT_CHANNELS = ['teamMorale', 'playerMorale', 'reputation', 'chronicle',
-  'recordDecision', 'boostPlayer', 'ownerHappiness'];
+  'recordDecision', 'boostPlayer', 'ownerHappiness', 'promise'];
 
 function keysFor(moment) {
   if (moment === 'halftime') return HALFTIME_KEYS;

@@ -15,6 +15,34 @@ rq('ratings.js');
 traits.ensureHiddenPlayerData(PLAYERS_2026);
 const agenda = rq('gmAgenda.js');
 
+
+// The view names script.js will actually render, read out of the file.
+//
+// This exists because the comment above makeItem in gmAgenda.js — "an agenda
+// that offers an action the UI cannot perform is a lie, so each one names a
+// real view" — was not true of six of them. `tradeCenter` and `freeAgency`
+// were both wrong (the registry keys are `trade` and `freeagency`), so those
+// buttons rendered the placeholder. Nothing checked, because the only thing
+// that knows the real names is a file Node cannot load.
+//
+// So it is parsed instead. Brittle if the registry is ever rewritten — but a
+// parse that fails LOUDLY is worth more than a check that does not exist, and
+// the assertion below fails on an empty list rather than passing trivially.
+const BUILT_VIEW_NAMES = (function () {
+  const src = require('fs').readFileSync(path.join(ROOT, 'script.js'), 'utf8');
+  const start = src.indexOf('const BUILT_VIEWS = {');
+  assert.ok(start !== -1, 'script.js must still declare BUILT_VIEWS');
+  // Match only keys at the top level of the literal: two-space indent, then a
+  // name, then a colon. Nested object keys are indented further.
+  const body = src.slice(start, src.indexOf('\n};', start));
+  const names = [];
+  const re = /\n  ([A-Za-z_$][\w$]*):/g;
+  let m;
+  while ((m = re.exec(body)) !== null) names.push(m[1]);
+  assert.ok(names.length > 20, 'parsed only ' + names.length + ' views out of BUILT_VIEWS');
+  return names;
+})();
+
 function player(over) {
   return Object.assign({
     id: 'p-' + Math.random().toString(36).slice(2, 8),
@@ -194,6 +222,9 @@ function checkEveryItemIsWellFormed() {
     assert.ok(Array.isArray(i.responses), 'responses must be an array on ' + i.id);
     i.responses.forEach(function (r) {
       assert.ok(r.label && r.view, 'a response must name a real view: ' + i.id);
+      assert.ok(BUILT_VIEW_NAMES.indexOf(r.view) !== -1,
+        i.id + ' offers "' + r.label + '" pointing at view "' + r.view +
+        '", which BUILT_VIEWS does not have. Known: ' + BUILT_VIEW_NAMES.join(', '));
     });
   });
   console.log('checkEveryItemIsWellFormed: OK (' + out.length + ' items, all well formed)');

@@ -23,6 +23,7 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       rivalries: require('./rivalries.js'),
       history: require('./history.js'),
       memory: require('./gmMemory.js'),
+      promises: require('./gmPromises.js'),
       teams: require('./teams.js')
     }
   : {
@@ -42,6 +43,11 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       memory: {
         historyLineWith: typeof historyLineWith !== 'undefined' ? historyLineWith : null,
         hasHistoryWith: typeof hasHistoryWith !== 'undefined' ? hasHistoryWith : null
+      },
+      promises: {
+        promiseFacts: typeof promiseFacts !== 'undefined' ? promiseFacts : null,
+        promiseStatusLine: typeof promiseStatusLine !== 'undefined' ? promiseStatusLine : null,
+        PROMISE_KINDS: typeof PROMISE_KINDS !== 'undefined' ? PROMISE_KINDS : null
       },
       teams: { getTeamById: typeof getTeamById !== 'undefined' ? getTeamById : null }
     };
@@ -73,7 +79,10 @@ var AGENDA_TUNING = {
   // How far back down the trade archive to look. A TAIL read, not a scan: the
   // audit's rule is that nothing walks league history, and the archive grows
   // without bound across a twenty-season career.
-  tradeLookback: 8
+  tradeLookback: 8,
+  // A promise with more than this many days left is not yet the thing to be
+  // doing today. It still shows, one band down.
+  promiseUrgentDays: 14
 };
 
 // Clubs are shown by name, never by id. The desk said "History with LAL",
@@ -159,7 +168,7 @@ function detectUnhappyPlayers(v) {
         : 'Left alone this gets worse, and he will remember it at contract time.'),
       responses: [
         { label: 'Look at his minutes', view: 'roster' },
-        { label: 'Explore a trade', view: 'tradeCenter' }
+        { label: 'Explore a trade', view: 'trade' }
       ],
       consequence: 'An unhappy player is harder to re-sign and cheaper to trade.',
       weight: (bad ? 60 : 30) + (key ? 25 : 0) + Math.max(0, 70 - m) / 4
@@ -186,8 +195,8 @@ function detectExpiringContracts(v) {
       explanation: (star ? 'He is the kind of player a season is built around. ' : '') +
         'Decide whether to extend him, trade him, or let him reach the market.',
       responses: [
-        { label: 'Open contract talks', view: 'freeAgency' },
-        { label: 'Shop him', view: 'tradeCenter' }
+        { label: 'Open contract talks', view: 'freeagency' },
+        { label: 'Shop him', view: 'trade' }
       ],
       consequence: 'Let it run and he walks for nothing.',
       weight: (star ? 85 : 45) + Math.max(0, ov - 70)
@@ -215,7 +224,7 @@ function detectInjuries(v) {
         'Somebody has to absorb his minutes while he is gone.',
       responses: [
         { label: 'Reshape the rotation', view: 'roster' },
-        { label: 'Look for cover', view: 'freeAgency' }
+        { label: 'Look for cover', view: 'freeagency' }
       ],
       consequence: 'Rotation players asked to do too much wear down.',
       weight: 40 + Math.max(0, ov - 70) + Math.min(games, 40) / 2,
@@ -239,7 +248,7 @@ function detectPayroll(v) {
     explanation: '$' + Math.round(over / 1e6) + 'M above the line. Ownership pays that bill, and notices.',
     responses: [
       { label: 'Look at the books', view: 'finances' },
-      { label: 'Move salary', view: 'tradeCenter' }
+      { label: 'Move salary', view: 'trade' }
     ],
     consequence: 'Staying over the line spends the owner\'s goodwill.',
     weight: 35 + Math.min(over / 1e6, 40)
@@ -259,7 +268,7 @@ function detectRosterSize(v) {
     headline: short ? 'You are below the roster minimum' : 'Your roster is over the limit',
     explanation: 'You are carrying ' + n + ' players. The league requires ' +
       AGENDA_TUNING.rosterMin + ' to ' + AGENDA_TUNING.rosterMax + '.',
-    responses: [{ label: short ? 'Sign somebody' : 'Cut somebody', view: short ? 'freeAgency' : 'roster' }],
+    responses: [{ label: short ? 'Sign somebody' : 'Cut somebody', view: short ? 'freeagency' : 'roster' }],
     consequence: 'The league will resolve this for you if you do not.',
     weight: 95
   })];
@@ -304,7 +313,7 @@ function detectAgingCore(v) {
       ' or older. This window closes whether you plan for it or not.',
     responses: [
       { label: 'Look at the roster', view: 'roster' },
-      { label: 'Trade for youth', view: 'tradeCenter' }
+      { label: 'Trade for youth', view: 'trade' }
     ],
     consequence: 'A core that ages out together leaves nothing behind.',
     weight: 25 + vets.length * 6
@@ -413,9 +422,86 @@ function detectOldFriend(v) {
   })];
 }
 
+
+// Where each promise sends you when you click it. Named per kind rather than
+// one generic button, because "get under the tax line" and "keep him" are
+// answered on different screens — and a button that lands somewhere useless is
+// the same lie as a button that lands nowhere.
+// A promise about money is a business item and a promise about a man is a
+// locker-room one — the desk tags every row, and tagging all four RELATIONSHIP
+// put "get the payroll under the tax line" under Locker room on screen.
+var PROMISE_CATEGORIES = {
+  'payroll-cut': AGENDA_CATEGORY.BUSINESS,
+  'mandate-run': AGENDA_CATEGORY.BUSINESS,
+  'keep-him': AGENDA_CATEGORY.RELATIONSHIP,
+  'get-him-help': AGENDA_CATEGORY.RELATIONSHIP
+};
+
+var PROMISE_RESPONSES = {
+  'payroll-cut': [{ label: 'Look at the books', view: 'finances' },
+                  { label: 'Move salary', view: 'trade' }],
+  'mandate-run': [{ label: 'Look at the rotation', view: 'roster' },
+                  { label: 'Check the standings', view: 'standings' }],
+  'keep-him': [{ label: 'Look at his minutes', view: 'roster' }],
+  'get-him-help': [{ label: 'Go and find him somebody', view: 'trade' },
+                   { label: 'Look at the market', view: 'freeagency' }]
+};
+
+// What you said you would do, and how it is going.
+//
+// The one agenda item that is not a fact about the league — it is a fact about
+// YOU, and the only one on the desk that you put there yourself. Everything
+// else here is the club's problem; this is the GM's word.
+//
+// Reads gameState.gmPromises straight off the view. gmPromises.js does the
+// judging, on its own schedule; this only reports.
+function detectOpenPromises(v) {
+  const open = (v.promises || []).filter(function (p) { return p && p.status === 'open'; });
+  if (!open.length) return [];
+  const facts = v.promiseFacts;
+  const line = _AGENDA_DATA.promises && _AGENDA_DATA.promises.promiseStatusLine;
+  return open.map(function (p) {
+    // Season-end promises have no day counter, so they are never "due soon"
+    // until the season itself is. Day-stamped ones tighten as the date nears.
+    const left = (typeof p.dueDay === 'number' && facts)
+      ? p.dueDay - facts.day : null;
+    const urgent = left !== null && left <= AGENDA_TUNING.promiseUrgentDays;
+    let status = '';
+    if (line && facts) { try { status = line(p, facts) || ''; } catch (e) { status = ''; } }
+    return makeItem({
+      id: 'promise-' + p.kind + (p.subjectId ? '-' + p.subjectId : ''),
+      urgency: urgent ? AGENDA_URGENCY.CRITICAL : AGENDA_URGENCY.DEVELOPING,
+      category: PROMISE_CATEGORIES[p.kind] || AGENDA_CATEGORY.RELATIONSHIP,
+      source: 'promise',
+      entities: p.subjectId
+        ? [{ kind: 'player', id: p.subjectId, name: p.subjectName }]
+        : [{ kind: 'team', id: v.teamId }],
+      headline: 'You gave your word: ' + _promiseSummary(p),
+      explanation: [p.text, status].filter(function (t) { return t; }).join(' '),
+      responses: PROMISE_RESPONSES[p.kind] || [{ label: 'Look for a move', view: 'trade' }],
+      consequence: 'Breaking it costs you more with the owner than keeping it gains.',
+      // Above an ordinary developing item but below a lost job: it is a
+      // deadline you set yourself.
+      weight: urgent ? 92 : 66
+    });
+  });
+}
+
+// The short form, off the kind registry, so the desk and the settlement line
+// never disagree about what was promised.
+function _promiseSummary(p) {
+  const kinds = _AGENDA_DATA.promises && _AGENDA_DATA.promises.PROMISE_KINDS;
+  const k = kinds && kinds[p.kind];
+  if (k && typeof k.summary === 'function') {
+    try { return k.summary(p); } catch (e) { /* fall through */ }
+  }
+  return p.kind;
+}
+
 var AGENDA_DETECTORS = [
   detectOwnerPatience, detectRosterSize, detectExpiringContracts, detectUnhappyPlayers,
-  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry, detectLeagueTrades, detectOldFriend
+  detectInjuries, detectPayroll, detectAgingCore, detectForm, detectBuriedProspect, detectRivalry, detectLeagueTrades, detectOldFriend,
+  detectOpenPromises
 ];
 
 // Assembles the one view every detector reads, so the roster is walked once and
@@ -458,6 +544,9 @@ function agendaView(gameState) {
         .filter(function (id) { return typeof id === 'string'; });
     } catch (e) { rivals = []; }
   }
+  const promiseList = Array.isArray(gs.gmPromises)
+    ? gs.gmPromises.filter(function (p) { return p && p.status === 'open'; })
+    : [];
   return {
     teamId: teamId,
     roster: roster,
@@ -465,6 +554,12 @@ function agendaView(gameState) {
     taxLine: typeof taxLine === 'number' ? taxLine : null,
     career: gs.gmCareer || null,
     rivals: rivals,
+    promises: promiseList,
+    // Built once here rather than per promise: four rows each re-reading the
+    // payroll is three reads too many, and the desk repaints on every render.
+    // Skipped entirely when nothing is owed, which is most of the time.
+    promiseFacts: (promiseList.length && _AGENDA_DATA.promises && _AGENDA_DATA.promises.promiseFacts)
+      ? _AGENDA_DATA.promises.promiseFacts(gs) : null,
     streak: gs.agendaStreak || currentStreak(gs),
     nextOpponent: nextOpponent(gs),
     leagueYear: gs.leagueYear || null
@@ -565,6 +660,7 @@ if (typeof module !== 'undefined' && module.exports) {
     detectRivalry: detectRivalry,
     detectLeagueTrades: detectLeagueTrades,
     detectOldFriend: detectOldFriend,
+    detectOpenPromises: detectOpenPromises,
     nextOpponent: nextOpponent
   };
 }

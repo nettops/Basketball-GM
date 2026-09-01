@@ -138,7 +138,12 @@ const SCENES = [
     ],
     choices: [
       { text: 'He deserves better. We will get him help.', emotion: 'confident',
-        effect: function () { return { teamMorale: 1, reputation: 1 }; } },
+        effect: function (c) { return { teamMorale: 1, reputation: 1,
+          // Said in public, so it is owed in public. gmPromises.js looks at
+          // the roster in six weeks and decides whether help arrived.
+          promise: { kind: 'get-him-help', sceneId: 'star-carried-a-loss',
+            subjectId: c.topScorerId, subjectName: c.topScorerName,
+            text: 'You told the press ' + c.topScorerName + ' would get help.' } }; } },
       { text: 'Basketball is a five-man game. Ask the other four.', emotion: 'angry',
         effect: function () { return { teamMorale: -2, reputation: -1 }; } },
       { text: 'We are evaluating everything.', emotion: 'neutral', effect: null }
@@ -362,9 +367,19 @@ const SCENES = [
       { emotion: 'neutral', text: 'Is he going to finish the season with the {teamName}?' }
     ],
     choices: [
-      { text: 'He is going nowhere. I will fix what is bothering him.', emotion: 'confident',
-        effect: function (c) { return { teamMorale: 3, reputation: -1,
-          chronicle: 'Committed publicly to ' + c.unhappyName + ' mid-season.' }; } },
+      // Was "...and I will fix what is bothering him", which the game gave the
+      // GM no way to do: probe-promises.js found not one man below 40 morale
+      // recovers, because morale reads minutes and gameCoach.js sets those by
+      // rating. A choice that promises the impossible is a trap, so it now
+      // promises the half he controls.
+      { text: 'He is going nowhere. He finishes the season here.', emotion: 'confident',
+        // The dressing-room lift is smaller than it was. Most of what this
+        // answer is worth now arrives in April, when the promise is judged.
+        effect: function (c) { return { teamMorale: 2, reputation: -1,
+          chronicle: 'Committed publicly to ' + c.unhappyName + ' mid-season.',
+          promise: { kind: 'keep-him', sceneId: 'unhappy-star',
+            subjectId: c.unhappyId, subjectName: c.unhappyName,
+            text: 'You said ' + c.unhappyName + ' would finish the season here.' } }; } },
       { text: 'Everyone is available for the right price.', emotion: 'neutral',
         effect: function (c) { return { teamMorale: -3, reputation: 2, ownerHappiness: 1,
           chronicle: 'Told the press ' + c.unhappyName + ' was available.' }; } },
@@ -390,8 +405,13 @@ const SCENES = [
     ],
     choices: [
       { text: 'We will get there. Watch the next month.', emotion: 'confident',
-        effect: function () { return { ownerHappiness: 2, reputation: -1,
-          chronicle: 'Promised the owner a run the season still had to deliver.' }; } },
+        // Two points of owner happiness for a sentence was the whole problem:
+        // it paid in full on the way out of the room. One now, the rest in a
+        // month, and only if the month happens.
+        effect: function (c) { return { ownerHappiness: 1, reputation: -1,
+          chronicle: 'Promised the owner a run the season still had to deliver.',
+          promise: { kind: 'mandate-run', sceneId: 'mandate-slipping',
+            text: 'You told the owner to watch the next month.' } }; } },
       { text: 'It does not. Better you hear that now than in April.', emotion: 'neutral',
         effect: function () { return { ownerHappiness: -3, reputation: 3, teamMorale: -1,
           chronicle: 'Told the owner to his face that the target was gone.' }; } },
@@ -440,8 +460,13 @@ const SCENES = [
         effect: function () { return { ownerHappiness: -2, reputation: 2, teamMorale: 1,
           chronicle: 'Defended the payroll to the owner.' }; } },
       { text: 'I will get us under it before the deadline.', emotion: 'neutral',
-        effect: function () { return { ownerHappiness: 4, teamMorale: -2,
-          chronicle: 'Promised the owner a payroll cut before the deadline.' }; } },
+        // Was four points for saying it. Two for saying it, three more for
+        // doing it, six off the meter for the deadline passing with the
+        // payroll where it was.
+        effect: function (c) { return { ownerHappiness: 2, teamMorale: -2,
+          chronicle: 'Promised the owner a payroll cut before the deadline.',
+          promise: { kind: 'payroll-cut', sceneId: 'tax-bill-looming',
+            text: 'You promised the owner the payroll would be under the tax line by the deadline.' } }; } },
       { text: 'Every club is spending. That is the market.', emotion: 'neutral',
         effect: function () { return { ownerHappiness: -1 }; } }
     ]

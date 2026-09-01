@@ -76,7 +76,18 @@ function moraleFactors(player, team) {
   return reasons;
 }
 
+// A one-off push to a man's morale, clamped to the 0-100 scale everything else
+// in the game reads. Lives here rather than beside each caller because there
+// are now two of them — a dialogue answer and a settled promise — and a second
+// copy of the clamp is a second place for the scale to drift.
+function nudgeMorale(player, delta) {
+  if (!player || !player.status || typeof player.status.morale !== 'number') return false;
+  if (typeof delta !== 'number' || !isFinite(delta)) return false;
+  player.status.morale = Math.max(0, Math.min(100, player.status.morale + delta));
+  return true;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { tickMoraleForTeamGame: tickMoraleForTeamGame, moraleTier: moraleTier,
-    moraleFactors: moraleFactors, MORALE_DNP: MORALE_DNP };
+    moraleFactors: moraleFactors, nudgeMorale: nudgeMorale, MORALE_DNP: MORALE_DNP };
 }

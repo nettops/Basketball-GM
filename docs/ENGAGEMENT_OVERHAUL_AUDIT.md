@@ -234,3 +234,73 @@ determinism test. The full 80-validator suite runs before every commit.
 Performance: the agenda derives per-request from live objects and must not
 scan league history. Where history is needed, summaries get maintained
 incrementally at rollover rather than recomputed.
+
+---
+
+## What was built, and what it measured
+
+Written after the fact, against the plan above.
+
+| Item | State | Where |
+| --- | --- | --- |
+| P0.1 GM Agenda | Built, 13 detectors | `gmAgenda.js`, `ui/gmAgendaView.js` |
+| P0.2 Event memory | Built as a read over `history.js` | `gmMemory.js` |
+| P0.3 | Withdrawn, see above | — |
+| P0.4 Morale bites | Routed into progression | `progression.js` |
+| P0.5 Surface AI trades | Built as a detector | `detectLeagueTrades` |
+| Decision consequences | Built as promises | `gmPromises.js` |
+
+### The promise ledger
+
+Every dialogue choice settled the instant it was clicked. "I will get us under
+the tax line before the deadline" paid the owner four points of happiness on
+the way out of the room and was never mentioned again. That is not a decision;
+it is a button that pays.
+
+Four choices now DEFER instead. What was said is written down with a date, and
+on that date the game looks at the league and decides. Keeping your word pays
++3 owner happiness; breaking it costs −6. It rides the existing machinery
+end to end: a scene's own effect descriptor carries the promise, the existing
+`applyDialogueEffect` channel writes it, the existing agenda shows it, and the
+existing owner-happiness, reputation, morale and chronicle channels pay it.
+
+`scripts/probe-promises.js`, five seasons, a GM who takes every promising
+answer he is offered and then does nothing about any of them:
+
+| | |
+| --- | --- |
+| promises made | 3.0 a season |
+| kept | 33% |
+| owner swing across the season | −5.0 points |
+| second-best rating drift over 45 days, 12,600 club-windows | 0.0 at every percentile |
+
+### Two things the measurement changed
+
+**"I will fix what is bothering him" was unkeepable.** The `unhappy-star`
+choice promised to fix a man's mood, and the promise judged it. The probe then
+measured what happens to the 42 men a season who fall below 40 morale with a
+GM who does nothing: the median finishes on 2 and the best of them on 37. Not
+one recovers, at any bar. Morale reads minutes, and `gameCoach.js` allocates
+minutes by rating — the GM has no lever. The choice now promises the half he
+does control ("He finishes the season here"), and the judge reads the roster.
+
+The underlying finding stands and is NOT fixed here: for a man out of the
+rotation, morale is a one-way street. That is a `morale.js` question, not a
+promise question.
+
+**Six agenda buttons pointed at views that do not exist.** `gmAgenda.js` says
+"an agenda that offers an action the UI cannot perform is a lie, so each one
+names a real view" — and then named `tradeCenter` and `freeAgency`, when the
+registry keys are `trade` and `freeagency`. Every one of those buttons rendered
+the placeholder. Nothing caught it because the only thing that knows the real
+names is `script.js`, which Node cannot load. `validate-gmAgenda.js` now parses
+`BUILT_VIEWS` out of the file and asserts against it.
+
+### Left undone
+
+- `mandate-run` is only sayable in `mandate-slipping`, which needs a wins
+  mandate (8 of 30 clubs draw one) AND a collapsing season. It did not fire
+  once across five seasons on a wins-mandate club. Its judging is covered
+  directly in `validate-gmPromises.js`; whether that scene should be reachable
+  more often is a scene question.
+- Morale recovery, above.

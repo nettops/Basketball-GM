@@ -740,5 +740,35 @@ function checkAnOldSaveWithoutDialogueStateLoads() {
 }
 checkAnOldSaveWithoutDialogueStateLoads();
 
+// A promise outlives the session it was given in, or it is not a promise. The
+// ledger is small and plain, so this is a straight round trip — but an old save
+// has no such field at all, and settlePromises must not meet an undefined.
+function checkPromisesSurviveARoundTrip() {
+  const saveModule = require(path.join(__dirname, '..', 'save.js'));
+  const ledger = [
+    { kind: 'payroll-cut', sceneId: 'tax-bill-looming', subjectId: null, subjectName: null,
+      text: 'You promised the owner a payroll cut.', madeYear: 2026, madeDay: 12,
+      dueDay: 84, baseline: null, status: 'open', settledYear: null, settledDay: null },
+    { kind: 'keep-him', sceneId: 'unhappy-star', subjectId: 'p1', subjectName: 'Marcus Johnson',
+      text: 'You said he would finish the season here.', madeYear: 2025, madeDay: 30,
+      dueDay: null, baseline: { morale: 22 }, status: 'kept', settledYear: 2025, settledDay: 170 }
+  ];
+  const gs = makeFakeGameState({ gmPromises: ledger });
+  const payload = saveModule.serializeGameState(gs, 'Test');
+  assert.deepStrictEqual(payload.gmPromises, ledger, 'the ledger reached the payload');
+
+  const loaded = {};
+  saveModule.applySavedState(payload, loaded);
+  assert.deepStrictEqual(loaded.gmPromises, ledger, 'every field survived, baseline included');
+
+  // A save from before promises existed.
+  delete payload.gmPromises;
+  const old = {};
+  assert.doesNotThrow(function () { saveModule.applySavedState(payload, old); });
+  assert.deepStrictEqual(old.gmPromises, [], 'an old save normalizes to an empty ledger');
+  console.log('checkPromisesSurviveARoundTrip: OK');
+}
+checkPromisesSurviveARoundTrip();
+
 
 console.log('All save/load validations passed');
