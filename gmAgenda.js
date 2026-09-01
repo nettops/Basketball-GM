@@ -22,7 +22,8 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       owner: require('./owner.js'),
       rivalries: require('./rivalries.js'),
       history: require('./history.js'),
-      memory: require('./gmMemory.js')
+      memory: require('./gmMemory.js'),
+      teams: require('./teams.js')
     }
   : {
       data: {
@@ -41,7 +42,8 @@ var _AGENDA_DATA = (typeof require !== 'undefined')
       memory: {
         historyLineWith: typeof historyLineWith !== 'undefined' ? historyLineWith : null,
         hasHistoryWith: typeof hasHistoryWith !== 'undefined' ? hasHistoryWith : null
-      }
+      },
+      teams: { getTeamById: typeof getTeamById !== 'undefined' ? getTeamById : null }
     };
 
 // Urgency is HOW SOON, category is WHAT KIND. The brief lists them in one
@@ -73,6 +75,14 @@ var AGENDA_TUNING = {
   // without bound across a twenty-season career.
   tradeLookback: 8
 };
+
+// Clubs are shown by name, never by id. The desk said "History with LAL",
+// which is a database key wearing a team's coat.
+function _teamName(id) {
+  const get = _AGENDA_DATA.teams && _AGENDA_DATA.teams.getTeamById;
+  if (!get) return id;
+  try { const t = get(id); return (t && t.name) || id; } catch (e) { return id; }
+}
 
 function _num(v, fallback) { return typeof v === 'number' && isFinite(v) ? v : fallback; }
 function _morale(p) { return _num(p && p.status && p.status.morale, 70); }
@@ -331,7 +341,8 @@ function detectRivalry(v) {
     source: 'rivalry',
     entities: v.rivals.map(function (id) { return { kind: 'team', id: id }; }),
     headline: v.rivals.length === 1 ? 'A rivalry is running hot' : 'Rivalries are running hot',
-    explanation: 'History with ' + v.rivals.join(', ') + '. These games carry more than two points.',
+    explanation: 'History with ' + v.rivals.map(_teamName).join(', ') +
+      '. These games carry more than two points.',
     responses: [{ label: 'Check the standings', view: 'standings' }],
     weight: 15 + v.rivals.length * 5
   })];
@@ -362,8 +373,8 @@ function detectLeagueTrades(v) {
       category: AGENDA_CATEGORY.LEAGUE,
       source: 'trade',
       entities: parts.map(function (id) { return { kind: 'team', id: id }; }),
-      headline: rival.join(' and ') + ' made a move',
-      explanation: parts.join(' and ') + ' traded' +
+      headline: rival.map(_teamName).join(' and ') + ' made a move',
+      explanation: parts.map(_teamName).join(' and ') + ' traded' +
         (names.length ? ' ' + names.slice(0, 3).join(', ') : '') +
         '. A club you are measured against just changed shape.',
       responses: [{ label: 'Check the standings', view: 'standings' }],
@@ -431,9 +442,21 @@ function agendaView(gameState) {
     const capLevel = (gs.settings && gs.settings.capLevel) || 1;
     try { taxLine = _AGENDA_DATA.data.getEffectiveLuxuryTaxLine(capLevel); } catch (e) { taxLine = null; }
   }
+  // rivalsOf returns [{ teamId, heat }], NOT ids. Normalised to plain ids here,
+  // once, so no detector has to remember which it is getting.
+  //
+  // Both detectors that touch rivals got this wrong and neither test caught it,
+  // because both tests fed hand-written strings. On screen it read "History
+  // with [object Object]", and detectLeagueTrades silently never matched a
+  // rival at all — indexOf on an object array finds nothing and returns no
+  // items, which looks exactly like "no rival has traded".
   let rivals = [];
   if (gs.rivalries && _AGENDA_DATA.rivalries.rivalsOf && teamId) {
-    try { rivals = _AGENDA_DATA.rivalries.rivalsOf(gs.rivalries, teamId) || []; } catch (e) { rivals = []; }
+    try {
+      rivals = (_AGENDA_DATA.rivalries.rivalsOf(gs.rivalries, teamId) || [])
+        .map(function (r) { return (r && r.teamId) ? r.teamId : r; })
+        .filter(function (id) { return typeof id === 'string'; });
+    } catch (e) { rivals = []; }
   }
   return {
     teamId: teamId,

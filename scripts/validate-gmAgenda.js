@@ -320,6 +320,50 @@ function checkARivalsTradeReachesYourDesk() {
 }
 checkARivalsTradeReachesYourDesk();
 
+// The shape check, and the reason it exists: every rival test in this file fed
+// hand-written strings like ['LAL'], while rivalsOf actually returns
+// [{ teamId, heat }]. Both detectors that touch rivals were wrong and every
+// test passed. On screen the desk read "History with [object Object]", and
+// detectLeagueTrades silently matched nothing at all, which is indistinguishable
+// from "no rival has traded".
+//
+// So this drives agendaView with a REAL rivalries state, built by rivalries.js
+// itself. A hand-made fixture cannot catch a hand-made fixture being wrong.
+function checkRivalsArriveAsIdsWhateverRivalriesReturns() {
+  const rivalries = rq('rivalries.js');
+  const history = rq('history.js');
+  const state = rivalries.createRivalryState();
+  rivalries.addHeat(state, 'BOS', 'LAL', rivalries.RIVALRY_THRESHOLD + 12);
+
+  const v = agenda.agendaView({ userTeamId: 'BOS', leagueYear: 2026, rivalries: state });
+  assert.ok(Array.isArray(v.rivals), 'rivals must be an array');
+  assert.strictEqual(v.rivals.length, 1, 'the rival must survive the trip');
+  assert.strictEqual(typeof v.rivals[0], 'string', 'and arrive as an id, not an object');
+  assert.strictEqual(v.rivals[0], 'LAL');
+
+  // The two detectors that consume it must produce readable English.
+  const rivalItem = agenda.detectRivalry(v)[0];
+  assert.ok(rivalItem, 'a real rivalry must produce an item');
+  assert.ok(rivalItem.explanation.indexOf('[object') === -1,
+    'a club must never be stringified into the copy: ' + rivalItem.explanation);
+  assert.ok(/Monarchs/.test(rivalItem.explanation),
+    'and must be named, not shown as an id: ' + rivalItem.explanation);
+
+  const saved = history.LEAGUE_HISTORY.trades.slice();
+  history.LEAGUE_HISTORY.trades.length = 0;
+  history.LEAGUE_HISTORY.trades.push({ leagueYear: 2026, participants: ['LAL', 'DEN'],
+    players: [{ playerId: 'x', playerName: 'Dane Foster', fromTeamId: 'DEN', toTeamId: 'LAL' }], picks: [] });
+  const tradeItem = agenda.detectLeagueTrades(v)[0];
+  assert.ok(tradeItem, 'a rival trade must be found through the real rival shape');
+  assert.ok(tradeItem.headline.indexOf('[object') === -1, tradeItem.headline);
+  assert.ok(/Monarchs/.test(tradeItem.headline), 'named, not an id: ' + tradeItem.headline);
+  history.LEAGUE_HISTORY.trades.length = 0;
+  saved.forEach(function (t) { history.LEAGUE_HISTORY.trades.push(t); });
+
+  console.log('checkRivalsArriveAsIdsWhateverRivalriesReturns: OK');
+}
+checkRivalsArriveAsIdsWhateverRivalriesReturns();
+
 checkAnAngryStarIsTheLoudestThingOnTheList();
 checkAContentBenchPlayerIsNotNews();
 checkALastYearDealOnAGoodPlayerSurfaces();
